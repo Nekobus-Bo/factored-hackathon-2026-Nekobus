@@ -1,0 +1,43 @@
+# Project documentation
+
+AI-first customer service system for banking — Factored AI & Data Hackathon 2026.
+
+> **TODO (phase 0):** simulated fintech name, team members, repository and test environment links.
+
+## How to read this if you are a judge
+
+In this order, about 15 minutes:
+
+1. **[00-problem.md](00-problem.md)** — which workflow we chose, why, and what we left out on purpose.
+2. **[adr/0001](adr/0001-cheap-llm-specialized-encoder.md)**, **[adr/0002](adr/0002-config-code-boundary.md)** and **[adr/0003](adr/0003-deterministic-vs-ai.md)** — the three decisions that shape the system.
+3. **[evaluation.md](evaluation.md)** — how we prove it works: baseline, suite, metrics and results.
+4. **[limitations.md](limitations.md)** — what does not work, what is missing, what we would do next.
+5. **[runbook.md](runbook.md)** — how to run it on your machine in under 10 minutes.
+
+## Full index
+
+| Document | Contents |
+|---|---|
+| [00-problem.md](00-problem.md) | Problem, users, workflow, scope, KPIs |
+| [data.md](data.md) | Sources, contracts, quality, splits, labeling |
+| [evaluation.md](evaluation.md) | Metrics, failure taxonomy, protocol, results |
+| [security-privacy.md](security-privacy.md) | Threat model, PII, encryption, audit |
+| [limitations.md](limitations.md) | Known limits and future work |
+| [runbook.md](runbook.md) | Installation, operation and demo |
+| [../AGENTS.md](../AGENTS.md) | Conventions for working in the repository |
+
+## Architecture decision records
+
+| # | Decision | Status |
+|---|---|---|
+| [0001](adr/0001-cheap-llm-specialized-encoder.md) | Cheap generic LLM + small specialized encoder | Accepted |
+| [0002](adr/0002-config-code-boundary.md) | Boundary between configuration and code | Accepted |
+| [0003](adr/0003-deterministic-vs-ai.md) | What AI decides and what deterministic logic decides | Accepted |
+| [0004](adr/0004-trust-boundary.md) | Trust boundary and threat model | Accepted |
+| [0005](adr/0005-application-level-encryption.md) | Application-level encryption with blind index | Accepted |
+| [0006](adr/0006-single-postgres-pgvector.md) | A single PostgreSQL with pgvector, plus Redis | Accepted |
+| [0007](adr/0007-no-llm-biometrics.md) | No LLM-based biometric verification | Accepted |
+| [0008](adr/0008-cpu-inference-deployment.md) | CPU inference and private-environment deployment | Accepted |
+| [0009](adr/0009-monorepo-structure.md) | Monorepo structure and service names | Accepted |
+
+Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.

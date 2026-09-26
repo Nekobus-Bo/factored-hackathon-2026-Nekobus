@@ -1,0 +1,31 @@
+.env
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# JavaScript
+node_modules/
+dist/
+.turbo/
+
+# The organization's dataset is not versioned
+data/raw/*
+data/staging/*
+data/curated/*
+data/eval/*
+!data/**/.gitkeep
+!data/raw/README.md
+
+# Model weights
+packages/encoder/weights/
+packages/retrieval/weights/
+*.safetensors
+*.onnx
+
+# Evaluation reports ARE versioned: they are the evidence
+!reports/*.md
