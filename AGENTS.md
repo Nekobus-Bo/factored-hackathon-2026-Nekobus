@@ -67,7 +67,10 @@ make eval     # baseline vs proposed system
 
 ## Languages
 
-- **Code, paths, names, comments and documentation:** English.
+- **Code, paths, names, comments, commit messages and documentation:**
+  English. This holds regardless of the language used to talk to whoever is
+  writing the code: a conversation in Spanish still produces English
+  artifacts.
 - **Internal system instructions (prompts, schemas, policies):** English.
 - **Evaluation scenario content:** Spanish and Portuguese — those are test data, not documentation, and they are not translated.
 - **Customers are served in their own language.** Spanish and Portuguese are a requirement; metrics are reported per language.
