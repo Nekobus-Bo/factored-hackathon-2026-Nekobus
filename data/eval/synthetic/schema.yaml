@@ -1,0 +1,100 @@
+version: "1.0.0"
+
+languages:
+  - es
+  - pt
+  - en
+
+# Slot objects in decision JSONL datasets contain:
+# - type (str): slot entity name
+# - value (str): exact surface form matching text[start:end]
+# - start (int): 0-indexed inclusive start character offset
+# - end (int): 0-indexed exclusive end character offset
+# - normalized (str, optional): canonical value (e.g. contract DocumentType for document_type)
+
+intents:
+  - name: report_unrecognized_charge
+    description: "Customer reports a transaction on their account that they do not recognize or did not authorize."
+  - name: report_lost_card
+    description: "Customer reports that their physical payment card was lost or misplaced."
+  - name: report_stolen_card
+    description: "Customer reports that their physical payment card was stolen or taken without permission."
+  - name: report_suspicious_activity
+    description: "Customer reports suspicious account activity, security alerts, or potential fraud without a confirmed charge."
+  - name: request_card_block
+    description: "Customer explicitly requests to freeze or block their payment card."
+  - name: request_dispute
+    description: "Customer requests formal dispute resolution or chargeback for a settled transaction."
+  - name: request_human_agent
+    description: "Customer requests escalation or transfer to speak directly with a human support agent."
+  - name: provide_identity_data
+    description: "Customer provides personal identification data to verify identity."
+  - name: provide_otp_code
+    description: "Customer provides a one-time verification passcode (OTP)."
+  - name: confirm
+    description: "Customer affirms, confirms, or agrees with a proposed action or question."
+  - name: deny
+    description: "Customer denies, rejects, or cancels a proposed action or question."
+  - name: check_balance
+    description: "Customer inquires about their current balance, credit line, or available funds."
+  - name: check_recent_transactions
+    description: "Customer inquires about their recent transaction history or statement movements."
+  - name: greeting
+    description: "Customer initiates conversation with a greeting or salutation without expressing a banking intent."
+  - name: out_of_scope
+    description: "Customer asks about unrelated topics or requests beyond supported banking services."
+
+slots:
+  - name: document_type
+    pii: false
+    pattern: ".+"
+    normalized: "NATIONAL_ID|PASSPORT|FOREIGN_ID|TAX_ID"
+    notes: "Natural surface form mention of identification document in text. Slot includes an optional 'normalized' field containing the canonical contract DocumentType enum value."
+  - name: document_number
+    pii: true
+    pattern: "[A-Za-z0-9./-]+{6,20}"
+    notes: "Customer identification document number formatted per document type without artificial prefixes."
+  - name: full_name
+    pii: true
+    pattern: "[A-Za-zÀ-ÿ]+(?: [A-Za-zÀ-ÿ]+)+"
+    notes: "Customer full legal name (first name and surname)."
+  - name: birth_date
+    pii: true
+    pattern: "\\d{4}-\\d{2}-\\d{2}|\\d{2}/\\d{2}/\\d{4}"
+    notes: "Customer date of birth in ISO 8601 or standard regional slash format."
+  - name: email
+    pii: true
+    pattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    notes: "Customer email address used for contact and verification."
+  - name: phone
+    pii: true
+    pattern: "\\+?[1-9]\\d{1,14}"
+    notes: "Customer telephone or mobile phone number in E.164 or national format."
+  - name: card_last4
+    pii: false
+    pattern: "\\d{4}"
+    notes: "Last 4 digits of the payment card used for low-risk identification."
+  - name: card_number
+    pii: true
+    pattern: "\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?\\d{4}"
+    notes: "Full 16-digit Primary Account Number (PAN) of the payment card."
+  - name: amount
+    pii: false
+    pattern: "\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?|\\d+(?:[.,]\\d{2})?"
+    notes: "Monetary transaction or balance amount, optionally formatted with thousands separators and decimals."
+  - name: currency
+    pii: false
+    pattern: "[A-Z]{3}|[$€£R$]"
+    notes: "Currency code (ISO 4217) or common currency symbol."
+  - name: merchant
+    pii: false
+    pattern: ".+"
+    notes: "Name of the merchant or counterparty where the transaction occurred."
+  - name: transaction_date
+    pii: false
+    pattern: "\\d{4}-\\d{2}-\\d{2}|\\d{2}/\\d{2}/\\d{4}|yesterday|today|ayer|hoy|ontem|hoje"
+    notes: "Date or relative temporal reference of a transaction."
+  - name: otp_code
+    pii: true
+    pattern: "\\d{6}"
+    notes: "6-digit one-time passcode for multi-factor authentication."
