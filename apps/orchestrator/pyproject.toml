@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Orchestrator service"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "contracts",
     "fastapi>=0.115.0",
+    "httpx>=0.28.1",
+    "litellm>=1.102.1",
+    "pydantic-settings>=2.15.0",
     "uvicorn>=0.30.0",
 ]
 
@@ -14,3 +18,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orchestrator"]
+
+[tool.uv.sources]
+contracts = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "respx>=0.23.1",
+]
