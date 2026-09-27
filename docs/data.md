@@ -4,7 +4,7 @@
 
 | Source | Use | Notes |
 |---|---|---|
-| Dataset provided by Factored | Seed for the banking core and input for evaluation scenarios | TODO: entities, volume, date range after exploration |
+| Dataset provided by Factored | Seed for the banking core and reference for evaluation scenarios | TODO: entities, volume, date range after exploration |
 | Provided data dictionary | Contract for interpreting fields | TODO: field-by-field mapping against our model |
 | Knowledge base | Policies and responses of the simulated bank | Written by the team from the dataset's domain |
 | Synthetic eval data | Labeled sets for decision calibration and scenario tests | Written by the team and versioned under `data/eval/synthetic/` |

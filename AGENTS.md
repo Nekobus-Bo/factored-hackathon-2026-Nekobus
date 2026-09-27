@@ -78,8 +78,8 @@ Not every target is implemented yet; `make help` lists what exists and pending t
   writing the code: a conversation in Spanish still produces English
   artifacts.
 - **Internal system instructions (prompts, schemas, policies):** English.
-- **Evaluation scenario content:** Spanish and Portuguese — those are test data, not documentation, and they are not translated.
-- **Customers are served in their own language.** Spanish and Portuguese are a requirement; metrics are reported per language.
+- **Evaluation scenario content:** Spanish, Portuguese and English — those are test data, not documentation, and they are not translated.
+- **Customers are served in their own language.** Spanish, Portuguese and English are supported; metrics are reported per language.
 
 ## Commits and branches
 

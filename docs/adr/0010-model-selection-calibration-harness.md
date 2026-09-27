@@ -28,7 +28,7 @@ We establish a single, unified calibration harness for local decision and embedd
 
 - **Candidates:** GLiNER2.5 multilingual (~0.3B) as primary zero-shot candidate, alternative lightweight transformer encoders, and fine-tuned variants.
 - **Baseline:** Always evaluated against a classic deterministic baseline: TF-IDF + Logistic Regression.
-- **Metrics (reported per language: Spanish and Portuguese):**
+- **Metrics (reported per language: Spanish, Portuguese, and English):**
   - Macro-F1
   - Per-class precision
   - Expected Calibration Error (ECE)
@@ -42,10 +42,10 @@ We establish a single, unified calibration harness for local decision and embedd
 
 - **Candidates:** Multilingual dense bi-encoders (e.g., MiniLM, BGE, E5 variants) evaluated in zero-shot and fine-tuned modes.
 - **Baseline:** Always evaluated against BM25 lexical retrieval.
-- **Metrics (reported per language: Spanish and Portuguese):**
+- **Metrics (reported per language: Spanish, Portuguese, and English):**
   - Hit@k ($k \in \{1, 3, 5\}$)
   - Mean Reciprocal Rank (MRR)
-  - Cross-language retrieval score (Spanish query $\to$ Portuguese policy, and vice-versa)
+  - Cross-language retrieval score (covering any pair among Spanish, Portuguese, and English)
   - p95 CPU latency (ms)
   - Memory consumption (RAM in MB)
 - **Selection rule:** Per [ADR-0006](0006-single-postgres-pgvector.md), dense embedding models are adopted only if hybrid search demonstrates a measurable improvement over BM25 at operational scale.
@@ -151,7 +151,7 @@ Conversely, heavyweight MLOps platforms introduce operational fragility and cons
 - Offline fine-tuning workflows require manual management and hash-pinning of model artifacts.
 
 **To revisit:**
-- If zero-shot GLiNER2.5 meets the macro-F1 and per-class precision targets across Spanish and Portuguese, fine-tuning is skipped to avoid model complexity.
+- If zero-shot GLiNER2.5 meets the macro-F1 and per-class precision targets across Spanish, Portuguese, and English, fine-tuning is skipped to avoid model complexity.
 - If BM25 matches or exceeds dense embeddings on retrieval Hit@k and MRR, pgvector embeddings are omitted per [ADR-0006](0006-single-postgres-pgvector.md).
 
 ## Action items

@@ -41,7 +41,7 @@ Generality is a property of the system; depth is a property of our submission. W
 | Out of scope | Reason |
 |---|---|
 | Real biometric verification (selfie against ID document) | Requires a certified provider with liveness detection; a vision LLM gives neither a calibrated score nor spoof detection. See [ADR-0007](adr/0007-no-llm-biometrics.md). We leave the interface defined and a simulated provider behind it. |
-| Real SMS delivery | Per-message cost with no contribution to the evaluated criteria. Email OTP is real; SMS is shown in a simulated panel. |
+| Real outbound OTP delivery | Delivery channel is an open decision (email, Telegram, WhatsApp or SMS; chosen by feasibility / free tier); delivery is currently simulated in a panel. The model never chooses the channel. |
 | End-to-end dispute resolution | A judgment call with monetary impact. It is our test case for "AI should not be autonomous just because it can be". |
 | Customer onboarding / credit origination | A different workflow; adds nothing to the depth of the chosen one. |
 | Real multi-tenancy | Anticipated in the data model (schema separation), not implemented. |
@@ -64,7 +64,7 @@ Generality is a property of the system; depth is a property of our submission. W
 
 ## 6. Languages
 
-The system's internal instructions (skills, schemas, policies) are in English, for consistency and because that is where models are most stable. **Customers interact in their own language** and the system replies in it; the interface and catalog data are internationalized. The commitment is behavioral, not translational: we report metrics **broken down by language** (Spanish and Portuguese), because a global average can hide one language performing badly. See [evaluation.md](evaluation.md).
+The system's internal instructions (skills, schemas, policies) are in English, for consistency and because that is where models are most stable. **Customers interact in their own language** and the system replies in it; the interface and catalog data are internationalized. The commitment is behavioral, not translational: we report metrics **broken down by language** (Spanish, Portuguese and English), because a global average can hide one language performing badly. See [evaluation.md](evaluation.md).
 
 ## 7. Assumptions
 

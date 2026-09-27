@@ -93,7 +93,7 @@ Two systems, the same scenario suite, the same tools and the same model. The onl
 | Cost per conversation | TODO | TODO |
 | p95 latency | TODO | TODO |
 
-All broken down by language (es / pt). Metric definitions and failure taxonomy written **before** measuring: **[docs/evaluation.md](docs/evaluation.md)**.
+All broken down by language (es / pt / en). Metric definitions and failure taxonomy written **before** measuring: **[docs/evaluation.md](docs/evaluation.md)**.
 
 ```bash
 make eval    # ⚠️ pending — in replay mode this reproduces these numbers exactly
