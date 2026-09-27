@@ -12,6 +12,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY apps/encoder/pyproject.toml ./apps/encoder/pyproject.toml
+COPY packages/contracts ./packages/contracts
 
 RUN uv sync --frozen --no-install-project --no-dev --package encoder-service
 
