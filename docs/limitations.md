@@ -24,6 +24,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Second workflow | Added by configuration and covered by a smoke test, not the full suite |
 | Multi-tenancy | Anticipated in the data model, not implemented |
 | Scalability | Single instance; the scaling path is documented, not exercised ([ADR-0006](adr/0006-single-postgres-pgvector.md)) |
+| Audit log external anchoring | Hash chain integrity is enforced append-only in Postgres with triggers and verified via `make verify-audit` (which reports row count and head hash); external anchoring of the head hash (e.g. to a timestamping authority, transparency log, or external store) to detect tail truncation is pending. |
 
 ## 3. What we did not do
 
