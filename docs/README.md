@@ -20,6 +20,7 @@ In this order, about 15 minutes:
 |---|---|
 | [00-problem.md](00-problem.md) | Problem, users, workflow, scope, KPIs |
 | [data.md](data.md) | Sources, contracts, quality, splits, labeling |
+| [labeling-rubric.md](labeling-rubric.md) | Guidelines and taxonomy for human-written test sets |
 | [evaluation.md](evaluation.md) | Metrics, failure taxonomy, protocol, results |
 | [security-privacy.md](security-privacy.md) | Threat model, PII, encryption, audit |
 | [limitations.md](limitations.md) | Known limits and future work |

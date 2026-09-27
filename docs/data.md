@@ -56,7 +56,7 @@ The quality report is produced by `make data-quality` (⚠️ pending) and versi
 
 If the dataset does not ship usable intent labels:
 
-1. **Rubric written first**, with a definition and a positive and negative example per class.
+1. **Rubric written first**, with a definition and a positive and negative example per class (see [labeling-rubric.md](labeling-rubric.md)).
 2. **Stratified sample** by language and intent: TODO conversations.
 3. **Double labeling of 20%** by two different people; agreement reported (Cohen's κ = TODO).
 4. Disagreements resolved in review, and **the rubric is updated**; if the update changes criteria, affected items are relabeled.
