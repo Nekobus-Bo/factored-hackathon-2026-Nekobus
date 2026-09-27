@@ -15,6 +15,8 @@ COPY apps/banking-core/pyproject.toml ./apps/banking-core/pyproject.toml
 
 RUN uv sync --frozen --no-install-project --no-dev --package banking-core
 
+COPY apps/banking-core/alembic.ini ./apps/banking-core/alembic.ini
+COPY apps/banking-core/migrations ./apps/banking-core/migrations
 COPY apps/banking-core/src ./apps/banking-core/src
 
 RUN uv sync --frozen --no-dev --package banking-core && uv cache clean
