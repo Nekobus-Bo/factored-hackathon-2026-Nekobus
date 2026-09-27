@@ -9,6 +9,7 @@ dependencies = [
     "orchestrator",
     "encoder-service",
     "contracts",
+    "evalrunner",
 ]
 
 [tool.uv]
@@ -23,6 +24,7 @@ members = [
     "packages/encoder",
     "packages/retrieval",
     "tools/calibrate",
+    "eval/runner",
 ]
 
 [tool.uv.sources]
@@ -32,6 +34,7 @@ banking-core = { workspace = true }
 orchestrator = { workspace = true }
 encoder-service = { workspace = true }
 contracts = { workspace = true }
+evalrunner = { workspace = true }
 
 [dependency-groups]
 dev = [
