@@ -11,7 +11,8 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup clean-models deploy calibrate synth-data generate-labels migrate
+	data-quality verify-audit warmup clean-models deploy calibrate synth-data generate-labels migrate \
+	profile-factored
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -85,3 +86,6 @@ calibrate: ## Compare and calibrate candidate models (TASK=decision|embedding, C
 
 synth-data: ## Generate reproducible synthetic train and validation datasets
 	uv run --with pyyaml python -m tools.synthdata.generate
+
+profile-factored: ## Profile the Factored dataset and print aggregate statistics
+	uv run --package profile-factored python -m profile_factored.cli $(if $(DATA_DIR),--data-dir $(DATA_DIR)) $(if $(OUT),--markdown-out $(OUT))

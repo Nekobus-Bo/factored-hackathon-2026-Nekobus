@@ -25,6 +25,7 @@ members = [
     "packages/retrieval",
     "tools/calibrate",
     "eval/runner",
+    "tools/profile_factored",
 ]
 
 [tool.uv.sources]
