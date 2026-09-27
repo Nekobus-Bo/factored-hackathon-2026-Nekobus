@@ -34,6 +34,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Voice channel | A different problem (transcription, latency, barge-in); adds nothing to the chosen workflow |
 | Onboarding and credit origination | Outside the workflow |
 | Load testing | We prioritized correctness over performance in the available time |
+| Per-IP rate limiting in banking-core | Banking-core cannot trust client IP relayed by untrusted orchestrator; per-IP limiting belongs at edge/proxy (pending) |
 
 ## 4. Known failure modes
 
