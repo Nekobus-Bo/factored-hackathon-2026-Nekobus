@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
 
 def hit_at_k(
@@ -49,41 +48,32 @@ def mrr(
 
 
 def cross_language_eval(
-    queries: Sequence[Any],
+    gold_ids_list: Sequence[Sequence[str]],
     retrieved_ids_list: Sequence[Sequence[str]],
-    kb_lang_map: dict[str, str],
     k_list: Sequence[int] = (1, 3, 5),
-) -> dict[str, float]:
-    """Calculate Hit@k and MRR for cross-language queries
-    (query lang != target snippet lang).
+) -> dict[str, float | None]:
+    """Hit@k and MRR for cross-language retrieval.
+
+    ``gold_ids_list[i]`` holds the snippets of query i's topics in the *other*
+    languages, and ``retrieved_ids_list[i]`` the ranking from an index
+    restricted to those languages. Queries with no cross-language gold are
+    skipped; if none remain every metric is ``None`` (reported as n/a).
     """
-    cross_relevant: list[Sequence[str]] = []
-    cross_retrieved: list[Sequence[str]] = []
-
-    for q, ret_ids in zip(queries, retrieved_ids_list, strict=True):
-        q_lang = getattr(q, "lang", None) or (
-            q.get("lang") if isinstance(q, dict) else ""
-        )
-        rel_ids = getattr(q, "relevant_ids", None) or (
-            q.get("relevant_ids", []) if isinstance(q, dict) else []
-        )
-
-        # Check if query targets a snippet in a different language
-        is_cross = any(
-            kb_lang_map.get(doc_id) is not None and kb_lang_map.get(doc_id) != q_lang
-            for doc_id in rel_ids
-        )
-        if is_cross:
-            cross_relevant.append(rel_ids)
-            cross_retrieved.append(ret_ids)
-
-    if not cross_relevant:
-        results: dict[str, float | None] = {f"cross_hit@{k}": None for k in k_list}
+    pairs = [
+        (gold, ret)
+        for gold, ret in zip(gold_ids_list, retrieved_ids_list, strict=True)
+        if gold
+    ]
+    results: dict[str, float | None] = {}
+    if not pairs:
+        for k in k_list:
+            results[f"cross_hit@{k}"] = None
         results["cross_mrr"] = None
         return results
 
-    results: dict[str, float | None] = {
-        f"cross_hit@{k}": hit_at_k(cross_relevant, cross_retrieved, k) for k in k_list
-    }
-    results["cross_mrr"] = mrr(cross_relevant, cross_retrieved)
+    gold = [g for g, _ in pairs]
+    retrieved = [r for _, r in pairs]
+    for k in k_list:
+        results[f"cross_hit@{k}"] = hit_at_k(gold, retrieved, k)
+    results["cross_mrr"] = mrr(gold, retrieved)
     return results

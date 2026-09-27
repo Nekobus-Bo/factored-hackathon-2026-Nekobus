@@ -11,8 +11,11 @@ import psutil
 import yaml
 from encoder.adapters import GLiNERAdapter, TFIDFLRAdapter
 from encoder.models import DecisionExample
-from retrieval.adapters import BM25Adapter, SentenceTransformersAdapter
+from retrieval.adapters import BM25Adapter, HybridAdapter, SentenceTransformersAdapter
+from retrieval.adapters.hybrid import DEFAULT_RRF_K
+from retrieval.kb import KnowledgeBase
 from retrieval.models import KBSnippet, QueryExample
+from retrieval.search import Retriever, SearchMode
 
 from calibrate.benchmark import benchmark_cpu_inference
 from calibrate.metrics.decision import (
@@ -307,19 +310,22 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
     languages = config.get("languages", ["es", "pt", "en"])
 
     kb = load_kb_dataset(kb_file)
-    kb_lang_map = {s.id: s.lang for s in kb}
+    knowledge_base = KnowledgeBase(kb)
 
+    eval_split = config.get("eval_split", "test")
     queries = load_queries_dataset(queries_file)
     train_queries = [q for q in queries if q.split == "train"]
     val_queries = [q for q in queries if q.split == "validation"]
-    test_queries = [q for q in queries if q.split == "test"]
+    eval_queries = [q for q in queries if q.split == eval_split]
+    max_k = max(k_list)
 
     report_rows: list[dict[str, Any]] = []
 
     candidates_cfg = config.get("candidates", [])
     adapter: Any = None
+    retriever: Retriever | None = None
     for cand in candidates_cfg:
-        del adapter
+        del adapter, retriever
         gc.collect()
         process = psutil.Process()
         baseline_ram_mb = process.memory_info().rss / (1024 * 1024)
@@ -331,43 +337,49 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         logger.info("Evaluating embedding candidate: %s (%s)", cand_name, adapter_type)
 
         if adapter_type in RETRIEVAL_ADAPTER_REGISTRY:
-            factory = RETRIEVAL_ADAPTER_REGISTRY[adapter_type]
-            adapter = factory(cand)
-            if hasattr(adapter, "index"):
-                adapter.index(kb)
-        elif adapter_type in ADAPTER_REGISTRY:
-            factory = ADAPTER_REGISTRY[adapter_type]
-            adapter = factory(cand)
-            if hasattr(adapter, "index"):
-                adapter.index(kb)
+            adapter = RETRIEVAL_ADAPTER_REGISTRY[adapter_type](cand)
         elif adapter_type == "bm25":
             adapter = BM25Adapter(name=cand_name)
-            adapter.index(kb)
         elif adapter_type == "sentence_transformers":
             adapter = SentenceTransformersAdapter(
                 model_id=model_id, name=cand_name, device="cpu"
             )
-            if mode == "finetune":
-                epochs = int(cand.get("epochs", config.get("epochs", 1)))
-                adapter.fit(train_queries, kb, val_queries=val_queries, epochs=epochs)
-                weights_dir = Path("packages/retrieval/weights") / cand_name
-                adapter.save(weights_dir)
-                adapter.load(weights_dir)
-            adapter.index(kb)
+        elif adapter_type == "hybrid":
+            adapter = HybridAdapter(
+                lexical=BM25Adapter(name=f"{cand_name}_bm25"),
+                dense=SentenceTransformersAdapter(
+                    model_id=model_id, name=f"{cand_name}_dense", device="cpu"
+                ),
+                rrf_k=int(cand.get("rrf_k", DEFAULT_RRF_K)),
+                name=cand_name,
+            )
+            model_id = f"hybrid_rrf(bm25 + {model_id})"
         else:
             raise ValueError(f"unknown adapter type: {adapter_type}")
 
-        # Benchmark CPU search latency & peak RAM on test queries
+        if mode == "finetune" and adapter_type == "sentence_transformers":
+            epochs = int(cand.get("epochs", config.get("epochs", 1)))
+            adapter.fit(train_queries, kb, val_queries=val_queries, epochs=epochs)
+            weights_dir = Path("packages/retrieval/weights") / cand_name
+            adapter.save(weights_dir)
+            adapter.load(weights_dir)
+
+        # Indexes the whole KB once; the language filter is applied per query.
+        retriever = Retriever(knowledge_base, adapter)
+
+        # Benchmark CPU search latency & peak RAM on the evaluated queries
         bench_res = benchmark_cpu_inference(
-            infer_fn=lambda q, ad=adapter: ad.search(q.text, top_k=max(k_list)),
-            items=test_queries,
+            infer_fn=lambda q, r=retriever: r.search(
+                q.text, lang=q.lang, k=max_k, mode=SearchMode.SAME
+            ),
+            items=eval_queries,
             warmup=1,
             baseline_ram_mb=baseline_ram_mb,
         )
 
         for lang in languages:
-            test_lang = [q for q in test_queries if q.lang == lang]
-            if not test_lang:
+            eval_lang = [q for q in eval_queries if q.lang == lang]
+            if not eval_lang:
                 row_data: dict[str, Any] = {
                     "model_id": model_id,
                     "mode": mode,
@@ -379,18 +391,24 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
                 }
                 for k in k_list:
                     row_data[f"hit@{k}"] = None
-                row_data["cross_hit@1"] = None
+                    row_data[f"cross_hit@{k}"] = None
                 row_data["cross_mrr"] = None
                 report_rows.append(row_data)
                 continue
 
+            # Same-language: the index is restricted to the query's language.
             retrieved_ids = [
-                [doc_id for doc_id, _ in adapter.search(q.text, top_k=max(k_list))]
-                for q in test_lang
+                [
+                    r.snippet_id
+                    for r in retriever.search(
+                        q.text, lang=q.lang, k=max_k, mode=SearchMode.SAME
+                    )
+                ]
+                for q in eval_lang
             ]
-            relevant_ids = [q.relevant_ids for q in test_lang]
+            relevant_ids = [q.relevant_ids for q in eval_lang]
 
-            row_data: dict[str, Any] = {
+            row_data = {
                 "model_id": model_id,
                 "mode": mode,
                 "lang": lang,
@@ -402,13 +420,25 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
             for k in k_list:
                 row_data[f"hit@{k}"] = hit_at_k(relevant_ids, retrieved_ids, k)
 
-            cross_res = cross_language_eval(
-                test_lang,
-                retrieved_ids,
-                kb_lang_map=kb_lang_map,
-                k_list=k_list,
+            # Cross-language: same topics, index restricted to the other languages.
+            cross_gold = [
+                knowledge_base.cross_language_gold(q.relevant_ids, q.lang)
+                for q in eval_lang
+            ]
+            cross_retrieved = [
+                [
+                    r.snippet_id
+                    for r in retriever.search(
+                        q.text, lang=q.lang, k=max_k, mode=SearchMode.CROSS
+                    )
+                ]
+                if gold
+                else []
+                for q, gold in zip(eval_lang, cross_gold, strict=True)
+            ]
+            row_data.update(
+                cross_language_eval(cross_gold, cross_retrieved, k_list=k_list)
             )
-            row_data.update(cross_res)
 
             report_rows.append(row_data)
 
@@ -419,6 +449,7 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         data_paths=[str(kb_file), str(queries_file)],
         rows=report_rows,
         k_list=k_list,
+        eval_split=eval_split,
     )
 
     out_path = Path(out_dir)

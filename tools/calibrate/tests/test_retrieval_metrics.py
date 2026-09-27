@@ -39,34 +39,26 @@ def test_mrr_hand_computed():
 
 
 def test_cross_language_eval_hand_computed():
-    """Verify cross-language retrieval filters queries
-    by cross-lingual target snippet.
-    """
-    queries = [
-        {"id": "q1", "lang": "es", "relevant_ids": ["d_pt"]},  # cross-language
-        {"id": "q2", "lang": "es", "relevant_ids": ["d_es"]},  # same language
+    """Cross-language metrics only count queries that have cross-language gold."""
+    gold = [
+        ["t1.pt", "t1.en"],  # rank 1 hit
+        ["t2.pt", "t2.en"],  # rank 2 hit
+        [],  # no cross-language gold: skipped
     ]
     retrieved = [
-        ["d_pt", "d_other"],
-        ["d_es", "d_other"],
+        ["t1.en", "t3.pt"],
+        ["t3.pt", "t2.pt"],
+        ["whatever"],
     ]
-    kb_lang_map = {"d_pt": "pt", "d_es": "es", "d_other": "pt"}
-
-    res = cross_language_eval(queries, retrieved, kb_lang_map, k_list=[1, 3])
-    assert math.isclose(res["cross_hit@1"], 1.0, rel_tol=1e-5)
-    assert math.isclose(res["cross_mrr"], 1.0, rel_tol=1e-5)
+    res = cross_language_eval(gold, retrieved, k_list=[1, 3])
+    assert math.isclose(res["cross_hit@1"], 0.5, rel_tol=1e-5)
+    assert math.isclose(res["cross_hit@3"], 1.0, rel_tol=1e-5)
+    assert math.isclose(res["cross_mrr"], 0.75, rel_tol=1e-5)
 
 
 def test_cross_language_eval_no_cross_queries():
-    """Verify cross-language retrieval returns None when no cross queries exist."""
-    queries = [
-        {"id": "q1", "lang": "es", "relevant_ids": ["d_es"]},
-    ]
-    retrieved = [
-        ["d_es"],
-    ]
-    kb_lang_map = {"d_es": "es"}
-    res = cross_language_eval(queries, retrieved, kb_lang_map, k_list=[1, 3])
+    """Every metric is None when no query has cross-language gold."""
+    res = cross_language_eval([[]], [["d_es"]], k_list=[1, 3])
     assert res["cross_hit@1"] is None
     assert res["cross_hit@3"] is None
     assert res["cross_mrr"] is None

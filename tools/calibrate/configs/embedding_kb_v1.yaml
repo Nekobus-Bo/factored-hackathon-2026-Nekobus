@@ -2,6 +2,8 @@ task: embedding
 mode: zeroshot
 kb_path: packages/retrieval/kb/snippets.jsonl
 queries_path: data/eval/synthetic/retrieval/queries.jsonl
+# The synthetic query set is a validation split; test is reserved for humans.
+eval_split: validation
 k_list:
   - 1
   - 3
@@ -17,3 +19,7 @@ candidates:
   - name: paraphrase_multilingual_minilm
     type: sentence_transformers
     model_id: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  - name: hybrid_rrf
+    type: hybrid
+    model_id: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+    rrf_k: 60

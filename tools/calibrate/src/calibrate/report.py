@@ -145,6 +145,7 @@ def render_embedding_report(
     data_paths: list[str],
     rows: list[dict[str, Any]],
     k_list: list[int],
+    eval_split: str = "test",
 ) -> str:
     """Generate Markdown report for embedding/retrieval task."""
     cfg_hash = file_sha256(config_path)
@@ -153,12 +154,13 @@ def render_embedding_report(
     data_hashes_md = "\n".join(f"- `{p}`: `{file_sha256(p)}`" for p in data_paths)
 
     k_cols = " | ".join(f"Hit@{k}" for k in k_list)
+    cross_cols = " | ".join(f"Cross Hit@{k}" for k in k_list)
     k_align = " | ".join("---:" for _ in k_list)
     table_header = (
         f"| Candidate Model | Mode | Language | {k_cols} | MRR | "
-        "Cross-Lang Hit@1 | Cross-Lang MRR | p95 CPU (ms) | "
+        f"{cross_cols} | Cross MRR | p95 CPU (ms) | "
         "RAM model+inference Δ (MB) |\n"
-        f"|---|---|:---:|{k_align}|---:|---:|---:|---:|---:|"
+        f"|---|---|:---:|{k_align}|---:|{k_align}|---:|---:|---:|"
     )
 
     table_rows = []
@@ -167,7 +169,7 @@ def render_embedding_report(
             hit_vals = " | ".join("no data" for _ in k_list)
             row_str = (
                 f"| `{r['model_id']}` | {r['mode']} | {r['lang']} | "
-                f"{hit_vals} | no data | no data | no data | "
+                f"{hit_vals} | no data | {hit_vals} | no data | "
                 f"{r['p95_latency_ms']:.1f} | {r['peak_ram_mb']:.1f} |"
             )
             table_rows.append(row_str)
@@ -178,8 +180,12 @@ def render_embedding_report(
             for k in k_list
         )
         mrr_str = f"{r['mrr']:.3f}" if r.get("mrr") is not None else "-"
-        cross_hit_val = r.get("cross_hit@1")
-        cross_hit = f"{cross_hit_val:.3f}" if cross_hit_val is not None else "n/a"
+        cross_hit = " | ".join(
+            f"{r[f'cross_hit@{k}']:.3f}"
+            if r.get(f"cross_hit@{k}") is not None
+            else "n/a"
+            for k in k_list
+        )
         cross_mrr_val = r.get("cross_mrr")
         cross_mrr = f"{cross_mrr_val:.3f}" if cross_mrr_val is not None else "n/a"
         row_str = (
@@ -195,6 +201,7 @@ def render_embedding_report(
 
 - **Date:** {date_str}
 - **Task:** `embedding` (Knowledge Base Policy Retrieval)
+- **Evaluated split:** `{eval_split}`
 - **Execution Environment:** {env_info}
   (MPS/CUDA for training if available, CPU for inference benchmarking)
 
@@ -212,8 +219,11 @@ def render_embedding_report(
 ## Evaluation Notes & Decisions
 
 1. **Retrieval Baseline:** Evaluated against `bm25` lexical search.
-2. **Dense Retrieval:** Evaluated using bi-encoder SentenceTransformers on CPU.
-3. **Cross-Language Capability:** Evaluated for queries where query language
-   differs from the relevant policy document language (reports `n/a` if none present).
-4. **Latency & Resource Footprint:** Measured strictly on CPU (`device=cpu`).
+2. **Dense Retrieval:** Evaluated using bi-encoder SentenceTransformers on CPU;
+   `hybrid` fuses BM25 and the dense ranking with reciprocal rank fusion.
+3. **Same-language (Hit@k, MRR):** the index is restricted to the query's language.
+4. **Cross-language (Cross Hit@k, Cross MRR):** the same query against an index
+   restricted to the other languages; gold is the query's topic in those
+   languages. `n/a` when the KB snippets carry no `topic_id`.
+5. **Latency & Resource Footprint:** Measured strictly on CPU (`device=cpu`).
 """
