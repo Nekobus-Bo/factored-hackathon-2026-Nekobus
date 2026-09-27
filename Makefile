@@ -33,9 +33,14 @@ clean: ## Stop and delete volumes (DESTROYS seeded data)
 smoke: ## Check all six components are healthy
 	@COMPOSE="$(COMPOSE)" bash infra/compose/smoke.sh
 
-build-multiarch: ## Build app images for linux/amd64 and linux/arm64 (no push; slow under emulation)
-	@for s in banking-core orchestrator encoder; do \
-		docker buildx build --platform linux/amd64,linux/arm64 -f apps/$$s/Dockerfile . || exit 1; \
+build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (uses a pb-multiarch buildx builder if the default cannot; slow under emulation)
+	@if docker info 2>/dev/null | grep -q 'io.containerd.snapshotter'; then B=""; else \
+		echo "note: default docker driver cannot build multi-platform; using buildx builder pb-multiarch"; \
+		docker buildx inspect pb-multiarch >/dev/null 2>&1 || docker buildx create --name pb-multiarch --driver docker-container >/dev/null || exit 1; \
+		B="--builder pb-multiarch"; \
+	fi; \
+	for s in banking-core orchestrator encoder; do \
+		docker buildx build $$B --platform linux/amd64,linux/arm64 -f apps/$$s/Dockerfile . || exit 1; \
 	done
 
 demo: ## pending: full startup in replay mode
