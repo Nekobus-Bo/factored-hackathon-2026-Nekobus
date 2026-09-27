@@ -25,6 +25,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Multi-tenancy | Anticipated in the data model, not implemented |
 | Scalability | Single instance; the scaling path is documented, not exercised ([ADR-0006](adr/0006-single-postgres-pgvector.md)) |
 | Audit log external anchoring | Hash chain integrity is enforced append-only in Postgres with triggers and verified via `make verify-audit` (which reports row count and head hash); external anchoring of the head hash (e.g. to a timestamping authority, transparency log, or external store) to detect tail truncation is pending. |
+| Outbound PII masking | Regex-based and fail-closed until the encoder's PII spans are wired in (3C). Known misses: names without an intro phrase ("hola, Carlos Gómez aquí"), written-out dates ("March 4, 1988"), digit groups split by spaces. Live mode depends on regex plus encoder spans; replay mode is unaffected |
 
 ## 3. What we did not do
 
