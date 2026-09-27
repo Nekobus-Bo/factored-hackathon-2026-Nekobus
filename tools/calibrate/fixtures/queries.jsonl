@@ -1,0 +1,46 @@
+{"id": "q_es_001", "text": "Como puedo bloquear mi tarjeta inmediatamente por robo?", "lang": "es", "relevant_ids": ["kb_es_001"], "split": "train", "source": "synthetic"}
+{"id": "q_es_002", "text": "Me llego un cobro que no reconozco en mi cuenta", "lang": "es", "relevant_ids": ["kb_es_002"], "split": "train", "source": "human"}
+{"id": "q_es_003", "text": "Cuanto tarda en llegar una nueva tarjeta de reemplazo?", "lang": "es", "relevant_ids": ["kb_es_003"], "split": "train", "source": "synthetic"}
+{"id": "q_es_004", "text": "Quiero saber si mi plastico esta activo o cancelado", "lang": "es", "relevant_ids": ["kb_es_004"], "split": "train", "source": "human"}
+{"id": "q_es_005", "text": "Deseo ajustar el tope maximo diario de retiros", "lang": "es", "relevant_ids": ["kb_es_005"], "split": "train", "source": "synthetic"}
+{"id": "q_es_006", "text": "Como funciona el codigo CVV dinamico en compras por internet?", "lang": "es", "relevant_ids": ["kb_es_006"], "split": "train", "source": "synthetic"}
+{"id": "q_es_007", "text": "Puedo reactivar mi tarjeta si solo fue un bloqueo temporal?", "lang": "es", "relevant_ids": ["kb_es_010"], "split": "train", "source": "human"}
+{"id": "q_pt_001", "text": "Como faco para bloquear o cartao por perda no app?", "lang": "pt", "relevant_ids": ["kb_pt_001"], "split": "train", "source": "synthetic"}
+{"id": "q_pt_002", "text": "Quero contestar uma transacao indevida no meu cartao", "lang": "pt", "relevant_ids": ["kb_pt_002"], "split": "train", "source": "human"}
+{"id": "q_pt_003", "text": "Qual o prazo de entrega da segunda via do cartao?", "lang": "pt", "relevant_ids": ["kb_pt_003"], "split": "train", "source": "synthetic"}
+{"id": "q_pt_004", "text": "Como verificar se o meu cartao esta ativo ou bloqueado?", "lang": "pt", "relevant_ids": ["kb_pt_004"], "split": "train", "source": "human"}
+{"id": "q_pt_005", "text": "Quero alterar o limite maximo de saque diario no caixa eletronico", "lang": "pt", "relevant_ids": ["kb_pt_005"], "split": "train", "source": "synthetic"}
+{"id": "q_pt_006", "text": "Como usar cartao virtual para evitar fraudes na internet?", "lang": "pt", "relevant_ids": ["kb_pt_006"], "split": "train", "source": "synthetic"}
+{"id": "q_pt_007", "text": "E possivel desbloquear meu cartao se encontrei apos o bloqueio?", "lang": "pt", "relevant_ids": ["kb_pt_010"], "split": "train", "source": "human"}
+{"id": "q_cross_001", "text": "Quero bloquear cartao de credito perdido imediatamente", "lang": "pt", "relevant_ids": ["kb_es_001"], "split": "train", "source": "synthetic"}
+{"id": "q_es_011", "text": "Que documentos debo enviar para respaldar una disputa por fraude?", "lang": "es", "relevant_ids": ["kb_es_009"], "split": "validation", "source": "human"}
+{"id": "q_es_012", "text": "Debo avisar al banco antes de viajar fuera del pais para usar la tarjeta?", "lang": "es", "relevant_ids": ["kb_es_007"], "split": "validation", "source": "synthetic"}
+{"id": "q_es_013", "text": "Cuantos dias toma resolver un contracargo internacional?", "lang": "es", "relevant_ids": ["kb_es_008"], "split": "validation", "source": "human"}
+{"id": "q_pt_011", "text": "Preciso mandar boletim de ocorrencia para contestar compra fraudada?", "lang": "pt", "relevant_ids": ["kb_pt_009"], "split": "validation", "source": "human"}
+{"id": "q_pt_012", "text": "Preciso habilitar aviso de viagem para usar o cartao no exterior?", "lang": "pt", "relevant_ids": ["kb_pt_007"], "split": "validation", "source": "synthetic"}
+{"id": "q_pt_013", "text": "Quanto tempo demora o resultado de uma contestacao de compras?", "lang": "pt", "relevant_ids": ["kb_pt_008"], "split": "validation", "source": "human"}
+{"id": "q_cross_002", "text": "Como iniciar procedimiento de reclamo de cobros desconocidos?", "lang": "es", "relevant_ids": ["kb_pt_002"], "split": "validation", "source": "synthetic"}
+{"id": "q_cross_003", "text": "Preciso pedir novo cartao apos bloqueio por seguranca", "lang": "pt", "relevant_ids": ["kb_es_003"], "split": "validation", "source": "synthetic"}
+{"id": "q_es_021", "text": "Perdi mi tarjeta en la calle, como la bloqueo ahora mismo?", "lang": "es", "relevant_ids": ["kb_es_001"], "split": "test", "source": "human"}
+{"id": "q_es_022", "text": "Aparece una compra que no reconozco en mi resumen de cuenta", "lang": "es", "relevant_ids": ["kb_es_002"], "split": "test", "source": "human"}
+{"id": "q_es_023", "text": "Se puede reactivar una tarjeta que fue suspendida temporalmente?", "lang": "es", "relevant_ids": ["kb_es_010"], "split": "test", "source": "synthetic"}
+{"id": "q_pt_021", "text": "Meu cartao foi roubado, como bloqueio preventivamente?", "lang": "pt", "relevant_ids": ["kb_pt_001"], "split": "test", "source": "human"}
+{"id": "q_pt_022", "text": "Identifiquei uma cobranca indevida no extrato do meu cartao", "lang": "pt", "relevant_ids": ["kb_pt_002"], "split": "test", "source": "human"}
+{"id": "q_cross_004", "text": "Procedimiento para reportar compras no reconocidas en tarjeta", "lang": "es", "relevant_ids": ["kb_pt_002"], "split": "test", "source": "synthetic"}
+{"id": "q_cross_005", "text": "Como efetuar bloqueio preventivo de emergencia do cartao?", "lang": "pt", "relevant_ids": ["kb_es_001"], "split": "test", "source": "synthetic"}
+{"id": "q_en_001", "text": "How can I block my card immediately due to theft?", "lang": "en", "relevant_ids": ["kb_en_001"], "split": "train", "source": "synthetic"}
+{"id": "q_en_002", "text": "I received a charge on my account that I did not authorize", "lang": "en", "relevant_ids": ["kb_en_002"], "split": "train", "source": "human"}
+{"id": "q_en_003", "text": "How long will it take for a replacement card to arrive?", "lang": "en", "relevant_ids": ["kb_en_003"], "split": "train", "source": "synthetic"}
+{"id": "q_en_004", "text": "I want to check whether my card is active or cancelled", "lang": "en", "relevant_ids": ["kb_en_004"], "split": "train", "source": "human"}
+{"id": "q_en_005", "text": "I want to adjust the daily limit for ATM withdrawals", "lang": "en", "relevant_ids": ["kb_en_005"], "split": "train", "source": "synthetic"}
+{"id": "q_en_006", "text": "How does the dynamic CVV security code work for online purchases?", "lang": "en", "relevant_ids": ["kb_en_006"], "split": "train", "source": "synthetic"}
+{"id": "q_en_007", "text": "Can I reactivate my card if it was only a temporary block?", "lang": "en", "relevant_ids": ["kb_en_010"], "split": "train", "source": "human"}
+{"id": "q_cross_006", "text": "I need to urgently block my stolen credit card", "lang": "en", "relevant_ids": ["kb_es_001"], "split": "train", "source": "synthetic"}
+{"id": "q_en_011", "text": "What documentation do I need to submit for a fraud claim?", "lang": "en", "relevant_ids": ["kb_en_009"], "split": "validation", "source": "human"}
+{"id": "q_en_012", "text": "Do I need to notify the bank before traveling abroad with my card?", "lang": "en", "relevant_ids": ["kb_en_007"], "split": "validation", "source": "synthetic"}
+{"id": "q_en_013", "text": "How many business days does an international dispute investigation take?", "lang": "en", "relevant_ids": ["kb_en_008"], "split": "validation", "source": "human"}
+{"id": "q_cross_007", "text": "How to initiate a dispute for fraudulent charges?", "lang": "en", "relevant_ids": ["kb_pt_002"], "split": "validation", "source": "synthetic"}
+{"id": "q_en_021", "text": "I lost my debit card in public, how do I block it right now?", "lang": "en", "relevant_ids": ["kb_en_001"], "split": "test", "source": "human"}
+{"id": "q_en_022", "text": "There is a suspicious transaction on my bank statement", "lang": "en", "relevant_ids": ["kb_en_002"], "split": "test", "source": "human"}
+{"id": "q_en_023", "text": "Is it possible to unlock a card that was temporarily turned off?", "lang": "en", "relevant_ids": ["kb_en_010"], "split": "test", "source": "synthetic"}
+{"id": "q_cross_008", "text": "Steps to report and dispute unknown card charges", "lang": "en", "relevant_ids": ["kb_es_002"], "split": "test", "source": "synthetic"}

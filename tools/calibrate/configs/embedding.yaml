@@ -1,0 +1,19 @@
+task: embedding
+mode: zeroshot
+kb_path: tools/calibrate/fixtures/kb.jsonl
+queries_path: tools/calibrate/fixtures/queries.jsonl
+k_list:
+  - 1
+  - 3
+  - 5
+languages:
+  - es
+  - pt
+  - en
+candidates:
+  - name: bm25_baseline
+    type: bm25
+    model_id: bm25
+  - name: paraphrase_multilingual_minilm
+    type: sentence_transformers
+    model_id: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2

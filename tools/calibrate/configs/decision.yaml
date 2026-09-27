@@ -1,0 +1,15 @@
+task: decision
+mode: zeroshot
+data_path: tools/calibrate/fixtures/decision.jsonl
+p_min: 0.9
+languages:
+  - es
+  - pt
+  - en
+candidates:
+  - name: tfidf_lr_baseline
+    type: tfidf_lr
+    model_id: tfidf_lr
+  - name: gliner2.5_multi
+    type: gliner
+    model_id: fastino/gliner2.5-multi-v1
