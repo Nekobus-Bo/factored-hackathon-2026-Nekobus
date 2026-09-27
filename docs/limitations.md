@@ -30,6 +30,9 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Encoder abstention calibration | Boots in uncalibrated mode when ABSTENTION_THRESHOLD is unset (/health 200, /ready and /v1/analyze 503 "uncalibrated"). Calibrated threshold tau is required before serving live traffic ([ADR-0010](adr/0010-model-selection-calibration-harness.md)). |
 | Policy configuration UI | Policy thresholds and tool matrices live in DB `config` schema tables (seeded from env on initial startup per ADR-0002) and support versioned updates; administrative editing via the back-office UI is pending. |
 | Read tools vs contract | `account.get_summary` always returns balances: the contract requires both balance fields, so `include_balances=false` cannot omit them. `transaction.list_recent` lists card transactions only, because each item requires a `card_ref`. `card.list` returns `expiry_month`/`expiry_year` as null for synthetic cards (no source data) and derives `card_type` from the account (CREDIT_LINE → CREDIT, otherwise DEBIT) until stored values exist |
+| Audit log tail truncation | Tail truncation with the owner disabling triggers is only detectable against an external count/head_hash checkpoint. |
+| OTP dev sink and test hook | Outbound OTP delivery channel is an open decision; a delivery port with a dev sink stays in the trusted zone (never returned to the caller or logged in clear text). An explicit test/dev-only hook is exposed for evaluation but disabled by default. |
+| `customer.match` timing | A miss spends one decrypt like a hit with birth date, but a miss still probes every equivalent document type (one extra indexed query in the pt market); no constant-time padding of DB round trips |
 
 ## 3. What we did not do
 
