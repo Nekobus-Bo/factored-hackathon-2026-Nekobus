@@ -11,6 +11,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
+COPY packages/contracts ./packages/contracts
 COPY apps/banking-core/pyproject.toml ./apps/banking-core/pyproject.toml
 
 RUN uv sync --frozen --no-install-project --no-dev --package banking-core
