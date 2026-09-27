@@ -202,6 +202,10 @@ TOOL_CATALOG: dict[str, ToolDefinition] = {
 }
 
 
+class CodeFloorViolation(ValueError):
+    """Configured states would widen a tool beyond its non-configurable CODE_FLOOR."""
+
+
 def get_effective_permitted_states(
     tool_name: str,
     configured_states: set[VerificationState] | frozenset[VerificationState] | None = None,
@@ -209,7 +213,8 @@ def get_effective_permitted_states(
     """Return the effective permitted states for a tool after applying configuration.
 
     Configuration can only RESTRICT the seed matrix and code floor, NEVER widen it.
-    If configured_states includes states not permitted by CODE_FLOOR, a ValueError is raised.
+    If configured_states includes states not permitted by CODE_FLOOR, CodeFloorViolation
+    (a ValueError) is raised.
     """
     if tool_name not in CODE_FLOOR:
         raise ValueError(f"Unknown tool '{tool_name}'")
@@ -221,7 +226,7 @@ def get_effective_permitted_states(
     configured_frozen = frozenset(configured_states)
     if not configured_frozen.issubset(max_allowed):
         illegal = configured_frozen - max_allowed
-        raise ValueError(
+        raise CodeFloorViolation(
             f"Configuration cannot widen tool '{tool_name}' permitted states beyond CODE_FLOOR. "
             f"Forbidden states: {sorted([s.value for s in illegal])}"
         )
@@ -241,6 +246,7 @@ __all__ = [
     "BaseToolOutput",
     "BlockReason",
     "CODE_FLOOR",
+    "CodeFloorViolation",
     "CardBlockInput",
     "CardBlockOutput",
     "CardItem",
