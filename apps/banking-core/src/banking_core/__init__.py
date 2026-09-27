@@ -1,0 +1,1 @@
+"""Banking Core application package."""
