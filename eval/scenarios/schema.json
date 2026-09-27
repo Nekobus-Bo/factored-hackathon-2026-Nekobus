@@ -1,0 +1,239 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pattern Blue Evaluation Scenario Schema",
+  "description": "Schema definition for multi-turn conversational evaluation scenarios comparing baseline and proposed architectures.",
+  "type": "object",
+  "required": [
+    "id",
+    "lang",
+    "group",
+    "description",
+    "initial_state",
+    "turns",
+    "expected",
+    "unsafe_outcomes_to_watch"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique scenario identifier."
+    },
+    "lang": {
+      "type": "string",
+      "enum": ["es", "pt", "en"],
+      "description": "Language locale of the customer interaction."
+    },
+    "group": {
+      "type": "string",
+      "enum": [
+        "happy_path",
+        "ambiguity",
+        "out_of_scope",
+        "failed_identity",
+        "not_the_holder",
+        "risk_threshold",
+        "adversarial",
+        "degradation",
+        "messy_conversation"
+      ],
+      "description": "Evaluation scenario category corresponding to docs/evaluation.md §4."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 5,
+      "description": "Concise English description of the test scenario objective and behavior."
+    },
+    "initial_state": {
+      "type": "object",
+      "required": [
+        "customer",
+        "card_status",
+        "registered_otp_channel",
+        "policy",
+        "fault"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "customer": {
+          "type": "string",
+          "description": "Symbolic customer fixture identifier (e.g. demo_es, demo_pt, demo_en)."
+        },
+        "card_status": {
+          "type": "string",
+          "enum": ["ACTIVE", "BLOCKED"],
+          "description": "Initial status of the customer card in the database."
+        },
+        "registered_otp_channel": {
+          "type": "string",
+          "enum": ["present", "absent"],
+          "description": "Whether an outbound OTP contact channel is registered on file."
+        },
+        "policy": {
+          "type": "object",
+          "required": ["amount_threshold_minor", "mode"],
+          "additionalProperties": false,
+          "properties": {
+            "amount_threshold_minor": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "description": "Policy amount threshold map per currency in minor units (e.g. {'USD': 50000, 'COP': 200000000, 'BRL': 250000})."
+            },
+            "mode": {
+              "type": "string",
+              "enum": ["flag", "block"],
+              "description": "Action mode when transaction amount exceeds threshold."
+            }
+          }
+        },
+        "fault": {
+          "type": "string",
+          "enum": ["none", "tool_down", "timeout", "slow_db"],
+          "description": "Simulated infrastructure fault injected during scenario run."
+        }
+      }
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      },
+      "description": "Sequence of customer input messages. OTP response turns use '{{otp}}'."
+    },
+    "expected": {
+      "type": "object",
+      "required": [
+        "final_verification_state",
+        "tools_allowed",
+        "tools_forbidden",
+        "card_blocked",
+        "handoff",
+        "must_ask_clarification"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "final_verification_state": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "ANONYMOUS",
+                "IDENTIFIED",
+                "OTP_PENDING",
+                "VERIFIED",
+                "LOCKED",
+                "HANDED_OFF"
+              ]
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ANONYMOUS",
+                  "IDENTIFIED",
+                  "OTP_PENDING",
+                  "VERIFIED",
+                  "LOCKED",
+                  "HANDED_OFF"
+                ]
+              }
+            }
+          ],
+          "description": "Target contracts VerificationState at scenario completion, or list of acceptable states."
+        },
+        "tools_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "customer.match",
+              "otp.send",
+              "otp.verify",
+              "identity.verify_document",
+              "card.list",
+              "transaction.list_recent",
+              "account.get_summary",
+              "card.block",
+              "handoff.create",
+              "kb.search"
+            ]
+          },
+          "description": "Permitted tool invocations during the scenario run."
+        },
+        "tools_forbidden": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "customer.match",
+              "otp.send",
+              "otp.verify",
+              "identity.verify_document",
+              "card.list",
+              "transaction.list_recent",
+              "account.get_summary",
+              "card.block",
+              "handoff.create",
+              "kb.search"
+            ]
+          },
+          "description": "Explicitly forbidden tool invocations under the scenario constraints."
+        },
+        "card_blocked": {
+          "type": "boolean",
+          "description": "Whether the customer card must end in a blocked state in the database."
+        },
+        "card_blocked_own": {
+          "type": "boolean",
+          "description": "For IDOR scenarios: whether customer's own card was blocked."
+        },
+        "card_blocked_foreign": {
+          "type": "boolean",
+          "description": "For IDOR scenarios: whether the target foreign card was blocked (must be false)."
+        },
+        "handoff": {
+          "type": "string",
+          "enum": ["required", "forbidden", "optional"],
+          "description": "Whether escalation to a human agent must occur."
+        },
+        "handoff_priority": {
+          "type": "string",
+          "enum": ["normal", "priority"],
+          "description": "Priority level of the handoff escalation."
+        },
+        "handoff_must_include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "verified_facts",
+              "actions_taken",
+              "verification_method",
+              "open_questions"
+            ]
+          },
+          "description": "Mandatory structured elements required when handoff is required."
+        },
+        "must_ask_clarification": {
+          "type": "boolean",
+          "description": "Whether the system must abstain from action and ask clarification."
+        }
+      }
+    },
+    "unsafe_outcomes_to_watch": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["U1", "U2", "U3", "U4", "U5", "U6", "U7", "U8"]
+      },
+      "description": "Subset of unsafe failure modes (docs/evaluation.md §3) particularly monitored."
+    }
+  }
+}
