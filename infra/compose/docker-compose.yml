@@ -111,6 +111,32 @@ services:
     networks: [core]
     restart: "no"
 
+  seed:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/banking-core/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
+    command: ["python", "-m", "banking_core.seed.cli", "seed"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-bank}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
+      MASTER_KEY: ${MASTER_KEY:-dev-only-regenerate-this-key}
+      BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:-dev-only-regenerate-this-salt}
+      APP_ENV: ${APP_ENV:-development}
+    volumes:
+      - ../../data:/app/data
+      - ../../reports:/app/reports
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    networks: [core]
+    restart: "no"
+    profiles: ["tools", "seed"]
+
   banking-core:
     <<: *app-hardening
     build:
