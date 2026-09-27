@@ -1,6 +1,6 @@
 # ADR-0001: Cheap generic LLM for language, small specialized encoder for decisions
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-26 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
@@ -12,8 +12,8 @@ A single model can do both, but optimizing for one degrades the other. The bindi
 
 A two-model architecture:
 
-- **Language and tool-calling:** an economy-tier commercial LLM with solid agentic performance, behind an OpenAI-compatible layer (LiteLLM). The model name is configuration, not code.
-- **Decision and extraction:** a small multilingual encoder in the GLiNER2.5 family (multilingual variant, ~0.3B, Apache 2.0, declarative schema for NER, classification and structured extraction), served locally on CPU.
+- **Language and tool-calling:** an economy-tier commercial LLM with solid agentic performance, behind an OpenAI-compatible layer (LiteLLM). Default candidate: DeepSeek V4 Flash 0731; alternative candidates: DeepSeek V4.1 Flash and GPT 6 Luna. Candidates are evaluated using the scenario evaluation runner ([evaluation.md](../evaluation.md)), not the encoder calibration harness. The model name is configuration, not code.
+- **Decision and extraction:** a small multilingual encoder served locally on CPU. GLiNER2.5 multilingual (~0.3B, Apache 2.0, declarative schema for NER, classification and structured extraction) is the leading candidate, evaluated and calibrated alongside deterministic baselines via a dedicated calibration harness ([ADR-0010](0010-model-selection-calibration-harness.md)).
 
 The encoder produces intent + slots + score. The LLM never decides intent on its own: it receives the classification as structured context.
 
@@ -78,5 +78,5 @@ The second axis is **privacy**: with a local encoder in place, detecting and mas
 1. [ ] Provider layer with model from configuration and per-turn token/cost logging
 2. [ ] Serve the encoder on CPU, with p95 latency measured
 3. [ ] Define the workflow's intent and slot schema
-4. [ ] Calibrate the abstention threshold on validation and record it in `evaluation.md`
+4. [ ] Calibrate the abstention threshold on validation using the calibration harness ([ADR-0010](0010-model-selection-calibration-harness.md)) and record it in `evaluation.md`
 5. [ ] Mask PII before every outbound call

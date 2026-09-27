@@ -12,7 +12,7 @@ The criterion is not elegance but **recognition**: a developer understands a rep
 
 **`apps/` + `packages/`**, the most widespread workspace convention.
 
-- `apps/` — **everything that deploys**, regardless of language: `banking-core`, `orchestrator`, `web-client`, `web-backoffice`.
+- `apps/` — **everything that deploys**, regardless of language: `banking-core`, `orchestrator`, `encoder`, `web-client`, `web-backoffice`.
 - `packages/` — **everything that is imported**: `contracts`, `encoder`, `retrieval`, `design-tokens`.
 - `data/` — medallion layers: `raw → staging → curated`, plus `eval`.
 - `infra/`, `tools/`, `eval/`, `reports/`, `docs/`, `demo/` — supporting material, out of the root.
@@ -21,11 +21,15 @@ One-line rule: **if it deploys it goes in `apps/`, if it is imported it goes in 
 
 ### Service names
 
-The two services are named **`orchestrator`** and **`banking-core`**.
+The backend deployables are named **`banking-core`**, **`orchestrator`**, and **`encoder`**.
 
-We rejected calling the first one `bff`. The Backend For Frontend pattern describes a thin adaptation layer between one UI and several APIs, and this service does something else: it holds the session, coordinates the loop with the model, invokes the encoder, masks PII and translates all of it into tool contract calls. More importantly, **its reason to exist is not serving the frontend, it is being on the untrusted side of the boundary** ([ADR-0004](0004-trust-boundary.md)), and the name suggested otherwise. Finally, it serves two frontends, so "per frontend" no longer applies.
+We rejected calling the orchestrator `bff`. The Backend For Frontend pattern describes a thin adaptation layer between one UI and several APIs, and this service does something else: it holds the session, coordinates the loop with the model, invokes the encoder service, masks PII and translates all of it into tool contract calls. More importantly, **its reason to exist is not serving the frontend, it is being on the untrusted side of the boundary** ([ADR-0004](0004-trust-boundary.md)), and the name suggested otherwise. Finally, it serves two frontends, so "per frontend" no longer applies.
+
+The **`encoder`** separation decouples model serving: `packages/encoder` keeps model logic, intent/slot schemas, and inference utilities, while `apps/encoder` is a thin HTTP server serving CPU inference locally.
 
 The pair `orchestrator` / `banking-core` communicates the architecture without opening a document: one coordinates, the other owns the data.
+
+The frontends are **`web-client`** and **`web-backoffice`**. The metrics panel is a section of `web-backoffice`, not an independent app or separate port.
 
 ## Options considered
 
@@ -63,8 +67,8 @@ The accepted cost is vocabulary: JavaScript-flavored names in a repository with 
 **Becomes harder:** internal symmetry across apps has to be maintained, because readability depends on all of them having the same shape; and the discipline of keeping the root clean has to hold.
 
 **To revisit:**
-- `packages/encoder` moves to `apps/encoder` if we decide to serve it as a separate process.
-- `web-client` and `web-backoffice` merge into one app if a single person owns the frontend; in that case `packages/design-tokens` stops making sense.
+- Encoder served as a separate process: decided. `packages/encoder` keeps model logic and schemas, while `apps/encoder` is deployed as a thin server.
+- Merging `web-client` and `web-backoffice`: deferred until the frontends are designed. If consolidated, `packages/design-tokens` would no longer be needed.
 
 ## Action items
 
@@ -73,4 +77,4 @@ The accepted cost is vocabulary: JavaScript-flavored names in a repository with 
 3. [ ] Same internal shape across all apps (`src/`, `tests/`, `Dockerfile`)
 4. [ ] `infra/compose` with a development file and a production override
 5. [ ] `AGENTS.md` with the conventions derived from this structure
-6. [ ] CI running `make up` and `make smoke` on every push
+6. [ ] CI running `make up` (⚠️ pending) and `make smoke` (⚠️ pending) on every push

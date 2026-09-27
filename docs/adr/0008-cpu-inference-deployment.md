@@ -1,6 +1,6 @@
 # ADR-0008: CPU inference, offline training and private-environment deployment
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-26 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
@@ -10,7 +10,7 @@ The common confusion is treating training and inference as the same resource pro
 
 ## Decision
 
-- **Training (build-time):** the encoder is fine-tuned offline, in a temporary GPU environment. It happens once, the resulting weights are versioned, and the procedure is documented and reproducible.
+- **Training (build-time):** the encoder is fine-tuned offline on an Apple Silicon Mac with Metal Performance Shaders (MPS). It happens once, the resulting weights are versioned, and the procedure is documented and reproducible.
 - **Inference (runtime):** the encoder and the embedding model run **on CPU**. These are models in the hundreds of millions of parameters, not billions; quantized, they occupy hundreds of megabytes and respond in tens of milliseconds.
 - **Deployment:** the whole system runs in a **private environment** managed by the team, sized comfortably above what the runtime demands. It does not depend on an online GPU.
 - **Only external runtime dependency:** the LLM API. Everything else is local, so that reproducing the system requires as few third-party credentials as possible.
@@ -40,7 +40,7 @@ The common confusion is treating training and inference as the same resource pro
 
 ## Trade-off analysis
 
-Separating training from inference removes the apparent dilemma between "our own model" and "no GPU". Fine-tuning a small encoder is a matter of minutes on borrowed hardware; serving it is a matter of a couple of cores. What the private environment buys is not power, it is **predictability** during evaluation.
+Separating training from inference removes the apparent dilemma between "our own model" and "no GPU". Fine-tuning a small encoder is a matter of minutes on local Apple Silicon (MPS); serving it is a matter of a couple of cores on CPU. What the private environment buys is not power, it is **predictability** during evaluation.
 
 ## Consequences
 
