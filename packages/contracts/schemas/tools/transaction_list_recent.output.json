@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "TransactionItem": {
+      "additionalProperties": false,
+      "description": "Individual transaction record with integer minor currency units.",
+      "properties": {
+        "amount_minor": {
+          "description": "Monetary transaction amount in integer minor units (e.g. cents)",
+          "minimum": 0,
+          "title": "Amount Minor",
+          "type": "integer"
+        },
+        "card_ref": {
+          "description": "Opaque card reference associated with transaction",
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Card Ref",
+          "type": "string"
+        },
+        "currency": {
+          "description": "ISO 4217 three-letter currency code (e.g. COP, USD)",
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "is_disputable": {
+          "default": true,
+          "description": "Whether transaction is eligible for fraud dispute handoff",
+          "title": "Is Disputable",
+          "type": "boolean"
+        },
+        "merchant_category": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Merchant category or business code",
+          "title": "Merchant Category"
+        },
+        "merchant_name": {
+          "description": "Merchant or counterparty name",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Merchant Name",
+          "type": "string"
+        },
+        "posted_at": {
+          "description": "Timestamp when transaction was posted",
+          "format": "date-time",
+          "title": "Posted At",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TransactionStatus",
+          "description": "Current transaction status"
+        },
+        "transaction_id": {
+          "description": "Opaque transaction identifier",
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Transaction Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transaction_id",
+        "card_ref",
+        "amount_minor",
+        "currency",
+        "merchant_name",
+        "posted_at",
+        "status"
+      ],
+      "title": "TransactionItem",
+      "type": "object"
+    },
+    "TransactionStatus": {
+      "description": "Settlement status of a transaction.",
+      "enum": [
+        "PENDING",
+        "SETTLED",
+        "DECLINED"
+      ],
+      "title": "TransactionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Recent transaction history for customer.",
+  "properties": {
+    "transactions": {
+      "description": "List of recent transactions ordered by posting date descending",
+      "items": {
+        "$ref": "#/$defs/TransactionItem"
+      },
+      "title": "Transactions",
+      "type": "array"
+    }
+  },
+  "title": "TransactionListRecentOutput",
+  "type": "object"
+}

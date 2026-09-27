@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "DocumentDecision": {
+      "description": "Simulated provider decision outcome (ADR-0007).",
+      "enum": [
+        "APPROVED",
+        "REJECTED",
+        "MANUAL_REVIEW_REQUIRED"
+      ],
+      "title": "DocumentDecision",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Simulated identity document verification response.\n\nADR-0007: simulated provider output; never sufficient alone to authorize actions.",
+  "properties": {
+    "decision": {
+      "$ref": "#/$defs/DocumentDecision",
+      "description": "Verification outcome from simulated provider"
+    },
+    "reasons": {
+      "description": "Deterministic list of checks and reasons (e.g. LIVENESS_PASSED)",
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "score": {
+      "description": "Confidence score between 0.0 and 1.0",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Score",
+      "type": "number"
+    }
+  },
+  "required": [
+    "decision",
+    "score"
+  ],
+  "title": "IdentityVerifyDocumentOutput",
+  "type": "object"
+}

@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "description": "Input payload to verify a customer-submitted OTP code.",
+  "properties": {
+    "code": {
+      "description": "6-digit numeric verification code",
+      "maxLength": 6,
+      "minLength": 6,
+      "pattern": "^\\d{6}$",
+      "title": "Code",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code"
+  ],
+  "title": "OtpVerifyInput",
+  "type": "object"
+}

@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "CardStatus": {
+      "description": "Lifecycle status of a payment card.",
+      "enum": [
+        "ACTIVE",
+        "BLOCKED",
+        "FROZEN",
+        "EXPIRED"
+      ],
+      "title": "CardStatus",
+      "type": "string"
+    },
+    "Receipt": {
+      "additionalProperties": false,
+      "description": "Database-verified receipt returned on state-mutating actions.",
+      "properties": {
+        "action": {
+          "description": "Action executed (e.g. card.block)",
+          "maxLength": 64,
+          "minLength": 3,
+          "title": "Action",
+          "type": "string"
+        },
+        "audit_id": {
+          "description": "Cryptographic/audit reference ID",
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Audit Id",
+          "type": "string"
+        },
+        "state_after": {
+          "$ref": "#/$defs/ResourceState",
+          "description": "Resource state following action execution"
+        },
+        "state_before": {
+          "$ref": "#/$defs/ResourceState",
+          "description": "Resource state prior to action execution"
+        },
+        "target_masked": {
+          "description": "Masked target identifier adhering to allowlist: masked PAN, email, phone, or opaque ref",
+          "maxLength": 64,
+          "minLength": 6,
+          "pattern": "^((\\*{4}[\\s-]?\\*{4}[\\s-]?\\*{4}[\\s-]?\\d{4}|\\*{4,12}\\d{4})|[a-zA-Z0-9]\\*+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|(\\+?\\d{1,3}[-\\s]?)?(\\d{1,4}[-\\s]?)?(\\*+[-\\s]?)+\\d{2,4}|(card|hnd|otp|chal|ticket|handoff)[_-][A-Za-z0-9*_-]{6,50})$",
+          "title": "Target Masked",
+          "type": "string"
+        },
+        "verified_at": {
+          "description": "Timestamp of verified execution in database",
+          "format": "date-time",
+          "title": "Verified At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "target_masked",
+        "state_before",
+        "state_after",
+        "verified_at",
+        "audit_id"
+      ],
+      "title": "Receipt",
+      "type": "object"
+    },
+    "ResourceState": {
+      "description": "Resource state prior to and following execution of a state-mutating tool.",
+      "enum": [
+        "NONE",
+        "ACTIVE",
+        "BLOCKED",
+        "FROZEN",
+        "ISSUED",
+        "PENDING",
+        "VERIFIED",
+        "EXPIRED",
+        "LOCKED",
+        "QUEUED",
+        "ASSIGNED",
+        "RESOLVED",
+        "ANONYMOUS",
+        "IDENTIFIED",
+        "OTP_PENDING",
+        "HANDED_OFF"
+      ],
+      "title": "ResourceState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Result of card blocking action.\n\nReturns the verified receipt re-read from the database (ADR-0003).",
+  "properties": {
+    "card_ref": {
+      "description": "Opaque reference of the blocked card",
+      "title": "Card Ref",
+      "type": "string"
+    },
+    "receipt": {
+      "$ref": "#/$defs/Receipt",
+      "description": "Verified receipt re-read from the database"
+    },
+    "status": {
+      "$ref": "#/$defs/CardStatus",
+      "default": "BLOCKED",
+      "description": "Updated card status"
+    }
+  },
+  "required": [
+    "card_ref",
+    "receipt"
+  ],
+  "title": "CardBlockOutput",
+  "type": "object"
+}

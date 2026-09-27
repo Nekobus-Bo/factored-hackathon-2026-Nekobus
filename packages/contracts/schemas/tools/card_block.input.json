@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "BlockReason": {
+      "description": "Categorized justification for card blocking without free-form text.",
+      "enum": [
+        "LOST",
+        "STOLEN",
+        "UNRECOGNIZED_CHARGE",
+        "SUSPICIOUS_ACTIVITY",
+        "CUSTOMER_REQUEST"
+      ],
+      "title": "BlockReason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Input payload to block a payment card.\n\nHARD RULE (ADR-0004 IDOR): targets a card ONLY by an opaque card_ref\npreviously returned by card.list. Free-text notes are removed to eliminate\nPII leakage into DB/audit.",
+  "properties": {
+    "card_ref": {
+      "description": "Opaque card reference returned by card.list",
+      "maxLength": 64,
+      "minLength": 8,
+      "pattern": "^[A-Za-z0-9_\\-]+$",
+      "title": "Card Ref",
+      "type": "string"
+    },
+    "reason": {
+      "$ref": "#/$defs/BlockReason",
+      "description": "Structured business reason for blocking the card"
+    }
+  },
+  "required": [
+    "card_ref",
+    "reason"
+  ],
+  "title": "CardBlockInput",
+  "type": "object"
+}

@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "KbSearchResultItem": {
+      "additionalProperties": false,
+      "description": "Knowledge base article snippet.",
+      "properties": {
+        "article_id": {
+          "description": "Article identifier",
+          "maxLength": 64,
+          "minLength": 2,
+          "title": "Article Id",
+          "type": "string"
+        },
+        "category": {
+          "description": "Knowledge base topic category",
+          "maxLength": 100,
+          "minLength": 2,
+          "title": "Category",
+          "type": "string"
+        },
+        "score": {
+          "description": "Relevance confidence score",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "snippet": {
+          "description": "Relevant text excerpt",
+          "maxLength": 2000,
+          "minLength": 5,
+          "title": "Snippet",
+          "type": "string"
+        },
+        "title": {
+          "description": "Article title",
+          "maxLength": 200,
+          "minLength": 2,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "article_id",
+        "title",
+        "snippet",
+        "category",
+        "score"
+      ],
+      "title": "KbSearchResultItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Knowledge base search response.",
+  "properties": {
+    "results": {
+      "description": "Ranked list of matching knowledge snippets",
+      "items": {
+        "$ref": "#/$defs/KbSearchResultItem"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "title": "KbSearchOutput",
+  "type": "object"
+}

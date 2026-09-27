@@ -1,0 +1,137 @@
+{
+  "tools": {
+    "account.get_summary": {
+      "description": "Retrieves balance summaries in minor currency units for verified customer.",
+      "input_schema_file": "tools/account_get_summary.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "account.get_summary",
+      "output_schema_file": "tools/account_get_summary.output.json",
+      "permitted_states": [
+        "VERIFIED"
+      ],
+      "requires_idempotency": false
+    },
+    "card.block": {
+      "description": "Blocks a payment card by opaque card_ref. Requires idempotency key.",
+      "input_schema_file": "tools/card_block.input.json",
+      "is_write": true,
+      "mutates_state": true,
+      "name": "card.block",
+      "output_schema_file": "tools/card_block.output.json",
+      "permitted_states": [
+        "VERIFIED"
+      ],
+      "requires_idempotency": true
+    },
+    "card.list": {
+      "description": "Lists cards with masked PANs and opaque card references for verified customer.",
+      "input_schema_file": "tools/card_list.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "card.list",
+      "output_schema_file": "tools/card_list.output.json",
+      "permitted_states": [
+        "VERIFIED"
+      ],
+      "requires_idempotency": false
+    },
+    "customer.match": {
+      "description": "Matches claimed customer identification data against records without disclosing PII.",
+      "input_schema_file": "tools/customer_match.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "customer.match",
+      "output_schema_file": "tools/customer_match.output.json",
+      "permitted_states": [
+        "ANONYMOUS",
+        "IDENTIFIED"
+      ],
+      "requires_idempotency": false
+    },
+    "handoff.create": {
+      "description": "Escalates session to human agent queue. Mutates queue state and returns receipt.",
+      "input_schema_file": "tools/handoff_create.input.json",
+      "is_write": true,
+      "mutates_state": true,
+      "name": "handoff.create",
+      "output_schema_file": "tools/handoff_create.output.json",
+      "permitted_states": [
+        "ANONYMOUS",
+        "HANDED_OFF",
+        "IDENTIFIED",
+        "LOCKED",
+        "OTP_PENDING",
+        "VERIFIED"
+      ],
+      "requires_idempotency": true
+    },
+    "identity.verify_document": {
+      "description": "Simulated document verification provider (ADR-0007).",
+      "input_schema_file": "tools/identity_verify_document.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "identity.verify_document",
+      "output_schema_file": "tools/identity_verify_document.output.json",
+      "permitted_states": [
+        "IDENTIFIED"
+      ],
+      "requires_idempotency": false
+    },
+    "kb.search": {
+      "description": "Lexical search, with a dense component only if it beats BM25 (ADR-0006).",
+      "input_schema_file": "tools/kb_search.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "kb.search",
+      "output_schema_file": "tools/kb_search.output.json",
+      "permitted_states": [
+        "ANONYMOUS",
+        "HANDED_OFF",
+        "IDENTIFIED",
+        "LOCKED",
+        "OTP_PENDING",
+        "VERIFIED"
+      ],
+      "requires_idempotency": false
+    },
+    "otp.send": {
+      "description": "Dispatches an OTP challenge to customer registered channel. Mutates challenge state.",
+      "input_schema_file": "tools/otp_send.input.json",
+      "is_write": true,
+      "mutates_state": true,
+      "name": "otp.send",
+      "output_schema_file": "tools/otp_send.output.json",
+      "permitted_states": [
+        "IDENTIFIED",
+        "OTP_PENDING"
+      ],
+      "requires_idempotency": true
+    },
+    "otp.verify": {
+      "description": "Verifies customer-submitted OTP code and mutates verification FSM state.",
+      "input_schema_file": "tools/otp_verify.input.json",
+      "is_write": true,
+      "mutates_state": true,
+      "name": "otp.verify",
+      "output_schema_file": "tools/otp_verify.output.json",
+      "permitted_states": [
+        "OTP_PENDING"
+      ],
+      "requires_idempotency": true
+    },
+    "transaction.list_recent": {
+      "description": "Lists recent transaction history in minor currency units.",
+      "input_schema_file": "tools/transaction_list_recent.input.json",
+      "is_write": false,
+      "mutates_state": false,
+      "name": "transaction.list_recent",
+      "output_schema_file": "tools/transaction_list_recent.output.json",
+      "permitted_states": [
+        "VERIFIED"
+      ],
+      "requires_idempotency": false
+    }
+  },
+  "version": "1.0"
+}

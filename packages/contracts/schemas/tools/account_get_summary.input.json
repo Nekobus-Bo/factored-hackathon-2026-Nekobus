@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "description": "Input payload for retrieving account summary.\n\nHARD RULE (ADR-0004 IDOR): customer identity is pinned in the session.\nNo account_id, customer_id, owner, or holder parameter is accepted from the model.",
+  "properties": {
+    "include_balances": {
+      "default": true,
+      "description": "Whether to include available and ledger balance figures",
+      "title": "Include Balances",
+      "type": "boolean"
+    }
+  },
+  "title": "AccountGetSummaryInput",
+  "type": "object"
+}

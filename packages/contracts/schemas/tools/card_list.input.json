@@ -1,0 +1,26 @@
+{
+  "$defs": {
+    "CardStatusFilter": {
+      "description": "Filter criteria for listing cards.",
+      "enum": [
+        "ALL",
+        "ACTIVE",
+        "BLOCKED",
+        "FROZEN"
+      ],
+      "title": "CardStatusFilter",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Input payload for listing cards.\n\nCustomer identity is pinned server-side in banking-core session.",
+  "properties": {
+    "status_filter": {
+      "$ref": "#/$defs/CardStatusFilter",
+      "default": "ALL",
+      "description": "Optional filter by card operational status"
+    }
+  },
+  "title": "CardListInput",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "ReasonCode": {
+      "description": "Standard refusal and error reason codes.",
+      "enum": [
+        "STATE_NOT_ALLOWED",
+        "POLICY_BLOCKED",
+        "POLICY_FLAGGED",
+        "RATE_LIMITED",
+        "NOT_MATCHED",
+        "INVALID_ARGUMENTS",
+        "INTERNAL_ERROR"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "ToolResultStatus": {
+      "description": "Execution status returned by banking-core.",
+      "enum": [
+        "ok",
+        "refused",
+        "error"
+      ],
+      "title": "ToolResultStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Common envelope for results returned by banking-core.",
+  "properties": {
+    "data": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Payload returned by the tool when status is ok; None on refused/error",
+      "title": "Data"
+    },
+    "reason_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReasonCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Standardized reason code when status is refused or error"
+    },
+    "status": {
+      "$ref": "#/$defs/ToolResultStatus",
+      "description": "Status of tool execution"
+    },
+    "tool": {
+      "description": "Exact registered tool identifier (e.g. card.block)",
+      "minLength": 1,
+      "title": "Tool",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool",
+    "status"
+  ],
+  "title": "ToolResult",
+  "type": "object"
+}

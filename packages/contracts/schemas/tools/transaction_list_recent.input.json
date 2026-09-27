@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "description": "Input payload for retrieving recent customer transactions.\n\nIDOR mitigation: card_ref is an opaque token from card.list, not an account number.\nCustomer identity is resolved server-side from the verified session.",
+  "properties": {
+    "card_ref": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 8,
+          "pattern": "^[A-Za-z0-9_\\-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional opaque card reference to filter transactions",
+      "title": "Card Ref"
+    },
+    "limit": {
+      "default": 10,
+      "description": "Maximum number of transactions to retrieve (1-50)",
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "title": "TransactionListRecentInput",
+  "type": "object"
+}

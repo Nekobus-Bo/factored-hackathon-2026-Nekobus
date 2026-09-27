@@ -1,0 +1,7 @@
+{
+  "additionalProperties": false,
+  "description": "Input payload to trigger OTP dispatch.\n\nCRITICAL RULE (ADR-0004): destination phone/email and channel are NEVER model arguments.\nThey are resolved strictly server-side from the pinned customer profile and deployment config.\nThe model provides an empty payload; extra arguments are strictly forbidden.",
+  "properties": {},
+  "title": "OtpSendInput",
+  "type": "object"
+}

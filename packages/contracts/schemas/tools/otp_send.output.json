@@ -1,0 +1,140 @@
+{
+  "$defs": {
+    "OtpChannel": {
+      "description": "Delivery channels for one-time passcodes.",
+      "enum": [
+        "EMAIL",
+        "SMS",
+        "WHATSAPP",
+        "TELEGRAM",
+        "SIMULATED"
+      ],
+      "title": "OtpChannel",
+      "type": "string"
+    },
+    "Receipt": {
+      "additionalProperties": false,
+      "description": "Database-verified receipt returned on state-mutating actions.",
+      "properties": {
+        "action": {
+          "description": "Action executed (e.g. card.block)",
+          "maxLength": 64,
+          "minLength": 3,
+          "title": "Action",
+          "type": "string"
+        },
+        "audit_id": {
+          "description": "Cryptographic/audit reference ID",
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Audit Id",
+          "type": "string"
+        },
+        "state_after": {
+          "$ref": "#/$defs/ResourceState",
+          "description": "Resource state following action execution"
+        },
+        "state_before": {
+          "$ref": "#/$defs/ResourceState",
+          "description": "Resource state prior to action execution"
+        },
+        "target_masked": {
+          "description": "Masked target identifier adhering to allowlist: masked PAN, email, phone, or opaque ref",
+          "maxLength": 64,
+          "minLength": 6,
+          "pattern": "^((\\*{4}[\\s-]?\\*{4}[\\s-]?\\*{4}[\\s-]?\\d{4}|\\*{4,12}\\d{4})|[a-zA-Z0-9]\\*+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|(\\+?\\d{1,3}[-\\s]?)?(\\d{1,4}[-\\s]?)?(\\*+[-\\s]?)+\\d{2,4}|(card|hnd|otp|chal|ticket|handoff)[_-][A-Za-z0-9*_-]{6,50})$",
+          "title": "Target Masked",
+          "type": "string"
+        },
+        "verified_at": {
+          "description": "Timestamp of verified execution in database",
+          "format": "date-time",
+          "title": "Verified At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "target_masked",
+        "state_before",
+        "state_after",
+        "verified_at",
+        "audit_id"
+      ],
+      "title": "Receipt",
+      "type": "object"
+    },
+    "ResourceState": {
+      "description": "Resource state prior to and following execution of a state-mutating tool.",
+      "enum": [
+        "NONE",
+        "ACTIVE",
+        "BLOCKED",
+        "FROZEN",
+        "ISSUED",
+        "PENDING",
+        "VERIFIED",
+        "EXPIRED",
+        "LOCKED",
+        "QUEUED",
+        "ASSIGNED",
+        "RESOLVED",
+        "ANONYMOUS",
+        "IDENTIFIED",
+        "OTP_PENDING",
+        "HANDED_OFF"
+      ],
+      "title": "ResourceState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Result of OTP dispatch.\n\nCarries challenge_id and a verified receipt. A retry with the same key must\nnot send a second code (idempotent); a legitimate resend uses a new key.",
+  "properties": {
+    "challenge_id": {
+      "description": "Unique OTP challenge identifier",
+      "maxLength": 64,
+      "minLength": 8,
+      "title": "Challenge Id",
+      "type": "string"
+    },
+    "channel": {
+      "$ref": "#/$defs/OtpChannel",
+      "description": "Channel through which the OTP was dispatched"
+    },
+    "destination_masked": {
+      "description": "Masked destination adhering to allowlist: masked email, phone, handle, or 'simulated'",
+      "maxLength": 64,
+      "minLength": 4,
+      "pattern": "^([a-zA-Z0-9]\\*+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|(\\+?\\d{1,3}[-\\s]?)?(\\d{1,4}[-\\s]?)?(\\*+[-\\s]?)+\\d{2,4}|@[a-zA-Z0-9_.-]*\\*+[a-zA-Z0-9_.-]*|simulated)$",
+      "title": "Destination Masked",
+      "type": "string"
+    },
+    "expires_in_seconds": {
+      "default": 300,
+      "description": "Validity window of the issued OTP in seconds",
+      "maximum": 900,
+      "minimum": 30,
+      "title": "Expires In Seconds",
+      "type": "integer"
+    },
+    "receipt": {
+      "$ref": "#/$defs/Receipt",
+      "description": "Verified receipt for OTP challenge dispatch"
+    },
+    "sent": {
+      "description": "True if the challenge was successfully generated and dispatched",
+      "title": "Sent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "sent",
+    "challenge_id",
+    "channel",
+    "destination_masked",
+    "receipt"
+  ],
+  "title": "OtpSendOutput",
+  "type": "object"
+}

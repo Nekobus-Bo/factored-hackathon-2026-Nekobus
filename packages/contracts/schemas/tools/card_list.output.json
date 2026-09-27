@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "CardItem": {
+      "additionalProperties": false,
+      "description": "Card summary with masked PAN.\n\nADR-0004 IDOR mitigation: card_ref is an opaque reference token returned\nto the model. The model must use card_ref for downstream card operations.",
+      "properties": {
+        "card_ref": {
+          "description": "Opaque card identifier used for tool calls like card.block",
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Card Ref",
+          "type": "string"
+        },
+        "card_type": {
+          "$ref": "#/$defs/CardType",
+          "description": "Card product category (DEBIT or CREDIT)"
+        },
+        "expiry_month": {
+          "description": "Two-digit expiry month",
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Expiry Month",
+          "type": "integer"
+        },
+        "expiry_year": {
+          "description": "Four-digit expiry year",
+          "maximum": 2040,
+          "minimum": 2024,
+          "title": "Expiry Year",
+          "type": "integer"
+        },
+        "masked_pan": {
+          "description": "Masked Primary Account Number (e.g. **** **** **** 1234)",
+          "pattern": "^\\*{4}\\s?\\*{4}\\s?\\*{4}\\s?\\d{4}$",
+          "title": "Masked Pan",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CardStatus",
+          "description": "Current operational status of card"
+        }
+      },
+      "required": [
+        "card_ref",
+        "masked_pan",
+        "card_type",
+        "status",
+        "expiry_month",
+        "expiry_year"
+      ],
+      "title": "CardItem",
+      "type": "object"
+    },
+    "CardStatus": {
+      "description": "Lifecycle status of a payment card.",
+      "enum": [
+        "ACTIVE",
+        "BLOCKED",
+        "FROZEN",
+        "EXPIRED"
+      ],
+      "title": "CardStatus",
+      "type": "string"
+    },
+    "CardType": {
+      "description": "Product type of payment card.",
+      "enum": [
+        "DEBIT",
+        "CREDIT"
+      ],
+      "title": "CardType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "List of payment cards for the pinned customer.",
+  "properties": {
+    "cards": {
+      "description": "List of cards associated with the verified customer",
+      "items": {
+        "$ref": "#/$defs/CardItem"
+      },
+      "title": "Cards",
+      "type": "array"
+    }
+  },
+  "title": "CardListOutput",
+  "type": "object"
+}

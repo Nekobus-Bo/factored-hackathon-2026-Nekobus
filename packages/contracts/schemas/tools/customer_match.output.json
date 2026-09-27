@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "description": "Result of identity match.\n\nADR-0004: returns only boolean match status.\nResponses are strictly indistinguishable for non-existent data to prevent enumeration.",
+  "properties": {
+    "matched": {
+      "description": "True if claimed data matched banking records; false otherwise",
+      "title": "Matched",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "matched"
+  ],
+  "title": "CustomerMatchOutput",
+  "type": "object"
+}

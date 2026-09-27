@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "Department": {
+      "description": "Bank back-office specialized queues.",
+      "enum": [
+        "FRAUD_OPERATIONS",
+        "CUSTOMER_SUPPORT",
+        "DISPUTES"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "HandoffPriority": {
+      "description": "Queue priority for agent assignment.",
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ],
+      "title": "HandoffPriority",
+      "type": "string"
+    },
+    "HandoffReason": {
+      "description": "Reason for session escalation to a human agent.",
+      "enum": [
+        "SUSPECTED_FRAUD",
+        "DISPUTE_CLAIM",
+        "CUSTOMER_LOCKED",
+        "UNRECOGNIZED_TRANSACTION",
+        "CUSTOMER_REQUEST",
+        "VERIFICATION_FAILED"
+      ],
+      "title": "HandoffReason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Input payload to create human agent handoff ticket.\n\nPermitted in every verification state, including LOCKED.",
+  "properties": {
+    "department": {
+      "$ref": "#/$defs/Department",
+      "default": "FRAUD_OPERATIONS",
+      "description": "Target specialized department queue"
+    },
+    "priority": {
+      "$ref": "#/$defs/HandoffPriority",
+      "default": "NORMAL",
+      "description": "Operational priority level"
+    },
+    "reason": {
+      "$ref": "#/$defs/HandoffReason",
+      "description": "Categorized reason for human escalation"
+    },
+    "summary": {
+      "description": "Structured summary of facts established so far",
+      "maxLength": 1000,
+      "minLength": 5,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason",
+    "summary"
+  ],
+  "title": "HandoffCreateInput",
+  "type": "object"
+}

@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "AccountStatus": {
+      "description": "Lifecycle status of an account.",
+      "enum": [
+        "ACTIVE",
+        "FROZEN",
+        "CLOSED"
+      ],
+      "title": "AccountStatus",
+      "type": "string"
+    },
+    "AccountSummaryItem": {
+      "additionalProperties": false,
+      "description": "Account financial summary with minor currency units.",
+      "properties": {
+        "account_ref": {
+          "description": "Opaque account reference token",
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Account Ref",
+          "type": "string"
+        },
+        "account_type": {
+          "$ref": "#/$defs/AccountType",
+          "description": "Type of banking account"
+        },
+        "available_balance_minor": {
+          "description": "Available spendable balance in integer minor units (e.g. cents)",
+          "title": "Available Balance Minor",
+          "type": "integer"
+        },
+        "currency": {
+          "description": "ISO 4217 three-letter currency code",
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "ledger_balance_minor": {
+          "description": "Total ledger balance in integer minor units (e.g. cents)",
+          "title": "Ledger Balance Minor",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/AccountStatus",
+          "description": "Current operational status of account"
+        }
+      },
+      "required": [
+        "account_ref",
+        "account_type",
+        "currency",
+        "available_balance_minor",
+        "ledger_balance_minor",
+        "status"
+      ],
+      "title": "AccountSummaryItem",
+      "type": "object"
+    },
+    "AccountType": {
+      "description": "Type of deposit or credit account.",
+      "enum": [
+        "CHECKING",
+        "SAVINGS",
+        "CREDIT_LINE"
+      ],
+      "title": "AccountType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Account summaries for the pinned customer.",
+  "properties": {
+    "accounts": {
+      "description": "Accounts belonging to the pinned session customer",
+      "items": {
+        "$ref": "#/$defs/AccountSummaryItem"
+      },
+      "title": "Accounts",
+      "type": "array"
+    }
+  },
+  "title": "AccountGetSummaryOutput",
+  "type": "object"
+}

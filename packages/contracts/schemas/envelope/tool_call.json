@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "description": "Common envelope for tool calls proposed by orchestrator to banking-core.",
+  "properties": {
+    "args": {
+      "additionalProperties": true,
+      "description": "Tool input arguments",
+      "title": "Args",
+      "type": "object"
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 8,
+          "pattern": "^[A-Za-z0-9._:-]{8,128}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Client idempotency key. Required for state-mutating tools.",
+      "title": "Idempotency Key"
+    },
+    "tool": {
+      "description": "Exact registered tool identifier (e.g. card.block)",
+      "minLength": 1,
+      "title": "Tool",
+      "type": "string"
+    },
+    "version": {
+      "default": "1.0",
+      "description": "Contract schema version",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool"
+  ],
+  "title": "ToolCall",
+  "type": "object"
+}

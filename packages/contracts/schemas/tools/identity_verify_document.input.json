@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "DocumentType": {
+      "description": "Supported identification document types.",
+      "enum": [
+        "NATIONAL_ID",
+        "PASSPORT",
+        "FOREIGN_ID",
+        "TAX_ID"
+      ],
+      "title": "DocumentType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Input payload for document identity verification.\n\nTakes opaque asset references, never raw biometric files or customer IDs.",
+  "properties": {
+    "document_back_ref": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 8,
+          "pattern": "^[A-Za-z0-9_\\-.]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional opaque storage reference for back document image",
+      "title": "Document Back Ref"
+    },
+    "document_front_ref": {
+      "description": "Opaque storage reference for front document image",
+      "maxLength": 128,
+      "minLength": 8,
+      "pattern": "^[A-Za-z0-9_\\-.]+$",
+      "title": "Document Front Ref",
+      "type": "string"
+    },
+    "document_type": {
+      "$ref": "#/$defs/DocumentType",
+      "description": "Type of identity document submitted"
+    }
+  },
+  "required": [
+    "document_type",
+    "document_front_ref"
+  ],
+  "title": "IdentityVerifyDocumentInput",
+  "type": "object"
+}

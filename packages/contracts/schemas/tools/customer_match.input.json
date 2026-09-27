@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "DocumentType": {
+      "description": "Supported identification document types.",
+      "enum": [
+        "NATIONAL_ID",
+        "PASSPORT",
+        "FOREIGN_ID",
+        "TAX_ID"
+      ],
+      "title": "DocumentType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Input payload for matching claimed identification data.\n\nADR-0004 IDOR mitigation: does not accept customer IDs or account identifiers.",
+  "properties": {
+    "birth_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional date of birth (YYYY-MM-DD) for secondary matching",
+      "title": "Birth Date"
+    },
+    "document_number": {
+      "description": "Identification document number without spaces",
+      "maxLength": 32,
+      "minLength": 4,
+      "pattern": "^[A-Za-z0-9\\-.]+$",
+      "title": "Document Number",
+      "type": "string"
+    },
+    "document_type": {
+      "$ref": "#/$defs/DocumentType",
+      "description": "Type of identification document presented by customer"
+    }
+  },
+  "required": [
+    "document_type",
+    "document_number"
+  ],
+  "title": "CustomerMatchInput",
+  "type": "object"
+}
