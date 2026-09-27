@@ -1,0 +1,209 @@
+# Development stack. Works with NO .env: every variable has a default.
+#
+#   make up          # from the repo root
+#
+# Trust boundary (ADR-0004): environment is declared per service. Database
+# credentials and cryptographic keys go ONLY to banking-core. Do not replace
+# this with a shared `env_file: .env`.
+#
+# Build context is the repo root: apps are uv workspace members and import
+# packages/*, which are not reachable from apps/<name>/.
+#
+# In-container ports are fixed (8080 / 8081 / 8090); PORT_* only moves the host
+# side. Host ports bind to loopback: the internal API is not for the LAN.
+#
+# Network isolation (ADR-0004, ADR-0006 amendment):
+#   core  internal, no egress: postgres, redis-core, banking-core
+#   edge  orchestrator, encoder, redis-edge, banking-core
+# banking-core is the only service on both. The orchestrator has no network path
+# to postgres or redis-core. One Redis per trust zone, each with a password.
+#
+# postgres and the Redis instances are not published to the host on purpose (they
+# collide with local installs). Use `docker compose exec postgres psql -U app bank`.
+
+name: pattern-blue
+
+x-app-healthcheck: &app-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+x-app-hardening: &app-hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bank}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  redis-core:
+    <<: *app-hardening
+    image: redis:7-alpine
+    user: redis
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_CORE_PASSWORD:-dev-only-regenerate-core-redis}
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }
+
+  redis-edge:
+    <<: *app-hardening
+    image: redis:7-alpine
+    user: redis
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:-dev-only-regenerate-edge-redis}
+    networks: [edge]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }
+
+  banking-core:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/banking-core/Dockerfile
+    image: pattern-blue/banking-core:dev
+    environment:
+      PORT: "8081"
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-bank}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
+      REDIS_HOST: redis-core
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_CORE_PASSWORD:-dev-only-regenerate-core-redis}
+      MASTER_KEY: ${MASTER_KEY:-dev-only-regenerate-this-key}
+      BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:-dev-only-regenerate-this-salt}
+      OTP_CHANNEL_MODE: ${OTP_CHANNEL_MODE:-simulated}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-3}
+      POLICY_SEED_AMOUNT_THRESHOLD: ${POLICY_SEED_AMOUNT_THRESHOLD:-50}
+      POLICY_SEED_AMOUNT_MODE: ${POLICY_SEED_AMOUNT_MODE:-flag}
+      POLICY_SEED_REQUIRE_OTP_FOR_WRITES: ${POLICY_SEED_REQUIRE_OTP_FOR_WRITES:-true}
+      RATE_LIMIT_ATTEMPTS_PER_SESSION: ${RATE_LIMIT_ATTEMPTS_PER_SESSION:-5}
+      RATE_LIMIT_ATTEMPTS_PER_IP_HOUR: ${RATE_LIMIT_ATTEMPTS_PER_IP_HOUR:-20}
+      AUDIT_HASH_CHAIN_ENABLED: ${AUDIT_HASH_CHAIN_ENABLED:-true}
+    ports:
+      - "127.0.0.1:${PORT_BANKING_CORE:-8081}:8081"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis-core: { condition: service_healthy }
+    networks: [core, edge]
+    healthcheck:
+      <<: *app-healthcheck
+      test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8081/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='banking-core' else 1)"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  orchestrator:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/orchestrator/Dockerfile
+    image: pattern-blue/orchestrator:dev
+    environment:
+      PORT: "8080"
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BANKING_CORE_URL: ${BANKING_CORE_URL:-http://banking-core:8081}
+      ENCODER_URL: ${ENCODER_URL:-http://encoder:8090}
+      REDIS_HOST: redis-edge
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:-dev-only-regenerate-edge-redis}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-regenerate-this-secret}
+      LLM_MODE: ${LLM_MODE:-replay}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_REPLAY_ON_MISS: ${LLM_REPLAY_ON_MISS:-fail}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-hybrid}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
+      RETRIEVAL_HYBRID_ALPHA: ${RETRIEVAL_HYBRID_ALPHA:-0.5}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      SUPPORTED_LOCALES: ${SUPPORTED_LOCALES:-es,pt}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-es}
+      TRACE_ENABLED: ${TRACE_ENABLED:-true}
+      COST_TRACKING_ENABLED: ${COST_TRACKING_ENABLED:-true}
+    ports:
+      - "127.0.0.1:${PORT_ORCHESTRATOR:-8080}:8080"
+    depends_on:
+      banking-core: { condition: service_healthy }
+      encoder: { condition: service_healthy }
+      redis-edge: { condition: service_healthy }
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8080/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='orchestrator' else 1)"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  encoder:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/encoder/Dockerfile
+    image: pattern-blue/encoder:dev
+    environment:
+      PORT: "8090"
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENCODER_MODEL: ${ENCODER_MODEL:-}
+      ENCODER_DEVICE: ${ENCODER_DEVICE:-cpu}
+      ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
+      ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD:-}
+    ports:
+      - "127.0.0.1:${PORT_ENCODER:-8090}:8090"
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8090/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='encoder' else 1)"]
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 3g }
+
+networks:
+  core:
+    internal: true
+  edge: {}
+
+volumes:
+  postgres-data:
