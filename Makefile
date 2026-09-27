@@ -11,7 +11,7 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup clean-models deploy calibrate
+	data-quality verify-audit warmup clean-models deploy calibrate synth-data
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -76,3 +76,6 @@ deploy: ## pending: deploy to the target environment
 calibrate: ## Compare and calibrate candidate models (TASK=decision|embedding, CONFIG=, OUT=reports)
 	@test -n "$(TASK)" || { echo "calibrate: set TASK=decision or TASK=embedding" >&2; exit 1; }
 	uv run --package calibrate python -m calibrate.cli --task $(TASK) $(if $(CONFIG),--config $(CONFIG)) --out $(or $(OUT),reports)
+
+synth-data: ## Generate reproducible synthetic train and validation datasets
+	uv run --with pyyaml python -m tools.synthdata.generate
