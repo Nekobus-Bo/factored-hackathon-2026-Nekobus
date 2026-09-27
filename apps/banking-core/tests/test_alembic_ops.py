@@ -97,3 +97,32 @@ def test_alembic_0003_downgrade_to_0002_and_reupgrade(
     config_tables = {row[0] for row in res_head}
     assert "policy_config" in config_tables
     assert "tool_policy" in config_tables
+
+
+def test_alembic_0004_downgrade_drops_handoff_and_reupgrade(
+    db_session: Session, postgres_url: str
+) -> None:
+    """Downgrade to 0003_config_policy drops ops.handoff; head restores it."""
+    import os
+
+    os.environ["DATABASE_URL"] = postgres_url
+    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
+    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+    alembic_cfg = Config(str(ini_path))
+    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
+
+    def ops_tables() -> set[str]:
+        rows = db_session.execute(
+            sa.text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'ops'"
+            )
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    command.downgrade(alembic_cfg, "0003_config_policy")
+    assert "handoff" not in ops_tables()
+    assert {"audit_log", "idempotency_key"} <= ops_tables()
+
+    command.upgrade(alembic_cfg, "head")
+    assert "handoff" in ops_tables()

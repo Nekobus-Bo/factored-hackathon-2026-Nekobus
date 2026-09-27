@@ -1,5 +1,6 @@
-"""SQLAlchemy models for operations: audit log and idempotency store."""
+"""SQLAlchemy models for operations: audit log, idempotency store, handoff queue."""
 
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -78,4 +79,55 @@ class IdempotencyKey(Base):
         sa.DateTime(timezone=True),
         nullable=True,
         index=True,
+    )
+
+
+class Handoff(Base):
+    """Structured escalation to the back-office queue (handoff.create).
+
+    customer_id is nullable: a LOCKED or ANONYMOUS session may have no holder,
+    and a locked customer must still reach a human.
+    """
+
+    __tablename__ = "handoff"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('QUEUED', 'ASSIGNED', 'PENDING')",
+            name="ck_handoff_status",
+        ),
+        sa.CheckConstraint(
+            "priority IN ('LOW', 'NORMAL', 'HIGH', 'URGENT')",
+            name="ck_handoff_priority",
+        ),
+        sa.CheckConstraint(
+            "department IN ('FRAUD_OPERATIONS', 'CUSTOMER_SUPPORT', 'DISPUTES')",
+            name="ck_handoff_department",
+        ),
+        sa.Index("ix_handoff_queue", "status", "priority", "created_at"),
+        {"schema": "ops"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    handoff_ref: Mapped[str] = mapped_column(sa.String(64), nullable=False, unique=True)
+    session_ref: Mapped[str] = mapped_column(sa.String(128), nullable=False, index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        sa.ForeignKey("core_bank.customer.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    reason: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    priority: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    department: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, server_default="QUEUED"
+    )
+    summary: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB(astext_type=sa.Text()), nullable=False
+    )
+    idempotency_scope: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
     )
