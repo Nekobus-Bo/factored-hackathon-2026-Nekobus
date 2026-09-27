@@ -26,6 +26,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Scalability | Single instance; the scaling path is documented, not exercised ([ADR-0006](adr/0006-single-postgres-pgvector.md)) |
 | Audit log external anchoring | Hash chain integrity is enforced append-only in Postgres with triggers and verified via `make verify-audit` (which reports row count and head hash); external anchoring of the head hash (e.g. to a timestamping authority, transparency log, or external store) to detect tail truncation is pending. |
 | Outbound PII masking | Regex-based and fail-closed until the encoder's PII spans are wired in (3C). Known misses: names without an intro phrase ("hola, Carlos Gómez aquí"), written-out dates ("March 4, 1988"), digit groups split by spaces. Live mode depends on regex plus encoder spans; replay mode is unaffected |
+| Knowledge retrieval evaluation | Measured on a **provisional synthetic** query set (120 validation queries per language, `data/eval/synthetic/retrieval/`), not a human-written one. Vector-only is the default backend (same-language Hit@1 0.494, cross-language 0.508, vs BM25 0.366 / 0.144; [ADR-0006](adr/0006-single-postgres-pgvector.md)). The in-memory `packages/retrieval` index is what was measured; pgvector ingestion and the `kb.search` tool wiring are pending |
 | Encoder abstention calibration | Boots in uncalibrated mode when ABSTENTION_THRESHOLD is unset (/health 200, /ready and /v1/analyze 503 "uncalibrated"). Calibrated threshold tau is required before serving live traffic ([ADR-0010](adr/0010-model-selection-calibration-harness.md)). |
 | Policy configuration UI | Policy thresholds and tool matrices live in DB `config` schema tables (seeded from env on initial startup per ADR-0002) and support versioned updates; administrative editing via the back-office UI is pending. |
 | Read tools vs contract | `account.get_summary` always returns balances: the contract requires both balance fields, so `include_balances=false` cannot omit them. `transaction.list_recent` lists card transactions only, because each item requires a `card_ref`. `card.list` returns `expiry_month`/`expiry_year` as null for synthetic cards (no source data) and derives `card_type` from the account (CREDIT_LINE → CREDIT, otherwise DEBIT) until stored values exist |
@@ -46,7 +47,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 **TODO at close.** The ones we already anticipate and must confirm or rule out with data:
 
 - Degradation in Portuguese relative to Spanish in the classifier, if the labeled sample came out unbalanced
-- Cross-language retrieval: question in one language, knowledge in another
+- Cross-language retrieval: question in one language, knowledge in another. Measured: vector-only Hit@1 0.508 (mean es/pt/en) against an index restricted to the other languages; BM25 0.144. Same-language search is the default, so this only matters when the KB lacks the customer's language
 - Long conversations: context grows and so do cost and latency
 - Ambiguity between neighboring intents: TODO, per the confusion matrix
 - Unnecessary escalation on legitimate but unforeseen cases: a cost the design accepts ([ADR-0003](adr/0003-deterministic-vs-ai.md))
