@@ -199,6 +199,7 @@ Deployment uses the same images as the local environment: there is no special pa
 | Back office does not update live | WebSocket blocked by a proxy | Check the reverse proxy |
 | No provider response in live mode | Invalid key or exhausted quota | Check `.env`. The system degrades to an unavailability message: **it does not invent responses** |
 | Image will not start on Apple Silicon | Wrong architecture build | Report it: images are multi-arch and that would be our bug |
+| `make data-quality` cannot write to `reports/` | On Linux, `reports/` is owned by a different uid | The container writes as uid 1000: `sudo chown -R 1000:1000 reports/`, or run the service with `--user $(id -u):$(id -g)` |
 
 ```bash
 make logs                  # logs from all services
