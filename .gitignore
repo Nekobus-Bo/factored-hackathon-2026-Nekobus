@@ -18,6 +18,8 @@ data/raw/*
 data/staging/*
 data/curated/*
 data/eval/*
+!data/eval/synthetic/
+!data/eval/synthetic/**
 !data/**/.gitkeep
 !data/raw/README.md
 

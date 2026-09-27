@@ -19,7 +19,7 @@ Operational summary of the decisions taken in [ADR-0004](adr/0004-trust-boundary
 
 **Encryption at rest** at the application level, with envelope encryption. The master key lives in the environment and never in the database. **Known limitation:** in production it belongs in a KMS or HSM.
 
-**Verifiable audit.** Every decision and every action lands in an append-only log with hash chaining. `make verify-audit` walks the chain and detects any later alteration.
+**Verifiable audit.** Every decision and every action lands in an append-only log with hash chaining. `make verify-audit` (⚠️ pending) walks the chain and detects any later alteration.
 
 **Least privilege.** Only `banking-core` holds database credentials. The back office acts under the agent's identity, and every takeover is recorded with user and timestamp.
 
