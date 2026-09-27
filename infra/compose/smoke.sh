@@ -3,6 +3,8 @@
 # Health comes from the compose healthchecks. Each app's healthcheck validates
 # the GET /health contract in-container: {"status":"ok","service":"<name>"}.
 set -u
+# Honors COMPOSE_PROJECT_NAME: it queries through `docker compose` of the same project
+# (make passes its own COMPOSE), so it never assumes the default project or ports.
 
 COMPOSE=${COMPOSE:-docker compose -f infra/compose/docker-compose.yml}
 SERVICES="postgres redis-core redis-edge banking-core orchestrator encoder"

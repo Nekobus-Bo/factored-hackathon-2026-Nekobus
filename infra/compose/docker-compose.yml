@@ -21,6 +21,9 @@
 # postgres and the Redis instances are not published to the host on purpose (they
 # collide with local installs). Use `docker compose exec postgres psql -U app bank`.
 
+# Several copies at once: set COMPOSE_PROJECT_NAME (overrides `name:` below) and
+# the PORT_* variables. Image tags are project-scoped so copies do not overwrite
+# each other's builds.
 name: pattern-blue
 
 x-app-healthcheck: &app-healthcheck
@@ -95,7 +98,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/banking-core/Dockerfile
-    image: pattern-blue/banking-core:dev
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     command: ["alembic", "-c", "apps/banking-core/alembic.ini", "upgrade", "head"]
     environment:
       POSTGRES_HOST: postgres
@@ -113,7 +116,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/banking-core/Dockerfile
-    image: pattern-blue/banking-core:dev
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     environment:
       PORT: "8081"
       APP_ENV: ${APP_ENV:-development}
@@ -155,7 +158,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/orchestrator/Dockerfile
-    image: pattern-blue/orchestrator:dev
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/orchestrator:dev
     environment:
       PORT: "8080"
       APP_ENV: ${APP_ENV:-development}
@@ -200,7 +203,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/encoder/Dockerfile
-    image: pattern-blue/encoder:dev
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/encoder:dev
     environment:
       PORT: "8090"
       APP_ENV: ${APP_ENV:-development}
