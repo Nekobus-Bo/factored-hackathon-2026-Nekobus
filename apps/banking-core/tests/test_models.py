@@ -131,3 +131,25 @@ def test_document_type_parity_with_contracts() -> None:
     }
     actual = {d.value for d in DocumentType}
     assert actual == expected
+
+
+def test_db_enum_values_match_contracts() -> None:
+    """Verify SQLAlchemy columns use the exact enum values from contracts."""
+    from contracts.tools.card_block import BlockReason as ContractsBlockReason
+    from contracts.tools.customer_match import DocumentType as ContractsDocumentType
+
+    # Verify model enums are identical to contracts
+    assert BlockReason is ContractsBlockReason
+    assert DocumentType is ContractsDocumentType
+
+    # Check Customer.document_type DB enum values
+    doc_type_col = Customer.__table__.c.document_type
+    doc_type_sa_enum = doc_type_col.type
+    expected_doc_types = [e.value for e in ContractsDocumentType]
+    assert sorted(doc_type_sa_enum.enums) == sorted(expected_doc_types)
+
+    # Check Card.blocked_reason DB enum values
+    card_reason_col = Card.__table__.c.blocked_reason
+    card_reason_sa_enum = card_reason_col.type
+    expected_block_reasons = [e.value for e in ContractsBlockReason]
+    assert sorted(card_reason_sa_enum.enums) == sorted(expected_block_reasons)
