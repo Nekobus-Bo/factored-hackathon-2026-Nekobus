@@ -12,6 +12,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY apps/orchestrator/pyproject.toml ./apps/orchestrator/pyproject.toml
+COPY packages/contracts ./packages/contracts
 
 RUN uv sync --frozen --no-install-project --no-dev --package orchestrator
 
