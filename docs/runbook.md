@@ -225,7 +225,7 @@ Test on a clean machine, with no Docker cache, before submitting:
 - [ ] The real output of `make smoke` matches section 6
 - [ ] `make seed` (⚠️ pending) fails with a clear message when the dataset is missing
 - [ ] `make eval` (⚠️ pending) in replay mode reproduces the numbers in `evaluation.md`
-- [ ] Tested on x86_64 and on arm64
+- [ ] Tested on x86_64 and on arm64 (`make build-multiarch` builds both; CI does it too. On Linux, install QEMU emulators first: `docker run --privileged --rm tonistiigi/binfmt --install all`)
 - [ ] Tested with no API key and with an invalid key
 - [ ] Every TODO in this document replaced with a real value
 - [ ] The private environment is up and the availability window is stated
