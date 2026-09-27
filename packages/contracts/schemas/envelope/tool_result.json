@@ -8,6 +8,8 @@
         "POLICY_FLAGGED",
         "RATE_LIMITED",
         "NOT_MATCHED",
+        "NOT_IMPLEMENTED",
+        "SESSION_BUSY",
         "INVALID_ARGUMENTS",
         "CODE_FLOOR_VIOLATION",
         "INTERNAL_ERROR"
