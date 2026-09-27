@@ -36,3 +36,26 @@ jobs:
       - name: Stop the stack
         if: always()
         run: make down
+
+  images:
+    name: image (${{ matrix.service }}, amd64 + arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [banking-core, orchestrator, encoder]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for linux/amd64 and linux/arm64 (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
