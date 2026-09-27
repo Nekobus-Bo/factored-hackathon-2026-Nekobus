@@ -1,3 +1,11 @@
+from contracts.blocks import (
+    BLOCK_TYPES,
+    MESSAGE_BLOCK_ADAPTER,
+    MODEL_EMITTABLE_BLOCK_TYPES,
+    MessageBlock,
+    ReceiptBlock,
+    TextBlock,
+)
 from contracts.encoder import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -29,6 +37,12 @@ from contracts.tools import (
 )
 
 __all__ = [
+    "BLOCK_TYPES",
+    "MESSAGE_BLOCK_ADAPTER",
+    "MODEL_EMITTABLE_BLOCK_TYPES",
+    "MessageBlock",
+    "ReceiptBlock",
+    "TextBlock",
     "CODE_FLOOR",
     "MUTATING_TOOLS",
     "AnalyzeRequest",

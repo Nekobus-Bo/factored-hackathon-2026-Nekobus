@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from contracts.blocks import MESSAGE_BLOCK_ADAPTER
 from contracts.encoder import AnalyzeRequest, AnalyzeResponse
 from contracts.envelope import Receipt, ToolCall, ToolResult
 from contracts.tools import TOOL_CATALOG
@@ -94,7 +95,16 @@ def export_schemas(output_dir: Path | str | None = None) -> dict[str, Path]:
         out_file.write_text(_to_deterministic_json(schema), encoding="utf-8")
         exported_files[f"encoder/{name}"] = out_file
 
-    # 4. Export catalog manifest
+    # 4. Export message blocks
+    blocks_dir = target_dir / "blocks"
+    blocks_dir.mkdir(parents=True, exist_ok=True)
+    block_file = blocks_dir / "message_block.json"
+    block_file.write_text(
+        _to_deterministic_json(MESSAGE_BLOCK_ADAPTER.json_schema()), encoding="utf-8"
+    )
+    exported_files["blocks/message_block"] = block_file
+
+    # 5. Export catalog manifest
     catalog_file = target_dir / "catalog.json"
     catalog_file.write_text(_to_deterministic_json(catalog_data), encoding="utf-8")
     exported_files["catalog"] = catalog_file
