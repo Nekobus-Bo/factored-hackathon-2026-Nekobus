@@ -53,14 +53,16 @@ In replay mode, a message with no recording returns an explicit "no recording fo
 
 ---
 
-## 4. Live mode
+## 4. Live mode (⚠️ pending)
+
+> ⚠️ **Pending:** Live mode is not functional yet; the orchestrator currently implements `/health` only.
 
 ```bash
 cp .env.example .env
 # edit .env and set:
 #   LLM_MODE=live
 #   LLM_API_KEY=<your key>
-make up  # ⚠️ pending
+make up
 ```
 
 The key we used is in the submission email, in case you prefer not to use your own. Provider and model are configurable in `.env`: the access layer is OpenAI-compatible, so any provider honoring that API works.
@@ -89,32 +91,33 @@ git clone <TODO-repo>
 cd <TODO-repo>
 cp .env.example .env    # only if you are going to use live mode
 
-make up                 # ⚠️ pending — services, migrations and model download
+make up                 # services (⚠️ pending: migrations and model download)
 make seed               # ⚠️ pending — seed the database
-make smoke              # ⚠️ pending — installation check
+make smoke              # installation check
 ```
 
 | Service | Local URL |
 |---|---|
-| Customer chat | http://localhost:5173 |
-| Agent back office & metrics | http://localhost:5174 |
+| Customer chat (⚠️ pending) | http://localhost:5173 |
+| Agent back office & metrics (⚠️ pending) | http://localhost:5174 |
 | Internal API (docs) | http://localhost:8081/docs |
+
+Backend containers include `postgres`, `banking-core`, `orchestrator`, `encoder`, and one Redis per trust zone ([ADR-0006](adr/0006-single-postgres-pgvector.md)): `redis-core` (internal network, used only by `banking-core`) and `redis-edge` (perimeter network, used by `orchestrator`).
 
 **Demo credentials:** in `.env.example`. They belong to a test environment with non-production data.
 
-> The first `make up` (⚠️ pending) downloads local model weights: **TODO minutes** depending on your connection, around TODO MB. Later runs come from cache. `make warmup` (⚠️ pending) preloads the models so the first turn does not pay the cold start.
+> The first `make up` downloads local model weights (⚠️ pending): **TODO minutes** depending on your connection, around TODO MB. Later runs come from cache. `make warmup` (⚠️ pending) preloads the models so the first turn does not pay the cold start.
 
-### What `make smoke` (⚠️ pending) should print
+### What `make smoke` should print
 
 ```
-✓ postgres        healthy
-✓ redis           healthy
-✓ banking-core    healthy   (migrations: TODO applied)
-✓ orchestrator    healthy
-✓ encoder         loaded    (TODO ms p95 over TODO test turns)
-✓ knowledge base  TODO snippets indexed
-✓ seeds           TODO customers, TODO cards, TODO transactions
-✓ end-to-end conversation  OK
+✓ postgres       healthy
+✓ redis-core     healthy
+✓ redis-edge     healthy
+✓ banking-core   healthy
+✓ orchestrator   healthy
+✓ encoder        healthy
+smoke: OK
 ```
 
 If anything comes up red, see section 10.
@@ -172,23 +175,23 @@ Deployment uses the same images as the local environment: there is no special pa
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | "no recording for this input" | You are in replay mode with a free-form message | Switch to live mode (section 4) or use the scripts in `demo/scripts/` |
-| `make up` (⚠️ pending) fails downloading models | No network or corrupted cache | `make clean-models && make up` (⚠️ pending) |
-| A `make` command does not exist | Not implemented yet | `make help` (⚠️ pending) lists the available ones |
+| `make up` fails downloading models (⚠️ pending) | No network or corrupted cache | `make clean-models` (⚠️ pending) `&& make up` |
+| A `make` command does not exist | Not implemented yet | `make help` lists the available ones |
 | Chat replies but takes no actions | `make seed` (⚠️ pending) was not run | Seed and retry |
 | `make seed` (⚠️ pending) fails with a contract error | Dataset missing or schema mismatch | See section 5; the message names the exact field |
 | High latency on the first turn | Encoder cold start | Normal. `make warmup` (⚠️ pending) avoids it |
 | Port already in use | Another local service on the same port | Change ports in `.env` |
 | Encoder container keeps restarting | Less than 4 GB RAM available | Raise Docker's memory limit |
-| `make smoke` (⚠️ pending) fails at the verification step | Outbound email not configured | Use the simulated mode in `.env.example` |
+| `make smoke` fails | A service is unhealthy or not running | Run `make logs s=<service>` to inspect |
 | Back office does not update live | WebSocket blocked by a proxy | Check the reverse proxy |
 | No provider response in live mode | Invalid key or exhausted quota | Check `.env`. The system degrades to an unavailability message: **it does not invent responses** |
 | Image will not start on Apple Silicon | Wrong architecture build | Report it: images are multi-arch and that would be our bug |
 
 ```bash
-make logs                  # ⚠️ pending — logs from all services
-make logs s=banking-core   # ⚠️ pending — from one
-make down                  # ⚠️ pending — stop
-make clean                 # ⚠️ pending — stop and drop volumes (destroys seeded data)
+make logs                  # logs from all services
+make logs s=banking-core   # from one
+make down                  # stop
+make clean                 # stop and drop volumes (destroys seeded data)
 ```
 
 ---
@@ -206,7 +209,7 @@ Test on a clean machine, with no Docker cache, before submitting:
 - [ ] `git clone` + `make demo` (⚠️ pending) works with no `.env` and no key
 - [ ] Every command mentioned in this document exists in the `Makefile`
 - [ ] Every URL in section 6 responds
-- [ ] The real output of `make smoke` (⚠️ pending) matches section 6
+- [ ] The real output of `make smoke` matches section 6
 - [ ] `make seed` (⚠️ pending) fails with a clear message when the dataset is missing
 - [ ] `make eval` (⚠️ pending) in replay mode reproduces the numbers in `evaluation.md`
 - [ ] Tested on x86_64 and on arm64
