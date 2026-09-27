@@ -1,6 +1,6 @@
 # ADR-0006: A single PostgreSQL with pgvector, plus Redis
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-26 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
@@ -53,6 +53,15 @@ At our scale the bottleneck is LLM latency, not vector search. Optimizing the ve
 **Becomes harder:** isolating workloads — a heavy report can affect the transactional path until there is a replica.
 
 **To revisit:** if hybrid search does not beat BM25 alone, the vector component is removed and that is documented. We do not keep parts that fail to earn their place in the measurement.
+
+## Amendment (2026-09-26): one Redis per trust zone
+
+The single Redis in the decision above is split in two, following the trust boundary of [ADR-0004](0004-trust-boundary.md):
+
+- **`redis-core`** — used only by `banking-core`: pinned account holder, FSM state, attempt limits, idempotency keys. Lives on the internal `core` network together with `postgres`.
+- **`redis-edge`** — used only by `orchestrator`: chat session and cache. Lives on the `edge` network.
+
+**Why:** with one shared, unauthenticated Redis, a compromised `orchestrator` could rewrite the pinned holder or reset OTP and match counters, which voids the boundary. Each Redis has its own password, and the `orchestrator` has no network path to `postgres` or `redis-core`. This is still one engine to operate; the cost is a second container.
 
 ## Action items
 
