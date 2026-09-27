@@ -1,0 +1,164 @@
+# ADR-0010: Model selection and calibration harness for decision and embedding models
+
+**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+
+## Context
+
+The system relies on three distinct model capabilities:
+1. **Decision and extraction:** intent classification, slot extraction, and PII detection.
+2. **Knowledge retrieval:** hybrid search (lexical + dense embeddings) over banking policies.
+3. **Conversational orchestration and tool calling:** multi-turn dialogue, reasoning, and tool dispatching.
+
+Per [ADR-0001](0001-cheap-llm-specialized-encoder.md), [ADR-0003](0003-deterministic-vs-ai.md), and [ADR-0008](0008-cpu-inference-deployment.md), the conversational layer delegates to an external LLM, while the decision and retrieval components must run locally on CPU within strict latency, memory, and calibration constraints. 
+
+A critical project requirement is that decisions must not rely on ungrounded guesswork: when model confidence is insufficient, the system must deterministically abstain or ask for clarification. This requires an empirically calibrated threshold $\tau$. Furthermore, candidate models must be chosen based on measured performance rather than subjective assumptions.
+
+Ad-hoc evaluation scripts, scattered Jupyter notebooks, or opaque external platforms create reproducibility gaps and obscure how models and thresholds were selected. We need a disciplined, reproducible harness to evaluate, calibrate, and select local models before integrating them into the runtime services.
+
+## Decision
+
+We establish a single, unified calibration harness for local decision and embedding models:
+- **Concept:** Candidate models $\times$ fixed data splits $\to$ one unified metrics table in `reports/` (`reports/calibration-<task>-<date>.md`).
+- **Unified interface:** One command per task:
+  - `make calibrate TASK=decision` (⚠️ pending)
+  - `make calibrate TASK=embedding` (⚠️ pending)
+- **Configuration-driven:** A configuration file lists candidate models, evaluation splits, and mode (`zeroshot` | `finetune`).
+
+### 1. Decision model evaluation & calibration
+
+- **Candidates:** GLiNER2.5 multilingual (~0.3B) as primary zero-shot candidate, alternative lightweight transformer encoders, and fine-tuned variants.
+- **Baseline:** Always evaluated against a classic deterministic baseline: TF-IDF + Logistic Regression.
+- **Metrics (reported per language: Spanish and Portuguese):**
+  - Macro-F1
+  - Per-class precision
+  - Expected Calibration Error (ECE)
+  - Coverage at $\tau$
+  - Selected threshold $\tau$
+  - p95 CPU latency (ms)
+  - Memory consumption (RAM in MB)
+- **Threshold calibration rule:** The abstention threshold $\tau$ is chosen to maximize coverage subject to a minimum per-class precision constraint ($P_{\min}$). Calibration is performed strictly on the **validation split**, never on the test split. Below $\tau$, the system asks for clarification.
+
+### 2. Embedding model evaluation
+
+- **Candidates:** Multilingual dense bi-encoders (e.g., MiniLM, BGE, E5 variants) evaluated in zero-shot and fine-tuned modes.
+- **Baseline:** Always evaluated against BM25 lexical retrieval.
+- **Metrics (reported per language: Spanish and Portuguese):**
+  - Hit@k ($k \in \{1, 3, 5\}$)
+  - Mean Reciprocal Rank (MRR)
+  - Cross-language retrieval score (Spanish query $\to$ Portuguese policy, and vice-versa)
+  - p95 CPU latency (ms)
+  - Memory consumption (RAM in MB)
+- **Selection rule:** Per [ADR-0006](0006-single-postgres-pgvector.md), dense embedding models are adopted only if hybrid search demonstrates a measurable improvement over BM25 at operational scale.
+
+### 3. Fine-tuning protocol & training hardware
+
+- Fine-tuning is executed as a mode of the calibration command (`mode: finetune`).
+- **Offline execution (amending ADR-0008):** Fine-tuning runs offline on an Apple Silicon Mac using Metal Performance Shaders (MPS) for training acceleration, amending [ADR-0008](0008-cpu-inference-deployment.md) which originally anticipated a temporary GPU environment.
+- **CPU runtime benchmark:** Irrespective of training acceleration, all latency and RAM measurements are strictly collected on CPU within standard Linux container environments to match runtime deployment conditions ([ADR-0008](0008-cpu-inference-deployment.md)).
+- **Gap-driven fine-tuning:** Fine-tuning is pursued only when zero-shot performance leaves a distinct gap against project targets. For embeddings, synthetic training pairs carry domain noise; BM25 baseline may prove sufficient without embedding fine-tuning.
+
+### 4. Data splits and test set integrity
+
+- Only synthetic data and human-written test sets live in `data/eval/synthetic/` (versioned in Git). Anything derived from the organization's dataset stays in `data/eval/` (ignored). The reproducible `make calibrate` run uses only the synthetic splits.
+- **Human-written test sets:** Evaluation test sets must be written by humans, and must never be generated by the model or script producing synthetic training data.
+- Leakage prevention: Splits are partitioned strictly by conversation, preventing conversation leakage between train, validation, and test splits ([data.md](../data.md)). Synthetic data has no real timestamps, so the by-date split applies only to data from the organization's dataset.
+
+### 5. Weights management & versioning
+
+- Model weights are excluded from Git repository history (`packages/encoder/weights/` and `packages/retrieval/weights/` are in `.gitignore`).
+- At project completion, selected weights are published to a model hub or release asset, referenced deterministically by model identifier and SHA-256 content hash. This resolves the requirement in [ADR-0008](0008-cpu-inference-deployment.md) that weights remain versioned and auditable without bloating repository history.
+
+### 6. Out of scope on purpose
+
+- Experiment tracking platforms (e.g., MLflow, Weights & Biases) — unnecessary overhead for a 9-day development scope.
+- Interactive user interfaces or evaluation web dashboards.
+- Automated hyperparameter search (Ray Tune, Optuna) or distributed training clusters.
+
+### 7. Conversational LLM selection (distinct from this harness)
+
+Conversational LLM selection is decoupled from the encoder calibration harness:
+- **Default model:** DeepSeek V4 Flash 0731.
+- **Alternative candidates:** DeepSeek V4.1 Flash and GPT 6 Luna.
+- **Evaluation framework:** Evaluated using the multi-turn scenario evaluation runner (`make eval` ⚠️ pending, documented in [evaluation.md](../evaluation.md)), not this calibration harness.
+- **Criteria (broken down per language):** Tool-call correctness, rate of unsafe outcomes ([evaluation.md](../evaluation.md) §3 taxonomy), cost per conversation, and p95 end-to-end turn latency.
+
+## Options considered
+
+### Option A: Ad-hoc Jupyter notebooks
+
+| Dimension | Assessment |
+|---|---|
+| Complexity | Low |
+| Reproducibility | Poor: hidden execution states, non-standard outputs |
+| Automation | Difficult to invoke via CLI or CI |
+| Auditability | Weak |
+
+**Pros:** Quick exploratory experimentation.  
+**Cons:** Outputs scatter across different runs, execution cells can run out of order, and results cannot be seamlessly committed to `reports/` as versioned evidence.
+
+### Option B: Full MLOps platform (MLflow / W&B)
+
+| Dimension | Assessment |
+|---|---|
+| Complexity | High |
+| Reproducibility | High |
+| Automation | Good |
+| Auditability | High |
+
+**Pros:** Rich visualization, automated metric tracking, artifact logging.  
+**Cons:** Requires deploying tracking servers, databases, and authentication; massive overhead for a 9-day timeline where simple versioned Markdown reports suffice.
+
+### Option C: Separate evaluation scripts per model family
+
+| Dimension | Assessment |
+|---|---|
+| Complexity | Medium |
+| Reproducibility | Medium |
+| Automation | Moderate |
+| Auditability | Poor: divergent metrics |
+
+**Pros:** Minimal coordination between encoder and retriever evaluation.  
+**Cons:** Duplicates evaluation logic, risks divergent metric definitions, and complicates automated summary generation in `reports/`.
+
+### Option D (chosen): Single unified CLI calibration harness
+
+| Dimension | Assessment |
+|---|---|
+| Complexity | Medium |
+| Reproducibility | High: fixed CLI command and deterministic seeds |
+| Automation | Excellent: `make calibrate TASK=...` (⚠️ pending) |
+| Auditability | High: writes directly to versioned `reports/` |
+
+**Pros:** Consistent metric definitions, unified reporting structure, seamless execution inside containerized environments, direct integration with project Make targets.  
+**Cons:** Requires implementing unified adapter interfaces for each candidate model family.
+
+## Trade-off analysis
+
+The primary decision axis is **reproducibility and auditability vs. tooling overhead**. While interactive notebooks are simpler initially, they do not provide the auditable, repeatable evidence required to defend threshold selection and model choices to reviewers. 
+
+Conversely, heavyweight MLOps platforms introduce operational fragility and consume time better spent on domain evaluation. A lightweight, configuration-driven CLI harness writing structured Markdown tables directly to `reports/` delivers complete auditability with zero external infrastructure dependencies.
+
+## Consequences
+
+**Becomes easier:**
+- Defending the abstention threshold $\tau$ with reproducible calibration curves.
+- Comparing zero-shot models against traditional baselines (TF-IDF and BM25) and fine-tuned alternatives under identical evaluation conditions.
+- Benchmarking CPU latency and memory limits in containerized runtimes prior to service deployment.
+- Verifying whether dense retrieval actually justifies its resource overhead compared to BM25.
+
+**Becomes harder:**
+- Every candidate model must implement a standardized adapter interface for scoring and entity prediction.
+- Offline fine-tuning workflows require manual management and hash-pinning of model artifacts.
+
+**To revisit:**
+- If zero-shot GLiNER2.5 meets the macro-F1 and per-class precision targets across Spanish and Portuguese, fine-tuning is skipped to avoid model complexity.
+- If BM25 matches or exceeds dense embeddings on retrieval Hit@k and MRR, pgvector embeddings are omitted per [ADR-0006](0006-single-postgres-pgvector.md).
+
+## Action items
+
+1. [ ] Implement calibration CLI harness under `tools/` with entry point `make calibrate TASK=decision|embedding` (⚠️ pending)
+2. [ ] Integrate TF-IDF + Logistic Regression baseline for decision task
+3. [ ] Integrate BM25 baseline for retrieval task
+4. [ ] Implement validation-based $\tau$ threshold optimizer (max coverage @ min precision)
+5. [ ] Provide configuration files defining model candidates and data splits
+6. [ ] Execute initial benchmarks and generate baseline reports in `reports/`

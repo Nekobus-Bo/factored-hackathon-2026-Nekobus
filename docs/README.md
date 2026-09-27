@@ -39,5 +39,6 @@ In this order, about 15 minutes:
 | [0007](adr/0007-no-llm-biometrics.md) | No LLM-based biometric verification | Accepted |
 | [0008](adr/0008-cpu-inference-deployment.md) | CPU inference and private-environment deployment | Accepted |
 | [0009](adr/0009-monorepo-structure.md) | Monorepo structure and service names | Accepted |
+| [0010](adr/0010-model-selection-calibration-harness.md) | Model selection and calibration harness | Accepted |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.
