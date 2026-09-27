@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Start the stack with no .env (defaults only)
+        run: make up
+
+      - name: Smoke
+        run: make smoke
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f infra/compose/docker-compose.yml logs --tail=200
+
+      - name: Stop the stack
+        if: always()
+        run: make down
