@@ -195,6 +195,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BANKING_CORE_URL: ${BANKING_CORE_URL:-http://banking-core:8081}
       ENCODER_URL: ${ENCODER_URL:-http://encoder:8090}
+      ENCODER_ENABLED: ${ENCODER_ENABLED:-true}
+      ENCODER_TIMEOUT_SECONDS: ${ENCODER_TIMEOUT_SECONDS:-2}
+      MAX_TOOL_ROUNDS: ${MAX_TOOL_ROUNDS:-5}
       REDIS_HOST: redis-edge
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:-dev-only-regenerate-edge-redis}
