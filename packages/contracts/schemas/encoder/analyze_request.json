@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "description": "Input contract for POST /v1/analyze.",
+  "properties": {
+    "lang": {
+      "anyOf": [
+        {
+          "enum": [
+            "es",
+            "pt",
+            "en"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional language code (es, pt, en)",
+      "title": "Lang"
+    },
+    "text": {
+      "description": "Customer input text to analyze",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "AnalyzeRequest",
+  "type": "object"
+}

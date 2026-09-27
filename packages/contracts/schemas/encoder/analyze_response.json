@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "PiiSpan": {
+      "additionalProperties": false,
+      "description": "Detected PII span.",
+      "properties": {
+        "end": {
+          "description": "Character end index in source text",
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "description": "Character start index in source text",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "type": {
+          "$ref": "#/$defs/PiiType",
+          "description": "PII category matching orchestrator placeholders"
+        }
+      },
+      "required": [
+        "type",
+        "start",
+        "end"
+      ],
+      "title": "PiiSpan",
+      "type": "object"
+    },
+    "PiiType": {
+      "description": "PII category types matching orchestrator masking placeholders.",
+      "enum": [
+        "DOC",
+        "NAME",
+        "PHONE",
+        "EMAIL",
+        "CARD",
+        "DATE",
+        "OTP"
+      ],
+      "title": "PiiType",
+      "type": "string"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "description": "Extracted named entity slot.",
+      "properties": {
+        "end": {
+          "description": "Character end index in source text",
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "normalized": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional normalized representation of the slot value",
+          "title": "Normalized"
+        },
+        "start": {
+          "description": "Character start index in source text",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "type": {
+          "$ref": "#/$defs/SlotType",
+          "description": "Slot entity type matching schema.yaml"
+        },
+        "value": {
+          "description": "Extracted slot value",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "value",
+        "start",
+        "end"
+      ],
+      "title": "Slot",
+      "type": "object"
+    },
+    "SlotType": {
+      "description": "Slot entity types matching schema.yaml.",
+      "enum": [
+        "document_type",
+        "document_number",
+        "full_name",
+        "birth_date",
+        "email",
+        "phone",
+        "card_last4",
+        "card_number",
+        "amount",
+        "currency",
+        "merchant",
+        "transaction_date",
+        "otp_code"
+      ],
+      "title": "SlotType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Output contract for POST /v1/analyze.",
+  "properties": {
+    "abstain": {
+      "description": "True if confidence is below the abstention threshold",
+      "title": "Abstain",
+      "type": "boolean"
+    },
+    "confidence": {
+      "description": "Confidence score for the predicted intent",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "intent": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Predicted customer intent, or null if abstaining",
+      "title": "Intent"
+    },
+    "latency_ms": {
+      "description": "Processing latency in milliseconds",
+      "minimum": 0.0,
+      "title": "Latency Ms",
+      "type": "number"
+    },
+    "model_id": {
+      "description": "Identifier of the model used for inference",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Model Id",
+      "type": "string"
+    },
+    "pii_spans": {
+      "description": "List of detected PII spans",
+      "items": {
+        "$ref": "#/$defs/PiiSpan"
+      },
+      "title": "Pii Spans",
+      "type": "array"
+    },
+    "slots": {
+      "description": "List of extracted entity slots",
+      "items": {
+        "$ref": "#/$defs/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+    }
+  },
+  "required": [
+    "confidence",
+    "abstain",
+    "model_id",
+    "latency_ms"
+  ],
+  "title": "AnalyzeResponse",
+  "type": "object"
+}

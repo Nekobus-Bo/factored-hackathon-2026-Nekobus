@@ -1,5 +1,9 @@
-"""Pattern Blue Contracts Package."""
-
+from contracts.encoder import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    PiiSpan,
+    Slot,
+)
 from contracts.envelope import (
     MUTATING_TOOLS,
     WRITE_TOOLS,
@@ -12,6 +16,11 @@ from contracts.envelope import (
     VerificationState,
 )
 from contracts.export_schemas import export_schemas
+from contracts.labels import (
+    Intent,
+    PiiType,
+    SlotType,
+)
 from contracts.tools import (
     CODE_FLOOR,
     TOOL_CATALOG,
@@ -22,9 +31,16 @@ from contracts.tools import (
 __all__ = [
     "CODE_FLOOR",
     "MUTATING_TOOLS",
+    "AnalyzeRequest",
+    "AnalyzeResponse",
+    "Intent",
+    "PiiSpan",
+    "PiiType",
     "Receipt",
     "ReasonCode",
     "ResourceState",
+    "Slot",
+    "SlotType",
     "TOOL_CATALOG",
     "ToolCall",
     "ToolDefinition",

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from contracts.encoder import AnalyzeRequest, AnalyzeResponse
 from contracts.envelope import Receipt, ToolCall, ToolResult
 from contracts.tools import TOOL_CATALOG
 
@@ -78,7 +79,22 @@ def export_schemas(output_dir: Path | str | None = None) -> dict[str, Path]:
             "output_schema_file": f"tools/{normalized_name}.output.json",
         }
 
-    # 3. Export catalog manifest
+    # 3. Export encoder schemas
+    encoder_dir = target_dir / "encoder"
+    encoder_dir.mkdir(parents=True, exist_ok=True)
+
+    encoder_models = {
+        "analyze_request": AnalyzeRequest,
+        "analyze_response": AnalyzeResponse,
+    }
+
+    for name, model_cls in sorted(encoder_models.items()):
+        schema = model_cls.model_json_schema()
+        out_file = encoder_dir / f"{name}.json"
+        out_file.write_text(_to_deterministic_json(schema), encoding="utf-8")
+        exported_files[f"encoder/{name}"] = out_file
+
+    # 4. Export catalog manifest
     catalog_file = target_dir / "catalog.json"
     catalog_file.write_text(_to_deterministic_json(catalog_data), encoding="utf-8")
     exported_files["catalog"] = catalog_file
