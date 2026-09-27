@@ -5,11 +5,16 @@ import logging
 from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 
+from banking_core.api import dev_router, sessions_router, tools_router
 from banking_core.control.config import get_control_config_repository
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="banking-core")
+
+app.include_router(sessions_router)
+app.include_router(tools_router)
+app.include_router(dev_router)
 
 
 class HealthResponse(BaseModel):

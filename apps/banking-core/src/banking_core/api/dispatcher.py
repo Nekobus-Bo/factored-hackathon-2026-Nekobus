@@ -1,0 +1,532 @@
+"""Tool execution dispatcher for banking-core.
+
+Coordinates the end-to-end tool execution pipeline:
+0. Per-session lock: the whole dispatch (read session, execute, save) is serialized
+1. Input validation & IDOR check (validate_no_holder_tampering)
+2. Records verification_state_before for audit trail
+3. Authorizer evaluation (FSM + Matrix + Policy + Rate limits)
+4. Idempotency store deduplication for state-mutating tools (scope strictly required)
+5. Tool execution & FSM state mutation
+6. Tamper-evident audit logging with PII safety
+7. Return contracts.envelope.ToolResult envelope
+"""
+
+import logging
+import os
+from typing import Any
+
+from contracts.envelope import (
+    ReasonCode,
+    ToolCall,
+    ToolResult,
+    ToolResultStatus,
+)
+from contracts.tools import TOOL_CATALOG
+from contracts.tools.customer_match import CustomerMatchInput
+from contracts.tools.identity_verify_document import IdentityVerifyDocumentInput
+from contracts.tools.otp_send import OtpSendInput
+from contracts.tools.otp_verify import OtpVerifyInput
+from sqlalchemy.orm import Session
+
+from banking_core.audit.service import append as append_audit
+from banking_core.control.authorize import Authorizer
+from banking_core.control.config import (
+    ControlConfigRepository,
+    get_control_config_repository,
+)
+from banking_core.control.fsm import VerificationFSM
+from banking_core.control.policy import PolicyConfig
+from banking_core.control.session import (
+    RedisSessionStore,
+    SessionState,
+    validate_no_holder_tampering,
+)
+from banking_core.idempotency.service import get_or_run
+from banking_core.identity.challenge_store import (
+    OtpChallengeStore,
+    get_challenge_store,
+)
+from banking_core.identity.config import IdentityConfig
+from banking_core.identity.ports import OtpDeliveryPort, get_delivery_port
+from banking_core.identity.tools import (
+    NoOtpChannelError,
+    execute_customer_match,
+    execute_identity_verify_document,
+    execute_otp_send,
+    execute_otp_verify,
+)
+
+logger = logging.getLogger(__name__)
+
+# Catalog tools with an implementation behind this dispatcher. The rest are
+# refused with NOT_IMPLEMENTED until they are wired.
+WIRED_TOOLS: frozenset[str] = frozenset(
+    {"customer.match", "identity.verify_document", "otp.send", "otp.verify"}
+)
+
+
+class SessionNotFoundError(LookupError):
+    """Raised when the X-Session-Id does not resolve to a live session."""
+
+
+def _format_audit_id(entry: Any) -> str:
+    """Format audit entry reference to satisfy Receipt audit_id constraints.
+
+    Requires at least 8 characters.
+    """
+    if hasattr(entry, "id") and isinstance(entry.id, int):
+        return f"aud_{entry.id:08d}"
+    eid = str(getattr(entry, "id", ""))
+    return eid if len(eid) >= 8 else f"aud_{eid.zfill(8)}"
+
+
+class ToolDispatcher:
+    """Central dispatcher for banking-core /v1/tools/call endpoint."""
+
+    def __init__(
+        self,
+        session_store: RedisSessionStore,
+        config_repo: ControlConfigRepository | None = None,
+        authorizer: Authorizer | None = None,
+        identity_config: IdentityConfig | None = None,
+        delivery_port: OtpDeliveryPort | None = None,
+        challenge_store: OtpChallengeStore | None = None,
+        lock_ttl_ms: int | None = None,
+        lock_wait_ms: int | None = None,
+    ) -> None:
+        self.session_store = session_store
+        # DB-backed by default (ADR-0002); InMemory only via explicit injection.
+        self.config_repo = config_repo or get_control_config_repository()
+        self.authorizer = authorizer or Authorizer(config_repo=self.config_repo)
+        self.identity_config = identity_config or IdentityConfig.from_env()
+        self.delivery_port = delivery_port or get_delivery_port()
+        self.challenge_store = challenge_store or get_challenge_store()
+        self.lock_ttl_ms = (
+            lock_ttl_ms
+            if lock_ttl_ms is not None
+            else int(os.getenv("SESSION_LOCK_TTL_MS", "10000"))
+        )
+        self.lock_wait_ms = (
+            lock_wait_ms
+            if lock_wait_ms is not None
+            else int(os.getenv("SESSION_LOCK_WAIT_MS", "2000"))
+        )
+
+    def _resolve_policy_config(self) -> PolicyConfig:
+        """Single entry point for policy configuration used during execution."""
+        return self.config_repo.get_policy_config()
+
+    def _refuse(
+        self,
+        tool_call: ToolCall,
+        session_id: str,
+        reason_code: ReasonCode,
+        db_session: Session,
+        payload: dict[str, Any],
+    ) -> ToolResult:
+        """Audit a refused call and return the refusal envelope."""
+        try:
+            append_audit(
+                session=db_session,
+                actor_type="customer_session",
+                actor_ref=session_id,
+                action=tool_call.tool,
+                decision="refused",
+                reason_code=reason_code.value,
+                payload=payload,
+            )
+            db_session.commit()
+        except Exception as e:
+            logger.warning("Failed to record audit log for refused call: %s", e)
+            db_session.rollback()
+
+        return ToolResult(
+            tool=tool_call.tool,
+            status=ToolResultStatus.REFUSED,
+            reason_code=reason_code,
+            data=None,
+        )
+
+    def dispatch_in_session(
+        self,
+        tool_call: ToolCall,
+        session_id: str,
+        db_session: Session,
+    ) -> ToolResult:
+        """Load the session and dispatch under its exclusive lock.
+
+        A call that cannot take the lock within lock_wait_ms is refused with
+        SESSION_BUSY, which the caller may retry.
+
+        Raises:
+            SessionNotFoundError: If the session does not exist or expired.
+        """
+        with self.session_store.lock(
+            session_id, ttl_ms=self.lock_ttl_ms, wait_ms=self.lock_wait_ms
+        ) as acquired:
+            if not acquired:
+                return self._refuse(
+                    tool_call,
+                    session_id,
+                    ReasonCode.SESSION_BUSY,
+                    db_session,
+                    payload={"reason": "session_lock_busy"},
+                )
+            session = self.session_store.get(session_id)
+            if session is None:
+                raise SessionNotFoundError(session_id)
+            return self.dispatch(tool_call, session, db_session)
+
+    def dispatch(
+        self,
+        tool_call: ToolCall,
+        session: SessionState,
+        db_session: Session,
+    ) -> ToolResult:
+        """Process and execute a ToolCall.
+
+        Callers must hold the session lock (see dispatch_in_session).
+        """
+        # 1. Enforce ADR-0004 IDOR mitigation: no holder tampering in args
+        try:
+            validate_no_holder_tampering(tool_call.args)
+        except ValueError:
+            return ToolResult(
+                tool=tool_call.tool,
+                status=ToolResultStatus.REFUSED,
+                reason_code=ReasonCode.INVALID_ARGUMENTS,
+                data=None,
+            )
+
+        # 2. Capture session verification state BEFORE execution (required for U1 check)
+        verification_state_before = session.state.value
+
+        # 3. Deterministic authorization (FSM + Matrix + Policy + per-session limits)
+        decision = self.authorizer.authorize(tool_call=tool_call, session=session)
+
+        if not decision.allowed:
+            return self._refuse(
+                tool_call,
+                session.session_id,
+                decision.reason_code or ReasonCode.POLICY_BLOCKED,
+                db_session,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": session.state.value,
+                    "flags": decision.flags,
+                },
+            )
+
+        if tool_call.tool not in WIRED_TOOLS:
+            return self._refuse(
+                tool_call,
+                session.session_id,
+                ReasonCode.NOT_IMPLEMENTED,
+                db_session,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": session.state.value,
+                },
+            )
+
+        # 4. Resolve policy & FSM for execution (fail closed if config is gone)
+        try:
+            policy_config = self._resolve_policy_config()
+        except Exception as exc:
+            logger.error(
+                "Policy configuration unavailable for tool '%s': %s: %s",
+                tool_call.tool,
+                type(exc).__name__,
+                exc,
+            )
+            return self._refuse(
+                tool_call,
+                session.session_id,
+                ReasonCode.INTERNAL_ERROR,
+                db_session,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": session.state.value,
+                    "flags": ["POLICY_CONFIG_UNAVAILABLE"],
+                },
+            )
+        fsm = VerificationFSM.from_config(policy_config)
+
+        tool_def = TOOL_CATALOG.get(tool_call.tool)
+        if tool_def is None:
+            return ToolResult(
+                tool=tool_call.tool,
+                status=ToolResultStatus.REFUSED,
+                reason_code=ReasonCode.INVALID_ARGUMENTS,
+                data=None,
+            )
+
+        # 5. Handle tools: mutating vs non-mutating
+        if tool_def.mutates_state:
+            # Mutating tool requires idempotency key and session-scoped execution
+            if not tool_call.idempotency_key:
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.REFUSED,
+                    reason_code=ReasonCode.INVALID_ARGUMENTS,
+                    data=None,
+                )
+
+            def runner() -> dict[str, Any]:
+                return self._execute_mutating_tool(
+                    tool_name=tool_call.tool,
+                    tool_args=tool_call.args,
+                    session=session,
+                    fsm=fsm,
+                    policy_config=policy_config,
+                    db_session=db_session,
+                    verification_state_before=verification_state_before,
+                )
+
+            try:
+                result_data, was_replayed = get_or_run(
+                    session=db_session,
+                    key=tool_call.idempotency_key,
+                    tool=tool_call.tool,
+                    args=tool_call.args,
+                    runner=runner,
+                    scope=session.session_id,
+                    require_scope=True,
+                    ttl_seconds=policy_config.session_ttl_seconds,
+                )
+                if was_replayed:
+                    # Write audit row recording replayed call
+                    append_audit(
+                        session=db_session,
+                        actor_type="customer_session",
+                        actor_ref=session.session_id,
+                        action=tool_call.tool,
+                        decision="allowed",
+                        reason_code=None,
+                        payload={
+                            "verification_state_before": verification_state_before,
+                            "state_after": session.state.value,
+                            "replayed": True,
+                        },
+                    )
+                db_session.commit()
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.OK,
+                    data=result_data,
+                )
+            except NoOtpChannelError:
+                db_session.rollback()
+                append_audit(
+                    session=db_session,
+                    actor_type="customer_session",
+                    actor_ref=session.session_id,
+                    action=tool_call.tool,
+                    decision="refused",
+                    reason_code=ReasonCode.POLICY_BLOCKED.value,
+                    payload={
+                        "verification_state_before": verification_state_before,
+                        "state_after": session.state.value,
+                        "reason": "no_registered_otp_channel",
+                    },
+                )
+                db_session.commit()
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.REFUSED,
+                    reason_code=ReasonCode.POLICY_BLOCKED,
+                    data=None,
+                )
+            except Exception as exc:
+                db_session.rollback()
+                logger.error(
+                    "Error executing mutating tool '%s': %s",
+                    tool_call.tool,
+                    exc,
+                )
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.ERROR,
+                    reason_code=ReasonCode.INTERNAL_ERROR,
+                    data=None,
+                )
+
+        else:
+            # Non-mutating tool (customer.match, identity.verify_document)
+            try:
+                result_data = self._execute_read_tool(
+                    tool_name=tool_call.tool,
+                    tool_args=tool_call.args,
+                    session=session,
+                    fsm=fsm,
+                    policy_config=policy_config,
+                    db_session=db_session,
+                    verification_state_before=verification_state_before,
+                )
+                db_session.commit()
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.OK,
+                    data=result_data,
+                )
+            except Exception as exc:
+                db_session.rollback()
+                logger.error("Error executing read tool '%s': %s", tool_call.tool, exc)
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.ERROR,
+                    reason_code=ReasonCode.INTERNAL_ERROR,
+                    data=None,
+                )
+
+    def _execute_mutating_tool(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        session: SessionState,
+        fsm: VerificationFSM,
+        policy_config: PolicyConfig,
+        db_session: Session,
+        verification_state_before: str,
+    ) -> dict[str, Any]:
+        """Execute a state-mutating tool (otp.send, otp.verify)."""
+        if tool_name == "otp.send":
+            input_args = OtpSendInput.model_validate(tool_args)
+            output, updated_session = execute_otp_send(
+                db_session=db_session,
+                args=input_args,
+                session=session,
+                fsm=fsm,
+                delivery_port=self.delivery_port,
+                challenge_store=self.challenge_store,
+                ttl_seconds=policy_config.otp_ttl_seconds,
+            )
+            self.session_store.save(updated_session)
+
+            audit_entry = append_audit(
+                session=db_session,
+                actor_type="customer_session",
+                actor_ref=session.session_id,
+                action=tool_name,
+                decision="allowed",
+                reason_code=None,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": updated_session.state.value,
+                    "challenge_id": output.challenge_id,
+                    "channel": output.channel.value,
+                    "destination_masked": output.destination_masked,
+                },
+            )
+            db_session.flush()
+
+            data_dict = output.model_dump(mode="json")
+            data_dict["receipt"]["audit_id"] = _format_audit_id(audit_entry)
+            return data_dict
+
+        elif tool_name == "otp.verify":
+            input_args = OtpVerifyInput.model_validate(tool_args)
+            output, updated_session = execute_otp_verify(
+                args=input_args,
+                session=session,
+                fsm=fsm,
+                challenge_store=self.challenge_store,
+            )
+            self.session_store.save(updated_session)
+
+            audit_entry = append_audit(
+                session=db_session,
+                actor_type="customer_session",
+                actor_ref=session.session_id,
+                action=tool_name,
+                decision="allowed",
+                reason_code=None,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": updated_session.state.value,
+                    "verified": output.verified,
+                    "attempts_remaining": output.attempts_remaining,
+                },
+            )
+            db_session.flush()
+
+            data_dict = output.model_dump(mode="json")
+            data_dict["receipt"]["audit_id"] = _format_audit_id(audit_entry)
+            return data_dict
+
+        raise NotImplementedError(f"Mutating tool '{tool_name}' is not implemented")
+
+    def _execute_read_tool(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        session: SessionState,
+        fsm: VerificationFSM,
+        policy_config: PolicyConfig,
+        db_session: Session,
+        verification_state_before: str,
+    ) -> dict[str, Any]:
+        """Execute a read/non-mutating tool (customer.match,
+        identity.verify_document).
+        """
+        if tool_name == "customer.match":
+            input_args = CustomerMatchInput.model_validate(tool_args)
+            output, matched_customer_id = execute_customer_match(
+                db_session=db_session,
+                args=input_args,
+                identity_config=self.identity_config,
+            )
+
+            # Update FSM with match outcome
+            if output.matched and matched_customer_id:
+                updated_session = fsm.on_customer_match(
+                    session=session,
+                    matched=True,
+                    holder_id=matched_customer_id,
+                )
+            else:
+                updated_session = fsm.on_customer_match(
+                    session=session,
+                    matched=False,
+                )
+            self.session_store.save(updated_session)
+
+            append_audit(
+                session=db_session,
+                actor_type="customer_session",
+                actor_ref=session.session_id,
+                action=tool_name,
+                decision="allowed",
+                reason_code=None,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": updated_session.state.value,
+                    "matched": output.matched,
+                },
+            )
+            return output.model_dump(mode="json")
+
+        elif tool_name == "identity.verify_document":
+            input_args = IdentityVerifyDocumentInput.model_validate(tool_args)
+            output = execute_identity_verify_document(
+                args=input_args,
+                session=session,
+            )
+
+            append_audit(
+                session=db_session,
+                actor_type="customer_session",
+                actor_ref=session.session_id,
+                action=tool_name,
+                decision="allowed",
+                reason_code=None,
+                payload={
+                    "verification_state_before": verification_state_before,
+                    "state_after": session.state.value,
+                    "decision": output.decision.value,
+                    "score": output.score,
+                },
+            )
+            return output.model_dump(mode="json")
+
+        raise NotImplementedError(f"Read tool '{tool_name}' is not implemented")
