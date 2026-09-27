@@ -16,6 +16,7 @@ dev = [
 
 [project.scripts]
 export-contracts-schemas = "contracts.export_schemas:main"
+generate-contracts-labels = "contracts.generate_labels:main"
 
 [build-system]
 requires = ["hatchling"]
