@@ -124,6 +124,19 @@ If anything comes up red, see section 10.
 
 ---
 
+### Running several copies
+
+Two clones (or git worktrees) can run at the same time if each has its own compose project name and its own host ports. Otherwise the second `make up` reuses the first one's project and ports, and a `make down` in one tears down the other.
+
+```bash
+COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 make up
+COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 make smoke
+```
+
+Use the same variables for `make down` and `make logs` (or put them in that copy's `.env`). Containers, networks, volumes and image tags are all prefixed by the project name. The default is `pattern-blue`.
+
+---
+
 ## 7. Demo walkthrough (5 minutes)
 
 Works the same in replay and live mode.
