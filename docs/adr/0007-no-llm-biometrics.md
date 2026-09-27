@@ -14,7 +14,7 @@ We do not use an LLM as a biometric verification mechanism. Instead:
 
 - We define the interface `identity.verify_document(...)`, returning score, decision and reasons.
 - We implement it with a **simulated provider** that responds according to test scenarios.
-- The real verification available in this submission is **an OTP to a previously registered channel** (real email; SMS shown in a simulated panel), plus matching of ownership data.
+- The real verification available in this submission is **an OTP to a previously registered channel** (delivery channel is an open decision: email, Telegram, WhatsApp or SMS; currently simulated, and the model never chooses it), plus matching of ownership data.
 - No path in the system authorizes an action on a biometric result alone.
 
 ## Options considered

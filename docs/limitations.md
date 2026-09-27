@@ -6,7 +6,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 
 **TODO at close.** One item per capability, with the number backing it and the scenario covering it.
 
-- [ ] Compromised-card workflow, end to end, in Spanish and Portuguese
+- [ ] Compromised-card workflow, end to end, in Spanish, Portuguese and English
 - [ ] Identity verification with OTP and state machine
 - [ ] Card block with verified receipt and idempotency
 - [ ] Structured handoff with all four elements
@@ -19,7 +19,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Capability | Caveat |
 |---|---|
 | Document verification | Simulated provider; the interface is real, the verification is not ([ADR-0007](adr/0007-no-llm-biometrics.md)) |
-| SMS | Shown in a simulated panel; email OTP is real |
+| Outbound OTP channel | Open decision (email, Telegram, WhatsApp or SMS; chosen by feasibility / free tier); currently delivery is simulated in a panel. The model never chooses the channel. |
 | Key management | Master key from the environment, not from a KMS ([ADR-0005](adr/0005-application-level-encryption.md)) |
 | Second workflow | Added by configuration and covered by a smoke test, not the full suite |
 | Multi-tenancy | Anticipated in the data model, not implemented |
