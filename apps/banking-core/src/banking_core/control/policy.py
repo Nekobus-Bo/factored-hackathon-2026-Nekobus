@@ -29,10 +29,10 @@ RATE_LIMITED_TOOLS: frozenset[str] = frozenset(
 )
 
 DEFAULT_THRESHOLDS_MINOR: dict[str, int] = {
-    "COP": 20000000,
-    "USD": 5000,
-    "BRL": 25000,
-    "EUR": 5000,
+    "USD": 50000,
+    "EUR": 50000,
+    "BRL": 250000,
+    "COP": 200000000,
 }
 
 
@@ -158,33 +158,63 @@ class PolicyConfig(BaseModel):
         if raw_thresholds is not None and raw_thresholds.strip():
             try:
                 parsed = json.loads(raw_thresholds)
-                if isinstance(parsed, dict):
-                    thresholds_dict.update(
-                        {str(k).strip().upper(): int(v) for k, v in parsed.items()}
-                    )
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Malformed JSON in POLICY_SEED_THRESHOLDS_MINOR: {raw_thresholds}"
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    "POLICY_SEED_THRESHOLDS_MINOR must be a JSON object mapping "
+                    "currency codes to integer thresholds, got: "
+                    f"{type(parsed).__name__}"
+                )
+            for k, v in parsed.items():
+                curr_key = str(k).strip().upper()
+                try:
+                    int_val = int(v)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Non-integer threshold value for currency '{curr_key}' "
+                        f"in POLICY_SEED_THRESHOLDS_MINOR: {v!r}"
+                    ) from exc
+                thresholds_dict[curr_key] = int_val
 
         for env_key, env_val in os.environ.items():
             if env_key.startswith("POLICY_SEED_THRESHOLD_MINOR_") and env_val.strip():
                 curr = env_key[len("POLICY_SEED_THRESHOLD_MINOR_") :].upper()
                 try:
                     thresholds_dict[curr] = int(env_val)
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Invalid integer value for {env_key}: '{env_val}'"
+                    ) from exc
 
         default_curr = os.getenv("DEFAULT_CURRENCY", "COP").strip().upper()
         raw_minor = os.getenv("POLICY_SEED_AMOUNT_THRESHOLD_MINOR")
+        raw_legacy = os.getenv("POLICY_SEED_AMOUNT_THRESHOLD")
+
         if raw_minor is not None and raw_minor.strip():
-            amount_minor = int(raw_minor)
+            try:
+                amount_minor = int(raw_minor)
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid integer value for "
+                    f"POLICY_SEED_AMOUNT_THRESHOLD_MINOR: '{raw_minor}'"
+                ) from exc
             thresholds_dict[default_curr] = amount_minor
-        elif os.getenv("POLICY_SEED_AMOUNT_THRESHOLD") is not None:
-            amount_minor = int(
-                float(os.getenv("POLICY_SEED_AMOUNT_THRESHOLD", "50")) * 100
-            )
+        elif raw_legacy is not None and raw_legacy.strip():
+            try:
+                amount_minor = int(float(raw_legacy) * 100)
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid numeric value for "
+                    f"POLICY_SEED_AMOUNT_THRESHOLD: '{raw_legacy}'"
+                ) from exc
             thresholds_dict[default_curr] = amount_minor
         else:
-            amount_minor = thresholds_dict.get(default_curr, 5000)
+            amount_minor = thresholds_dict.get(
+                default_curr, DEFAULT_THRESHOLDS_MINOR.get(default_curr, 50000)
+            )
 
         return cls(
             thresholds_minor=thresholds_dict,
@@ -264,29 +294,22 @@ class PolicyEngine:
                 "UNRECOGNIZED_CHARGE",
                 "SUSPICIOUS_ACTIVITY",
             )
-            has_currency = "currency" in merged
+            has_amount_context = (
+                matched_key is not None and merged.get(matched_key) is not None
+            )
 
-            # If amount context is provided, currency is specified,
-            # or reason is dispute:
-            if matched_key is not None or has_currency or is_dispute_reason:
-                # Currency check
-                raw_currency = merged.get("currency")
-                if raw_currency is None:
-                    currency = self.config.currency.upper()
-                else:
-                    currency = str(raw_currency).strip().upper()
+            # Currency check
+            raw_currency = merged.get("currency")
+            if raw_currency is None:
+                currency = self.config.currency.upper()
+            else:
+                currency = str(raw_currency).strip().upper()
 
-                # Unknown currency -> block semantics (allowed + PRIORITY handoff)
+            # Whenever amount context is present, threshold rule applies
+            # regardless of model-chosen reason (ADR-0002 / safe outcome U8).
+            if has_amount_context:
+                # Unknown currency with amount -> block semantics
                 if not currency or currency not in self.config.thresholds_minor:
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                    )
-
-                # Amount check
-                if matched_key is None or merged.get(matched_key) is None:
-                    # Missing amount -> block semantics (allowed + PRIORITY handoff)
                     return Decision(
                         allowed=True,
                         reason_code=ReasonCode.POLICY_FLAGGED,
@@ -300,7 +323,6 @@ class PolicyEngine:
                     else:
                         amount_minor = int(float(raw_amount) * 100)
                 except (ValueError, TypeError):
-                    # Malformed amount -> block semantics (allowed + PRIORITY handoff)
                     return Decision(
                         allowed=True,
                         reason_code=ReasonCode.POLICY_FLAGGED,
@@ -308,19 +330,16 @@ class PolicyEngine:
                     )
 
                 if amount_minor < 0:
-                    # Negative amount -> block semantics (allowed + PRIORITY handoff)
                     return Decision(
                         allowed=True,
                         reason_code=ReasonCode.POLICY_FLAGGED,
                         flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
                     )
 
-                # Valid amount and known currency: check against threshold
                 threshold = self.config.thresholds_minor[currency]
                 if amount_minor <= threshold:
                     return Decision(allowed=True, reason_code=None, flags=[])
 
-                # Above threshold
                 if self.config.amount_mode == "flag":
                     return Decision(
                         allowed=True,
@@ -333,6 +352,17 @@ class PolicyEngine:
                         reason_code=ReasonCode.POLICY_FLAGGED,
                         flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
                     )
+
+            # Missing amount context: keep current semantics.
+            # If dispute reason or explicit currency specified without amount,
+            # treated as above threshold in block semantics.
+            has_currency = "currency" in merged
+            if is_dispute_reason or has_currency:
+                return Decision(
+                    allowed=True,
+                    reason_code=ReasonCode.POLICY_FLAGGED,
+                    flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
+                )
 
         # Default: allowed, no flags
         return Decision(allowed=True, reason_code=None, flags=[])

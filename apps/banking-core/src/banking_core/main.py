@@ -1,7 +1,13 @@
 """Banking Core service entrypoint."""
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
+
+from banking_core.control.config import get_control_config_repository
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="banking-core")
 
@@ -11,7 +17,34 @@ class HealthResponse(BaseModel):
     service: str
 
 
+class ReadinessResponse(BaseModel):
+    status: str
+    service: str
+    reason: str | None = None
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Health check endpoint."""
     return HealthResponse(status="ok", service="banking-core")
+
+
+@app.get("/ready", response_model=ReadinessResponse)
+def ready(response: Response) -> ReadinessResponse:
+    """Readiness probe checking that database policy configuration is accessible."""
+    try:
+        repo = get_control_config_repository()
+        repo.get_policy_config()
+        return ReadinessResponse(status="ready", service="banking-core")
+    except Exception as exc:
+        logger.error(
+            "Readiness check failed: policy config unavailable: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return ReadinessResponse(
+            status="not_ready",
+            service="banking-core",
+            reason=f"policy config unavailable ({type(exc).__name__})",
+        )

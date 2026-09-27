@@ -106,6 +106,180 @@ def test_policy_config_from_env() -> None:
         assert cfg.session_ttl_seconds == 7200
 
 
+def test_policy_config_seed_defaults() -> None:
+    """Verify seed default thresholds align with KB ~500 currency unit equivalents."""
+    from banking_core.control.policy import DEFAULT_THRESHOLDS_MINOR
+
+    assert DEFAULT_THRESHOLDS_MINOR["USD"] == 50000
+    assert DEFAULT_THRESHOLDS_MINOR["EUR"] == 50000
+    assert DEFAULT_THRESHOLDS_MINOR["BRL"] == 250000
+    assert DEFAULT_THRESHOLDS_MINOR["COP"] == 200000000
+
+    with patch.dict(os.environ, {}, clear=True):
+        cfg = PolicyConfig.from_env()
+        assert cfg.thresholds_minor["USD"] == 50000
+        assert cfg.thresholds_minor["EUR"] == 50000
+        assert cfg.thresholds_minor["BRL"] == 250000
+        assert cfg.thresholds_minor["COP"] == 200000000
+        assert cfg.currency == "COP"
+        assert cfg.amount_threshold_minor == 200000000
+
+
+def test_policy_config_from_env_malformed_json_raises_loudly() -> None:
+    """from_env must fail loudly on malformed JSON, never silently fallback."""
+    with patch.dict(
+        os.environ,
+        {"POLICY_SEED_THRESHOLDS_MINOR": '{"USD": 50000,'},
+        clear=False,
+    ):
+        with pytest.raises(
+            ValueError, match="Malformed JSON in POLICY_SEED_THRESHOLDS_MINOR"
+        ):
+            PolicyConfig.from_env()
+
+
+def test_policy_config_from_env_non_dict_json_raises_loudly() -> None:
+    """from_env must fail loudly if JSON is not an object."""
+    with patch.dict(
+        os.environ,
+        {"POLICY_SEED_THRESHOLDS_MINOR": "[50000, 25000]"},
+        clear=False,
+    ):
+        with pytest.raises(ValueError, match="must be a JSON object"):
+            PolicyConfig.from_env()
+
+
+def test_policy_config_from_env_non_integer_value_raises_loudly() -> None:
+    """from_env must fail loudly if any threshold value is non-integer."""
+    with patch.dict(
+        os.environ,
+        {"POLICY_SEED_THRESHOLDS_MINOR": '{"USD": "not-an-int"}'},
+        clear=False,
+    ):
+        with pytest.raises(
+            ValueError, match="Non-integer threshold value for currency 'USD'"
+        ):
+            PolicyConfig.from_env()
+
+
+def test_policy_config_from_env_invalid_individual_threshold_raises_loudly() -> None:
+    """from_env must fail loudly if individual currency threshold is not an int."""
+    with patch.dict(
+        os.environ,
+        {"POLICY_SEED_THRESHOLD_MINOR_USD": "not-an-integer"},
+        clear=False,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Invalid integer value for POLICY_SEED_THRESHOLD_MINOR_USD",
+        ):
+            PolicyConfig.from_env()
+
+
+def test_policy_card_block_amount_rule_applies_regardless_of_reason() -> None:
+    """The amount rule applies whenever amount context is present, regardless of reason.
+
+    Model cannot dodge handoff by tagging a dispute as LOST.
+    """
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000},
+        currency="USD",
+        amount_mode="flag",
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+
+    # reason="LOST" but amount > threshold (60,000 > 50,000)
+    # Mode "flag" -> allowed=True + [POLICY_FLAGGED, HANDOFF_RECOMMENDED]
+    dec_lost_above = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "LOST", "disputed_amount_minor": 60000, "currency": "USD"},
+    )
+    assert dec_lost_above.allowed is True
+    assert dec_lost_above.reason_code == ReasonCode.POLICY_FLAGGED
+    assert dec_lost_above.flags == ["POLICY_FLAGGED", "HANDOFF_RECOMMENDED"]
+    assert dec_lost_above.recommends_handoff is True
+
+    # Mode "block" -> allowed=True + [POLICY_FLAGGED, HANDOFF_REQUIRED, PRIORITY]
+    cfg_block = PolicyConfig(
+        thresholds_minor={"USD": 50000},
+        currency="USD",
+        amount_mode="block",
+    )
+    engine_block = PolicyEngine(config=cfg_block)
+    dec_lost_block = engine_block.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "LOST", "disputed_amount_minor": 60000, "currency": "USD"},
+    )
+    assert dec_lost_block.allowed is True
+    assert dec_lost_block.reason_code == ReasonCode.POLICY_FLAGGED
+    assert dec_lost_block.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+    assert dec_lost_block.requires_handoff is True
+    assert dec_lost_block.is_priority is True
+
+    # reason="LOST" with amount <= threshold (40,000 <= 50,000) -> allowed, no flags
+    dec_lost_below = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "LOST", "disputed_amount_minor": 40000, "currency": "USD"},
+    )
+    assert dec_lost_below.allowed is True
+    assert dec_lost_below.reason_code is None
+    assert dec_lost_below.flags == []
+
+
+def test_policy_card_block_missing_amount_semantics() -> None:
+    """Missing amount context preserves existing dispute/non-dispute semantics."""
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000},
+        currency="USD",
+        amount_mode="flag",
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+
+    # 1. Non-dispute reason without amount and without currency: no flags
+    dec_lost_no_amount = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "LOST"},
+    )
+    assert dec_lost_no_amount.allowed is True
+    assert dec_lost_no_amount.reason_code is None
+    assert dec_lost_no_amount.flags == []
+
+    # 2. Dispute reason without amount: treated as above threshold in block semantics
+    dec_dispute_no_amount = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "UNRECOGNIZED_CHARGE"},
+    )
+    assert dec_dispute_no_amount.allowed is True
+    assert dec_dispute_no_amount.reason_code == ReasonCode.POLICY_FLAGGED
+    assert dec_dispute_no_amount.flags == [
+        "POLICY_FLAGGED",
+        "HANDOFF_REQUIRED",
+        "PRIORITY",
+    ]
+    assert dec_dispute_no_amount.requires_handoff is True
+
+    # 3. Non-dispute without amount but explicit currency: treated as above threshold
+    dec_lost_with_curr = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"reason": "LOST", "currency": "USD"},
+    )
+    assert dec_lost_with_curr.allowed is True
+    assert dec_lost_with_curr.reason_code == ReasonCode.POLICY_FLAGGED
+    assert dec_lost_with_curr.flags == [
+        "POLICY_FLAGGED",
+        "HANDOFF_REQUIRED",
+        "PRIORITY",
+    ]
+
+
 def test_policy_card_block_amount_le_threshold() -> None:
     """amount <= threshold(currency) -> allowed, no flags."""
     cfg = PolicyConfig(

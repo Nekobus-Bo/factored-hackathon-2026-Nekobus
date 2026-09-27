@@ -93,6 +93,13 @@ def db_session(postgres_url: str | None) -> Generator[Session, None, None]:
         except Exception:
             session.rollback()
 
+        try:
+            session.execute(sa.text("DELETE FROM config.tool_policy"))
+            session.execute(sa.text("DELETE FROM config.policy_config"))
+            session.commit()
+        except Exception:
+            session.rollback()
+
     clean_tables()
     try:
         yield session

@@ -9,6 +9,7 @@ from typing import Protocol
 
 from contracts.envelope import VerificationState
 from contracts.tools import CODE_FLOOR, TOOL_CATALOG, get_effective_permitted_states
+from sqlalchemy.orm import Session, sessionmaker
 
 from banking_core.control.policy import PolicyConfig
 
@@ -40,7 +41,7 @@ class ControlConfigRepository(Protocol):
 class InMemoryControlConfigRepository:
     """In-memory implementation of ControlConfigRepository.
 
-    Used for unit testing and domain execution prior to DB storage in 2B-2b.
+    Tests only, via explicit injection. Never a runtime fallback for the DB.
     """
 
     def __init__(
@@ -89,3 +90,87 @@ class InMemoryControlConfigRepository:
         """
         effective = get_effective_permitted_states(tool_name, states)
         self._tool_matrix[tool_name] = effective
+
+
+class DatabaseControlConfigRepository:
+    """PostgreSQL-backed implementation of ControlConfigRepository.
+
+    Reads policy configuration and tool authorization matrices from the DB,
+    seeded from environment on first run if empty (ADR-0002).
+    Strictly validates against CODE_FLOOR on reads and writes (ADR-0003 Appendix A).
+    """
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session] | None = None,
+    ) -> None:
+        self._session_factory = session_factory
+
+    def _get_session(self) -> Session:
+        if self._session_factory is not None:
+            return self._session_factory()
+        from banking_core.db.session import get_session_maker
+
+        return get_session_maker()()
+
+    def get_policy_config(self) -> PolicyConfig:
+        from banking_core.control.loader import load_policy_config
+
+        with self._get_session() as session:
+            return load_policy_config(session=session)
+
+    def set_policy_config(self, config: PolicyConfig) -> None:
+        from banking_core.control.loader import save_policy_config
+
+        with self._get_session() as session:
+            save_policy_config(config, session=session)
+
+    def get_tool_permitted_states(self, tool_name: str) -> frozenset[VerificationState]:
+        if tool_name not in TOOL_CATALOG and tool_name not in CODE_FLOOR:
+            raise ValueError(f"Unknown tool '{tool_name}'")
+
+        from banking_core.models.config import ToolPolicyRecord
+
+        with self._get_session() as session:
+            record = session.get(ToolPolicyRecord, tool_name)
+            # An empty list is an operator disabling the tool, not a missing row.
+            if record is not None:
+                configured = {VerificationState(s) for s in record.permitted_states}
+                return get_effective_permitted_states(tool_name, configured)
+
+        # Baseline fallback from catalog or code floor
+        if tool_name in TOOL_CATALOG:
+            return TOOL_CATALOG[tool_name].permitted_states
+        return CODE_FLOOR[tool_name]
+
+    def set_tool_permitted_states(
+        self,
+        tool_name: str,
+        states: set[VerificationState] | frozenset[VerificationState],
+    ) -> None:
+        effective = get_effective_permitted_states(tool_name, states)
+        from banking_core.models.config import ToolPolicyRecord
+
+        state_values = sorted([s.value for s in effective])
+        with self._get_session() as session:
+            record = session.get(ToolPolicyRecord, tool_name)
+            if record is None:
+                record = ToolPolicyRecord(
+                    tool_name=tool_name,
+                    permitted_states=state_values,
+                )
+                session.add(record)
+            else:
+                record.permitted_states = state_values
+            session.commit()
+
+
+def get_control_config_repository(
+    session_factory: sessionmaker[Session] | None = None,
+) -> ControlConfigRepository:
+    """Return active ControlConfigRepository backed by PostgreSQL.
+
+    Fails loudly if database is unreachable (no silent InMemory fallback).
+    InMemoryControlConfigRepository is allowed only in tests via explicit injection.
+    """
+    return DatabaseControlConfigRepository(session_factory=session_factory)

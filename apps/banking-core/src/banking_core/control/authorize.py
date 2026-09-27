@@ -14,24 +14,51 @@ Pipeline:
 -> Decision(allowed: bool, reason_code: ReasonCode | None, flags: list)
 """
 
+import logging
 from typing import Any
 
 from contracts.envelope import ReasonCode, ToolCall
-from contracts.tools import TOOL_CATALOG, get_effective_permitted_states
+from contracts.tools import (
+    TOOL_CATALOG,
+    CodeFloorViolation,
+    get_effective_permitted_states,
+)
 
 from banking_core.control.config import (
     ControlConfigRepository,
-    InMemoryControlConfigRepository,
+    get_control_config_repository,
 )
 from banking_core.control.policy import Decision, PolicyEngine
 from banking_core.control.session import SessionState
+
+logger = logging.getLogger(__name__)
+
+CONFIG_UNAVAILABLE_FLAG = "POLICY_CONFIG_UNAVAILABLE"
+
+
+def _config_unavailable(tool_name: str, exc: Exception) -> Decision:
+    """Refuse closed when DB-backed configuration cannot be read.
+
+    The exception detail goes to the log only: flags travel to the untrusted zone.
+    """
+    logger.error(
+        "Policy configuration unavailable for tool '%s': %s: %s",
+        tool_name,
+        type(exc).__name__,
+        exc,
+    )
+    return Decision(
+        allowed=False,
+        reason_code=ReasonCode.INTERNAL_ERROR,
+        flags=[CONFIG_UNAVAILABLE_FLAG],
+    )
 
 
 class Authorizer:
     """Authorizer evaluating deterministic access controls on tool calls."""
 
     def __init__(self, config_repo: ControlConfigRepository | None = None) -> None:
-        self.config_repo = config_repo or InMemoryControlConfigRepository()
+        self.config_repo = config_repo or get_control_config_repository()
 
     def authorize(
         self,
@@ -59,18 +86,21 @@ class Authorizer:
             )
 
         # 2. Effective matrix check (config restricted by contracts CODE_FLOOR)
-        configured_states = self.config_repo.get_tool_permitted_states(tool_name)
         try:
+            configured_states = self.config_repo.get_tool_permitted_states(tool_name)
             effective_states = get_effective_permitted_states(
                 tool_name, configured_states
             )
-        except ValueError as exc:
-            # Illegal configuration attempting to widen beyond code floor
+        except CodeFloorViolation as exc:
+            # A stored row wider than CODE_FLOOR: refuse, never serve it.
+            logger.error("Code floor violation for tool '%s': %s", tool_name, exc)
             return Decision(
                 allowed=False,
-                reason_code=ReasonCode.STATE_NOT_ALLOWED,
-                flags=["CODE_FLOOR_VIOLATION", str(exc)],
+                reason_code=ReasonCode.CODE_FLOOR_VIOLATION,
+                flags=["CODE_FLOOR_VIOLATION"],
             )
+        except Exception as exc:
+            return _config_unavailable(tool_name, exc)
 
         # 3. FSM state check
         if session.state not in effective_states:
@@ -81,7 +111,11 @@ class Authorizer:
             )
 
         # 4. Policy engine check (rate limits, thresholds)
-        policy_config = self.config_repo.get_policy_config()
+        try:
+            policy_config = self.config_repo.get_policy_config()
+        except Exception as exc:
+            return _config_unavailable(tool_name, exc)
+
         policy_engine = PolicyEngine(config=policy_config)
         return policy_engine.evaluate(
             tool=tool_name,
