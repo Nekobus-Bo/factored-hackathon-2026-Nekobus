@@ -167,7 +167,7 @@ def test_every_matrix_cell_authorization(
     """Verify authorization decision for every tool x state matrix cell (60 cells)."""
     expected_allowed = EXPECTED_MATRIX[tool_name][state]
     session = SessionState(session_id="test_sess", state=state)
-    authorizer = Authorizer()
+    authorizer = Authorizer(config_repo=InMemoryControlConfigRepository())
     tool_call = SAMPLE_TOOL_CALLS[tool_name]
 
     decision = authorizer.authorize(tool_call, session)
@@ -239,7 +239,7 @@ def test_config_can_restrict_permitted_states() -> None:
 
 def test_authorizer_rejects_non_toolcall() -> None:
     """Verify authorizer strictly requires ToolCall instance."""
-    authorizer = Authorizer()
+    authorizer = Authorizer(config_repo=InMemoryControlConfigRepository())
     session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
     with pytest.raises(TypeError, match="authorize requires a contracts"):
         authorizer.authorize("card.list", session)  # type: ignore[arg-type]

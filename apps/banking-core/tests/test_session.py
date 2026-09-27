@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import fakeredis
 import pytest
 from banking_core.control.authorize import Authorizer
+from banking_core.control.config import InMemoryControlConfigRepository
 from banking_core.control.session import (
     RedisSessionStore,
     SessionState,
@@ -124,7 +125,7 @@ def test_contracts_toolcall_forbids_holder_tampering_in_args() -> None:
 
 def test_pinned_holder_unaffected_by_valid_tool_args() -> None:
     """Valid tool calls cannot alter pinned_holder_id."""
-    authorizer = Authorizer()
+    authorizer = Authorizer(config_repo=InMemoryControlConfigRepository())
     session = SessionState(
         session_id="s1",
         state=VerificationState.VERIFIED,
