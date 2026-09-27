@@ -10,7 +10,7 @@ WAIT_TIMEOUT ?= 240
 COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .env)
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs clean smoke demo seed eval eval-baseline eval-adversarial \
+.PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup clean-models deploy calibrate
 
 help: ## List available targets
@@ -32,6 +32,11 @@ clean: ## Stop and delete volumes (DESTROYS seeded data)
 
 smoke: ## Check all six components are healthy
 	@COMPOSE="$(COMPOSE)" bash infra/compose/smoke.sh
+
+build-multiarch: ## Build app images for linux/amd64 and linux/arm64 (no push; slow under emulation)
+	@for s in banking-core orchestrator encoder; do \
+		docker buildx build --platform linux/amd64,linux/arm64 -f apps/$$s/Dockerfile . || exit 1; \
+	done
 
 demo: ## pending: full startup in replay mode
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
