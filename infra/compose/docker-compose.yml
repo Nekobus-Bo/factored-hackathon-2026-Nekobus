@@ -13,7 +13,7 @@
 # side. Host ports bind to loopback: the internal API is not for the LAN.
 #
 # Network isolation (ADR-0004, ADR-0006 amendment):
-#   core  internal, no egress: postgres, redis-core, banking-core
+#   core  internal, no egress: postgres, redis-core, banking-core, migrate
 #   edge  orchestrator, encoder, redis-edge, banking-core
 # banking-core is the only service on both. The orchestrator has no network path
 # to postgres or redis-core. One Redis per trust zone, each with a password.
@@ -43,6 +43,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ../../infra/db:/docker-entrypoint-initdb.d:ro
     networks: [core]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -89,6 +90,24 @@ services:
       resources:
         limits: { cpus: "0.5", memory: 256m }
 
+  migrate:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/banking-core/Dockerfile
+    image: pattern-blue/banking-core:dev
+    command: ["alembic", "-c", "apps/banking-core/alembic.ini", "upgrade", "head"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-bank}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [core]
+    restart: "no"
+
   banking-core:
     <<: *app-hardening
     build:
@@ -122,6 +141,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis-core: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     networks: [core, edge]
     healthcheck:
       <<: *app-healthcheck

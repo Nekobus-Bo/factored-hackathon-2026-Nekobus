@@ -18,6 +18,15 @@ for svc in $SERVICES; do
   fi
 done
 
+# Migration status check: report the applied Alembic migration head using container env credentials
+migration_head=$($COMPOSE exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A -c "SELECT version_num FROM alembic_version LIMIT 1;"' 2>/dev/null || true)
+if [ -n "$migration_head" ]; then
+  printf '✓ %-14s applied head (%s)\n' "migration" "$migration_head"
+else
+  printf '✗ %-14s %s\n' "migration" "no migration head applied"
+  failed=1
+fi
+
 if [ "$failed" -ne 0 ]; then
   echo "smoke: FAILED (see 'make logs s=<service>')" >&2
   exit 1

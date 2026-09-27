@@ -29,6 +29,15 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:?set REDIS_EDGE_PASSWORD}
 
+  migrate:
+    <<: *app-readonly
+    image: ${REGISTRY:?set REGISTRY}/banking-core:${IMAGE_TAG:?set IMAGE_TAG}
+    pull_policy: always
+    environment:
+      APP_ENV: production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    restart: "no"
+
   banking-core:
     <<: *app-readonly
     image: ${REGISTRY:?set REGISTRY}/banking-core:${IMAGE_TAG:?set IMAGE_TAG}
