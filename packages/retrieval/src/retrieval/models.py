@@ -9,6 +9,7 @@ class KBSnippet(BaseModel):
     """Knowledge base article or policy snippet."""
 
     id: str
+    topic_id: str | None = None
     lang: Literal["es", "pt"] | str
     title: str
     text: str
