@@ -141,12 +141,12 @@ Use the same variables for `make down` and `make logs` (or put them in that copy
 
 Works the same in replay and live mode.
 
-1. **Happy path.** Open the chat and report a charge you do not recognize. Watch: intent classification with its score, ownership matching without disclosing data, the verification code, the card block, and the **verified receipt** re-read from the database.
-2. **The system stops.** Ask to dispute the charge. The structured handoff appears and the case enters the back-office queue with verified facts, actions taken, verification method and open questions.
-3. **Takeover.** From the back office, take the conversation and reply as a human agent.
-4. **Guardrail, live.** Change the amount threshold in the back office and repeat the operation: the same action is now blocked. No deployment, no restart.
-5. **Another workflow, no code.** Load the second workflow's configuration and use it right away. The diff is on screen: configuration only.
-6. **Language.** Repeat step 1 in Portuguese.
+1. **Happy path (⚠️ pending UI).** Open the chat and report a charge you do not recognize. Watch: intent classification with its score, ownership matching without disclosing data, the verification code, the card block, and the **verified receipt** re-read from the database.
+2. **The system stops (⚠️ pending UI).** Ask to dispute the charge. The structured handoff appears and the case enters the back-office queue with verified facts, actions taken, verification method and open questions.
+3. **Takeover (⚠️ pending UI).** From the back office, take the conversation and reply as a human agent.
+4. **Guardrail, live (⚠️ pending UI).** Lower the amount threshold in the back office and repeat the operation: with the policy in block mode, the same request still blocks the card but now forces a priority handoff to a human agent rather than automated resolution. No deployment, no restart.
+5. **Another workflow, no code (⚠️ pending UI).** Load the second workflow's configuration and use it right away. The diff is on screen: configuration only.
+6. **Language (⚠️ pending UI).** Repeat step 1 in Portuguese.
 
 Full scripts with exact messages: `demo/scripts/`.
 
