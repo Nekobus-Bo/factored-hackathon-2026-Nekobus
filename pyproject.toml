@@ -8,6 +8,7 @@ dependencies = [
     "banking-core",
     "orchestrator",
     "encoder-service",
+    "contracts",
 ]
 
 [tool.uv]
@@ -18,12 +19,14 @@ members = [
     "apps/banking-core",
     "apps/orchestrator",
     "apps/encoder",
+    "packages/contracts",
 ]
 
 [tool.uv.sources]
 banking-core = { workspace = true }
 orchestrator = { workspace = true }
 encoder-service = { workspace = true }
+contracts = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -34,7 +37,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps"]
+testpaths = ["apps", "packages/contracts/tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 addopts = ["--import-mode=importlib"]
