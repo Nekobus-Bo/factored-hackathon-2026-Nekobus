@@ -27,6 +27,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Audit log external anchoring | Hash chain integrity is enforced append-only in Postgres with triggers and verified via `make verify-audit` (which reports row count and head hash); external anchoring of the head hash (e.g. to a timestamping authority, transparency log, or external store) to detect tail truncation is pending. |
 | Outbound PII masking | Regex-based and fail-closed until the encoder's PII spans are wired in (3C). Known misses: names without an intro phrase ("hola, Carlos Gómez aquí"), written-out dates ("March 4, 1988"), digit groups split by spaces. Live mode depends on regex plus encoder spans; replay mode is unaffected |
 | Encoder abstention calibration | Boots in uncalibrated mode when ABSTENTION_THRESHOLD is unset (/health 200, /ready and /v1/analyze 503 "uncalibrated"). Calibrated threshold tau is required before serving live traffic ([ADR-0010](adr/0010-model-selection-calibration-harness.md)). |
+| Policy configuration UI | Policy thresholds and tool matrices live in DB `config` schema tables (seeded from env on initial startup per ADR-0002) and support versioned updates; administrative editing via the back-office UI is pending. |
 
 ## 3. What we did not do
 
