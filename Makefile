@@ -46,8 +46,8 @@ build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (u
 demo: ## pending: full startup in replay mode
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-seed: ## pending: seed the database from data/raw
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+seed: ## Seed the database from data/raw
+	$(COMPOSE) run --rm seed python -m banking_core.seed.cli seed
 
 eval: ## pending: baseline vs proposed on the scenario suite
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
@@ -58,8 +58,8 @@ eval-baseline: ## pending: baseline system only
 eval-adversarial: ## pending: injection and abuse scenarios
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-data-quality: ## pending: data quality report
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+data-quality: ## Generate data quality report in reports/data-quality.md
+	$(COMPOSE) run --rm seed python -m banking_core.seed.cli data-quality
 
 verify-audit: ## verify the audit log hash chain
 	$(COMPOSE) run --rm banking-core python -m banking_core.audit.verify
