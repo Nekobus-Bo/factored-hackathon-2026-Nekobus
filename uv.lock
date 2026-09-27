@@ -157,6 +157,7 @@ dependencies = [
     { name = "alembic" },
     { name = "contracts" },
     { name = "cryptography" },
+    { name = "faker" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -170,6 +171,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "contracts", editable = "packages/contracts" },
     { name = "cryptography", specifier = ">=43.0.0" },
+    { name = "faker", specifier = ">=20.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
@@ -506,6 +508,18 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
+]
+
+[[package]]
+name = "faker"
+version = "40.39.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/62/fea935af7a312f073c99d470b05a7c96650ee8d9562ce82e8cb7ee4c1247/faker-40.39.0.tar.gz", hash = "sha256:52799ad96fcf92aab2fc96a9e03869bbf1a634300f7cd91c38dbfd51f639f6fa", size = 2029463, upload-time = "2026-09-14T16:50:17.939Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/c8/901282279841ebb59216433be01aac825fb905e1a597de3b7b5ab8b0c43e/faker-40.39.0-py3-none-any.whl", hash = "sha256:c4c7ec2cddfaf602c5a8a2c960614946aa8c161250bd9d49a8846cd24d1ef028", size = 2066232, upload-time = "2026-09-14T16:50:16.061Z" },
 ]
 
 [[package]]
