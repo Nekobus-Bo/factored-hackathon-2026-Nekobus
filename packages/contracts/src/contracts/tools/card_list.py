@@ -58,17 +58,17 @@ class CardItem(BaseToolModel):
         ...,
         description="Current operational status of card",
     )
-    expiry_month: StrictInt = Field(
-        ...,
+    expiry_month: StrictInt | None = Field(
+        default=None,
         ge=1,
         le=12,
-        description="Two-digit expiry month",
+        description="Two-digit expiry month; None when the source has no expiry",
     )
-    expiry_year: StrictInt = Field(
-        ...,
+    expiry_year: StrictInt | None = Field(
+        default=None,
         ge=2024,
         le=2040,
-        description="Four-digit expiry year",
+        description="Four-digit expiry year; None when the source has no expiry",
     )
 
 

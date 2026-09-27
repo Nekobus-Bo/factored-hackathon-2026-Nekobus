@@ -272,6 +272,24 @@ def test_card_list_output():
     assert len(out.cards) == 1
     assert out.cards[0].card_ref == "card-token-12345678"
 
+    # Expiry is optional: sources without it return None, never a fabricated date.
+    no_expiry = CardItem(
+        card_ref="card-token-12345678",
+        masked_pan="**** **** **** 1234",
+        card_type=CardType.CREDIT,
+        status=CardStatus.BLOCKED,
+    )
+    assert no_expiry.expiry_month is None
+    assert no_expiry.expiry_year is None
+    with pytest.raises(ValidationError):
+        CardItem(
+            card_ref="card-token-12345678",
+            masked_pan="**** **** **** 1234",
+            card_type=CardType.DEBIT,
+            status=CardStatus.ACTIVE,
+            expiry_month=13,
+        )
+
     with pytest.raises(ValidationError):
         CardItem(
             card_ref="card-token-12345678",

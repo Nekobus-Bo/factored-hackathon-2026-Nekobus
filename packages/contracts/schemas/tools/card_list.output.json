@@ -16,18 +16,34 @@
           "description": "Card product category (DEBIT or CREDIT)"
         },
         "expiry_month": {
-          "description": "Two-digit expiry month",
-          "maximum": 12,
-          "minimum": 1,
-          "title": "Expiry Month",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 12,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Two-digit expiry month; None when the source has no expiry",
+          "title": "Expiry Month"
         },
         "expiry_year": {
-          "description": "Four-digit expiry year",
-          "maximum": 2040,
-          "minimum": 2024,
-          "title": "Expiry Year",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 2040,
+              "minimum": 2024,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Four-digit expiry year; None when the source has no expiry",
+          "title": "Expiry Year"
         },
         "masked_pan": {
           "description": "Masked Primary Account Number (e.g. **** **** **** 1234)",
@@ -44,9 +60,7 @@
         "card_ref",
         "masked_pan",
         "card_type",
-        "status",
-        "expiry_month",
-        "expiry_year"
+        "status"
       ],
       "title": "CardItem",
       "type": "object"
