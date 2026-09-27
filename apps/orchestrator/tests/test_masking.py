@@ -12,6 +12,7 @@ Verifies:
 """
 
 import pytest
+from contracts import PiiType
 from orchestrator.privacy.masking import RegexMasker
 
 
@@ -111,6 +112,8 @@ def test_masking_state_preservation_across_turns() -> None:
         ("Sou a mãe da Mariana Silva", "Mariana Silva"),
         ("My name is Alice Johnson", "Alice Johnson"),
         ("My passport number is P12345678", "P12345678"),
+        ("Mi código de verificación es 654321", "654321"),
+        ("OTP 998877", "998877"),
     ],
 )
 def test_reviewer_p1_leaks_masked_and_blocked(raw_text: str, secret_val: str) -> None:
@@ -124,9 +127,7 @@ def test_reviewer_p1_leaks_masked_and_blocked(raw_text: str, secret_val: str) ->
     # 2. Masking must replace secret value with a placeholder
     res = masker.mask(raw_text)
     assert secret_val not in res.masked_text
-    assert any(
-        token in res.masked_text for token in ["[DOC_", "[PHONE_", "[NAME_", "[CARD_"]
-    )
+    assert any(f"[{cat}_" in res.masked_text for cat in masker.categories)
 
     # 3. Masked text must pass verify_safe
     assert masker.verify_safe(res.masked_text) is True
@@ -212,3 +213,58 @@ def test_verify_safe_detects_unmasked_pii() -> None:
     assert masker.verify_safe("ID 1020304050") is False
     assert masker.verify_safe("DOB: 01/01/1950") is False
     assert masker.verify_safe("My name is John Doe") is False
+    assert masker.verify_safe("Código de verificación: 123456") is False
+    assert masker.verify_safe("OTP 998877") is False
+    assert masker.verify_safe("Safe with [OTP_1] and [DATE_1]") is True
+
+
+def test_masker_categories_equal_pii_type() -> None:
+    """Masker categories must match contracts PiiType single source of truth."""
+    masker = RegexMasker()
+    assert masker.categories == set(PiiType)
+    assert RegexMasker.CATEGORIES == set(PiiType)
+    assert masker.categories == {"DOC", "NAME", "PHONE", "EMAIL", "CARD", "DATE", "OTP"}
+
+
+def test_date_placeholder_and_round_trip() -> None:
+    """Birth dates become [DATE_n] placeholders and rehydrate cleanly."""
+    masker = RegexMasker()
+    text = "Mi fecha de nacimiento es 15/08/1985 y nací el 01/01/1950."
+    assert masker.verify_safe(text) is False
+
+    res = masker.mask(text)
+    assert "15/08/1985" not in res.masked_text
+    assert "01/01/1950" not in res.masked_text
+    assert "[DATE_1]" in res.masked_text
+    assert "[DATE_2]" in res.masked_text
+    assert "[DOC_" not in res.masked_text
+    assert masker.verify_safe(res.masked_text) is True
+
+    # Rehydration restores original dates
+    unmasked = masker.unmask(res.masked_text, res.mapping)
+    assert unmasked == text
+
+
+def test_otp_placeholder_and_round_trip() -> None:
+    """OTP codes after cue become [OTP_n] placeholders and rehydrate cleanly."""
+    masker = RegexMasker()
+    test_cases = [
+        ("Mi código de verificación es 654321", "654321"),
+        ("El código que recibí es 123456", "123456"),
+        ("OTP: 998877", "998877"),
+        ("token 582190", "582190"),
+        ("My verification code is 492018", "492018"),
+        ("O código de verificação é 849201", "849201"),
+        ("Por favor ingresa el código: 482910", "482910"),
+    ]
+    for raw_text, secret_otp in test_cases:
+        assert masker.verify_safe(raw_text) is False
+        res = masker.mask(raw_text)
+        assert secret_otp not in res.masked_text
+        assert "[OTP_1]" in res.masked_text
+        assert "[DOC_" not in res.masked_text
+        assert masker.verify_safe(res.masked_text) is True
+
+        # Rehydration restores original OTP
+        unmasked = masker.unmask(res.masked_text, res.mapping)
+        assert unmasked == raw_text

@@ -13,6 +13,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 
+from contracts import PiiType
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ class MaskResult(BaseModel):
 
 class Masker(ABC):
     """Abstract interface for PII masking implementations."""
+
+    CATEGORIES: set[str] = {p.value for p in PiiType}
+    categories: set[str] = CATEGORIES
 
     @abstractmethod
     def mask(
@@ -77,11 +81,15 @@ class RegexMasker(Masker):
     - Payment Card Numbers / PAN (13-19 digits, separators allowed) ([CARD_n])
     - Emails ([EMAIL_n])
     - Document numbers (CPF, SSN, DNI dots, Passports, Labeled docs) ([DOC_n])
-    - Birth dates / Dates ([DOC_n])
+    - Birth dates / Dates ([DATE_n])
+    - One-time passcodes / OTP codes after cue ([OTP_n])
     - Runs of >= 7 digits not associated with a currency amount ([DOC_n])
     - Phone numbers (E.164, national, and explicit phone intros) ([PHONE_n])
     - Names with honorifics/salutations and conversational intros ([NAME_n])
     """
+
+    CATEGORIES: set[str] = {p.value for p in PiiType}
+    categories: set[str] = CATEGORIES
 
     # 1. PAN / Card Numbers: 13 to 19 digits (with optional spaces or dashes)
     PAN_RE = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
@@ -135,7 +143,31 @@ class RegexMasker(Masker):
         re.IGNORECASE,
     )
 
-    # 6. Phone numbers
+    # 6. One-time passcodes / OTP codes after cue (4-8 digits)
+    OTP_RE = re.compile(
+        r"\b(?:"
+        r"código\s+de\s+verificación|"
+        r"codigo\s+de\s+verificacion|"
+        r"código\s+de\s+verificação|"
+        r"codigo\s+de\s+verificacao|"
+        r"verification\s+code|"
+        r"código\s+de\s+seguridad|"
+        r"codigo\s+de\s+seguridad|"
+        r"security\s+code|"
+        r"código|"
+        r"codigo|"
+        r"code|"
+        r"otp|"
+        r"token"
+        r")\b"
+        r"\s*[:#\-]?"
+        r"(?:\s+(?:es|é|is|de|do|da|del|foi|fue|número|numero|nº|no|#|temporal|enviado|recebido|recibido|received|sent|sms|que\s+(?:me\s+)?(?:llegó|llego|recibí|recibi|recebi|enviaron)|me\s+llegó|me\s+llego))*"
+        r"\s*[:#\-]?\s*"
+        r"(?!\[[A-Z]+_\d+\])\b(\d{4,8})\b",
+        re.IGNORECASE,
+    )
+
+    # 7. Phone numbers
     PHONE_INTRO_RE = re.compile(
         r"\b(?:"
         r"llámame\s+al|llamame\s+al|llamar\s+al|"
@@ -156,7 +188,7 @@ class RegexMasker(Masker):
         r"(?:\b\d{2,4}[-\s]\d{3,4}[-\s]\d{3,4}\b)"
     )
 
-    # 7. Name intros and salutations
+    # 8. Name intros and salutations
     NAME_INTRO_RE = re.compile(
         r"\b(?:"
         r"my\s+name\s+is|"
@@ -189,7 +221,7 @@ class RegexMasker(Masker):
         r"(?!\[[A-Z]+_\d+\])([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)\b"
     )
 
-    # 8. Unclassified sequence of >=7 digits (avoiding currency amounts)
+    # 9. Unclassified sequence of >=7 digits (avoiding currency amounts)
     DIGITS_RUN_RE = re.compile(r"\b\d[\d\s.\-]{5,}\d\b")
     CURRENCY_PREFIX_RE = re.compile(
         r"(?:[\$€£]|R\$|\b(?:USD|COP|BRL|EUR|valor(?:\s+de)?|cobro(?:\s+de)?|monto(?:\s+de)?|quantia(?:\s+de)?|débito(?:\s+de)?|debito(?:\s+de)?|transfer\s+of))\s*$",
@@ -200,15 +232,16 @@ class RegexMasker(Masker):
         re.IGNORECASE,
     )
 
-    # Placeholder format pattern for rehydration
-    PLACEHOLDER_RE = re.compile(r"\[(EMAIL|PHONE|CARD|DOC|NAME)_(\d+)\]")
+    # Placeholder format pattern for rehydration, derived from contracts PiiType
+    _CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
+    PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
 
     def _init_counters(
         self,
         mapping: dict[str, str],
     ) -> dict[str, int]:
         """Determine next index for each entity type based on existing mapping."""
-        counters = {"EMAIL": 0, "PHONE": 0, "CARD": 0, "DOC": 0, "NAME": 0}
+        counters = {p.value: 0 for p in PiiType}
         for placeholder in mapping.keys():
             m = self.PLACEHOLDER_RE.match(placeholder)
             if m:
@@ -305,8 +338,15 @@ class RegexMasker(Masker):
             for m in list(self.BIRTHDATE_RE.finditer(masked)):
                 date_val = m.group(1)
                 if not date_val.startswith("["):
-                    placeholder = get_or_create_placeholder("DOC", date_val)
+                    placeholder = get_or_create_placeholder("DATE", date_val)
                     masked = masked.replace(date_val, placeholder)
+
+            # 6. One-time passcodes / OTP codes after cue (4-8 digits)
+            for m in list(self.OTP_RE.finditer(masked)):
+                otp_val = m.group(1)
+                if not otp_val.startswith("["):
+                    placeholder = get_or_create_placeholder("OTP", otp_val)
+                    masked = masked.replace(otp_val, placeholder)
 
             # 6. Phone intros & numbers (e.g. llámame al 3001234567)
             for m in list(self.PHONE_INTRO_RE.finditer(masked)):
@@ -426,6 +466,12 @@ class RegexMasker(Masker):
 
         # 5. Birth dates / dates
         for m in self.BIRTHDATE_RE.finditer(text):
+            val = m.group(1)
+            if not (val.startswith("[") and val.endswith("]")):
+                return False
+
+        # 6. One-time passcodes / OTP codes after cue (4-8 digits)
+        for m in self.OTP_RE.finditer(text):
             val = m.group(1)
             if not (val.startswith("[") and val.endswith("]")):
                 return False
