@@ -61,8 +61,8 @@ eval-adversarial: ## pending: injection and abuse scenarios
 data-quality: ## pending: data quality report
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-verify-audit: ## pending: verify the audit log hash chain
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+verify-audit: ## verify the audit log hash chain
+	$(COMPOSE) run --rm banking-core python -m banking_core.audit.verify
 
 warmup: ## pending: preload local models
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
