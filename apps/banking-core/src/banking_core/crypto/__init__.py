@@ -15,6 +15,7 @@ from banking_core.crypto.envelope import (
     encrypt_field,
     encrypt_with_dek,
     generate_dek,
+    get_master_key,
     unwrap_dek,
     wrap_dek,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "encrypt_field",
     "encrypt_with_dek",
     "generate_dek",
+    "get_master_key",
     "normalize_document",
     "normalize_email",
     "normalize_for_field",
