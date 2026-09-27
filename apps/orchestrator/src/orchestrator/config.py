@@ -26,6 +26,14 @@ class Settings(BaseSettings):
         default=10.0, alias="BANKING_CORE_TIMEOUT_SECONDS"
     )
 
+    # Encoder (optional signal; the turn degrades to LLM-only when unavailable)
+    encoder_enabled: bool = Field(default=True, alias="ENCODER_ENABLED")
+    encoder_url: str = Field(default="http://encoder:8090", alias="ENCODER_URL")
+    encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
+
+    # Conversation turn engine
+    max_tool_rounds: int = Field(default=5, ge=1, le=20, alias="MAX_TOOL_ROUNDS")
+
     # LLM Settings
     llm_mode: Literal["replay", "live"] = Field(default="replay", alias="LLM_MODE")
     llm_model: str = Field(default="TODO", alias="LLM_MODEL")
