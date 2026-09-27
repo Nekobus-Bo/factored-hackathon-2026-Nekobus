@@ -11,9 +11,11 @@ Verifies:
 - Real customer turns from eval/scenarios contain zero surviving PII
 """
 
+import json
+
 import pytest
 from contracts import PiiType
-from orchestrator.privacy.masking import RegexMasker
+from orchestrator.privacy.masking import MaskingError, RegexMasker
 
 
 def test_regex_masker_email_and_stability() -> None:
@@ -268,3 +270,24 @@ def test_otp_placeholder_and_round_trip() -> None:
         # Rehydration restores original OTP
         unmasked = masker.unmask(res.masked_text, res.mapping)
         assert unmasked == raw_text
+
+
+def test_otp_bare_code_key_in_tool_arguments() -> None:
+    """A bare "code"/"otp" key in JSON tool arguments is an OTP cue."""
+    masker = RegexMasker()
+    for raw_args, secret in (
+        ('{"code": "123456"}', "123456"),
+        ('{"otp":"4821"}', "4821"),
+        ('{"card_ref": "card_ab12cd34", "code": "99887766"}', "99887766"),
+    ):
+        assert masker.verify_safe(raw_args) is False
+        res = masker.mask(raw_args)
+        assert secret not in res.masked_text
+        assert "[OTP_1]" in res.masked_text
+        assert json.loads(res.masked_text)  # still valid JSON
+        assert masker.unmask(res.masked_text, res.mapping) == raw_args
+
+    # Already masked stays as is; an unquoted numeric code fails closed
+    assert masker.mask('{"code": "[OTP_1]"}').masked_text == '{"code": "[OTP_1]"}'
+    with pytest.raises(MaskingError):
+        masker.mask('{"code":123456}')

@@ -82,7 +82,8 @@ class RegexMasker(Masker):
     - Emails ([EMAIL_n])
     - Document numbers (CPF, SSN, DNI dots, Passports, Labeled docs) ([DOC_n])
     - Birth dates / Dates ([DATE_n])
-    - One-time passcodes / OTP codes after cue ([OTP_n])
+    - One-time passcodes / OTP codes after cue ([OTP_n]), including a bare
+      "code"/"otp" key in JSON tool-call arguments
     - Runs of >= 7 digits not associated with a currency amount ([DOC_n])
     - Phone numbers (E.164, national, and explicit phone intros) ([PHONE_n])
     - Names with honorifics/salutations and conversational intros ([NAME_n])
@@ -164,6 +165,18 @@ class RegexMasker(Masker):
         r"(?:\s+(?:es|é|is|de|do|da|del|foi|fue|número|numero|nº|no|#|temporal|enviado|recebido|recibido|received|sent|sms|que\s+(?:me\s+)?(?:llegó|llego|recibí|recibi|recebi|enviaron)|me\s+llegó|me\s+llego))*"
         r"\s*[:#\-]?\s*"
         r"(?!\[[A-Z]+_\d+\])\b(\d{4,8})\b",
+        re.IGNORECASE,
+    )
+
+    # 6b. Bare "code"/"otp" keys in JSON tool-call arguments act as an OTP cue.
+    # Only quoted values are rewritten (keeps the JSON valid); an unquoted
+    # numeric value is caught by verify_safe and fails closed.
+    OTP_ARG_KEY_RE = re.compile(
+        r'"(?:code|otp)"\s*:\s*"(?!\[[A-Z]+_\d+\])(\d{4,8})"',
+        re.IGNORECASE,
+    )
+    OTP_ARG_KEY_ANY_RE = re.compile(
+        r'"(?:code|otp)"\s*:\s*"?(\d{4,8})\b',
         re.IGNORECASE,
     )
 
@@ -348,6 +361,11 @@ class RegexMasker(Masker):
                     placeholder = get_or_create_placeholder("OTP", otp_val)
                     masked = masked.replace(otp_val, placeholder)
 
+            for m in list(self.OTP_ARG_KEY_RE.finditer(masked)):
+                otp_val = m.group(1)
+                placeholder = get_or_create_placeholder("OTP", otp_val)
+                masked = masked.replace(otp_val, placeholder)
+
             # 6. Phone intros & numbers (e.g. llámame al 3001234567)
             for m in list(self.PHONE_INTRO_RE.finditer(masked)):
                 phone_val = m.group(1)
@@ -475,6 +493,9 @@ class RegexMasker(Masker):
             val = m.group(1)
             if not (val.startswith("[") and val.endswith("]")):
                 return False
+
+        if self.OTP_ARG_KEY_ANY_RE.search(text):
+            return False
 
         # 6. Phone intros & E.164
         for m in self.PHONE_INTRO_RE.finditer(text):
