@@ -15,16 +15,20 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 | Path | What it is |
 |---|---|
 | `apps/banking-core` | Trusted zone. Data, tools, policies, FSM, audit. The only service with database credentials |
-| `apps/orchestrator` | Untrusted zone. Chat, session, LLM, encoder, PII masking |
+| `apps/orchestrator` | Untrusted zone. Chat, session, LLM, PII masking |
+| `apps/encoder` | Serving layer for local decision and extraction model. Runs on CPU |
 | `apps/web-client` | Simulated fintech and chat bubble |
 | `apps/web-backoffice` | Queue, handoff, guardrails, metrics |
 | `packages/contracts` | Tools, message blocks and policies. Source of truth for types |
-| `packages/encoder` | Intent, slots, PII. Runs on CPU |
+| `packages/encoder` | Intent, slots, PII model logic. Runs on CPU |
 | `packages/retrieval` | Knowledge base and hybrid index |
+| `packages/design-tokens` | Shared design tokens and visual primitives for frontends |
 | `data/` | `raw → staging → curated`, plus `eval` |
 | `eval/` | Scenarios, replay recordings, runner |
 | `infra/` | Compose, database init, deployment |
 | `tools/` | Development utilities |
+| `demo/` | Walkthrough scripts and prerecorded sessions for replay mode |
+| `reports/` | Versioned evaluation, calibration, and data quality evidence |
 
 Every app has the same internal shape: `src/`, `tests/`, `Dockerfile`. **Symmetry is half of readability**: an app that looks different inside has to be learned separately.
 
@@ -50,6 +54,8 @@ make seed     # seed from data/raw
 make smoke    # installation check
 make eval     # baseline vs proposed system
 ```
+
+Not every target is implemented yet; `make help` lists what exists and pending targets fail with an explicit message.
 
 `make` is the single entry point. If you add a script, expose it as a target.
 

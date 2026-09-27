@@ -1,6 +1,6 @@
 # Problem statement
 
-**Date:** 2026-09-26 · **Submission:** 2026-10-05 · **Status:** phase 0 closed
+**Date:** 2026-09-26 · **Submission:** 2026-10-05 · **Status:** phase 0 closed except identity items (name, team, license)
 
 ## 1. The business problem
 
@@ -76,8 +76,8 @@ The system's internal instructions (skills, schemas, policies) are in English, f
 
 | Pillar | Where it lives in this submission |
 |---|---|
-| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` |
-| Documented rationale | This document and the 9 ADRs |
+| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` (⚠️ pending) |
+| Documented rationale | This document and the 10 ADRs |
 | AI engineering | `orchestrator`, policy engine in `banking-core`, frontends, deployment |
 | Data engineering | Ingestion, contracts, quality, lineage — [data.md](data.md) |
 | Data analytics | Operational metrics panel and per-language breakdown |

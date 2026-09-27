@@ -12,7 +12,7 @@ Not a chatbot with database access. An engine where the model proposes and a det
 
 ```bash
 git clone TODO-repo && cd TODO-repo
-make demo
+make demo  # ⚠️ pending
 ```
 
 Starts in **replay mode**: no API key, no external dataset, model responses prerecorded. Chat at http://localhost:5173, back office at http://localhost:5174.
@@ -31,7 +31,7 @@ To try it with your own messages, or to seed the full dataset, see **[docs/runbo
 
 1. **[docs/00-problem.md](docs/00-problem.md)** — which workflow we chose, why, and what we deliberately left out.
 2. **[ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)**, **[ADR-0002](docs/adr/0002-config-code-boundary.md)**, **[ADR-0003](docs/adr/0003-deterministic-vs-ai.md)** — the three decisions that shape the system.
-3. **[docs/evaluation.md](docs/evaluation.md)** — baseline against proposed system, on the same held-out set.
+3. **[docs/evaluation.md](docs/evaluation.md)** — baseline against proposed system, on the same scenario suite.
 4. **[docs/limitations.md](docs/limitations.md)** — what does not work and what we would do with more time.
 
 Full documentation guide: **[docs/README.md](docs/README.md)**. Working conventions: **[AGENTS.md](AGENTS.md)**.
@@ -83,7 +83,7 @@ flowchart LR
 
 ## How we prove it works
 
-Two systems, the same held-out set, the same tools and the same model. The only difference is the control architecture.
+Two systems, the same scenario suite, the same tools and the same model. The only difference is the control architecture.
 
 | | Baseline | Proposed |
 |---|---|---|
@@ -96,7 +96,7 @@ Two systems, the same held-out set, the same tools and the same model. The only 
 All broken down by language (es / pt). Metric definitions and failure taxonomy written **before** measuring: **[docs/evaluation.md](docs/evaluation.md)**.
 
 ```bash
-make eval    # in replay mode this reproduces these numbers exactly
+make eval    # ⚠️ pending — in replay mode this reproduces these numbers exactly
 ```
 
 ---
@@ -122,6 +122,7 @@ Monorepo using the `apps` + `packages` pattern: **if it deploys it goes in `apps
 apps/
   banking-core/      trusted zone · data, tools, policies, audit
   orchestrator/      untrusted zone · chat, session, LLM, PII masking
+  encoder/           local decision & extraction server · CPU
   web-client/        simulated fintech + chat bubble
   web-backoffice/    queue, handoff, guardrails, metrics
 packages/
