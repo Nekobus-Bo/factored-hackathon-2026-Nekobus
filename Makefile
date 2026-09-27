@@ -73,5 +73,6 @@ clean-models: ## pending: drop cached model weights
 deploy: ## pending: deploy to the target environment
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-calibrate: ## pending: calibrate the abstention threshold on validation (TASK=decision|embedding)
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+calibrate: ## Compare and calibrate candidate models (TASK=decision|embedding, CONFIG=, OUT=reports)
+	@test -n "$(TASK)" || { echo "calibrate: set TASK=decision or TASK=embedding" >&2; exit 1; }
+	uv run --package calibrate python -m calibrate.cli --task $(TASK) $(if $(CONFIG),--config $(CONFIG)) --out $(or $(OUT),reports)

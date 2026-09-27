@@ -20,9 +20,14 @@ members = [
     "apps/orchestrator",
     "apps/encoder",
     "packages/contracts",
+    "packages/encoder",
+    "packages/retrieval",
+    "tools/calibrate",
 ]
 
 [tool.uv.sources]
+encoder = { workspace = true }
+retrieval = { workspace = true }
 banking-core = { workspace = true }
 orchestrator = { workspace = true }
 encoder-service = { workspace = true }
