@@ -63,7 +63,7 @@ Not every target is implemented yet; `make help` lists what exists and pending t
 
 **Before writing code:** if the task changes an architectural decision, write or update the ADR first. Half a page: context, options, decision, consequences.
 
-**When adding a tool:** schema in `packages/contracts/tools/` → implementation in `apps/banking-core/src/*/tools/` → entry in the policy engine → FSM state that enables it → scenario in `eval/scenarios/` covering it, including the case where it must **not** run.
+**When adding a tool:** schema in `packages/contracts/src/contracts/tools/` → implementation in `apps/banking-core/src/*/tools/` → entry in the policy engine → FSM state that enables it → scenario in `eval/scenarios/` covering it, including the case where it must **not** run.
 
 **When adding a workflow:** first check whether it is configuration only. If it needs code, that means a new banking operation is required, and that ships with a contract and tests.
 
