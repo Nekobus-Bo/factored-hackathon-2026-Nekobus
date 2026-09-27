@@ -356,3 +356,50 @@ def test_fake_filler_constraints(train_records, val_records):
                 assert not val.startswith("+00"), (
                     f"Phone '{val}' illegally starts with +00"
                 )
+
+
+def test_no_demo_identities_in_texts(train_records, val_records):
+    """No scenario or seed identity appears in any synthetic text."""
+    from tools.synthdata.denylist import find_denylisted
+
+    leaks = {
+        r["id"]: find_denylisted(r["text"])
+        for r in train_records + val_records
+        if find_denylisted(r["text"])
+    }
+    assert not leaks, f"Demo identities leaked into synthetic data: {leaks}"
+
+
+def test_denylist_covers_seed_fixtures():
+    """Every document constant and demo name in the seed fixtures is denylisted."""
+    import re
+
+    from tools.synthdata.denylist import DEMO_IDENTITY_DENYLIST
+
+    fixtures = (
+        REPO_ROOT / "apps/banking-core/src/banking_core/seed/fixtures.py"
+    ).read_text(encoding="utf-8")
+    documents = re.findall(r'^[A-Z_]+_DOCUMENT_[A-Z]{2} = "([^"]+)"$', fixtures, re.M)
+    assert len(documents) == 9, "seed fixture document constants changed shape"
+    demo_names = {"Carlos Gomez", "Mariana Silva", "Alice Johnson"}
+    fixture_names = re.findall(r'^\s+"([A-Z][a-z]+ [A-Z][a-z]+)",$', fixtures, re.M)
+    assert demo_names <= set(fixture_names), "seed demo customer names changed"
+
+    missing = (set(documents) | demo_names) - set(DEMO_IDENTITY_DENYLIST)
+    assert not missing, f"Denylist is missing seed identities: {sorted(missing)}"
+
+
+def test_generation_rejects_denylisted_text(tmp_path, monkeypatch):
+    """The generator refuses to write a row containing a demo identity."""
+    from tools.synthdata import generate as gen
+
+    real_split = gen.generate_split
+
+    def leaky_split(split, **kwargs):
+        rows = real_split(split, **kwargs)
+        rows[0] = {**rows[0], "text": rows[0]["text"] + " 1020304050", "slots": []}
+        return rows
+
+    monkeypatch.setattr(gen, "generate_split", leaky_split)
+    with pytest.raises(ValueError, match="demo identities"):
+        gen.generate_datasets(tmp_path, seed=DEFAULT_SEED)

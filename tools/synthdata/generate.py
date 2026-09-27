@@ -16,6 +16,7 @@ import random
 from pathlib import Path
 from typing import Any
 
+from tools.synthdata.denylist import find_denylisted
 from tools.synthdata.fillers import get_fillers
 from tools.synthdata.templates_en import (
     TRAIN_TEMPLATES as TRAIN_EN,
@@ -192,6 +193,12 @@ def generate_datasets(
     for r in train_rows + val_rows:
         for s in r["slots"]:
             assert r["text"][s["start"] : s["end"]] == s["value"]
+
+    # Demo identities belong to the eval scenarios and seed, never to training
+    for r in train_rows + val_rows:
+        leaked = find_denylisted(r["text"])
+        if leaked:
+            raise ValueError(f"Row {r['id']} contains demo identities: {leaked}")
 
     # Write files deterministically
     train_path = out_dir / "decision.train.jsonl"

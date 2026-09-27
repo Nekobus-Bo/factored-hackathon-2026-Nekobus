@@ -62,7 +62,7 @@ NAMES_PT = [
 NAMES_EN = [
     "Jane Doe",
     "John Smith",
-    "Alice Johnson",
+    "Rachel Adams",
     "Robert Taylor",
     "Emily Davis",
     "David Wilson",
@@ -79,7 +79,7 @@ NAMES_EN = [
 
 # Consistent Document Profiles (normalized enum, surface form, matching bare number)
 DOCUMENT_PROFILES_ES = [
-    {"normalized": "NATIONAL_ID", "surface": "cédula", "number": "1020304050"},
+    {"normalized": "NATIONAL_ID", "surface": "cédula", "number": "1030507090"},
     {"normalized": "NATIONAL_ID", "surface": "DNI", "number": "98765432X"},
     {
         "normalized": "NATIONAL_ID",
@@ -111,7 +111,7 @@ DOCUMENT_PROFILES_ES = [
 ]
 
 DOCUMENT_PROFILES_PT = [
-    {"normalized": "NATIONAL_ID", "surface": "CPF", "number": "123.456.789-00"},
+    {"normalized": "NATIONAL_ID", "surface": "CPF", "number": "234.567.890-12"},
     {"normalized": "NATIONAL_ID", "surface": "CPF", "number": "987.654.321-11"},
     {"normalized": "NATIONAL_ID", "surface": "CPF", "number": "456.789.012-34"},
     {"normalized": "NATIONAL_ID", "surface": "RG", "number": "12.345.678-9"},
@@ -134,7 +134,7 @@ DOCUMENT_PROFILES_EN = [
     {"normalized": "NATIONAL_ID", "surface": "ID card", "number": "987654321"},
     {"normalized": "NATIONAL_ID", "surface": "driver's license", "number": "D1234567"},
     {"normalized": "NATIONAL_ID", "surface": "state ID", "number": "45678912"},
-    {"normalized": "PASSPORT", "surface": "passport", "number": "P1234567"},
+    {"normalized": "PASSPORT", "surface": "passport", "number": "P8765432"},
     {"normalized": "PASSPORT", "surface": "passport", "number": "A9876543"},
     {"normalized": "FOREIGN_ID", "surface": "foreign ID", "number": "F87654321"},
     {
