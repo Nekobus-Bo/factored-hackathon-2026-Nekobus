@@ -25,6 +25,7 @@ def get_or_run(
     scope: str | None = None,
     session_id: str | None = None,
     ttl_seconds: int = 86400,
+    require_scope: bool = False,
 ) -> tuple[dict[str, Any], bool]:
     """Execute action with idempotency protection or replay previous response.
 
@@ -37,6 +38,8 @@ def get_or_run(
         scope: Optional scope identifier (defaults to session_id or 'global').
         session_id: Optional session identifier for scoping.
         ttl_seconds: Time-to-live for cached response (default 24h).
+        require_scope: If True, forbids fallback to 'global' and requires
+            explicit scope.
 
     Returns:
         tuple[dict[str, Any], bool]: (response_data, was_replayed)
@@ -44,8 +47,15 @@ def get_or_run(
     Raises:
         InvalidIdempotencyKeyError: If key format violates constraints.
         IdempotencyConflictError: If key is reused with differing arguments.
+        ValueError: If require_scope is True and neither scope nor session_id
+            is provided.
     """
     validate_idempotency_key(key)
+    if require_scope and not (scope or session_id):
+        raise ValueError(
+            f"Scope is required for idempotency on state-mutating tool '{tool}'; "
+            "no global fallback permitted"
+        )
     scope_resolved = scope or session_id or "global"
     scoped_key = compute_scoped_key(scope_resolved, tool, key)
     request_hash = compute_request_hash(tool, args)

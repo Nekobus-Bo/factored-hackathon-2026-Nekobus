@@ -5,11 +5,15 @@ otp_challenge_id, updated_at}.
 Security rules:
 - pinned_holder_id is strictly established server-side on verified match.
 - Pinned holder can NEVER be supplied or altered by model tool args (ADR-0004).
-- Concurrency: Atomic updates using Redis WATCH / MULTI / EXEC.
+- Concurrency: Atomic updates using Redis WATCH / MULTI / EXEC, and a per-session
+  lock (SET NX PX + token) that serializes whole tool dispatches.
 """
 
 import os
-from collections.abc import Callable
+import secrets
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -182,6 +186,45 @@ class RedisSessionStore:
         raise RuntimeError(
             f"Failed to update session '{session_id}' after {max_retries} retries"
         )
+
+    @contextmanager
+    def lock(
+        self,
+        session_id: str,
+        ttl_ms: int,
+        wait_ms: int,
+        poll_ms: int = 25,
+    ) -> Iterator[bool]:
+        """Hold an exclusive per-session lock; yields False if not acquired in time.
+
+        The lock expires after ttl_ms so a crashed holder cannot wedge the session.
+        Release is compare-and-delete on the token, so an expired holder never
+        releases a lock that another caller has since acquired.
+        """
+        key = f"{self.key_prefix}{session_id}:lock"
+        token = secrets.token_hex(16)
+        deadline = time.monotonic() + wait_ms / 1000
+        acquired = bool(self._client.set(key, token, nx=True, px=ttl_ms))
+        while not acquired and time.monotonic() < deadline:
+            time.sleep(poll_ms / 1000)
+            acquired = bool(self._client.set(key, token, nx=True, px=ttl_ms))
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self._release_lock(key, token)
+
+    def _release_lock(self, key: str, token: str) -> None:
+        with self._client.pipeline() as pipe:
+            try:
+                pipe.watch(key)
+                if pipe.get(key) in (token, token.encode()):
+                    pipe.multi()
+                    pipe.delete(key)
+                    pipe.execute()
+            except redis.WatchError:
+                # The key changed hands after expiring: it is no longer ours.
+                pass
 
     def delete(self, session_id: str) -> None:
         """Delete session from Redis."""
