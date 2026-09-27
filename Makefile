@@ -11,7 +11,7 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup clean-models deploy calibrate synth-data generate-labels
+	data-quality verify-audit warmup clean-models deploy calibrate synth-data generate-labels migrate
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -19,6 +19,9 @@ generate-labels: ## Generate packages/contracts/src/contracts/labels.py from sch
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
+
+migrate: ## apply database migrations (alembic upgrade head)
+	$(COMPOSE) run --rm migrate
 
 up: ## Build and start all services, wait until healthy
 	$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT)
