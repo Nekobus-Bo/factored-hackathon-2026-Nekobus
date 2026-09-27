@@ -63,10 +63,24 @@ The single Redis in the decision above is split in two, following the trust boun
 
 **Why:** with one shared, unauthenticated Redis, a compromised `orchestrator` could rewrite the pinned holder or reset OTP and match counters, which voids the boundary. Each Redis has its own password, and the `orchestrator` has no network path to `postgres` or `redis-core`. This is still one engine to operate; the cost is a second container.
 
+## Amendment (2026-09-27): retrieval evidence — keep the vector index
+
+Measured with the calibration harness (`make calibrate TASK=embedding CONFIG=tools/calibrate/configs/embedding_kb_v1.yaml`), report `reports/calibration-embedding-2026-09-27.md`; summary in [evaluation.md](../evaluation.md#knowledge-retrieval). Mean over es/pt/en, 120 provisional synthetic validation queries per language:
+
+| Backend | Same-language Hit@1 | Same-language MRR | Cross-language Hit@1 |
+|---|---:|---:|---:|
+| BM25 | 0.366 | 0.456 | 0.144 |
+| Vector (`paraphrase-multilingual-MiniLM-L12-v2`) | 0.494 | 0.605 | 0.508 |
+| Hybrid (RRF, k=60) | 0.461 | 0.591 | 0.325 |
+
+**Decision:** hybrid beats BM25, so the vector component is **kept**, as this ADR required. The **default backend is vector-only**: equal-weight RRF adds nothing over vector on same-language queries (differences within sampling noise) and loses 0.18 Hit@1 cross-language, because BM25 cannot match across languages and drags the fusion down. BM25 stays available as the baseline and as a component for a future weighted fusion.
+
+**Caveats:** the query set is synthetic and provisional, and was written to avoid the KB's wording, which penalizes BM25. The decision is re-checked when the human-written test set exists. Weighted fusion and per-language BM25 were not tried.
+
 ## Action items
 
 1. [ ] Migrations with the three schemas
 2. [ ] Knowledge base ingestion with offline embeddings
-3. [ ] Experiment: BM25 vs vector vs hybrid, results in `evaluation.md`
+3. [x] Experiment: BM25 vs vector vs hybrid, results in `evaluation.md` (2026-09-27, provisional query set)
 4. [ ] Hash-chained audit log and verifier
 5. [ ] Reproducible seeds from the dataset
