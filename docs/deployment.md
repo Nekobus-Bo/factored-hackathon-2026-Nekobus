@@ -117,12 +117,12 @@ Ensure the key prefix variables in `.env` match these patterns:
 
 ## 3. Production Compose Configuration
 
-Production deployment layers `infra/compose/docker-compose.prod.yml` over `infra/compose/docker-compose.yml`.
+Production deployment layers `infra/compose/docker-compose.prod.yml` over `infra/compose/docker-compose.yml`, and — for bundled data only — `infra/compose/docker-compose.bundled.yml` on top of that.
 
 ### Deployment Modes
 
 #### 1. Host Data Mode (Default Production)
-By default, `docker-compose.prod.yml` sets `profiles: ["bundled-data"]` on containerized `postgres`, `redis-core`, and `redis-edge`. They do not start unless the profile is activated.
+By default, `docker-compose.prod.yml` sets `profiles: ["bundled-data"]` on `postgres`, `redis-core`, and `redis-edge`, with no other configuration on them. They do not start unless the profile is activated, and — because they carry no required (`:?`) variables in this file — `docker compose` does not ask for their passwords in this mode either: Compose validates a service's required variables during `config`/`up` even when a profile keeps it from starting, so those passwords could not live directly in `docker-compose.prod.yml` without breaking host mode (see `docker-compose.bundled.yml`'s header comment).
 
 The stack connects to PostgreSQL and Redis running on the host system via `host.docker.internal:host-gateway`.
 
@@ -133,12 +133,13 @@ docker compose -f infra/compose/docker-compose.yml \
 ```
 
 #### 2. Bundled Data Mode (Self-Contained Evaluation)
-To run the full stack with containerized PostgreSQL and Redis under production security controls (read-only filesystems, prebuilt images, registry tags):
+To run the full stack with containerized PostgreSQL and Redis under production security controls (read-only filesystems, prebuilt images, registry tags), also layer `docker-compose.bundled.yml`, which is where `POSTGRES_PASSWORD`, `REDIS_CORE_PASSWORD`, and `REDIS_EDGE_PASSWORD` are required:
 
 ```bash
 docker compose --profile bundled-data \
                -f infra/compose/docker-compose.yml \
                -f infra/compose/docker-compose.prod.yml \
+               -f infra/compose/docker-compose.bundled.yml \
                up -d --wait
 ```
 
@@ -257,4 +258,126 @@ make smoke
 make verify-audit
 ```
 
-Automated production deployment automation via `make deploy` is currently `⚠️ pending`.
+Automated production deployment automation via `make deploy` is currently `⚠️ pending`
+(the CD workflow below deploys over SSH directly; it does not call `make deploy`).
+
+---
+
+## 6. Continuous Deployment
+
+`.github/workflows/deploy.yml` builds the three application images, pushes them to
+GHCR, and deploys to a target host over SSH. It runs on GitHub-hosted `ubuntu-latest`
+runners only — no self-hosted runner, because this repository is public.
+
+**Triggers:** automatically after `ci` succeeds on `main` (`workflow_run`), or manually
+via `workflow_dispatch` (pick an environment, optionally an existing image tag for a
+rollback). It never runs for `pull_request` events.
+
+**Fork PRs never reach `build` or `deploy`, by construction, not just by omitting
+`pull_request`.** `on.workflow_run.branches: [main]` matches on the *head branch name*
+of the completed run, regardless of which repository that branch lives in — so a fork
+PR opened from a branch literally named `main` would otherwise satisfy that filter and
+fire `workflow_run` in *this* repository, with this repository's secrets and
+`packages: write`. Both the `build` and `deploy` jobs additionally require, in their own
+`if:` (re-derived independently in `deploy`, not inherited from `build`'s result), that
+`github.event.workflow_run.event == 'push'` and
+`github.event.workflow_run.head_repository.full_name == github.repository` and
+`github.event.workflow_run.head_branch == 'main'` — none of which a fork's pull_request
+can satisfy, since its head repository is the fork, not this repository, no matter what
+it names its branch. `workflow_dispatch` is additionally pinned to
+`github.ref == 'refs/heads/main'`.
+
+### Creating a GitHub Environment
+
+`Settings → Environments → New environment`, named to match what
+`vars.DEPLOY_ENVIRONMENT` (repository variable) or the `workflow_dispatch` input
+resolves to — `test-vps` if neither is set. Add the secrets and variables from the
+table below to that environment. Optionally add required reviewers or a wait timer;
+the workflow's `concurrency: deploy-<environment>` group already prevents two deploys
+to the same environment from overlapping.
+
+### Repository-level configuration (not environment-scoped)
+
+| Name | Kind | Purpose | Default |
+|---|---|---|---|
+| `DEPLOY_PLATFORMS` | variable | Build target(s): `linux/amd64`, `linux/arm64`, or both comma-separated | `linux/amd64` |
+| `BANKING_CORE_SYNC_ARGS` | variable | Build arg forwarded to `apps/banking-core/Dockerfile` | `--extra vector` |
+| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile` (`gliner` to include it; empty for `tfidf_lr` only) | empty |
+| `DEPLOY_ENABLED` | variable | Must be `"true"` or the `deploy` job no-ops cleanly (this is what lets a fork exist without a working deploy). **Must be set at the repository level, not inside a GitHub Environment**: the `deploy` job's `if:` is evaluated before the job's `environment:` binds, so an environment-scoped variable of the same name would never be visible there and the job would silently skip forever | unset |
+
+### Per-environment configuration
+
+| Name | Kind | Required when | Purpose |
+|---|---|---|---|
+| `DEPLOY_SSH_KEY` | secret | always | Private key for `DEPLOY_USER@DEPLOY_HOST`; the matching public key must be authorized on the target host |
+| `DEPLOY_KNOWN_HOSTS` | secret | always | Output of `ssh-keyscan <host>`, captured and pinned once by hand. Never `StrictHostKeyChecking=no` |
+| `DEPLOY_HOST` | secret | always | Target host (hostname or IP) |
+| `DEPLOY_USER` | secret | always | SSH user on the target host |
+| `DEPLOY_PATH` | variable | always | Absolute path on the target host for the compose files and `.env` (e.g. `/opt/pattern-blue`) |
+| `DATA_MODE` | variable | always | `host` (default: use the target's own Postgres/Redis, see §1–§3 above) or `bundled` (adds `--profile bundled-data` and `-f docker-compose.bundled.yml`: a dedicated server gets Postgres/Redis containers from zero, no host prep) |
+| `DATABASE_URL` | secret | always | See §3 table above |
+| `REDIS_CORE_URL` | secret | always | See §3 table above |
+| `REDIS_EDGE_URL` | secret | always | See §3 table above |
+| `SESSION_SECRET` | secret | always | See §3 table above |
+| `MASTER_KEY` | secret | always | See §3 table above |
+| `BLIND_INDEX_SALT` | secret | always | See §3 table above |
+| `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` |
+| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API |
+| `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
+| `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
+| `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
+| `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |
+| `REDIS_EDGE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-edge` container |
+
+`DATA_MODE=host` needs the one-time host preparation described in §1 (PostgreSQL role,
+database, `pgvector`, `pg_hba.conf`) and §2 (Redis ACL users) above, done once by
+whoever administers that host. `DATA_MODE=bundled` needs none of that: the compose
+`bundled-data` profile starts `postgres`, `redis-core`, and `redis-edge` as containers
+on the target itself.
+
+### Forking this repository
+
+A fork gets the workflow file as-is and does nothing on its own: `vars.DEPLOY_ENABLED`
+is unset on a fresh fork, so the `deploy` job's `if:` condition is false and it is
+skipped, not failed. The `build` job still runs and pushes to the fork owner's own
+`ghcr.io/<fork-owner>/pattern_blue-*` packages (`github.repository_owner` is always
+resolved from the repository the workflow runs in). To deploy from a fork, its owner
+creates their own GitHub Environment and secrets exactly as described above — nothing
+in the workflow needs editing.
+
+### GitHub secret limits
+
+Each secret is capped at 48 KB, and a job's combined secrets must stay under 64 KB.
+None of the values above approach that. If a future need requires a large blob (a TLS
+certificate bundle, for instance — not needed today, since Redis/Postgres access from
+the app containers is not encrypted at the ADR-0004 trust-boundary hop), base64-encode
+it into a secret and `base64 -d` it back into a file inside the job. GitHub Actions has
+no "secure files" feature comparable to Azure DevOps; a base64 secret decoded at
+deploy time is the equivalent.
+
+### Where images live
+
+The three images (`ghcr.io/<owner>/pattern_blue-banking-core`,
+`pattern_blue-orchestrator`, `pattern_blue-encoder`) are **GHCR public packages** by
+intent. GHCR packages are **private by default on first push** regardless of the
+repository's own visibility, so after the first successful `build` job, go to
+`https://github.com/users/<owner>/packages/container/<package>/settings` (or the org
+equivalent) for each of the three and set visibility to Public once. Public packages
+need no authentication to `docker pull`, which is why the `deploy` job does not log in
+to GHCR before pulling — if a package is kept private instead, add a `docker login`
+step there with a token that has at least `read:packages`.
+
+### Rollback
+
+Re-run the workflow via `workflow_dispatch` with the same `environment` and an
+`image_tag` from a previous successful run (visible in the Actions run log, or as a
+GHCR package version, e.g. `sha-abc1234`). The `build` job is skipped in that case —
+nothing is rebuilt — and `deploy` runs the SSH steps against the given tag.
+
+### Status: not yet exercised
+
+`deploy.yml` has been designed and syntax/render-validated locally (`config` against
+both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy has
+actually run** against any target — no Environment has been created yet, and no
+`DEPLOY_*` secret exists anywhere. Treat this section as a design, not a proven
+procedure, until a first real run against `test-vps` is logged here.
