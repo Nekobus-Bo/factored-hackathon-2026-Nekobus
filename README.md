@@ -1,40 +1,43 @@
-# TODO-FINTECH-NAME — AI-first customer service for banking
+# Pattern Blue — AI-first customer service for banking
 
-**Factored AI & Data Hackathon 2026** · Team TODO · Workflow: **compromised card**
+**Factored AI & Data Hackathon 2026** · Team Nekobus · Workflow: **compromised card**
 
-A system that understands the customer in their own language, verifies their identity, takes the action when it is authorized, **verifies the action actually happened**, and hands the case to a person when it should not decide alone.
+A customer service system that understands the user in their own language, verifies their identity, executes banking operations when authorized, **verifies every action against the database with receipts and idempotency keys**, and hands the case to a human agent when it must not decide alone.
 
 Not a chatbot with database access. An engine where the model proposes and a deterministic core authorizes.
 
 ---
 
-## Try it in 2 minutes
+## Quick start
 
 ```bash
-git clone TODO-repo && cd TODO-repo
-make demo  # ⚠️ pending
+git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
+make up                 # starts banking-core, orchestrator, encoder, postgres, redis
+make seed               # seeds synthetic demo data and staging datasets
+make smoke              # verifies service health and connectivity
 ```
 
-Starts in **replay mode**: no API key, no external dataset, model responses prerecorded. Chat at http://localhost:5173, back office at http://localhost:5174.
+> **Note on user interfaces:** The simulated frontends (`apps/web-client` and `apps/web-backoffice`) are pending and not built yet. The system is operated via HTTP APIs:
+> - **orchestrator** (`http://localhost:8080`): chat API (`/v1/conversations`), turn engine, PII masking, local encoder integration
+> - **banking-core** (`http://localhost:8081`): tool API (`/v1/tools/call`), Admin API (`/v1/admin/...`, disabled by default), policy engine
+> - **encoder** (`http://localhost:8090`): local CPU inference server (`/v1/analyze`)
 
-To try it with your own messages, or to seed the full dataset, see **[docs/runbook.md](docs/runbook.md)**.
-
-| | |
-|---|---|
-| Deployed demo | TODO — private environment, available TODO (dates) |
-| Video (3 min) | TODO |
-| Slides | TODO |
+To run in automated replay mode:
+```bash
+make demo               # ⚠️ pending: full startup in replay mode
+```
+For manual testing and live LLM credentials, see **[docs/runbook.md](docs/runbook.md)**.
 
 ---
 
 ## What to look at, in 15 minutes
 
-1. **[docs/00-problem.md](docs/00-problem.md)** — which workflow we chose, why, and what we deliberately left out.
-2. **[ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)**, **[ADR-0002](docs/adr/0002-config-code-boundary.md)**, **[ADR-0003](docs/adr/0003-deterministic-vs-ai.md)** — the three decisions that shape the system.
-3. **[docs/evaluation.md](docs/evaluation.md)** — baseline against proposed system, on the same scenario suite.
-4. **[docs/limitations.md](docs/limitations.md)** — what does not work and what we would do with more time.
+1. **[docs/00-problem.md](docs/00-problem.md)** — the business problem, user roles, why compromised card was chosen, and what was intentionally omitted.
+2. **[ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)**, **[ADR-0002](docs/adr/0002-config-code-boundary.md)**, **[ADR-0003](docs/adr/0003-deterministic-vs-ai.md)** — the three core architectural decisions.
+3. **[docs/evaluation.md](docs/evaluation.md)** — benchmark protocol, failure taxonomy, and metrics definitions written *before* measuring.
+4. **[docs/limitations.md](docs/limitations.md)** — explicit operational limits, known gaps, and future roadmap.
 
-Full documentation guide: **[docs/README.md](docs/README.md)**. Working conventions: **[AGENTS.md](AGENTS.md)**.
+Full documentation index: **[docs/README.md](docs/README.md)**. Working conventions: **[AGENTS.md](AGENTS.md)**.
 
 ---
 
@@ -42,16 +45,16 @@ Full documentation guide: **[docs/README.md](docs/README.md)**. Working conventi
 
 ```mermaid
 flowchart LR
-    C[Customer<br/>web chat] --> ORC
-    A[Agent<br/>back office] --> ORC
+    C[Customer<br/>chat API] --> ORC
+    A[Agent / Ops<br/>admin API] --> CORE
 
     subgraph EXT [Untrusted zone]
-        ORC[orchestrator<br/>session · streaming<br/>PII masking]
+        ORC[orchestrator<br/>session · tool loop<br/>PII masking]
         ORC <--> LLM[LLM<br/>language and tool-calling]
-        ORC --> ENC[Local encoder<br/>intent · slots · PII]
+        ORC -->|HTTP /v1/analyze| ENC[encoder<br/>intent · slots · PII<br/>CPU server]
     end
 
-    ORC -->|tool contract| CORE
+    ORC -->|HTTP tool contract| CORE
 
     subgraph INT [Trusted zone]
         CORE[banking-core]
@@ -63,92 +66,114 @@ flowchart LR
         CORE --- AUD
     end
 
-    CORE --> DB[(PostgreSQL<br/>core · chat · ops<br/>+ vector)]
-    CORE --> R[(Redis)]
+    CORE --> DB[(PostgreSQL 17<br/>core · chat · ops<br/>+ pgvector)]
+    CORE --> RC[(Redis Core<br/>FSM & state)]
+    ORC --> RE[(Redis Edge<br/>chat cache)]
 ```
 
-**The rule that governs everything:** `orchestrator` holds no database credentials. The LLM never emits queries and never receives raw rows: it emits tool calls with validated parameters, and the core decides whether they proceed against the verification state and the policy table. Details in **[ADR-0004](docs/adr/0004-trust-boundary.md)**.
+**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies and risk thresholds can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config`, bearer token, off unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
 
 ---
 
-## Three decisions that define us
+## Core architectural decisions
 
-**A cheap LLM for language, a small encoder for deciding.** The multilingual encoder runs locally on CPU and returns a calibrated score, which is what makes a **validation-tuned abstention threshold** possible: below τ the system asks instead of guessing. It also masks PII before any text leaves for the external provider. → [ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)
-
-**Behavior is configuration; tools are code.** Intents, knowledge, templates and policies are edited from the back office without deploying. And configuration **cannot override policy**: text saying "skip verification" has no effect, because the model is not what authorizes. → [ADR-0002](docs/adr/0002-config-code-boundary.md)
-
-**We do not automate the dispute.** We could, and chose not to. It is the customer's money and it takes human judgment. The system verifies, assembles the case and hands it over with verified facts, actions taken, verification method and open questions. → [ADR-0003](docs/adr/0003-deterministic-vs-ai.md)
+- **Cheap LLM for language, small local encoder for deciding:** The multilingual encoder runs on CPU and produces calibrated intent and slot confidence scores, enabling a validation-tuned abstention threshold ($\tau$): below $\tau$, the assistant asks for clarification instead of guessing. Sensitive PII is masked before any payload leaves for external LLM providers ([ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)).
+- **Behavior is configuration; tools are code:** Intents, policies, limits, and knowledge are configurable database state without deployments. Policies cannot be overridden by prompt manipulation ([ADR-0002](docs/adr/0002-config-code-boundary.md)).
+- **We do not automate the dispute:** Card blocking is immediate and deterministic; customer disputes are handed off to human specialists with a structured briefing packet (verified facts, executed actions, authentication method, open questions) and database-verified receipts ([ADR-0003](docs/adr/0003-deterministic-vs-ai.md)).
 
 ---
 
-## How we prove it works
+## Evaluation & empirical evidence
 
-Two systems, the same scenario suite, the same tools and the same model. The only difference is the control architecture.
+We evaluate the system using a scenario suite of **53 scenarios across 10 failure groups** in Spanish, Portuguese, and English: `happy_path`, `failed_identity`, `not_the_holder`, `risk_threshold`, `ambiguity`, `out_of_scope`, `adversarial`, `degradation`, `messy_conversation`, and `account_inquiry`.
 
-| | Baseline | Proposed |
-|---|---|---|
-| Automated resolution | TODO | TODO |
-| **Unsafe outcomes** | TODO | TODO |
-| Correct abstention | TODO | TODO |
-| Cost per conversation | TODO | TODO |
-| p95 latency | TODO | TODO |
-
-All broken down by language (es / pt / en). Metric definitions and failure taxonomy written **before** measuring: **[docs/evaluation.md](docs/evaluation.md)**.
+Empirical calibration and validation reports are versioned under [`reports/`](reports/):
+- **Decision calibration:** [`reports/calibration-decision-2026-09-28.md`](reports/calibration-decision-2026-09-28.md) (macro-F1, expected calibration error, latency/RAM benchmarks comparing TF-IDF and GLiNER2.5 models).
+- **Retrieval calibration:** [`reports/calibration-embedding-2026-09-27.md`](reports/calibration-embedding-2026-09-27.md) (Hit@k and MRR over 40 Knowledge Base topics in `es`, `pt`, and `en`).
+- **Data quality evidence:** [`reports/data-quality.md`](reports/data-quality.md) and [`reports/data-quality-factored.md`](reports/data-quality-factored.md).
 
 ```bash
-make eval    # ⚠️ pending — in replay mode this reproduces these numbers exactly
+make eval               # ⚠️ pending: scenario replay evaluation runner
+make eval-baseline      # ⚠️ pending: baseline system only
+make eval-adversarial   # ⚠️ pending: injection and abuse scenarios
 ```
 
 ---
 
-## Stack
+## Available commands (`make help`)
 
-| Layer | Choice |
-|---|---|
-| Language and tool-calling | Economy-tier commercial LLM behind an OpenAI-compatible layer |
-| Decision and extraction | Small multilingual encoder, local on CPU |
-| Backend | Python · FastAPI · Pydantic · `banking-core` + `orchestrator` |
-| Data | PostgreSQL with vector extension · Redis |
-| Frontend | TODO · i18n · WebSocket / SSE |
-| Runtime | Docker Compose · CPU, no GPU |
+All project operations are exposed through `make`:
+
+| Target | Description | Status |
+|---|---|---|
+| `make up` | Build and start services (`banking-core`, `orchestrator`, `encoder`, `postgres`, `redis`) | Working |
+| `make down` | Stop all services, keeping volumes | Working |
+| `make logs` | Stream logs from all services (or `make logs s=banking-core`) | Working |
+| `make clean` | Stop containers and destroy volumes (wipes database) | Working |
+| `make smoke` | Health check across all running services and databases | Working |
+| `make seed` | Seed database with synthetic demo data and staging datasets | Working |
+| `make migrate` | Apply database migrations via Alembic | Working |
+| `make ingest` | Ingest a raw dataset into `data/staging/<source>` (`SOURCE=factored`) | Working |
+| `make data-quality` | Run data quality checks and output report | Working |
+| `make verify-audit` | Verify the cryptographic hash chain of the audit log | Working |
+| `make warmup` | Preload encoder and embedding weights into Docker volumes (`warmup-encoder` + `warmup-retrieval`) | Working |
+| `make encoder-bench` | Encoder p95 latency and peak RAM on CPU | Working |
+| `make build-multiarch` | Build app images for linux/amd64 and linux/arm64 (no push) | Working |
+| `make generate-labels` | Regenerate the contract label enums from `schema.yaml` | Working |
+| `make calibrate` | Run unified calibration pipeline (`TASK=decision\|embedding`) | Working |
+| `make synth-data` | Generate deterministic synthetic decision datasets | Working |
+| `make profile-factored` | Profile Factored dataset and output aggregate statistics | Working |
+| `make demo` | Full startup in prerecorded replay mode | ⚠️ pending |
+| `make eval` | Scenario evaluation suite execution | ⚠️ pending |
+| `make eval-baseline` | Baseline system evaluation execution | ⚠️ pending |
+| `make eval-adversarial` | Adversarial injection scenario suite execution | ⚠️ pending |
+| `make clean-models` | Drop cached model weights | ⚠️ pending |
+| `make deploy` | Deploy to target environment | ⚠️ pending |
 
 ---
 
-## Structure
+## Monorepo structure
 
-Monorepo using the `apps` + `packages` pattern: **if it deploys it goes in `apps/`, if it is imported it goes in `packages/`**. Reasoning in [ADR-0009](docs/adr/0009-monorepo-structure.md).
+Following [ADR-0009](docs/adr/0009-monorepo-structure.md): **if it deploys it goes in `apps/`, if it is imported it goes in `packages/`**.
 
 ```
 apps/
-  banking-core/      trusted zone · data, tools, policies, audit
-  orchestrator/      untrusted zone · chat, session, LLM, PII masking
-  encoder/           local decision & extraction server · CPU
-  web-client/        simulated fintech + chat bubble
-  web-backoffice/    queue, handoff, guardrails, metrics
+  banking-core/         trusted zone · data, tools API, admin API, policy engine, audit
+  orchestrator/         untrusted zone · chat API, session, tool loop, PII masking
+  encoder/              local decision & extraction server · CPU FastAPI service
+  web-client/           (pending) simulated fintech + customer chat bubble
+  web-backoffice/       (pending) queue, handoff review, guardrails, metrics
 packages/
-  contracts/         tools, message blocks and policies (Pydantic + Zod)
-  encoder/           intent, slots and PII · CPU
-  retrieval/         knowledge base and hybrid index
-  design-tokens/
-data/                raw/ staging/ curated/ eval/
-eval/                scenarios/ replay/ runner/
-infra/               compose/ db/ deploy/
-tools/               seed · smoke · replay · verify-audit
-demo/scripts/        exact messages for the demo walkthrough
-reports/             versioned evaluation and data quality output
-docs/                problem, ADRs, evaluation, data, security, limits, runbook
+  contracts/            tool schemas, message blocks, policy enums (Pydantic models)
+  encoder/              intent classification, slot extraction, PII detector logic
+  retrieval/            knowledge base (40 topics × es/pt/en) and hybrid index
+  design-tokens/        (pending) shared design tokens and primitives
+data/                   raw/ staging/ curated/ eval/
+eval/
+  scenarios/            53 executable test scenarios across 10 categories
+  runner/               scenario execution engine
+  replay/               (recordings pending) deterministic conversation replays
+infra/
+  compose/              Docker Compose configs and health checks
+  db/                   database init script (migrations live in apps/banking-core/migrations)
+tools/                  calibrate/ profile_factored/ synthdata/
+reports/                versioned calibration and data quality evidence
+docs/                   problem, ADRs, evaluation, data, security, limits, runbook
 ```
 
 ---
 
 ## What we deliberately did not do
 
-LLM-based biometric verification ([ADR-0007](docs/adr/0007-no-llm-biometrics.md)), autonomous dispute resolution, voice channel, multi-tenancy. Each with its reason in **[docs/limitations.md](docs/limitations.md)**.
+- **No LLM-based biometric verification:** Biometric claims are validated deterministically or handed to humans ([ADR-0007](docs/adr/0007-no-llm-biometrics.md)).
+- **No autonomous dispute resolution:** Dispute claims require human investigation; the assistant only prepares the structured case file ([ADR-0003](docs/adr/0003-deterministic-vs-ai.md)).
+- **No voice channel or multi-tenancy:** Scope is constrained to text chat for a single institution.
+
+See **[docs/limitations.md](docs/limitations.md)** for detailed rationale on every declared boundary.
 
 ---
 
 ## Team and license
 
-TODO — members and roles · License TODO (see [LICENSE](LICENSE))
-
-The dataset provided by the organization is **not included** in this repository. See [docs/runbook.md](docs/runbook.md).
+- **Team:** Nekobus (`Pattern Blue`)
+- **License:** MIT (see [LICENSE](LICENSE))
