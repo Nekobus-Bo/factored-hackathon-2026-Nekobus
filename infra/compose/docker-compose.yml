@@ -95,9 +95,12 @@ services:
 
   migrate:
     <<: *app-hardening
-    build:
+    build: &banking-core-build
       context: ../..
       dockerfile: apps/banking-core/Dockerfile
+      args:
+        # Dense kb.search backend (the default); set to "" for a BM25-only image.
+        BANKING_CORE_SYNC_ARGS: ${BANKING_CORE_SYNC_ARGS---extra vector}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     command: ["alembic", "-c", "apps/banking-core/alembic.ini", "upgrade", "head"]
     environment:
@@ -113,9 +116,7 @@ services:
 
   seed:
     <<: *app-hardening
-    build:
-      context: ../..
-      dockerfile: apps/banking-core/Dockerfile
+    build: *banking-core-build
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     command: ["python", "-m", "banking_core.seed.cli", "seed"]
     environment:
@@ -139,9 +140,7 @@ services:
 
   banking-core:
     <<: *app-hardening
-    build:
-      context: ../..
-      dockerfile: apps/banking-core/Dockerfile
+    build: *banking-core-build
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     environment:
       PORT: "8081"
@@ -169,6 +168,13 @@ services:
       SESSION_LOCK_TTL_MS: ${SESSION_LOCK_TTL_MS:-10000}
       SESSION_LOCK_WAIT_MS: ${SESSION_LOCK_WAIT_MS:-2000}
       AUDIT_HASH_CHAIN_ENABLED: ${AUDIT_HASH_CHAIN_ENABLED:-true}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-vector}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
+      RETRIEVAL_SCORE_FLOOR: ${RETRIEVAL_SCORE_FLOOR:-0.3}
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - hf-cache:/models/hf:ro
     ports:
       - "127.0.0.1:${PORT_BANKING_CORE:-8081}:8081"
     depends_on:
@@ -181,7 +187,23 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8081/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='banking-core' else 1)"]
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 1g }
+        # The embedding model adds ~1.3 GB (see docs/limitations.md).
+        limits: { cpus: "1.0", memory: "${BANKING_CORE_MEMORY_LIMIT:-2g}" }
+
+  # `make warmup`: downloads the embedding model into hf-cache. The only
+  # banking-core container with egress (edge); it gets no credentials or keys.
+  warmup:
+    <<: *app-hardening
+    build: *banking-core-build
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
+    command: ["python", "-c", "import os; from huggingface_hub import snapshot_download; print(snapshot_download(os.environ['EMBEDDING_MODEL']))"]
+    environment:
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+    volumes:
+      - hf-cache:/models/hf
+    networks: [edge]
+    restart: "no"
+    profiles: ["tools"]
 
   orchestrator:
     <<: *app-hardening
@@ -273,3 +295,4 @@ networks:
 volumes:
   postgres-data:
   encoder-models:
+  hf-cache:

@@ -11,7 +11,7 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
 	profile-factored
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -71,8 +71,13 @@ data-quality: ## Generate data quality report in reports/data-quality.md
 verify-audit: ## verify the audit log hash chain
 	$(COMPOSE) run --rm banking-core python -m banking_core.audit.verify
 
-warmup: ## Preload the configured encoder backend (downloads GLiNER weights into the models volume)
+warmup: warmup-encoder warmup-retrieval ## Preload every local model (encoder backend + kb.search embeddings)
+
+warmup-encoder: ## Preload the configured encoder backend (GLiNER weights into the models volume; tfidf_lr only checks its data)
 	$(COMPOSE) run --rm --no-deps encoder python -m encoder_service.warmup
+
+warmup-retrieval: ## Download the kb.search embedding model into the hf-cache volume (needs network once)
+	$(COMPOSE) --profile tools run --rm warmup
 
 encoder-bench: ## Encoder p95 latency and peak RAM on CPU (ENCODER_BACKEND=tfidf_lr|gliner, ENCODER_MODEL=, DATA=)
 	ENCODER_BACKEND=$(or $(ENCODER_BACKEND),tfidf_lr) uv run --package encoder-service $(if $(filter gliner,$(ENCODER_BACKEND)),--extra gliner) python -m encoder_service.bench --data $(or $(DATA),data/eval/synthetic/decision.validation.jsonl)
