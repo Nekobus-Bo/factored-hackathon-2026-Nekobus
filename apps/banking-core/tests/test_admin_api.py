@@ -239,6 +239,7 @@ def test_startup_fails_when_admin_api_has_no_token(
             pass
 
 
+@pytest.mark.usefixtures("db_engine")
 def test_invalid_policy_update_returns_422_without_new_version(
     admin_client: TestClient,
 ) -> None:
@@ -259,6 +260,7 @@ def test_invalid_policy_update_returns_422_without_new_version(
     assert _active_policy_version() == version
 
 
+@pytest.mark.usefixtures("db_engine")
 def test_policy_update_is_versioned_live_and_audited(
     admin_client: TestClient,
 ) -> None:
@@ -323,6 +325,7 @@ def test_policy_update_is_versioned_live_and_audited(
         assert restored.status_code == 200
 
 
+@pytest.mark.usefixtures("db_engine")
 def test_demo_reset_restores_fixture_card_and_audits_change(
     admin_client: TestClient,
 ) -> None:
