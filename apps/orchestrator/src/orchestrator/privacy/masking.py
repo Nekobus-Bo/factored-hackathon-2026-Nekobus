@@ -74,6 +74,30 @@ class Masker(ABC):
         ...
 
 
+def mask_json_string_values(
+    value: object, masker: Masker, state: dict[str, str]
+) -> object:
+    """Mask JSON string values while preserving contract-validated numeric fields."""
+    if isinstance(value, str):
+        result = masker.mask(value, state=state)
+        state.update(result.mapping)
+        if not masker.verify_safe(result.masked_text):
+            raise MaskingError("residual PII after masking")
+        return result.masked_text
+    if isinstance(value, list):
+        return [mask_json_string_values(item, masker, state) for item in value]
+    if isinstance(value, dict):
+        if not all(isinstance(key, str) for key in value):
+            raise MaskingError("JSON object keys must be strings")
+        return {
+            key: mask_json_string_values(item, masker, state)
+            for key, item in value.items()
+        }
+    # Tool contracts use strict integer types for amounts; masking the JSON
+    # encoding as text would misclassify those values as document numbers.
+    return value
+
+
 class RegexMasker(Masker):
     """Fail-closed Regex-based PII masker and validator.
 

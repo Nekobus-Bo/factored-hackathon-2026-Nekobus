@@ -16,7 +16,8 @@ import logging
 from typing import Any
 
 import litellm
-from pydantic import BaseModel, ConfigDict, Field
+from contracts import TOOL_CATALOG, ToolResult
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from orchestrator.config import Settings, get_settings
 from orchestrator.llm.replay import (
@@ -26,7 +27,12 @@ from orchestrator.llm.replay import (
     compute_recording_key,
     compute_tool_schema_hash,
 )
-from orchestrator.privacy.masking import Masker, MaskingError, RegexMasker
+from orchestrator.privacy.masking import (
+    Masker,
+    MaskingError,
+    RegexMasker,
+    mask_json_string_values,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,11 @@ class LLMResponse(BaseModel):
         description=(
             "Tool calls with placeholders rehydrated for banking-core execution"
         ),
+    )
+
+    masked_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Exact outbound messages after PII masking",
     )
     usage: dict[str, Any] = Field(
         default_factory=dict, description="Token usage statistics"
@@ -110,6 +121,48 @@ class LLMProvider:
             )
         return mask_res.masked_text
 
+    @staticmethod
+    def _is_tool_result_envelope(payload: object) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        if set(payload) != {"tool", "status", "reason_code", "data"}:
+            return False
+        tool = payload.get("tool")
+        status = payload.get("status")
+        data = payload.get("data")
+        reason_code = payload.get("reason_code")
+        if not isinstance(tool, str) or tool not in TOOL_CATALOG:
+            return False
+        if status == "ok":
+            return reason_code is None and isinstance(data, dict)
+        return (
+            status in {"refused", "error"}
+            and data is None
+            and isinstance(reason_code, str)
+        )
+
+    def _mask_tool_result_content(self, text: str, state: dict[str, str]) -> str | None:
+        """Mask tool-result string values and preserve contract-typed numbers.
+
+        The engine already validates tool output before masking it. Revalidating
+        the serialized result can reject short PII placeholders in constrained
+        string fields, so a strict envelope check is the fallback after masking.
+        """
+        try:
+            raw_result = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        try:
+            result = ToolResult.model_validate(raw_result)
+        except ValidationError:
+            if not self._is_tool_result_envelope(raw_result):
+                return None
+            payload = raw_result
+        else:
+            payload = result.model_dump(mode="json")
+        masked = mask_json_string_values(payload, self.masker, state)
+        return json.dumps(masked, sort_keys=True, ensure_ascii=False)
+
     def mask_outbound_messages(
         self,
         messages: list[dict[str, Any]],
@@ -140,14 +193,21 @@ class LLMProvider:
             msg_copy = copy.deepcopy(msg)
             role = msg_copy.get("role", "unknown")
 
-            # 1. Inspect and mask content
             if "content" in msg_copy:
                 raw_content = msg_copy["content"]
                 if isinstance(raw_content, str):
-                    msg_copy["content"] = self._mask_and_verify_string(
-                        raw_content,
-                        accumulated_state,
-                        f"message[{i}]({role}).content",
+                    masked_tool_result = (
+                        self._mask_tool_result_content(raw_content, accumulated_state)
+                        if role == "tool"
+                        else None
+                    )
+                    msg_copy["content"] = (
+                        masked_tool_result
+                        or self._mask_and_verify_string(
+                            raw_content,
+                            accumulated_state,
+                            f"message[{i}]({role}).content",
+                        )
                     )
                 elif isinstance(raw_content, list):
                     masked_parts: list[Any] = []
@@ -303,6 +363,7 @@ class LLMProvider:
                     model=recording.model_id,
                     recording_key=key,
                     cached=True,
+                    masked_messages=recording.masked_messages,
                 )
 
             if self.replay_on_miss == "fail":
@@ -405,6 +466,7 @@ class LLMProvider:
             model=self.model,
             recording_key=key,
             cached=False,
+            masked_messages=masked_messages,
         )
 
     def complete_sync(

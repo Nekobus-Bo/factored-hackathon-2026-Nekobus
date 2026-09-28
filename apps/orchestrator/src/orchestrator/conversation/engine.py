@@ -17,6 +17,7 @@ from uuid import uuid4
 from contracts import (
     TOOL_CATALOG,
     AnalyzeResponse,
+    HandoffBlock,
     ReasonCode,
     Receipt,
     ReceiptBlock,
@@ -25,6 +26,7 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
+from contracts.tools.handoff_create import HandoffCreateOutput
 from pydantic import ValidationError
 
 from orchestrator.config import Settings
@@ -34,6 +36,7 @@ from orchestrator.conversation.models import (
     EncoderSignal,
     Lang,
     ToolOutcome,
+    TurnEvalData,
     TurnMetadata,
     TurnResult,
 )
@@ -46,7 +49,12 @@ from orchestrator.conversation.prompt import (
 from orchestrator.conversation.tools import build_llm_tools
 from orchestrator.encoder_client import EncoderClient, EncoderUnavailableError
 from orchestrator.llm.provider import LLMProvider, LLMResponse
-from orchestrator.privacy.masking import Masker, MaskingError, RegexMasker
+from orchestrator.privacy.masking import (
+    Masker,
+    MaskingError,
+    RegexMasker,
+    mask_json_string_values,
+)
 from orchestrator.tools_client import BankingCoreClient
 
 logger = logging.getLogger(__name__)
@@ -63,8 +71,8 @@ ONCE_PER_TURN: frozenset[str] = frozenset({"otp.verify"})
 
 _PLACEHOLDER_RE = re.compile(r"^\[[A-Z]+_\d+\]$")
 _OTP_PLACEHOLDER_RE = re.compile(r"^\[OTP_(\d+)\]$")
-# A standalone 4-8 digit run, not part of a placeholder or a longer token.
-_BARE_OTP_RE = re.compile(r"(?<![\w\[\]])\d{4,8}(?![\w\]])")
+# A standalone 4-8 digit OTP, optionally with one internal space or dash.
+_BARE_OTP_RE = re.compile(r"(?<![\w\[\]])\d+(?:[ -]\d+)?(?![\w\]])(?![ -]\d)")
 
 
 @dataclass
@@ -108,6 +116,7 @@ class TurnEngine:
         encoder: Analyzer | None = None,
         masker: Masker | None = None,
         max_tool_rounds: int = 5,
+        collect_eval: bool = False,
     ) -> None:
         if max_tool_rounds < 1:
             raise ValueError("max_tool_rounds must be >= 1")
@@ -116,18 +125,25 @@ class TurnEngine:
         self.encoder = encoder
         self.masker = masker or RegexMasker()
         self.max_tool_rounds = max_tool_rounds
+        self.collect_eval = collect_eval
         self.tools, self._tool_names = build_llm_tools()
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "TurnEngine":
-        """Wire the engine from configuration (MAX_TOOL_ROUNDS, ENCODER_ENABLED)."""
+    def from_settings(
+        cls,
+        settings: Settings,
+        banking: ToolCaller | None = None,
+        collect_eval: bool = False,
+    ) -> "TurnEngine":
+        """Wire the engine from configuration and an optional shared client."""
         return cls(
             llm=LLMProvider(settings=settings),
-            banking=BankingCoreClient(settings=settings),
+            banking=banking or BankingCoreClient(settings=settings),
             encoder=EncoderClient(settings=settings)
             if settings.encoder_enabled
             else None,
             max_tool_rounds=settings.max_tool_rounds,
+            collect_eval=collect_eval,
         )
 
     async def run_turn(
@@ -144,6 +160,7 @@ class TurnEngine:
         """
         lang = lang or context.language
         metadata = TurnMetadata(turn_id=turn_id or uuid4().hex)
+        eval_data = TurnEvalData()
         mapping = dict(context.placeholder_map)
         history = copy.deepcopy(context.history)
 
@@ -168,15 +185,26 @@ class TurnEngine:
 
         # 3-4. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
+        handoffs: list[HandoffBlock] = []
         guard = _TurnGuard()
         final: LLMResponse | None = None
         while True:
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
             response = await self.llm.complete(
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, *history],
+                messages=messages,
                 prompt_version=PROMPT_VERSION,
                 tools=self.tools,
             )
             metadata.llm_recording_keys.append(response.recording_key)
+            if self.collect_eval:
+                outbound = response.masked_messages or messages
+                eval_data.masked_outbound.append(
+                    json.dumps(outbound, sort_keys=True, ensure_ascii=False)
+                )
+                eval_data.recording_keys.append(response.recording_key)
+                eval_data.tokens += _usage_token_count(response.usage)
+                if response.cost is not None:
+                    eval_data.cost_usd += response.cost
             if not response.tool_calls:
                 final = response
                 break
@@ -197,18 +225,22 @@ class TurnEngine:
                 mapping,
                 metadata,
                 receipts,
+                handoffs,
                 guard,
             )
 
         # 5. Final reply through the block allowlist
-        blocks = self._final_blocks(final, history, mapping, metadata, lang)
+        blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = self._final_blocks(
+            final, history, mapping, metadata, lang
+        )
         blocks.extend(receipts)
+        blocks.extend(handoffs)
         if not blocks:
             blocks.append(TextBlock(text=FALLBACK_MESSAGES[lang]))
 
         context.history = history
         context.placeholder_map = mapping
-        return TurnResult(blocks=blocks, metadata=metadata)
+        return TurnResult(blocks=blocks, metadata=metadata, eval=eval_data)
 
     # ------------------------------------------------------------------ steps
 
@@ -240,6 +272,7 @@ class TurnEngine:
         mapping: dict[str, str],
         metadata: TurnMetadata,
         receipts: list[ReceiptBlock],
+        handoffs: list[HandoffBlock],
         guard: _TurnGuard,
     ) -> None:
         parsed = [
@@ -268,9 +301,13 @@ class TurnEngine:
                 session_id, call_id, name, args, mapping, metadata, guard
             )
             if result is not None:
-                receipt = self._receipt_of(result)
-                if receipt is not None:
-                    receipts.append(ReceiptBlock(receipt=receipt))
+                handoff = self._handoff_block_of(result)
+                if handoff is not None:
+                    handoffs.append(handoff)
+                else:
+                    receipt = self._receipt_of(result)
+                    if receipt is not None:
+                        receipts.append(ReceiptBlock(receipt=receipt))
             history.append(
                 {
                     "role": "tool",
@@ -329,9 +366,14 @@ class TurnEngine:
         )
         # Rehydrated values exist only in this request, never in history.
         try:
+            tool_args = self._rehydrate(args, mapping)
+            if tool == "otp.verify" and isinstance(tool_args, dict):
+                code = tool_args.get("code")
+                if isinstance(code, str):
+                    tool_args["code"] = re.sub(r"[ -]", "", code)
             tool_call = ToolCall(
                 tool=tool,
-                args=self._rehydrate(args, mapping),
+                args=tool_args,
                 idempotency_key=key,
             )
         except ValidationError:
@@ -361,7 +403,7 @@ class TurnEngine:
         mapping: dict[str, str],
         metadata: TurnMetadata,
         lang: Lang,
-    ) -> list[TextBlock | ReceiptBlock]:
+    ) -> list[TextBlock | ReceiptBlock | HandoffBlock]:
         if final is None:
             text = FALLBACK_MESSAGES[lang]
             history.append({"role": "assistant", "content": text})
@@ -423,7 +465,7 @@ class TurnEngine:
 
     @staticmethod
     def _mask_bare_otps(text: str, mapping: dict[str, str]) -> str:
-        """Mask standalone 4-8 digit runs as [OTP_n] (challenge pending only)."""
+        """Mask standalone 4-8 digit OTPs with one optional separator when pending."""
         reverse = {raw: ph for ph, raw in mapping.items()}
         next_index = max(
             (int(m.group(1)) for ph in mapping if (m := _OTP_PLACEHOLDER_RE.match(ph))),
@@ -433,6 +475,9 @@ class TurnEngine:
         def repl(match: re.Match[str]) -> str:
             nonlocal next_index
             raw = match.group(0)
+            digits = raw.replace(" ", "").replace("-", "")
+            if not 4 <= len(digits) <= 8:
+                return raw
             if raw in reverse:
                 return reverse[raw]
             next_index += 1
@@ -518,11 +563,13 @@ class TurnEngine:
         else:
             payload = result.model_dump(mode="json")
         try:
-            return self._mask(json.dumps(payload, sort_keys=True), mapping)
+            masked = mask_json_string_values(payload, self.masker, mapping)
+            return json.dumps(masked, sort_keys=True, ensure_ascii=False)
         except MaskingError:
             logger.warning("Tool result for %s failed masking; data withheld", name)
             payload["data"] = None
-            return self._mask(json.dumps(payload, sort_keys=True), mapping)
+            masked = mask_json_string_values(payload, self.masker, mapping)
+            return json.dumps(masked, sort_keys=True, ensure_ascii=False)
 
     @staticmethod
     def _receipt_of(result: ToolResult) -> Receipt | None:
@@ -532,6 +579,32 @@ class TurnEngine:
             return None
         raw = result.data.get("receipt")
         return Receipt.model_validate(raw) if raw is not None else None
+
+    @staticmethod
+    def _handoff_block_of(result: ToolResult | None) -> HandoffBlock | None:
+        if (
+            result is None
+            or result.tool != "handoff.create"
+            or result.status is not ToolResultStatus.OK
+            or result.data is None
+        ):
+            return None
+        try:
+            output = HandoffCreateOutput.model_validate(result.data)
+            receipt = TurnEngine._receipt_of(result)
+        except ValidationError:
+            return None
+        if receipt is None:
+            return None
+        return HandoffBlock(
+            handoff_id=output.handoff_id,
+            summary=output.summary,
+            status=output.status,
+            department=output.department,
+            priority=output.priority,
+            queue_position=output.queue_position,
+            receipt=receipt,
+        )
 
     @staticmethod
     def _local_error(tool: str) -> ToolResult:
@@ -568,3 +641,14 @@ def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
         elif result.get("tool") == "otp.verify":
             pending = data.get("state") == "OTP_PENDING"
     return pending
+
+
+def _usage_token_count(usage: dict[str, Any]) -> int:
+    total = usage.get("total_tokens")
+    if isinstance(total, int) and not isinstance(total, bool) and total >= 0:
+        return total
+    return sum(
+        value
+        for value in (usage.get("prompt_tokens"), usage.get("completion_tokens"))
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    )

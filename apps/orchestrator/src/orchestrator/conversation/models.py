@@ -2,7 +2,13 @@
 
 from typing import Any, Literal
 
-from contracts import ReasonCode, ReceiptBlock, TextBlock, ToolResultStatus
+from contracts import (
+    HandoffBlock,
+    ReasonCode,
+    ReceiptBlock,
+    TextBlock,
+    ToolResultStatus,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 Lang = Literal["es", "pt", "en"]
@@ -67,10 +73,22 @@ class TurnMetadata(BaseModel):
     llm_recording_keys: list[str] = Field(default_factory=list)
 
 
+class TurnEvalData(BaseModel):
+    """Safe provider evidence returned only by the eval-only chat hook."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    masked_outbound: list[str] = Field(default_factory=list)
+    recording_keys: list[str] = Field(default_factory=list)
+    tokens: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0.0, ge=0.0)
+
+
 class TurnResult(BaseModel):
     """Blocks for the client plus the turn metadata."""
 
     model_config = ConfigDict(extra="forbid")
 
-    blocks: list[TextBlock | ReceiptBlock]
+    blocks: list[TextBlock | ReceiptBlock | HandoffBlock]
     metadata: TurnMetadata
+    eval: TurnEvalData = Field(default_factory=TurnEvalData)
