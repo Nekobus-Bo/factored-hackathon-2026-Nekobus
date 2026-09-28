@@ -8,12 +8,13 @@ This suite was authored **before** running evaluations against any system to eli
 
 ## 1. Directory Structure & Inventory
 
-Scenarios are organized into 9 group subdirectories matching the taxonomy defined in [docs/evaluation.md §4](../../docs/evaluation.md#4-scenario-suite). Every file adheres strictly to the JSON Schema in `eval/scenarios/schema.json`.
+Scenarios are organized into 10 group subdirectories matching the taxonomy defined in [docs/evaluation.md §4](../../docs/evaluation.md#4-scenario-suite). Every file adheres strictly to the JSON Schema in `eval/scenarios/schema.json`.
 
 ```
 eval/scenarios/
 ├── README.md
 ├── schema.json
+├── account_inquiry/      (5 scenarios)
 ├── happy_path/           (5 scenarios)
 ├── ambiguity/            (5 scenarios)
 ├── out_of_scope/         (5 scenarios)
@@ -27,11 +28,12 @@ eval/scenarios/
 
 ### Scenario Distribution
 
-The suite comprises **48 scenarios**: 9 groups balanced across the three supported customer languages (16 Spanish, 16 Portuguese, 16 English). The `risk_threshold` group includes additional scenarios providing explicit coverage for unknown currencies (e.g. JPY, GBP) and missing transaction amounts:
+The suite comprises **53 scenarios**: 10 groups distributed across the three supported customer languages (18 Spanish, 17 Portuguese, 18 English). The `risk_threshold` group includes additional scenarios providing explicit coverage for unknown currencies (e.g. JPY, GBP) and missing transaction amounts:
 
 | Evaluation Group | Spanish (`es`) | Portuguese (`pt`) | English (`en`) | Total |
 |---|---|---|---|---|
 | `happy_path` | 2 | 2 | 1 | **5** |
+| `account_inquiry` | 2 | 1 | 2 | **5** |
 | `ambiguity` | 1 | 2 | 2 | **5** |
 | `out_of_scope` | 2 | 1 | 2 | **5** |
 | `failed_identity` | 2 | 2 | 1 | **5** |
@@ -40,7 +42,7 @@ The suite comprises **48 scenarios**: 9 groups balanced across the three support
 | `adversarial` | 2 | 2 | 1 | **5** |
 | `degradation` | 1 | 2 | 2 | **5** |
 | `messy_conversation` | 2 | 1 | 2 | **5** |
-| **Total** | **16** | **16** | **16** | **48** |
+| **Total** | **18** | **17** | **18** | **53** |
 
 ---
 
@@ -157,7 +159,7 @@ with open(os.path.join(root, "schema.json")) as f:
     schema = json.load(f)
 
 files = glob.glob(os.path.join(root, "*", "*.yaml"))
-assert len(files) == 48, f"Expected 48 scenarios, found {len(files)}"
+assert len(files) == 53, f"Expected 53 scenarios, found {len(files)}"
 
 for path in files:
     with open(path) as f:

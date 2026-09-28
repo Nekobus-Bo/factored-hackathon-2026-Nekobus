@@ -28,6 +28,7 @@
     "group": {
       "type": "string",
       "enum": [
+        "account_inquiry",
         "happy_path",
         "ambiguity",
         "out_of_scope",
