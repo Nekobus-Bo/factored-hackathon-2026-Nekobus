@@ -4,9 +4,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from redis.asyncio import Redis
 
+from orchestrator.chat.engine_handler import EngineTurnHandler
 from orchestrator.chat.handler import TurnHandler
 from orchestrator.chat.routes import router as chat_router
 from orchestrator.config import Settings, get_settings
+from orchestrator.conversation import TurnEngine
 from orchestrator.log_redaction import install_redaction
 from orchestrator.session.crypto import PlaceholderEncryptor
 from orchestrator.session.store import SessionStore
@@ -24,12 +26,10 @@ def create_app(
     banking_client: BankingCoreClient | None = None,
     turn_handler: TurnHandler | None = None,
 ) -> FastAPI:
-    """Build the app. Dependencies are injectable for tests.
-
-    Without a turn handler the chat routes answer 503 with an explicit
-    message (the engine adapter is wired separately).
-    """
+    """Build an app. Dependencies are injectable for tests."""
     cfg = settings or get_settings()
+    if cfg.eval_expose_turn and cfg.app_env.strip().casefold() == "production":
+        raise ValueError("EVAL_EXPOSE_TURN cannot be enabled when APP_ENV=production")
     app = FastAPI(title="orchestrator")
     install_redaction(("uvicorn.access", "uvicorn.error"))
 
@@ -44,9 +44,16 @@ def create_app(
         ttl_seconds=cfg.session_ttl_seconds,
         lock_timeout_seconds=cfg.turn_lock_seconds,
     )
-    app.state.banking_client = banking_client or BankingCoreClient(settings=cfg)
-    app.state.turn_handler = turn_handler
+    banking = banking_client or BankingCoreClient(settings=cfg)
+    handler = turn_handler or EngineTurnHandler(
+        TurnEngine.from_settings(
+            cfg, banking=banking, collect_eval=cfg.eval_expose_turn
+        )
+    )
+    app.state.banking_client = banking
+    app.state.turn_handler = handler
     app.state.default_lang = cfg.default_locale
+    app.state.eval_expose_turn = cfg.eval_expose_turn
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:

@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from orchestrator.conversation.models import TurnEvalData
 from orchestrator.session.models import ConversationState
 
 
@@ -19,6 +20,7 @@ class TurnOutcome(BaseModel):
 
     blocks: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    eval: TurnEvalData | None = None
 
 
 class TurnHandler(Protocol):

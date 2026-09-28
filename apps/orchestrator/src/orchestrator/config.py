@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     # Conversation turn engine
     max_tool_rounds: int = Field(default=5, ge=1, le=20, alias="MAX_TOOL_ROUNDS")
 
+    eval_expose_turn: bool = Field(default=False, alias="EVAL_EXPOSE_TURN")
+
     default_locale: Literal["es", "pt", "en"] = Field(
         default="es", alias="DEFAULT_LOCALE"
     )
