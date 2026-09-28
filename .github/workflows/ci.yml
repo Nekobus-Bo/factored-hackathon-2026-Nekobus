@@ -23,6 +23,12 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
+      - name: Tests (packages outside the root testpaths)
+        run: |
+          uv run --package evalrunner pytest -q eval/runner
+          uv run --package retrieval pytest -q packages/retrieval/tests
+          uv run --package calibrate pytest -q tools/calibrate
+
       - name: Start the stack with no .env (defaults only)
         run: make up
 
