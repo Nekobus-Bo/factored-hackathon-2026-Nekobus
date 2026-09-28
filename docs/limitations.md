@@ -37,6 +37,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 | Audit log tail truncation | Tail truncation with the owner disabling triggers is only detectable against an external count/head_hash checkpoint. |
 | OTP dev sink and test hook | Outbound OTP delivery channel is an open decision; a delivery port with a dev sink stays in the trusted zone (never returned to the caller or logged in clear text). An explicit test/dev-only hook is exposed for evaluation but disabled by default. |
 | `customer.match` timing | A miss spends one decrypt like a hit with birth date, but a miss still probes every equivalent document type (one extra indexed query in the pt market); no constant-time padding of DB round trips |
+| U6 evidence in the proposed-system eval | Unmasked-PII-to-provider (U6) evidence comes from the orchestrator side: the masked outbound messages its eval hook exposes, and the replay recordings on disk. Neither is the trusted side; the report labels the provenance. Without the hook, U6 stays "needs human review" and a replay miss cannot be told apart from other turn failures, so it counts as a failure (only a 503 with detail "replay_miss" is reported as not run) |
 
 ## 3. What we did not do
 
