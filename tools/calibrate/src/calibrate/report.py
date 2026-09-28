@@ -6,6 +6,39 @@ import platform
 from pathlib import Path
 from typing import Any
 
+PROVISIONAL_SOURCE = "synthetic-provisional"
+PROVISIONAL_LABEL = "provisional synthetic (not human)"
+SOURCE_LABELS = {
+    "human": "human",
+    "synthetic": "synthetic",
+    PROVISIONAL_SOURCE: PROVISIONAL_LABEL,
+}
+
+
+def render_eval_split_banner(
+    eval_split: str, eval_sources: list[str], tau_from_same_split: bool = False
+) -> str:
+    """State which split was scored, its provenance, and any caveat."""
+    provenance = (
+        ", ".join(SOURCE_LABELS.get(s, s) for s in sorted(eval_sources)) or "no rows"
+    )
+    lines = [f"- **Scored split:** `{eval_split}` (provenance: {provenance})"]
+    warnings = []
+    if PROVISIONAL_SOURCE in eval_sources:
+        warnings.append(
+            f"Scored split `{eval_split}` is {PROVISIONAL_LABEL}. It stands in "
+            "for the human-written set (docs/labeling-rubric.md) and does not "
+            "replace it."
+        )
+    if tau_from_same_split:
+        warnings.append(
+            "Optimistic: tau is chosen on validation and the metrics are scored "
+            "on validation too, so coverage and precision are not held-out."
+        )
+    if warnings:
+        lines = ["> [!WARNING]", *(f"> {w}" for w in warnings), "", *lines]
+    return "\n".join(lines) + "\n"
+
 
 def file_sha256(path: str | Path) -> str:
     """Calculate SHA-256 hash of a file."""
@@ -51,17 +84,25 @@ def render_decision_report(
     data_paths: list[str],
     rows: list[dict[str, Any]],
     p_min: float,
+    eval_split: str = "test",
+    eval_sources: list[str] | None = None,
 ) -> str:
     """Generate Markdown report for decision task."""
     cfg_hash = file_sha256(config_path)
+    banner = render_eval_split_banner(
+        eval_split,
+        eval_sources or [],
+        tau_from_same_split=eval_split == "validation",
+    )
+    split_title = eval_split.capitalize()
     env_info = get_execution_environment_info()
 
     data_hashes_md = "\n".join(f"- `{p}`: `{file_sha256(p)}`" for p in data_paths)
 
     table_header = (
         "| Candidate Model | Mode | Language | Macro-F1 | "
-        "Test min precision | ECE | Calibrated $\\tau$ | "
-        "Test coverage @ $\\tau$ ($\\tau$ from validation) | Slot F1 | "
+        f"{split_title} min precision | ECE | Calibrated $\\tau$ | "
+        f"{split_title} coverage @ $\\tau$ ($\\tau$ from validation) | Slot F1 | "
         "p95 CPU (ms) | RAM model+inference Δ (MB) |\n"
         "|---|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     )
@@ -106,10 +147,10 @@ def render_decision_report(
 
     return f"""# Decision Model Calibration Report
 
-- **Date:** {date_str}
+{banner}- **Date:** {date_str}
 - **Task:** `decision` (Intent Classification & Slot Extraction)
 - **Target Precision Constraint ($p_{{min}}$):** {p_min:.2f}
-  (chosen on validation, evaluated on test)
+  (chosen on validation, evaluated on {eval_split})
 - **Execution Environment:** {env_info}
   (MPS/CUDA for training if available, CPU for inference benchmarking)
 
@@ -128,7 +169,7 @@ def render_decision_report(
 
 1. **Threshold $\\tau$ Selection:** Calibrated strictly on the validation split
    to maximize coverage while enforcing per-class precision $\\ge {p_min:.2f}$.
-   Reported coverage and precision reflect held-out test split behavior.
+   Reported coverage and precision reflect the `{eval_split}` split.
 2. **Deterministic Baseline:** Evaluated against `tfidf_lr`
    (TF-IDF + Logistic Regression).
 3. **Inference Performance:** All latency (p95) and RAM measurements
