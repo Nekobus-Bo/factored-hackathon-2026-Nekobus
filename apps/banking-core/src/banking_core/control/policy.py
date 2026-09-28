@@ -9,6 +9,7 @@ Every evaluation produces a Decision(allowed: bool, reason_code, flags).
 
 import json
 import os
+import re
 from typing import Any, Literal
 
 from contracts.envelope import ReasonCode
@@ -138,7 +139,23 @@ class PolicyConfig(BaseModel):
         if isinstance(v, str):
             v = json.loads(v)
         if isinstance(v, dict):
-            return {str(k).strip().upper(): int(val) for k, val in v.items()}
+            normalized: dict[str, int] = {}
+            for currency, raw_threshold in v.items():
+                code = str(currency).strip().upper()
+                if not re.fullmatch(r"[A-Z]{3}", code):
+                    raise ValueError(f"Invalid ISO currency code '{currency}'")
+                try:
+                    threshold = int(raw_threshold)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Non-integer threshold value for currency '{code}'"
+                    ) from exc
+                if threshold <= 0:
+                    raise ValueError(
+                        f"Threshold for currency '{code}' must be greater than zero"
+                    )
+                normalized[code] = threshold
+            return normalized
         raise ValueError("thresholds_minor must be a dict or valid JSON string")
 
     @model_validator(mode="after")
