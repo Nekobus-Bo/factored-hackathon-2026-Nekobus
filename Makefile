@@ -12,7 +12,7 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
-	profile-factored
+	profile-factored ingest
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -53,8 +53,12 @@ build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (u
 demo: ## pending: full startup in replay mode
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-seed: ## Seed the database from data/raw
+seed: ## Seed the database: synthetic demo data + every ingested dataset in data/staging
 	$(COMPOSE) run --rm seed python -m banking_core.seed.cli seed
+
+ingest: ## Map a delivered dataset data/raw/SOURCE -> data/staging/SOURCE (SOURCE=factored)
+	@test -n "$(SOURCE)" || { echo "ingest: set SOURCE, e.g. make ingest SOURCE=factored" >&2; exit 1; }
+	$(COMPOSE) run --rm seed python -m banking_core.seed.cli ingest --source $(SOURCE)
 
 eval: ## pending: baseline vs proposed on the scenario suite
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
