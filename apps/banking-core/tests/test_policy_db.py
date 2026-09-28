@@ -5,6 +5,7 @@ import threading
 from collections.abc import Generator
 from unittest.mock import patch
 
+import banking_core.main as main
 import pytest
 import sqlalchemy as sa
 from banking_core.control.authorize import Authorizer
@@ -183,6 +184,7 @@ def test_readiness_fails_on_bad_credentials_and_recovers_on_retry(
     client = TestClient(app)
 
     monkeypatch.setenv("DATABASE_URL", _bad_credentials_url(postgres_url))
+    monkeypatch.setattr(main, "get_kb_searcher", lambda: None)
     not_ready = client.get("/ready")
     assert not_ready.status_code == 503
     body = not_ready.json()

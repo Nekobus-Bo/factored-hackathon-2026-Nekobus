@@ -12,8 +12,38 @@ from banking_core.audit.service import append, verify_chain
 from banking_core.idempotency.exceptions import IdempotencyConflictError
 from banking_core.idempotency.service import get_or_run, purge_expired_keys
 from banking_core.models.ops import AuditLog
+from contracts.audit import AuditDetail, AuditPayload
+from contracts.envelope import ToolResultStatus, VerificationState
+from contracts.tools.card_list import CardStatus
+from contracts.tools.handoff_create import HandoffPriority, HandoffStatus
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
+
+
+def _tool_audit_payload(
+    verification_state_before: VerificationState,
+    verification_state_after: VerificationState,
+    *,
+    reason: str | None = None,
+    card_state_before: CardStatus | None = None,
+    card_state_after: CardStatus | None = None,
+    handoff_status: HandoffStatus | None = None,
+    handoff_priority: HandoffPriority | None = None,
+    idempotency_scope: str | None = None,
+    details: dict[str, AuditDetail] | None = None,
+) -> AuditPayload:
+    return AuditPayload(
+        verification_state_before=verification_state_before,
+        verification_state_after=verification_state_after,
+        status=ToolResultStatus.OK,
+        reason=reason,
+        card_state_before=card_state_before,
+        card_state_after=card_state_after,
+        handoff_status=handoff_status,
+        handoff_priority=handoff_priority,
+        idempotency_scope=idempotency_scope,
+        details=details or {},
+    )
 
 
 def test_chain_verifies(db_session: Session) -> None:
@@ -25,7 +55,11 @@ def test_chain_verifies(db_session: Session) -> None:
         action="customer.match",
         decision="allowed",
         reason_code=None,
-        payload={"matched": True},
+        payload=_tool_audit_payload(
+            VerificationState.ANONYMOUS,
+            VerificationState.IDENTIFIED,
+            details={"matched": True},
+        ),
     )
     db_session.commit()
 
@@ -36,7 +70,12 @@ def test_chain_verifies(db_session: Session) -> None:
         action="otp.send",
         decision="allowed",
         reason_code=None,
-        payload={"channel": "SMS", "destination_masked": "+57 300 *** 1234"},
+        payload=_tool_audit_payload(
+            VerificationState.IDENTIFIED,
+            VerificationState.OTP_PENDING,
+            idempotency_scope="sess_001",
+            details={"channel": "SMS", "destination_masked": "+57 *** *** 1234"},
+        ),
     )
     db_session.commit()
 
@@ -47,7 +86,17 @@ def test_chain_verifies(db_session: Session) -> None:
         action="card.block",
         decision="allowed",
         reason_code=None,
-        payload={"card_ref": "card_test1", "target_masked": "**** 1234"},
+        payload=_tool_audit_payload(
+            VerificationState.VERIFIED,
+            VerificationState.VERIFIED,
+            card_state_before=CardStatus.ACTIVE,
+            card_state_after=CardStatus.BLOCKED,
+            idempotency_scope="sess_001",
+            details={
+                "card_ref": "card_test1",
+                "target_masked": "**** **** **** 1234",
+            },
+        ),
     )
     db_session.commit()
 
@@ -75,7 +124,11 @@ def test_row_tampered_via_superuser_detected_by_verify_audit(
         action="card.list",
         decision="allowed",
         reason_code=None,
-        payload={"cards": ["card_1"]},
+        payload=_tool_audit_payload(
+            VerificationState.VERIFIED,
+            VerificationState.VERIFIED,
+            details={"result_count": 1},
+        ),
     )
     entry2 = append(
         db_session,
@@ -84,16 +137,31 @@ def test_row_tampered_via_superuser_detected_by_verify_audit(
         action="card.block",
         decision="allowed",
         reason_code=None,
-        payload={"card_ref": "card_1", "target_masked": "**** 1234"},
+        payload=_tool_audit_payload(
+            VerificationState.VERIFIED,
+            VerificationState.VERIFIED,
+            card_state_before=CardStatus.ACTIVE,
+            card_state_after=CardStatus.BLOCKED,
+            idempotency_scope="sess_001",
+            details={"card_ref": "card_1"},
+        ),
     )
     append(
         db_session,
-        actor_type="system",
-        actor_ref="system",
+        actor_type="customer_session",
+        actor_ref="sess_001",
         action="handoff.create",
         decision="allowed",
         reason_code=None,
-        payload={"reason": "DISPUTE"},
+        payload=_tool_audit_payload(
+            VerificationState.ANONYMOUS,
+            VerificationState.HANDED_OFF,
+            reason="DISPUTE",
+            handoff_status=HandoffStatus.QUEUED,
+            handoff_priority=HandoffPriority.NORMAL,
+            idempotency_scope="sess_001",
+            details={"reason": "DISPUTE"},
+        ),
     )
     db_session.commit()
 
@@ -254,7 +322,11 @@ def test_pii_guard_rejects_email_in_payload_during_append(
             action="customer.match",
             decision="allowed",
             reason_code=None,
-            payload={"email": "victim@bank.com"},
+            payload=_tool_audit_payload(
+                VerificationState.ANONYMOUS,
+                VerificationState.IDENTIFIED,
+                details={"email": "victim@bank.com"},
+            ),
         )
 
     # Confirm nothing was committed or inserted

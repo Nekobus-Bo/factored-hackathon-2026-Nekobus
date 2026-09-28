@@ -209,6 +209,21 @@ def test_account_get_summary_is_scoped_to_holder(seeded: Session, locale: str) -
     assert AccountGetSummaryOutput.model_validate_json(out.model_dump_json()) == out
 
 
+def test_account_get_summary_can_omit_balances(seeded: Session) -> None:
+    output = execute_account_get_summary(
+        seeded,
+        demo_holder("es"),
+        AccountGetSummaryInput(include_balances=False),
+    )
+
+    [account] = output.accounts
+    assert account.available_balance_minor is None
+    assert account.ledger_balance_minor is None
+    assert (
+        AccountGetSummaryOutput.model_validate_json(output.model_dump_json()) == output
+    )
+
+
 def test_unknown_holder_sees_nothing(seeded: Session) -> None:
     stranger = uuid.uuid4()
     assert execute_card_list(seeded, stranger, CardListInput()).cards == []

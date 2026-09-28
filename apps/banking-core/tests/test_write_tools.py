@@ -11,10 +11,22 @@ from collections.abc import Generator
 
 import pytest
 import sqlalchemy as sa
-from banking_core.cards.tools import CardNotFoundError, execute_card_block
+from banking_core.cards.tools import CardNotFoundError
+from banking_core.cards.tools.card_block import (
+    CardBlockResult,
+)
+from banking_core.cards.tools.card_block import (
+    execute_card_block as _execute_card_block,
+)
 from banking_core.control.policy import Decision, PolicyConfig, PolicyEngine
 from banking_core.control.session import SessionState
-from banking_core.handoff.tools import execute_handoff_create, resolve_priority
+from banking_core.handoff.tools import (
+    HandoffCreateResult,
+    resolve_priority,
+)
+from banking_core.handoff.tools import (
+    execute_handoff_create as _execute_handoff_create,
+)
 from banking_core.models.core_bank import Card
 from banking_core.models.ops import AuditLog, Handoff
 from banking_core.seed.curated import load_curated_data
@@ -43,6 +55,45 @@ SCOPE = "sess_write_tools_test"
 
 def demo_holder(locale: str) -> uuid.UUID:
     return fixture_uuid(f"{locale}-demo-customer")
+
+
+def execute_card_block(
+    db_session: Session,
+    holder_customer_id: str | uuid.UUID,
+    args: CardBlockInput,
+    policy_decision: Decision = ALLOWED,
+    idempotency_scope: str = SCOPE,
+) -> CardBlockResult:
+    return _execute_card_block(
+        db_session=db_session,
+        holder_customer_id=holder_customer_id,
+        args=args,
+        policy_decision=policy_decision,
+        idempotency_scope=idempotency_scope,
+        verification_state_before=VerificationState.VERIFIED,
+        verification_state_after=VerificationState.VERIFIED,
+        session_id=idempotency_scope,
+    )
+
+
+def execute_handoff_create(
+    db_session: Session,
+    holder_customer_id: str | uuid.UUID | None,
+    args: HandoffCreateInput,
+    policy_decision: Decision,
+    idempotency_scope: str,
+    verification_state_before: VerificationState,
+) -> HandoffCreateResult:
+    return _execute_handoff_create(
+        db_session=db_session,
+        holder_customer_id=holder_customer_id,
+        args=args,
+        policy_decision=policy_decision,
+        idempotency_scope=idempotency_scope,
+        verification_state_before=verification_state_before,
+        verification_state_after=VerificationState.HANDED_OFF,
+        session_id=idempotency_scope,
+    )
 
 
 def card_by_ref(db: Session, card_ref: str) -> Card:
@@ -116,7 +167,7 @@ def test_card_block_writes_and_returns_receipt_re_read_from_db(
     assert receipt.verified_at == stored.blocked_at
     assert receipt.audit_id == f"aud_{audit.id:08d}"
     assert audit.actor_ref == SCOPE
-    assert audit.payload["state_before"] == "ACTIVE"
+    assert audit.payload["card_state_before"] == "ACTIVE"
     assert CardBlockOutput.model_validate_json(result.output.model_dump_json())
 
 
@@ -161,7 +212,7 @@ def test_card_block_re_block_is_idempotent_without_a_second_write(
     assert again.output.receipt.state_after == ResourceState.BLOCKED
     assert again.output.receipt.verified_at == first.output.receipt.verified_at
     audits = block_audits(seeded)
-    assert [a.payload["already_blocked"] for a in audits] == [False, True]
+    assert [a.payload["details"]["already_blocked"] for a in audits] == [False, True]
 
 
 def test_card_block_on_seeded_blocked_card_keeps_original_block(
@@ -210,7 +261,7 @@ def test_card_block_propagates_policy_flags_and_is_not_refused_by_amount(
     assert result.output.receipt.state_after == ResourceState.BLOCKED
     assert result.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
     [audit] = block_audits(seeded)
-    assert audit.payload["flags"] == result.flags
+    assert audit.payload["details"]["flags"] == result.flags
     assert audit.reason_code == ReasonCode.POLICY_FLAGGED.value
 
 
@@ -366,7 +417,7 @@ def test_handoff_summary_has_four_elements_built_server_side(
         sa.select(AuditLog).where(AuditLog.action == "handoff.create")
     ).one()
     assert HANDOFF_ARGS.summary not in str(audit.payload)
-    assert audit.payload["priority"] == "URGENT"
+    assert audit.payload["handoff_priority"] == "URGENT"
     assert result.output.receipt.state_after == ResourceState.QUEUED
 
 

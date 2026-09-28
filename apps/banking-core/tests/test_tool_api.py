@@ -6,7 +6,7 @@ Covers:
 - Full FSM progression: ANONYMOUS -> IDENTIFIED -> OTP_PENDING -> VERIFIED over HTTP
 - Authorizer state checks (refusal with STATE_NOT_ALLOWED)
 - Idempotency replay with identical receipt without second execution
-- Audit row recording verification_state_before and state_after
+- Audit rows recording verification_state_before and verification_state_after
 - Document type equivalence: TAX_ID == NATIONAL_ID for pt market
 - Sentinel NONE for registered_otp_channel -> refused POLICY_BLOCKED
 - IDOR argument injection rejection
@@ -14,7 +14,7 @@ Covers:
 - Indistinguishable non-match responses
 - Hardening: per-session lock + atomic OTP counter under concurrency, no per-IP
   limit (X-Forwarded-For ignored), no salt fallback, hashed OTP, SESSION_BUSY,
-  NOT_IMPLEMENTED, and a decrypt spent on customer.match misses
+  and a decrypt spent on customer.match misses
 """
 
 import json
@@ -37,12 +37,13 @@ from banking_core.control.session import RedisSessionStore
 from banking_core.crypto import RecordEncryptor, compute_blind_index
 from banking_core.db import get_db
 from banking_core.identity import OtpChallengeStore, get_dev_sink
-from banking_core.main import app
+from banking_core.main import app, mount_dev_router_if_enabled
 from banking_core.models.core_bank import Customer
 from banking_core.models.ops import AuditLog, IdempotencyKey
 from contracts.envelope import (
     VerificationState,
 )
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 TEST_MASTER_KEY = "00" * 32
@@ -239,6 +240,7 @@ def test_setup(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MASTER_KEY", TEST_MASTER_KEY)
     monkeypatch.setenv("BLIND_INDEX_SALT", TEST_SALT)
     monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "true")
+    mount_dev_router_if_enabled(app)
 
     fake_redis = fakeredis.FakeRedis(decode_responses=True)
     session_store = RedisSessionStore(redis_client=fake_redis, default_ttl=3600)
@@ -356,8 +358,8 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     assert last_audit.action == "customer.match"
     assert last_audit.decision == "allowed"
     assert last_audit.payload["verification_state_before"] == "ANONYMOUS"
-    assert last_audit.payload["state_after"] == "IDENTIFIED"
-    assert last_audit.payload["matched"] is True
+    assert last_audit.payload["verification_state_after"] == "IDENTIFIED"
+    assert last_audit.payload["details"]["matched"] is True
 
     # 3. otp.send -> transitions to OTP_PENDING
     send_payload = {
@@ -393,7 +395,7 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     send_audit = mock_db.audit_logs[-1]
     assert send_audit.action == "otp.send"
     assert send_audit.payload["verification_state_before"] == "IDENTIFIED"
-    assert send_audit.payload["state_after"] == "OTP_PENDING"
+    assert send_audit.payload["verification_state_after"] == "OTP_PENDING"
 
     # 4. Fetch delivered code from dev sink
     code = dev_sink.get_code(challenge_id, allow_hook=True)
@@ -430,7 +432,7 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     verify_audit = mock_db.audit_logs[-1]
     assert verify_audit.action == "otp.verify"
     assert verify_audit.payload["verification_state_before"] == "OTP_PENDING"
-    assert verify_audit.payload["state_after"] == "VERIFIED"
+    assert verify_audit.payload["verification_state_after"] == "VERIFIED"
 
 
 def test_tool_outside_allowed_states_is_refused(test_setup) -> None:
@@ -464,7 +466,7 @@ def test_tool_outside_allowed_states_is_refused(test_setup) -> None:
     assert audit1.decision == "refused"
     assert audit1.reason_code == "STATE_NOT_ALLOWED"
     assert audit1.payload["verification_state_before"] == "ANONYMOUS"
-    assert audit1.payload["state_after"] == "ANONYMOUS"
+    assert audit1.payload["verification_state_after"] == "ANONYMOUS"
 
     # 2. Calling otp.verify in ANONYMOUS is refused
     resp2 = client.post(
@@ -548,10 +550,8 @@ def test_idempotency_replay_identical_receipt(test_setup) -> None:
     assert data2["challenge_id"] == chal_id1
     assert data2["receipt"] == receipt1
 
-    # An audit row is recorded for the replayed call
-    assert len(mock_db.audit_logs) == audit_count_after_first + 1
-    replayed_audit = mock_db.audit_logs[-1]
-    assert replayed_audit.payload.get("replayed") is True
+    # A replay returns the original result without a second tool audit row.
+    assert len(mock_db.audit_logs) == audit_count_after_first
 
 
 def test_pt_market_tax_id_equivalence(test_setup) -> None:
@@ -668,23 +668,29 @@ def test_idor_argument_tampering_rejected(test_setup) -> None:
     assert resp.status_code == 422 or resp.json().get("status") == "refused"
 
 
-def test_dev_otp_hook_permissions(test_setup, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test GET /v1/dev/otp/{challenge_id} is 403 when disabled, 200 when enabled."""
-    client, _, _, dev_sink = test_setup
+def test_dev_otp_router_is_mounted_only_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sink = get_dev_sink()
+    sink.clear()
+    sink.deliver("chal_hook_1", "SMS", "+57 *** *** 1234", "654321")
 
-    dev_sink.deliver("chal_hook_1", "SMS", "+57 *** *** 1234", "654321")
-
-    # 1. When ALLOW_DEV_OTP_HOOK is false -> 403 Forbidden
     monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "false")
-    resp1 = client.get("/v1/dev/otp/chal_hook_1")
-    assert resp1.status_code == 403
-    assert "disabled" in resp1.json()["detail"].lower()
+    disabled_app = FastAPI()
+    mount_dev_router_if_enabled(disabled_app)
+    assert not any(
+        getattr(route, "path", None) == "/v1/dev/otp/{challenge_id}"
+        for route in disabled_app.routes
+    )
 
-    # 2. When ALLOW_DEV_OTP_HOOK is true -> 200 OK
     monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "true")
-    resp2 = client.get("/v1/dev/otp/chal_hook_1")
-    assert resp2.status_code == 200
-    assert resp2.json()["code"] == "654321"
+    enabled_app = FastAPI()
+    mount_dev_router_if_enabled(enabled_app)
+    with TestClient(enabled_app) as client:
+        response = client.get("/v1/dev/otp/chal_hook_1")
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "654321"
 
 
 def test_identity_verify_document_in_identified_state(test_setup) -> None:
@@ -941,15 +947,27 @@ def test_busy_session_lock_is_a_retryable_refusal(make_harness) -> None:
     assert h.call(session_id, MATCH_ES)["status"] == "ok"
 
 
-def test_unwired_catalog_tool_is_not_implemented(make_harness) -> None:
-    h = make_harness()
-    session_id = h.new_session()
+def test_invalid_database_enum_is_returned_as_internal_error(make_harness) -> None:
+    harness = make_harness()
+    session_id = harness.new_session()
+    session = harness.session_store.get(session_id)
+    assert session is not None
+    session.state = VerificationState.VERIFIED
+    session.pinned_holder_id = str(harness.db.customers[0].id)
+    harness.session_store.save(session)
 
-    result = h.call(session_id, {"tool": "kb.search", "args": {"query": "tarjeta"}})
+    with patch(
+        "banking_core.api.dispatcher.execute_account_get_summary",
+        side_effect=ValueError("invalid account enum from database"),
+    ):
+        result = harness.call(
+            session_id,
+            {"tool": "account.get_summary", "args": {"include_balances": True}},
+        )
 
-    assert result["status"] == "refused"
-    assert result["reason_code"] == "NOT_IMPLEMENTED"
-    assert h.db.audit_logs[-1].reason_code == "NOT_IMPLEMENTED"
+    assert result["status"] == "error"
+    assert result["reason_code"] == "INTERNAL_ERROR"
+    assert harness.db.audit_logs[-1].payload["status"] == "error"
 
 
 @pytest.mark.parametrize("document_number", ["1020304050", "5550001112"])
