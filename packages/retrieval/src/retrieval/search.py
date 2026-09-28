@@ -24,9 +24,18 @@ class Retriever:
     come from the whole multilingual KB.
     """
 
-    def __init__(self, kb: KnowledgeBase, adapter: RetrievalAdapter) -> None:
+    def __init__(
+        self,
+        kb: KnowledgeBase,
+        adapter: RetrievalAdapter,
+        *,
+        max_k: int | None = None,
+    ) -> None:
         self.kb = kb
         self.adapter = adapter
+        self.max_k = len(kb) if max_k is None else max_k
+        if self.max_k < 1:
+            raise ValueError("max_k must be at least 1")
         self.adapter.index(list(kb.snippets))
 
     def search(
@@ -36,6 +45,8 @@ class Retriever:
         k: int = 5,
         mode: SearchMode = SearchMode.SAME,
     ) -> list[SearchResult]:
+        if not 1 <= k <= self.max_k:
+            raise ValueError(f"k must be between 1 and configured max_k ({self.max_k})")
         if mode is not SearchMode.ANY and lang is None:
             raise ValueError(f"mode '{mode}' needs the query language")
         ranking = self.adapter.search(query, top_k=len(self.kb))

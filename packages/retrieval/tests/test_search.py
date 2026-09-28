@@ -71,6 +71,31 @@ def test_filtered_modes_require_a_language(kb: KnowledgeBase) -> None:
         retriever.search("q", mode=SearchMode.CROSS)
 
 
+@pytest.mark.parametrize("k", [0, -1, 4])
+def test_search_rejects_k_outside_configured_cap(kb: KnowledgeBase, k: int) -> None:
+    retriever = Retriever(kb, FixedRankingAdapter(RANKING), max_k=3)
+    with pytest.raises(ValueError, match="configured max_k"):
+        retriever.search("q", k=k, mode=SearchMode.ANY)
+
+
+def test_search_allows_configured_max_k(kb: KnowledgeBase) -> None:
+    retriever = Retriever(kb, FixedRankingAdapter(RANKING), max_k=3)
+    assert _ids(retriever.search("q", k=3, mode=SearchMode.ANY)) == RANKING[:3]
+
+
+def test_search_default_cap_comes_from_the_knowledge_base(
+    kb: KnowledgeBase,
+) -> None:
+    retriever = Retriever(kb, FixedRankingAdapter(RANKING))
+    with pytest.raises(ValueError, match="configured max_k"):
+        retriever.search("q", k=len(kb) + 1, mode=SearchMode.ANY)
+
+
+def test_retriever_rejects_nonpositive_max_k(kb: KnowledgeBase) -> None:
+    with pytest.raises(ValueError, match="max_k"):
+        Retriever(kb, FixedRankingAdapter(RANKING), max_k=0)
+
+
 def test_bm25_same_language_finds_the_topic(kb: KnowledgeBase) -> None:
     retriever = Retriever(kb, BM25Adapter())
     assert _ids(retriever.search("cartao roubado", lang="pt", k=1)) == ["block.01.pt"]
