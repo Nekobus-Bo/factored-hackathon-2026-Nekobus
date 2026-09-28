@@ -28,9 +28,11 @@ from contracts.tools import (
     DocumentType,
     HandoffCreateInput,
     HandoffCreateOutput,
+    HandoffOpenQuestion,
     HandoffPriority,
     HandoffReason,
     HandoffStatus,
+    HandoffSummary,
     IdentityVerifyDocumentInput,
     IdentityVerifyDocumentOutput,
     KbSearchInput,
@@ -437,11 +439,35 @@ def test_handoff_create_output():
         status=HandoffStatus.QUEUED,
         department=Department.FRAUD_OPERATIONS,
         queue_position=2,
+        priority=HandoffPriority.HIGH,
+        summary=HandoffSummary(
+            verified_facts={
+                "verification_state": "VERIFIED",
+                "customer_identified": True,
+                "policy_flags": ["HANDOFF_REQUIRED"],
+            },
+            actions_taken=[
+                {
+                    "action": "card.block",
+                    "decision": "allowed",
+                    "reason_code": None,
+                    "audit_id": "aud_0001abcd",
+                }
+            ],
+            verification_method="document_match_and_otp",
+            open_questions=[
+                HandoffOpenQuestion(
+                    source="model_unverified", text="Which transactions should be disputed?"
+                )
+            ],
+        ),
         created_at=datetime.now(timezone.utc),
         receipt=receipt,
     )
     assert out.status == HandoffStatus.QUEUED
     assert out.receipt.state_after == ResourceState.QUEUED
+    assert out.priority == HandoffPriority.HIGH
+    assert out.summary.verified_facts["verification_state"] == "VERIFIED"
 
 
 # 10. kb.search

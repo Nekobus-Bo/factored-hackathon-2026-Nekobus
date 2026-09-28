@@ -55,6 +55,16 @@ def test_exported_catalog_completeness(tmp_path: Path):
         assert tool_entry["permitted_states"] == expected_states
 
 
+def test_handoff_output_schema_exposes_server_built_fields(tmp_path: Path) -> None:
+    export_schemas(output_dir=tmp_path)
+    schema = json.loads(
+        (tmp_path / "tools" / "handoff_create.output.json").read_text(encoding="utf-8")
+    )
+
+    assert {"priority", "summary"} <= set(schema["properties"])
+    assert {"priority", "summary"} <= set(schema["required"])
+
+
 def test_committed_schemas_match_fresh_export(tmp_path: Path):
     """Drift guard: asserts committed schemas match a fresh export byte-for-byte."""
     committed_dir = Path(__file__).resolve().parent.parent / "schemas"

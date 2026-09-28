@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from contracts.envelope import Receipt
 from contracts.tools.base import BaseToolInput, BaseToolOutput
@@ -43,6 +43,28 @@ class HandoffStatus(str, Enum):
     QUEUED = "QUEUED"
     ASSIGNED = "ASSIGNED"
     PENDING = "PENDING"
+
+
+type JsonScalar = str | int | float | bool | None
+type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
+
+
+class HandoffOpenQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source: str
+    text: str
+
+
+class HandoffSummary(BaseModel):
+    """Server-built handoff context persisted with a queue ticket."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verified_facts: dict[str, JsonValue]
+    actions_taken: list[str | dict[str, JsonValue]]
+    verification_method: str
+    open_questions: list[HandoffOpenQuestion]
 
 
 class HandoffCreateInput(BaseToolInput):
@@ -90,6 +112,12 @@ class HandoffCreateOutput(BaseToolOutput):
     department: Department = Field(
         ...,
         description="Target department queue",
+    )
+    priority: HandoffPriority = Field(
+        ..., description="Effective priority assigned after banking-core policy"
+    )
+    summary: HandoffSummary = Field(
+        ..., description="Server-built context stored with the handoff ticket"
     )
     queue_position: StrictInt | None = Field(
         default=None,

@@ -2,7 +2,7 @@ from contracts.blocks import (
     BLOCK_TYPES,
     MESSAGE_BLOCK_ADAPTER,
     MODEL_EMITTABLE_BLOCK_TYPES,
-    MessageBlock,
+    HandoffBlock,
     ReceiptBlock,
     TextBlock,
 )
@@ -40,7 +40,7 @@ __all__ = [
     "BLOCK_TYPES",
     "MESSAGE_BLOCK_ADAPTER",
     "MODEL_EMITTABLE_BLOCK_TYPES",
-    "MessageBlock",
+    "HandoffBlock",
     "ReceiptBlock",
     "TextBlock",
     "CODE_FLOOR",

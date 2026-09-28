@@ -1,5 +1,199 @@
 {
   "$defs": {
+    "Department": {
+      "description": "Bank back-office specialized queues.",
+      "enum": [
+        "FRAUD_OPERATIONS",
+        "CUSTOMER_SUPPORT",
+        "DISPUTES"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "HandoffBlock": {
+      "additionalProperties": false,
+      "description": "Engine-built handoff details backed by a banking-core ToolResult receipt.",
+      "properties": {
+        "department": {
+          "$ref": "#/$defs/Department"
+        },
+        "handoff_id": {
+          "maxLength": 64,
+          "minLength": 8,
+          "title": "Handoff Id",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/HandoffPriority"
+        },
+        "queue_position": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queue Position"
+        },
+        "receipt": {
+          "$ref": "#/$defs/Receipt",
+          "description": "Verified handoff creation receipt"
+        },
+        "status": {
+          "$ref": "#/$defs/HandoffStatus"
+        },
+        "summary": {
+          "$ref": "#/$defs/HandoffSummary"
+        },
+        "type": {
+          "const": "handoff",
+          "default": "handoff",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handoff_id",
+        "status",
+        "department",
+        "priority",
+        "summary",
+        "receipt"
+      ],
+      "title": "HandoffBlock",
+      "type": "object"
+    },
+    "HandoffOpenQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "text"
+      ],
+      "title": "HandoffOpenQuestion",
+      "type": "object"
+    },
+    "HandoffPriority": {
+      "description": "Queue priority for agent assignment.",
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ],
+      "title": "HandoffPriority",
+      "type": "string"
+    },
+    "HandoffStatus": {
+      "description": "Status of handoff ticket.",
+      "enum": [
+        "QUEUED",
+        "ASSIGNED",
+        "PENDING"
+      ],
+      "title": "HandoffStatus",
+      "type": "string"
+    },
+    "HandoffSummary": {
+      "additionalProperties": false,
+      "description": "Server-built handoff context persisted with a queue ticket.",
+      "properties": {
+        "actions_taken": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "title": "Actions Taken",
+          "type": "array"
+        },
+        "open_questions": {
+          "items": {
+            "$ref": "#/$defs/HandoffOpenQuestion"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "verification_method": {
+          "title": "Verification Method",
+          "type": "string"
+        },
+        "verified_facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Verified Facts",
+          "type": "object"
+        }
+      },
+      "required": [
+        "verified_facts",
+        "actions_taken",
+        "verification_method",
+        "open_questions"
+      ],
+      "title": "HandoffSummary",
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    },
     "Receipt": {
       "additionalProperties": false,
       "description": "Database-verified receipt returned on state-mutating actions.",
@@ -123,6 +317,7 @@
   },
   "discriminator": {
     "mapping": {
+      "handoff": "#/$defs/HandoffBlock",
       "receipt": "#/$defs/ReceiptBlock",
       "text": "#/$defs/TextBlock"
     },
@@ -134,6 +329,9 @@
     },
     {
       "$ref": "#/$defs/ReceiptBlock"
+    },
+    {
+      "$ref": "#/$defs/HandoffBlock"
     }
   ]
 }

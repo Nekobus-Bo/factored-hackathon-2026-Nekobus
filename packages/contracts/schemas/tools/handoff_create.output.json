@@ -10,6 +10,36 @@
       "title": "Department",
       "type": "string"
     },
+    "HandoffOpenQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "text"
+      ],
+      "title": "HandoffOpenQuestion",
+      "type": "object"
+    },
+    "HandoffPriority": {
+      "description": "Queue priority for agent assignment.",
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ],
+      "title": "HandoffPriority",
+      "type": "string"
+    },
     "HandoffStatus": {
       "description": "Status of handoff ticket.",
       "enum": [
@@ -19,6 +49,93 @@
       ],
       "title": "HandoffStatus",
       "type": "string"
+    },
+    "HandoffSummary": {
+      "additionalProperties": false,
+      "description": "Server-built handoff context persisted with a queue ticket.",
+      "properties": {
+        "actions_taken": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "title": "Actions Taken",
+          "type": "array"
+        },
+        "open_questions": {
+          "items": {
+            "$ref": "#/$defs/HandoffOpenQuestion"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "verification_method": {
+          "title": "Verification Method",
+          "type": "string"
+        },
+        "verified_facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Verified Facts",
+          "type": "object"
+        }
+      },
+      "required": [
+        "verified_facts",
+        "actions_taken",
+        "verification_method",
+        "open_questions"
+      ],
+      "title": "HandoffSummary",
+      "type": "object"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
     },
     "Receipt": {
       "additionalProperties": false,
@@ -116,6 +233,10 @@
       "title": "Handoff Id",
       "type": "string"
     },
+    "priority": {
+      "$ref": "#/$defs/HandoffPriority",
+      "description": "Effective priority assigned after banking-core policy"
+    },
     "queue_position": {
       "anyOf": [
         {
@@ -138,11 +259,17 @@
       "$ref": "#/$defs/HandoffStatus",
       "default": "QUEUED",
       "description": "Current ticket queue status"
+    },
+    "summary": {
+      "$ref": "#/$defs/HandoffSummary",
+      "description": "Server-built context stored with the handoff ticket"
     }
   },
   "required": [
     "handoff_id",
     "department",
+    "priority",
+    "summary",
     "created_at",
     "receipt"
   ],

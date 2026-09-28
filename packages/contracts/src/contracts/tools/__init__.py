@@ -30,9 +30,11 @@ from contracts.tools.handoff_create import (
     Department,
     HandoffCreateInput,
     HandoffCreateOutput,
+    HandoffOpenQuestion,
     HandoffPriority,
     HandoffReason,
     HandoffStatus,
+    HandoffSummary,
 )
 from contracts.tools.identity_verify_document import (
     DocumentDecision,
@@ -262,6 +264,8 @@ __all__ = [
     "DocumentType",
     "HandoffCreateInput",
     "HandoffCreateOutput",
+    "HandoffOpenQuestion",
+    "HandoffSummary",
     "HandoffPriority",
     "HandoffReason",
     "HandoffStatus",
