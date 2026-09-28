@@ -84,6 +84,7 @@ class LLMProvider:
         self.api_key = self.settings.effective_api_key
         self.timeout = self.settings.llm_timeout_seconds
         self.retries = self.settings.llm_max_retries
+        self.reasoning_effort = self.settings.effective_reasoning_effort
         self.mode = self.settings.llm_mode
         self.replay_on_miss = self.settings.llm_replay_on_miss
         self.record = self.settings.record
@@ -386,6 +387,8 @@ class LLMProvider:
             call_kwargs["api_base"] = self.base_url
         if self.api_key:
             call_kwargs["api_key"] = self.api_key
+        if self.reasoning_effort:
+            call_kwargs["reasoning_effort"] = self.reasoning_effort
         if tools:
             call_kwargs["tools"] = tools
 
@@ -532,6 +535,8 @@ class LLMProvider:
             call_kwargs["api_base"] = self.base_url
         if self.api_key:
             call_kwargs["api_key"] = self.api_key
+        if self.reasoning_effort:
+            call_kwargs["reasoning_effort"] = self.reasoning_effort
         if tools:
             call_kwargs["tools"] = tools
 
