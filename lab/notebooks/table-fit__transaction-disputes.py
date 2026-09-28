@@ -120,6 +120,18 @@ def _(mo):
 
 @app.cell
 def _(con, mo):
+    mo.sql("DESCRIBE customers", engine=con)
+    return
+
+
+@app.cell
+def _(con, mo):
+    mo.sql("SELECT count(*) AS n_rows FROM customers", engine=con)
+    return
+
+
+@app.cell
+def _(con, mo):
     mo.sql(
         """
         SELECT customer_status, count(*) AS n, round(100.0 * count(*) / sum(count(*)) OVER (), 2) AS pct,
