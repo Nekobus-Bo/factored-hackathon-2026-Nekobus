@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
 
     # Redis Edge (Edge trust zone session store & distributed locking)
+    redis_edge_url: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REDIS_EDGE_URL", "REDIS_URL"),
+    )
     redis_edge_host: str = Field(
         default="localhost",
         validation_alias=AliasChoices("REDIS_EDGE_HOST", "REDIS_HOST"),
@@ -43,6 +47,10 @@ class Settings(BaseSettings):
     redis_edge_password: str | None = Field(
         default=None,
         validation_alias=AliasChoices("REDIS_EDGE_PASSWORD", "REDIS_PASSWORD"),
+    )
+    redis_edge_key_prefix: str = Field(
+        default="orch:conv:",
+        validation_alias=AliasChoices("REDIS_EDGE_KEY_PREFIX"),
     )
     # No default on purpose: startup fails without it (see require_session_secret).
     session_secret: str | None = Field(

@@ -34,16 +34,29 @@ def create_app(
     install_redaction(("uvicorn.access", "uvicorn.error"))
 
     # Redis connects lazily: building the client does not need redis-edge up.
-    app.state.session_store = session_store or SessionStore(
-        redis=Redis(
-            host=cfg.redis_edge_host,
-            port=cfg.redis_edge_port,
-            password=cfg.redis_edge_password,
-        ),
-        encryptor=PlaceholderEncryptor(cfg.require_session_secret()),
-        ttl_seconds=cfg.session_ttl_seconds,
-        lock_timeout_seconds=cfg.turn_lock_seconds,
-    )
+    if session_store is None:
+        redis_url = (
+            cfg.redis_edge_url.get_secret_value()
+            if cfg.redis_edge_url is not None
+            else ""
+        )
+        redis_client = (
+            Redis.from_url(redis_url)
+            if redis_url
+            else Redis(
+                host=cfg.redis_edge_host,
+                port=cfg.redis_edge_port,
+                password=cfg.redis_edge_password,
+            )
+        )
+        session_store = SessionStore(
+            redis=redis_client,
+            encryptor=PlaceholderEncryptor(cfg.require_session_secret()),
+            ttl_seconds=cfg.session_ttl_seconds,
+            lock_timeout_seconds=cfg.turn_lock_seconds,
+            key_prefix=cfg.redis_edge_key_prefix,
+        )
+    app.state.session_store = session_store
     banking = banking_client or BankingCoreClient(settings=cfg)
     handler = turn_handler or EngineTurnHandler(
         TurnEngine.from_settings(
