@@ -3,20 +3,27 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis
 import httpx
 import pytest
 import respx
 from fastapi import FastAPI
+from orchestrator.chat.handler import TurnHandler, TurnOutcome
 from orchestrator.config import Settings
+from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.main import create_app
 from orchestrator.session.crypto import PlaceholderEncryptor
+from orchestrator.session.models import ConversationState
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient
 
 from .fake_handler import RECEIPT_BLOCK, FakeTurnHandler
+from .fake_llm import tool_call
+from .test_conversation_engine import FakeBankingCore
 
 BANKING_URL = "http://banking-core.test"
 RAW_DOCUMENT = "1020304050"
@@ -25,10 +32,11 @@ RAW_NAME = "Carlos"
 
 def build_app(
     redis: fakeredis.FakeAsyncRedis,
-    handler: FakeTurnHandler | None,
+    handler: TurnHandler | None,
     ttl_seconds: int = 3600,
+    settings: Settings | None = None,
 ) -> FastAPI:
-    settings = Settings()
+    settings = settings or Settings()
     store = SessionStore(
         redis=redis,
         encryptor=PlaceholderEncryptor("test-secret"),
@@ -41,6 +49,23 @@ def build_app(
         banking_client=BankingCoreClient(base_url=BANKING_URL, settings=settings),
         turn_handler=handler,
     )
+
+
+def _litellm_response(
+    content: str | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+) -> MagicMock:
+    response = MagicMock()
+    choice = MagicMock()
+    choice.message.content = content
+    choice.message.tool_calls = tool_calls or []
+    response.choices = [choice]
+    response.usage.model_dump.return_value = {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+    }
+    return response
 
 
 @pytest.fixture
@@ -91,6 +116,7 @@ async def test_create_message_transcript_round_trip(
         f"/v1/conversations/{conversation_id}/messages", json={"text": user_text}
     )
     assert sent.status_code == 200
+    assert "eval" not in sent.json()
     assert sent.json()["blocks"][1] == RECEIPT_BLOCK
     assert handler.calls == [("sess_opaque_0001", user_text)]
 
@@ -176,10 +202,17 @@ async def test_failed_turn_is_not_persisted_and_releases_lock(
     assert (await client.post(url, json={"text": "hola"})).status_code == 200
 
 
-async def test_without_turn_handler_messages_answer_503(
-    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+async def test_default_replay_handler_returns_replay_miss(
+    redis: fakeredis.FakeAsyncRedis,
+    banking: Any,
+    make_client: Any,
+    tmp_path: Path,
 ) -> None:
-    client = make_client(build_app(redis, None))
+    settings = Settings(
+        replay_dir=str(tmp_path),
+        encoder_enabled=False,
+    )
+    client = make_client(build_app(redis, None, settings=settings))
     conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
 
     response = await client.post(
@@ -187,7 +220,10 @@ async def test_without_turn_handler_messages_answer_503(
     )
 
     assert response.status_code == 503
-    assert "not wired" in response.json()["detail"]
+    assert response.json()["detail"] == "replay_miss"
+    assert (await client.get(f"/v1/conversations/{conversation_id}")).json()[
+        "messages"
+    ] == []
 
 
 async def test_unknown_conversation_and_bad_input(
@@ -284,6 +320,43 @@ async def test_slow_turn_that_lost_its_lock_cannot_overwrite_a_newer_turn(
     assert state.llm_history == [{"role": "user", "content": "turno nuevo"}]
 
 
+async def test_invalid_message_block_is_not_persisted(
+    redis: fakeredis.FakeAsyncRedis,
+    banking: Any,
+    make_client: Any,
+) -> None:
+    class InvalidBlockHandler:
+        async def handle_turn(
+            self, conversation: ConversationState, user_text: str
+        ) -> TurnOutcome:
+            return TurnOutcome(blocks=[{"type": "handoff"}], metadata={})
+
+    client = make_client(build_app(redis, InvalidBlockHandler()))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+
+    response = await client.post(
+        f"/v1/conversations/{conversation_id}/messages", json={"text": "hola"}
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        "Turn output violates the message block contract"
+    )
+    assert (await client.get(f"/v1/conversations/{conversation_id}")).json()[
+        "messages"
+    ] == []
+
+
+def test_startup_rejects_eval_hook_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("EVAL_EXPOSE_TURN", "true")
+
+    with pytest.raises(ValueError, match="EVAL_EXPOSE_TURN"):
+        create_app(settings=Settings(_env_file=None))
+
+
 def test_startup_fails_without_session_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SESSION_SECRET", raising=False)
     for value in (None, "   "):
@@ -330,3 +403,286 @@ def test_access_log_never_records_the_conversation_id(
 
     assert conversation_id not in caplog.text
     assert "/v1/conversations/conv_[redacted]/messages" in caplog.text
+
+
+@pytest.mark.parametrize("lang", ["es", "pt", "en"])
+async def test_replay_turns_work_through_chat_api_without_provider_pii(
+    redis: fakeredis.FakeAsyncRedis,
+    banking: Any,
+    make_client: Any,
+    tmp_path: Path,
+    lang: str,
+) -> None:
+    replay_dir = tmp_path / "replay"
+    record_settings = Settings(
+        _env_file=None,
+        llm_mode="live",
+        llm_model="test-model",
+        replay_dir=str(replay_dir),
+        record=True,
+        encoder_enabled=False,
+        session_secret="test-secret",
+    )
+    fake_banking = FakeBankingCore()
+    banking.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=fake_banking)
+
+    user_text = {
+        "es": "Perdí mi tarjeta; documento 1020304050",
+        "pt": "Perdi meu cartão; documento 1020304050",
+        "en": "I lost my card; document 1020304050",
+    }[lang]
+    otp_text = "482 913"
+    script = [
+        _litellm_response(
+            tool_calls=[
+                tool_call(
+                    "call_match",
+                    "customer_match",
+                    {
+                        "document_type": "NATIONAL_ID",
+                        "document_number": "[DOC_1]",
+                    },
+                )
+            ]
+        ),
+        _litellm_response(tool_calls=[tool_call("call_send", "otp_send", {})]),
+        _litellm_response(content="I sent a code; please share it."),
+        _litellm_response(
+            tool_calls=[tool_call("call_verify", "otp_verify", {"code": "[OTP_1]"})]
+        ),
+        _litellm_response(tool_calls=[tool_call("call_list", "card_list", {})]),
+        _litellm_response(
+            tool_calls=[
+                tool_call(
+                    "call_block",
+                    "card_block",
+                    {"card_ref": "card_ab12cd34", "reason": "LOST"},
+                )
+            ]
+        ),
+        _litellm_response(
+            tool_calls=[
+                tool_call(
+                    "call_handoff",
+                    "handoff_create",
+                    {
+                        "reason": "CUSTOMER_REQUEST",
+                        "summary": "Model request for a dispute review.",
+                        "priority": "LOW",
+                        "department": "DISPUTES",
+                    },
+                )
+            ]
+        ),
+        _litellm_response(content=json.dumps({"blocks": [{"type": "handoff"}]})),
+    ]
+    record_engine = TurnEngine.from_settings(
+        record_settings,
+        banking=BankingCoreClient(base_url=BANKING_URL, settings=record_settings),
+        collect_eval=True,
+    )
+    record_context = ConversationContext(session_id="sess_opaque_0001", language=lang)
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as completion,
+        patch("litellm.completion_cost", return_value=0.0001),
+    ):
+        completion.side_effect = script
+        await record_engine.run_turn(
+            record_context, user_text, lang=lang, turn_id="seed-turn-1"
+        )
+        await record_engine.run_turn(
+            record_context, otp_text, lang=lang, turn_id="seed-turn-2"
+        )
+
+    assert completion.call_count == 8
+    provider_payloads = json.dumps(
+        [call.kwargs["messages"] for call in completion.call_args_list],
+        ensure_ascii=False,
+    )
+    for sensitive_value in (RAW_DOCUMENT, otp_text, "482913"):
+        assert sensitive_value not in provider_payloads
+
+    recordings = list(replay_dir.glob("*.json"))
+    assert len(recordings) == 8
+    for recording in recordings:
+        contents = recording.read_text(encoding="utf-8")
+        for sensitive_value in (RAW_DOCUMENT, otp_text, "482913"):
+            assert sensitive_value not in contents
+    fake_banking.requests.clear()
+
+    api_settings = Settings(
+        _env_file=None,
+        llm_mode="replay",
+        llm_model="test-model",
+        replay_dir=str(replay_dir),
+        encoder_enabled=False,
+        eval_expose_turn=True,
+        session_secret="test-secret",
+    )
+    client = make_client(build_app(redis, None, settings=api_settings))
+    with patch("litellm.acompletion", new_callable=AsyncMock) as network_call:
+        network_call.side_effect = AssertionError("replay must not call a provider")
+        created = await client.post("/v1/conversations", json={"lang": lang})
+        assert created.status_code == 201
+        conversation_id = created.json()["conversation_id"]
+
+        first = await client.post(
+            f"/v1/conversations/{conversation_id}/messages",
+            json={"text": user_text},
+        )
+        second = await client.post(
+            f"/v1/conversations/{conversation_id}/messages",
+            json={"text": otp_text},
+        )
+
+    assert network_call.call_count == 0
+    assert first.status_code == second.status_code == 200
+    for response, expected_calls in ((first, 3), (second, 5)):
+        evaluation = response.json()["eval"]
+        assert set(evaluation) == {
+            "masked_outbound",
+            "recording_keys",
+            "tokens",
+            "cost_usd",
+        }
+        assert len(evaluation["masked_outbound"]) == expected_calls
+        assert len(evaluation["recording_keys"]) == expected_calls
+        assert evaluation["tokens"] == expected_calls * 15
+        assert evaluation["cost_usd"] == pytest.approx(expected_calls * 0.0001)
+        outbound = json.dumps(evaluation["masked_outbound"], ensure_ascii=False)
+        for sensitive_value in (RAW_DOCUMENT, otp_text, "482913"):
+            assert sensitive_value not in outbound
+
+    blocks = second.json()["blocks"]
+    assert [block["type"] for block in blocks] == [
+        "receipt",
+        "receipt",
+        "handoff",
+    ]
+    assert [
+        block["receipt"]["action"] for block in blocks if block["type"] == "receipt"
+    ] == ["otp.verify", "card.block"]
+    handoff = blocks[-1]
+    assert handoff["handoff_id"] == "hnd_abcd1234"
+    assert handoff["status"] == "QUEUED"
+    assert handoff["department"] == "DISPUTES"
+    assert handoff["priority"] == "HIGH"
+    assert handoff["queue_position"] == 4
+    assert handoff["receipt"]["action"] == "handoff.create"
+    assert handoff["summary"] == {
+        "verified_facts": {
+            "verification_state": "VERIFIED",
+            "customer_identified": True,
+            "policy_flags": [],
+        },
+        "actions_taken": [],
+        "verification_method": "document_match_and_otp",
+        "open_questions": [
+            {
+                "source": "model_unverified",
+                "text": "Server-stored handoff question.",
+            }
+        ],
+    }
+    assert [request["body"]["tool"] for request in fake_banking.requests] == [
+        "customer.match",
+        "otp.send",
+        "otp.verify",
+        "card.list",
+        "card.block",
+        "handoff.create",
+    ]
+    assert {request["session"] for request in fake_banking.requests} == {
+        "sess_opaque_0001"
+    }
+
+    for response in (created, first, second):
+        for internal in (
+            "banking_session_id",
+            "placeholder_map",
+            "sess_opaque_0001",
+        ):
+            assert internal not in response.text
+    transcript = await client.get(f"/v1/conversations/{conversation_id}")
+    assert transcript.status_code == 200
+    for sensitive_value in (RAW_DOCUMENT, otp_text, "482913"):
+        assert sensitive_value not in transcript.text
+
+
+async def test_handoff_block_pii_is_masked_only_in_persisted_transcript(
+    redis: fakeredis.FakeAsyncRedis,
+    banking: Any,
+    make_client: Any,
+) -> None:
+    class HandoffTurnHandler:
+        async def handle_turn(
+            self, conversation: ConversationState, user_text: str
+        ) -> TurnOutcome:
+            conversation.placeholder_map["[DOC_1]"] = RAW_DOCUMENT
+            return TurnOutcome(
+                blocks=[
+                    {
+                        "type": "handoff",
+                        "handoff_id": "hnd_abcd1234",
+                        "status": "QUEUED",
+                        "department": "DISPUTES",
+                        "priority": "HIGH",
+                        "queue_position": 4,
+                        "summary": {
+                            "verified_facts": {
+                                "verification_state": "VERIFIED",
+                                "customer_identified": True,
+                                "policy_flags": [],
+                            },
+                            "actions_taken": [],
+                            "verification_method": "document_match_and_otp",
+                            "open_questions": [
+                                {
+                                    "source": "model_unverified",
+                                    "text": f"Document {RAW_DOCUMENT} needs review.",
+                                }
+                            ],
+                        },
+                        "receipt": {
+                            "action": "handoff.create",
+                            "target_masked": "hnd_abcd1234",
+                            "state_before": "NONE",
+                            "state_after": "QUEUED",
+                            "verified_at": "2026-09-27T12:00:00Z",
+                            "audit_id": "aud_0001abcd",
+                        },
+                    },
+                    RECEIPT_BLOCK,
+                ],
+                metadata={},
+            )
+
+    client = make_client(build_app(redis, HandoffTurnHandler()))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+
+    response = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        json={"text": "Please escalate this issue."},
+    )
+
+    assert response.status_code == 200
+    response_blocks = response.json()["blocks"]
+    assert RAW_DOCUMENT in response_blocks[0]["summary"]["open_questions"][0]["text"]
+    assert response_blocks[0]["queue_position"] == 4
+    assert response_blocks[1] == RECEIPT_BLOCK
+
+    transcript = await client.get(f"/v1/conversations/{conversation_id}")
+    assert transcript.status_code == 200
+    stored_blocks = transcript.json()["messages"][1]["blocks"]
+    stored_handoff = stored_blocks[0]
+    stored_question = stored_handoff["summary"]["open_questions"][0]["text"]
+    assert RAW_DOCUMENT not in stored_question
+    assert "[DOC_1]" in stored_question
+    assert stored_handoff["queue_position"] == 4
+    assert type(stored_handoff["queue_position"]) is int
+    assert stored_handoff["receipt"]["action"] == "handoff.create"
+    assert stored_blocks[1]["receipt"]["action"] == "card.block"
+
+    raw_state = await redis.get(f"orch:conv:{conversation_id}")
+    assert raw_state is not None
+    assert RAW_DOCUMENT.encode() not in raw_state

@@ -13,6 +13,7 @@ Verifies:
 - Live recording with RECORD=1 saves replay files
 """
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -165,6 +166,39 @@ async def test_provider_masks_tool_calls_arguments_and_list_content(
         tool_content = sent_messages[2]["content"]
         assert "1020304050" not in tool_content
         assert "[DOC_1]" in tool_content
+
+
+def test_tool_result_masking_preserves_contract_integer_amounts(tmp_path: Path) -> None:
+    provider = LLMProvider(
+        settings=Settings(llm_model="test-model", replay_dir=str(tmp_path))
+    )
+    result = {
+        "reason_code": None,
+        "tool": "account.get_summary",
+        "status": "ok",
+        "data": {
+            "accounts": [
+                {
+                    "account_ref": "[DOC_1]",
+                    "account_type": "CHECKING",
+                    "currency": "COP",
+                    "available_balance_minor": 55000000,
+                    "ledger_balance_minor": 56000000,
+                    "status": "ACTIVE",
+                }
+            ]
+        },
+    }
+
+    masked, _ = provider.mask_outbound_messages(
+        [{"role": "tool", "content": json.dumps(result)}]
+    )
+    payload = json.loads(masked[0]["content"])
+    account = payload["data"]["accounts"][0]
+
+    assert account["available_balance_minor"] == 55000000
+    assert account["ledger_balance_minor"] == 56000000
+    assert account["account_ref"] == "[DOC_1]"
 
 
 @pytest.mark.asyncio

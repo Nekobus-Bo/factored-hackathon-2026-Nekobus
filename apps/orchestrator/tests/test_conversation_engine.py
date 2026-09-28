@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
-from contracts import ReceiptBlock, TextBlock
+from contracts import HandoffBlock, ReceiptBlock, TextBlock, ToolResult
 from orchestrator.config import Settings
 from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.conversation.prompt import FALLBACK_MESSAGES, REPHRASE_MESSAGES
@@ -74,6 +74,30 @@ OK_DATA: dict[str, dict[str, Any]] = {
         "receipt": receipt("card.block", "card_ab12cd34", "ACTIVE", "BLOCKED"),
     },
     "kb.search": {"results": []},
+    "handoff.create": {
+        "handoff_id": "hnd_abcd1234",
+        "status": "QUEUED",
+        "department": "DISPUTES",
+        "priority": "HIGH",
+        "summary": {
+            "verified_facts": {
+                "verification_state": "VERIFIED",
+                "customer_identified": True,
+                "policy_flags": [],
+            },
+            "actions_taken": [],
+            "verification_method": "document_match_and_otp",
+            "open_questions": [
+                {
+                    "source": "model_unverified",
+                    "text": "Server-stored handoff question.",
+                }
+            ],
+        },
+        "queue_position": 4,
+        "created_at": "2026-09-27T12:00:00Z",
+        "receipt": receipt("handoff.create", "hnd_abcd1234", "NONE", "QUEUED"),
+    },
 }
 
 
@@ -478,7 +502,7 @@ def _mock_encoder(mock_services: Any) -> None:
     )
 
 
-@pytest.mark.parametrize("reply", ["482913", "es 482913"])
+@pytest.mark.parametrize("reply", ["482913", "es 482913", "482 913", "482-913"])
 async def test_bare_otp_is_masked_while_a_challenge_is_pending(
     mock_services: Any, reply: str
 ) -> None:
@@ -612,3 +636,214 @@ def test_from_settings_wires_max_rounds_and_encoder_flag() -> None:
     assert enabled.max_tool_rounds == 3
     assert enabled.encoder is not None
     assert disabled.encoder is None
+
+
+def test_tool_feedback_preserves_integer_amounts_and_masks_string_pii() -> None:
+    engine = make_engine(ScriptedLLM([]))
+    balance = ToolResult.model_validate(
+        {
+            "tool": "account.get_summary",
+            "status": "ok",
+            "data": {
+                "accounts": [
+                    {
+                        "account_ref": "acct_abcd1234",
+                        "account_type": "CHECKING",
+                        "currency": "COP",
+                        "available_balance_minor": 55000000,
+                        "ledger_balance_minor": 56000000,
+                        "status": "ACTIVE",
+                    }
+                ]
+            },
+        }
+    )
+
+    balance_feedback = json.loads(
+        engine._tool_feedback("account_get_summary", balance, {})
+    )
+    account = balance_feedback["data"]["accounts"][0]
+    assert account["available_balance_minor"] == 55000000
+    assert account["ledger_balance_minor"] == 56000000
+
+    knowledge = ToolResult.model_validate(
+        {
+            "tool": "kb.search",
+            "status": "ok",
+            "data": {
+                "results": [
+                    {
+                        "article_id": "kb_contact",
+                        "title": "Contact details",
+                        "snippet": "Document 1020304050; phone +14155551234.",
+                        "category": "support",
+                        "score": 0.9,
+                    }
+                ]
+            },
+        }
+    )
+    knowledge_feedback = json.loads(engine._tool_feedback("kb_search", knowledge, {}))
+    snippet = knowledge_feedback["data"]["results"][0]["snippet"]
+    assert "1020304050" not in snippet
+    assert "+14155551234" not in snippet
+    assert "[DOC_" in snippet
+    assert "[PHONE_" in snippet
+
+
+@pytest.mark.asyncio
+async def test_handoff_block_is_built_from_successful_result_only(
+    mock_services: Any,
+) -> None:
+    model_text = "Model claims verified_facts are already confirmed."
+    server_summary = {
+        "verified_facts": {
+            "verification_state": "VERIFIED",
+            "customer_identified": True,
+            "policy_flags": ["HANDOFF_REQUIRED"],
+        },
+        "actions_taken": [
+            {
+                "action": "card.block",
+                "decision": "allowed",
+                "reason_code": None,
+                "audit_id": "aud_0001abcd",
+            }
+        ],
+        "verification_method": "document_match_and_otp",
+        "open_questions": [{"source": "model_unverified", "text": model_text}],
+    }
+    banking = FakeBankingCore(
+        data={
+            "handoff.create": {
+                **OK_DATA["handoff.create"],
+                "priority": "HIGH",
+                "summary": server_summary,
+            }
+        }
+    )
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM(
+        [
+            Step(
+                tool_calls=[
+                    tool_call(
+                        "call_handoff",
+                        "handoff_create",
+                        {
+                            "reason": "CUSTOMER_REQUEST",
+                            "summary": model_text,
+                            "priority": "LOW",
+                            "department": "DISPUTES",
+                        },
+                    )
+                ]
+            ),
+            Step(content=json.dumps({"blocks": [{"type": "handoff"}]})),
+        ]
+    )
+
+    result = await make_engine(llm).run_turn(
+        new_context(), "Please connect me with a person."
+    )
+
+    handoffs = [block for block in result.blocks if isinstance(block, HandoffBlock)]
+    assert len(handoffs) == 1
+    handoff = handoffs[0]
+    assert handoff.handoff_id == "hnd_abcd1234"
+    assert handoff.status.value == "QUEUED"
+    assert handoff.department.value == "DISPUTES"
+    assert handoff.priority.value == "HIGH"
+    assert handoff.queue_position == 4
+    assert handoff.receipt.action == "handoff.create"
+    assert handoff.summary.verified_facts == server_summary["verified_facts"]
+    assert handoff.summary.actions_taken == server_summary["actions_taken"]
+    assert handoff.summary.verification_method == "document_match_and_otp"
+    assert handoff.summary.open_questions[0].text == model_text
+    assert model_text not in json.dumps(handoff.summary.verified_facts)
+    assert result.metadata.dropped_block_types == ["handoff"]
+    assert not any(
+        isinstance(block, ReceiptBlock) and block.receipt.action == "handoff.create"
+        for block in result.blocks
+    )
+
+
+@pytest.mark.asyncio
+async def test_refused_handoff_does_not_produce_handoff_block(
+    mock_services: Any,
+) -> None:
+    banking = FakeBankingCore(refuse={"handoff.create": "STATE_NOT_ALLOWED"})
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM(
+        [
+            Step(
+                tool_calls=[
+                    tool_call(
+                        "call_handoff",
+                        "handoff_create",
+                        {
+                            "reason": "CUSTOMER_REQUEST",
+                            "summary": json.dumps(
+                                {
+                                    "verified_facts": (
+                                        "Customer requested a human agent."
+                                    ),
+                                    "actions_taken": "No handoff was created.",
+                                    "verification_method": "Not verified.",
+                                    "open_questions": "What support is needed?",
+                                }
+                            ),
+                        },
+                    )
+                ]
+            ),
+            Step(content="A human handoff could not be created."),
+        ]
+    )
+
+    result = await make_engine(llm).run_turn(
+        new_context(), "Please connect me with a person."
+    )
+
+    assert not any(isinstance(block, HandoffBlock) for block in result.blocks)
+
+
+@pytest.mark.asyncio
+async def test_malformed_handoff_result_does_not_create_block(
+    mock_services: Any,
+) -> None:
+    malformed = {
+        **OK_DATA["handoff.create"],
+        "summary": {"verified_facts": {}},
+    }
+    banking = FakeBankingCore(data={"handoff.create": malformed})
+    route = mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM(
+        [
+            Step(
+                tool_calls=[
+                    tool_call(
+                        "call_handoff",
+                        "handoff_create",
+                        {
+                            "reason": "CUSTOMER_REQUEST",
+                            "summary": "Model-requested escalation summary.",
+                            "priority": "LOW",
+                            "department": "DISPUTES",
+                        },
+                    )
+                ]
+            ),
+            Step(content="Escalation request submitted."),
+        ]
+    )
+
+    result = await make_engine(llm).run_turn(
+        new_context(), "Please connect me with a person."
+    )
+
+    assert route.call_count == 1
+    assert not any(isinstance(block, HandoffBlock) for block in result.blocks)
