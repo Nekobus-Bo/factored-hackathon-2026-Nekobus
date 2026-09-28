@@ -155,6 +155,12 @@ def _(mo):
 
 @app.cell
 def _(con, mo):
+    mo.sql("DESCRIBE products", engine=con)
+    return
+
+
+@app.cell
+def _(con, mo):
     mo.sql("SELECT count(*) AS n_rows FROM products", engine=con)
     return
 
@@ -296,6 +302,49 @@ def _(
         FROM transactions
         WHERE transaction_type IN ({DISPUTE_TYPES}) AND transaction_status IN ({SETTLED_STATUS})
           AND transaction_date >= TIMESTAMP '{DATASET_CUTOFF}' - INTERVAL {DISPUTE_WINDOW_DAYS} DAY
+        """,
+        engine=con,
+    )
+    return
+
+
+@app.cell
+def _(
+    DATASET_CUTOFF,
+    DISPUTE_TYPES,
+    DISPUTE_WINDOW_DAYS,
+    SETTLED_STATUS,
+    con,
+    mo,
+):
+    mo.sql(
+        f"""
+        SELECT count(DISTINCT merchant_name) AS n_merchants, count(*) FILTER (WHERE merchant_name IS NULL) AS n_no_merchant
+        FROM transactions
+        WHERE transaction_type IN ({DISPUTE_TYPES}) AND transaction_status IN ({SETTLED_STATUS})
+          AND transaction_date >= TIMESTAMP '{DATASET_CUTOFF}' - INTERVAL {DISPUTE_WINDOW_DAYS} DAY
+        """,
+        engine=con,
+    )
+    return
+
+
+@app.cell
+def _(
+    DATASET_CUTOFF,
+    DISPUTE_TYPES,
+    DISPUTE_WINDOW_DAYS,
+    SETTLED_STATUS,
+    con,
+    mo,
+):
+    mo.sql(
+        f"""
+        SELECT merchant_name, count(*) AS n, round(100.0 * count(*) / sum(count(*)) OVER (), 2) AS pct
+        FROM transactions
+        WHERE transaction_type IN ({DISPUTE_TYPES}) AND transaction_status IN ({SETTLED_STATUS})
+          AND transaction_date >= TIMESTAMP '{DATASET_CUTOFF}' - INTERVAL {DISPUTE_WINDOW_DAYS} DAY
+        GROUP BY 1 ORDER BY n DESC
         """,
         engine=con,
     )
