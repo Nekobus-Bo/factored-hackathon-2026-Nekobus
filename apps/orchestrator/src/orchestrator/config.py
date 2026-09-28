@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,8 +31,39 @@ class Settings(BaseSettings):
     encoder_url: str = Field(default="http://encoder:8090", alias="ENCODER_URL")
     encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
 
+    # Redis Edge (Edge trust zone session store & distributed locking)
+    redis_edge_host: str = Field(
+        default="localhost",
+        validation_alias=AliasChoices("REDIS_EDGE_HOST", "REDIS_HOST"),
+    )
+    redis_edge_port: int = Field(
+        default=6379,
+        validation_alias=AliasChoices("REDIS_EDGE_PORT", "REDIS_PORT"),
+    )
+    redis_edge_password: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("REDIS_EDGE_PASSWORD", "REDIS_PASSWORD"),
+    )
+    # No default on purpose: startup fails without it (see require_session_secret).
+    session_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SESSION_SECRET"),
+    )
+    session_ttl_seconds: int = Field(
+        default=3600,
+        validation_alias=AliasChoices("SESSION_TTL_SECONDS"),
+    )
+    # Added on top of the slowest possible turn to get the turn-lock TTL.
+    session_lock_margin_seconds: float = Field(
+        default=60.0, ge=0, alias="SESSION_LOCK_MARGIN_SECONDS"
+    )
+
     # Conversation turn engine
     max_tool_rounds: int = Field(default=5, ge=1, le=20, alias="MAX_TOOL_ROUNDS")
+
+    default_locale: Literal["es", "pt", "en"] = Field(
+        default="es", alias="DEFAULT_LOCALE"
+    )
 
     # LLM Settings
     llm_mode: Literal["replay", "live"] = Field(default="replay", alias="LLM_MODE")
@@ -60,6 +91,28 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("1", "true", "yes", "on")
         return bool(v)
+
+    @property
+    def turn_lock_seconds(self) -> float:
+        """Turn-lock TTL: the slowest turn the config allows, plus a margin.
+
+        Each of the (MAX_TOOL_ROUNDS + 1) LLM calls may take LLM_TIMEOUT_SECONDS
+        per attempt, (1 + LLM_MAX_RETRIES) attempts. The save is also fenced on
+        the lock token, so an expired lock can never overwrite a newer turn.
+        """
+        slowest_turn = (
+            self.llm_timeout_seconds
+            * (1 + self.llm_max_retries)
+            * (self.max_tool_rounds + 1)
+        )
+        return slowest_turn + self.session_lock_margin_seconds
+
+    def require_session_secret(self) -> str:
+        if not self.session_secret or not self.session_secret.strip():
+            raise ValueError(
+                "SESSION_SECRET environment variable is required and cannot be empty"
+            )
+        return self.session_secret
 
     @property
     def effective_base_url(self) -> str | None:
