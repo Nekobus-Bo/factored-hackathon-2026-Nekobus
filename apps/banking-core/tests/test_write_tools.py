@@ -22,6 +22,7 @@ from banking_core.control.policy import Decision, PolicyConfig, PolicyEngine
 from banking_core.control.session import SessionState
 from banking_core.handoff.tools import (
     HandoffCreateResult,
+    reread_handoff_create_result,
     resolve_priority,
 )
 from banking_core.handoff.tools import (
@@ -44,8 +45,10 @@ from contracts.tools.handoff_create import (
     Department,
     HandoffCreateInput,
     HandoffCreateOutput,
+    HandoffOpenQuestion,
     HandoffPriority,
     HandoffReason,
+    HandoffSummary,
 )
 from sqlalchemy.orm import Session
 
@@ -363,6 +366,8 @@ def test_handoff_in_locked_session_without_holder_reaches_the_queue(
     assert result.output.queue_position == 1
     assert row.summary["verification_method"] == "locked_after_failed_verification"
     assert HandoffCreateOutput.model_validate_json(result.output.model_dump_json())
+    assert result.output.priority == HandoffPriority.HIGH
+    assert result.output.summary.model_dump(mode="json") == row.summary
 
 
 def test_handoff_summary_has_four_elements_built_server_side(
@@ -419,6 +424,8 @@ def test_handoff_summary_has_four_elements_built_server_side(
     assert HANDOFF_ARGS.summary not in str(audit.payload)
     assert audit.payload["handoff_priority"] == "URGENT"
     assert result.output.receipt.state_after == ResourceState.QUEUED
+    assert result.output.priority == HandoffPriority.URGENT
+    assert result.output.summary.model_dump(mode="json") == summary
 
 
 def test_handoff_queue_position_follows_priority(seeded: Session) -> None:
@@ -449,3 +456,47 @@ def test_handoff_refuses_a_disallowed_decision(seeded: Session) -> None:
             VerificationState.LOCKED,
         )
     assert seeded.scalars(sa.select(Handoff)).all() == []
+
+
+def test_handoff_reread_refreshes_server_priority_and_summary(
+    seeded: Session,
+) -> None:
+    args = HandoffCreateInput(
+        reason=HandoffReason.DISPUTE_CLAIM,
+        summary="The model asks for a dispute review.",
+        priority=HandoffPriority.LOW,
+        department=Department.DISPUTES,
+    )
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        args,
+        Decision(allowed=True, flags=["HANDOFF_REQUIRED"]),
+        "sess_handoff_reread",
+        VerificationState.VERIFIED,
+    )
+    seeded.expire_all()
+    stored = seeded.scalars(sa.select(Handoff)).one()
+    stale_output = result.output.model_copy(
+        update={
+            "priority": HandoffPriority.LOW,
+            "summary": HandoffSummary(
+                verified_facts={"verification_state": "ANONYMOUS"},
+                actions_taken=[],
+                verification_method="model-authored",
+                open_questions=[
+                    HandoffOpenQuestion(
+                        source="model_unverified", text="stale model summary"
+                    )
+                ],
+            ),
+        }
+    )
+
+    refreshed = reread_handoff_create_result(seeded, stale_output)
+
+    assert stored.priority == "HIGH"
+    assert refreshed.output.priority is HandoffPriority.HIGH
+    assert refreshed.priority is HandoffPriority.HIGH
+    assert refreshed.output.summary.model_dump(mode="json") == stored.summary
+    assert refreshed.output.summary.open_questions[0].text == args.summary

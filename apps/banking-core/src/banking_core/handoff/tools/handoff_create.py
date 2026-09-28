@@ -33,6 +33,7 @@ from contracts.tools.handoff_create import (
     HandoffCreateOutput,
     HandoffPriority,
     HandoffStatus,
+    HandoffSummary,
 )
 from sqlalchemy.orm import Session
 
@@ -133,6 +134,8 @@ def reread_handoff_create_result(
             "handoff_id": stored.handoff_ref,
             "status": HandoffStatus(stored.status),
             "department": Department(stored.department),
+            "priority": HandoffPriority(stored.priority),
+            "summary": HandoffSummary.model_validate(stored.summary),
             "created_at": stored.created_at,
             "receipt": receipt,
         }
@@ -261,6 +264,8 @@ def execute_handoff_create(
         handoff_id=stored.handoff_ref,
         status=HandoffStatus(stored.status),
         department=Department(stored.department),
+        priority=HandoffPriority(stored.priority),
+        summary=HandoffSummary.model_validate(stored.summary),
         queue_position=queue_position or None,
         created_at=stored.created_at,
         receipt=receipt,
