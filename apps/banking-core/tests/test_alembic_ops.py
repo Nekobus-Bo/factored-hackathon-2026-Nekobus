@@ -126,3 +126,51 @@ def test_alembic_0004_downgrade_drops_handoff_and_reupgrade(
 
     command.upgrade(alembic_cfg, "head")
     assert "handoff" in ops_tables()
+
+
+def _card_columns(db_session: Session) -> dict[str, str]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name, is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'core_bank' AND table_name = 'card'"
+        )
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+def test_alembic_0005_dataset_cards_down_and_up(
+    db_session: Session, postgres_url: str
+) -> None:
+    """0005 makes pan_enc nullable and adds card_type/expiry; downgrade reverts."""
+    import os
+
+    os.environ["DATABASE_URL"] = postgres_url
+    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
+    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+    alembic_cfg = Config(str(ini_path))
+    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
+
+    command.downgrade(alembic_cfg, "0004_ops_handoff")
+    columns = _card_columns(db_session)
+    assert columns["pan_enc"] == "NO"
+    assert "card_type" not in columns and "expiry_year" not in columns
+
+    command.upgrade(alembic_cfg, "head")
+    columns = _card_columns(db_session)
+    assert columns["pan_enc"] == "YES"
+    assert columns["card_type"] == "YES"
+    assert columns["expiry_month"] == "YES" and columns["expiry_year"] == "YES"
+    constraints = {
+        row[0]
+        for row in db_session.execute(
+            sa.text(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = 'core_bank.card'::regclass"
+            )
+        ).fetchall()
+    }
+    assert {
+        "ck_card_pan_only_synthetic",
+        "ck_card_card_type",
+        "ck_card_expiry",
+    } <= constraints

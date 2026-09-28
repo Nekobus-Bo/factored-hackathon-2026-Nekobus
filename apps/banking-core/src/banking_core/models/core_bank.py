@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -170,6 +171,19 @@ class Card(Base):
             "data_origin IN ('synthetic', 'dataset')",
             name="ck_card_data_origin",
         ),
+        CheckConstraint(
+            "data_origin = 'synthetic' OR pan_enc IS NULL",
+            name="ck_card_pan_only_synthetic",
+        ),
+        CheckConstraint(
+            "card_type IS NULL OR card_type IN ('DEBIT', 'CREDIT')",
+            name="ck_card_card_type",
+        ),
+        CheckConstraint(
+            "(expiry_month IS NULL AND expiry_year IS NULL) OR "
+            "(expiry_month BETWEEN 1 AND 12 AND expiry_year BETWEEN 2000 AND 2100)",
+            name="ck_card_expiry",
+        ),
         {"schema": "core_bank"},
     )
 
@@ -191,8 +205,13 @@ class Card(Base):
         index=True,
     )
     pan_last4: Mapped[str] = mapped_column(String(4), nullable=False, index=True)
-    pan_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    # Synthetic cards only; dataset cards never store the PAN (ADR-0011).
+    pan_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     brand: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Dataset cards only; NULL for synthetic cards.
+    card_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    expiry_month: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    expiry_year: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE")
     blocked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
