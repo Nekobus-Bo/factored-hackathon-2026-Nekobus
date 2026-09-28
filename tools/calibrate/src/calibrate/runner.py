@@ -115,23 +115,52 @@ def guard_fixture_output(data_paths: list[str | Path], out_dir: str | Path) -> N
             )
 
 
+def resolve_decision_data_paths(config: dict[str, Any]) -> list[str]:
+    """Return the decision data files from `data_paths` (list) or `data_path`.
+
+    Every file keeps its own `split` field; the files are concatenated.
+    """
+    paths = config.get("data_paths")
+    if paths is None:
+        return [config.get("data_path", "tools/calibrate/fixtures/decision.jsonl")]
+    if config.get("data_path") is not None:
+        raise ValueError("Set either data_path or data_paths, not both")
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("data_paths must be a non-empty list of JSONL paths")
+    return [str(p) for p in paths]
+
+
+EVAL_SPLITS = ("test", "validation")
+
+
+def resolve_eval_split(config: dict[str, Any]) -> str:
+    """Return the split to score (`eval_split`, default `test`)."""
+    eval_split = config.get("eval_split", "test")
+    if eval_split not in EVAL_SPLITS:
+        raise ValueError(
+            f"eval_split must be one of {', '.join(EVAL_SPLITS)}, got {eval_split!r}"
+        )
+    return eval_split
+
+
 def run_decision_calibration(config_path: str | Path, out_dir: str | Path) -> Path:
     """Run calibration pipeline for decision task."""
     cfg_p = Path(config_path)
     with open(cfg_p, encoding="utf-8") as f:
         config: dict[str, Any] = yaml.safe_load(f)
 
-    data_file = config.get("data_path", "tools/calibrate/fixtures/decision.jsonl")
-    guard_fixture_output([data_file], out_dir)
+    data_files = resolve_decision_data_paths(config)
+    guard_fixture_output(data_files, out_dir)
 
     p_min = float(config.get("p_min", 0.9))
     mode = config.get("mode", "zeroshot")
     languages = config.get("languages", ["es", "pt", "en"])
 
-    examples = load_decision_dataset(data_file)
+    examples = [e for path in data_files for e in load_decision_dataset(path)]
     train_exs = [e for e in examples if e.split == "train"]
     val_exs = [e for e in examples if e.split == "validation"]
-    test_exs = [e for e in examples if e.split == "test"]
+    eval_split = resolve_eval_split(config)
+    test_exs = [e for e in examples if e.split == eval_split]
 
     candidate_intents = sorted(set(e.intent for e in examples))
     all_slots = set()
@@ -282,9 +311,11 @@ def run_decision_calibration(config_path: str | Path, out_dir: str | Path) -> Pa
     report_content = render_decision_report(
         date_str=today_str,
         config_path=str(cfg_p),
-        data_paths=[str(data_file)],
+        data_paths=[str(p) for p in data_files],
         rows=report_rows,
         p_min=p_min,
+        eval_split=eval_split,
+        eval_sources=sorted({e.source for e in test_exs}),
     )
 
     out_path = Path(out_dir)
