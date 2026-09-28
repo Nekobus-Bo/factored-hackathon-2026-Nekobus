@@ -70,15 +70,6 @@ flowchart TD
    - Containers run with dropped capabilities (`cap_drop: [ALL]`), `no-new-privileges:true`, and read-only root filesystems (`read_only: true` with temporary `/tmp` tmpfs mounts).
    - In production compose, `banking-core` and `encoder` expose no host ports. Only the `orchestrator` port (`8080`) is exposed (or placed behind an ingress reverse proxy).
 
-### Internal Test Environment Deviation (The Project's VPS)
-
-The internal test environment (the project's VPS) exposes the test Postgres/Redis for direct inspection; they hold no sensitive data:
-- **Manual deployment:** This environment is deployed **manually** using the host-mode compose commands described in [§3. Production Compose Configuration](#3-production-compose-configuration), not by the automated continuous deployment (CD) workflow.
-- Both PostgreSQL and Redis are bound to external ports on the internal test environment host.
-- **Rationale:** This deliberate exception allows the engineering team to directly inspect the test database tables, audit log chains, and Redis session keys during evaluation without jumping through container proxies.
-- **Security posture:** The databases on the internal test environment hold synthetic test data only; no real customer PII or production secrets are stored.
-- This deviation is recorded as a declared limitation in [docs/limitations.md](limitations.md).
-
 ---
 
 ## 2. Redis ACL Command Sets & Configuration
@@ -231,7 +222,7 @@ The application services are architecturally stateless:
 |---|---|---|
 | `banking-core` per-replica RAM | ~1.3 GB RSS added at startup (`BANKING_CORE_MEMORY_LIMIT=2g`) | Loads `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` and indexes the 120-snippet Knowledge Base in RAM on boot. Database `pgvector` table ingestion is pending. |
 | `encoder` (`tfidf_lr`) | ~43 MB model footprint, < 500 MB total container RSS | Default fast lexical classifier on CPU. Runs easily within `ENCODER_MEMORY_LIMIT=3g`. |
-| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not used in the internal test environment** due to resource constraints. |
+| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not the default**: `.env.example` seeds `ENCODER_BACKEND=tfidf_lr` because of this memory footprint. |
 | One-off tasks (`migrate`, `seed`) | Run once per deployment | Database migrations and initial seed run as separate execution tasks, never concurrently per replica. |
 | Audit log verification | Linear verification over hash chain | Hash chain integrity is verified via `make verify-audit`. Tail truncation checkpointing to an external store remains pending. |
 
