@@ -73,6 +73,7 @@ flowchart TD
 ### Internal Test Environment Deviation (The Project's VPS)
 
 The internal test environment (the project's VPS) exposes the test Postgres/Redis for direct inspection; they hold no sensitive data:
+- **Manual deployment:** This environment is deployed **manually** using the host-mode compose commands described in [§3. Production Compose Configuration](#3-production-compose-configuration), not by the automated continuous deployment (CD) workflow.
 - Both PostgreSQL and Redis are bound to external ports on the internal test environment host.
 - **Rationale:** This deliberate exception allows the engineering team to directly inspect the test database tables, audit log chains, and Redis session keys during evaluation without jumping through container proxies.
 - **Security posture:** The databases on the internal test environment hold synthetic test data only; no real customer PII or production secrets are stored.
@@ -230,7 +231,7 @@ The application services are architecturally stateless:
 |---|---|---|
 | `banking-core` per-replica RAM | ~1.3 GB RSS added at startup (`BANKING_CORE_MEMORY_LIMIT=2g`) | Loads `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` and indexes the 120-snippet Knowledge Base in RAM on boot. Database `pgvector` table ingestion is pending. |
 | `encoder` (`tfidf_lr`) | ~43 MB model footprint, < 500 MB total container RSS | Default fast lexical classifier on CPU. Runs easily within `ENCODER_MEMORY_LIMIT=3g`. |
-| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not used on the VPS** due to resource constraints. |
+| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not used in the internal test environment** due to resource constraints. |
 | One-off tasks (`migrate`, `seed`) | Run once per deployment | Database migrations and initial seed run as separate execution tasks, never concurrently per replica. |
 | Audit log verification | Linear verification over hash chain | Hash chain integrity is verified via `make verify-audit`. Tail truncation checkpointing to an external store remains pending. |
 
@@ -266,12 +267,19 @@ Automated production deployment automation via `make deploy` is currently `⚠�
 ## 6. Continuous Deployment
 
 `.github/workflows/deploy.yml` builds the three application images, pushes them to
-GHCR, and deploys to a target host over SSH. It runs on GitHub-hosted `ubuntu-latest`
-runners only — no self-hosted runner, because this repository is public.
+GHCR, and deploys to a target host over SSH. The target is a Docker host (VM) on the
+chosen cloud platform (AWS, Google Cloud Platform or Microsoft Azure; decision pending),
+reached over SSH. It runs on GitHub-hosted `ubuntu-latest` runners only — no
+self-hosted runner, because this repository is public.
+
+Deploying to a managed container service (e.g. ECS, Cloud Run, Azure Container Apps)
+instead of a VM would need a different deploy job; this remains pending the platform
+decision and is not implemented.
 
 **Triggers:** automatically after `ci` succeeds on `main` (`workflow_run`), or manually
 via `workflow_dispatch` (pick an environment, optionally an existing image tag for a
-rollback). It never runs for `pull_request` events.
+rollback). It never runs for `pull_request` events. The default GitHub Environment is
+`production`.
 
 **Fork PRs never reach `build` or `deploy`, by construction, not just by omitting
 `pull_request`.** `on.workflow_run.branches: [main]` matches on the *head branch name*
@@ -291,7 +299,7 @@ it names its branch. `workflow_dispatch` is additionally pinned to
 
 `Settings → Environments → New environment`, named to match what
 `vars.DEPLOY_ENVIRONMENT` (repository variable) or the `workflow_dispatch` input
-resolves to — `test-vps` if neither is set. Add the secrets and variables from the
+resolves to — `production` if neither is set. Add the secrets and variables from the
 table below to that environment. Optionally add required reviewers or a wait timer;
 the workflow's `concurrency: deploy-<environment>` group already prevents two deploys
 to the same environment from overlapping.
@@ -380,4 +388,4 @@ nothing is rebuilt — and `deploy` runs the SSH steps against the given tag.
 both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy has
 actually run** against any target — no Environment has been created yet, and no
 `DEPLOY_*` secret exists anywhere. Treat this section as a design, not a proven
-procedure, until a first real run against `test-vps` is logged here.
+procedure, until a first real run against the platform is logged here.

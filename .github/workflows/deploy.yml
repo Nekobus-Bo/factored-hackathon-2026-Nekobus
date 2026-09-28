@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "GitHub Environment to deploy to (default: vars.DEPLOY_ENVIRONMENT, else test-vps)"
+        description: "GitHub Environment to deploy to (default: vars.DEPLOY_ENVIRONMENT, else production)"
         required: false
         type: string
       image_tag:
@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ inputs.environment || vars.DEPLOY_ENVIRONMENT || 'test-vps' }}
+  group: deploy-${{ inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
   cancel-in-progress: false
 
 jobs:
@@ -152,7 +152,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: ${{ inputs.environment || vars.DEPLOY_ENVIRONMENT || 'test-vps' }}
+    environment: ${{ inputs.environment || vars.DEPLOY_ENVIRONMENT || 'production' }}
     env:
       IMAGE_TAG: ${{ inputs.image_tag || needs.build.outputs.image_tag }}
       DATA_MODE: ${{ vars.DATA_MODE || 'host' }}
