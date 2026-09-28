@@ -8,19 +8,30 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
+# Empty: tfidf_lr baseline only. `gliner` adds PyTorch for ENCODER_BACKEND=gliner.
+ARG ENCODER_EXTRAS=""
+
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY apps/encoder/pyproject.toml ./apps/encoder/pyproject.toml
 COPY packages/contracts ./packages/contracts
+COPY packages/encoder ./packages/encoder
 
-RUN uv sync --frozen --no-install-project --no-dev --package encoder-service
+RUN uv sync --frozen --no-install-project --no-dev --package encoder-service \
+    ${ENCODER_EXTRAS:+--extra $ENCODER_EXTRAS} && uv cache clean
 
 COPY apps/encoder/src ./apps/encoder/src
 
-RUN uv sync --frozen --no-dev --package encoder-service && uv cache clean
+COPY data/eval/synthetic/decision.train.jsonl ./data/eval/synthetic/decision.train.jsonl
 
-RUN useradd -m -u 1000 appuser
+RUN uv sync --frozen --no-dev --package encoder-service \
+    ${ENCODER_EXTRAS:+--extra $ENCODER_EXTRAS} && uv cache clean
+
+# Model weights are never baked in: HF_HOME is a volume filled by `make warmup`.
+ENV HF_HOME=/models/hf
+
+RUN useradd -m -u 1000 appuser && mkdir -p /models/hf && chown -R appuser /models
 
 USER appuser
 

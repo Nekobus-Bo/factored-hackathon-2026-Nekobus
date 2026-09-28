@@ -1,6 +1,43 @@
 """Configuration management for encoder service."""
 
 import os
+from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_TRAIN_DATA = "data/eval/synthetic/decision.train.jsonl"
+# gliner2.5-multi peaks at ~3.5 GB RSS on CPU (make encoder-bench).
+DEFAULT_GLINER_MIN_MEMORY_MB = 4096
+
+
+@dataclass(frozen=True)
+class BackendSettings:
+    """Inference backend selection, read from the environment."""
+
+    backend: str | None
+    model: str | None
+    device: str
+    train_data: Path
+    gliner_min_memory_mb: int = DEFAULT_GLINER_MIN_MEMORY_MB
+
+
+def get_backend_settings() -> BackendSettings:
+    """Read the ENCODER_* backend variables (see .env.example)."""
+    raw_floor = os.getenv("ENCODER_GLINER_MIN_MEMORY_MB", "").strip()
+    try:
+        floor = int(raw_floor) if raw_floor else DEFAULT_GLINER_MIN_MEMORY_MB
+    except ValueError as err:
+        raise ValueError(
+            f"ENCODER_GLINER_MIN_MEMORY_MB must be an integer, got {raw_floor!r}"
+        ) from err
+    return BackendSettings(
+        backend=os.getenv("ENCODER_BACKEND", "").strip() or None,
+        model=os.getenv("ENCODER_MODEL", "").strip() or None,
+        device=os.getenv("ENCODER_DEVICE", "cpu").strip() or "cpu",
+        train_data=Path(
+            os.getenv("ENCODER_TRAIN_DATA", "").strip() or DEFAULT_TRAIN_DATA
+        ),
+        gliner_min_memory_mb=floor,
+    )
 
 
 def get_abstention_threshold() -> float | None:

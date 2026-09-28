@@ -19,8 +19,10 @@ from pydantic import BaseModel
 from encoder_service.backend import (
     ModelUnavailableError,
     get_backend,
+    set_backend,
 )
-from encoder_service.config import get_abstention_threshold
+from encoder_service.config import get_abstention_threshold, get_backend_settings
+from encoder_service.model_backends import build_backend
 
 
 @asynccontextmanager
@@ -28,6 +30,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Lifespan context manager enforcing startup invariants."""
     # Fails loud at startup if ABSTENTION_THRESHOLD is present but invalid
     get_abstention_threshold()
+    # Fails loud at startup if ENCODER_BACKEND is set but cannot be built;
+    # unset keeps the default UnavailableBackend (503).
+    backend = build_backend(get_backend_settings())
+    if backend is not None:
+        set_backend(backend)
     yield
 
 

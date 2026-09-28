@@ -5,9 +5,14 @@ description = "Encoder service"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "contracts",
+    "encoder",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
 ]
+
+[project.optional-dependencies]
+# PyTorch-based backends (ENCODER_BACKEND=gliner). The tfidf_lr baseline does not need it.
+gliner = ["encoder[gliner]"]
 
 [build-system]
 requires = ["hatchling"]
@@ -18,3 +23,4 @@ packages = ["src/encoder_service"]
 
 [tool.uv.sources]
 contracts = { workspace = true }
+encoder = { workspace = true }
