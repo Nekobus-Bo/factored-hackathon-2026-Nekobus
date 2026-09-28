@@ -386,7 +386,7 @@ def test_cli_dry_run_offline_lists_every_scenario(
     assert "needs compose-level fault injection" in out
     assert "policy mode 'block' needs setup (admin API missing)" in out
     assert "degradation_" in out and "fault" in out
-    assert "0/48 scenarios runnable." in out
+    assert "0/53 scenarios runnable." in out
     assert "would be runnable once replays are recorded." in out
 
 
