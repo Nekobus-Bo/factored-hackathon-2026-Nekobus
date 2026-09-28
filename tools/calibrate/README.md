@@ -33,6 +33,12 @@ Or for the decision task:
 ```bash
 make calibrate TASK=decision CONFIG=tools/calibrate/configs/decision_finetune.yaml OUT=/tmp/calib
 ```
+Decision configs accept either `data_path` (one file with all splits) or `data_paths` (a list; each file keeps its own `split` field). To calibrate on the synthetic train/validation splits plus the provisional test split (see [data/eval/synthetic/README.md](../../data/eval/synthetic/README.md)):
+```bash
+make calibrate TASK=decision CONFIG=tools/calibrate/configs/decision_synthetic.yaml OUT=/tmp/calib
+```
+The decision task accepts `eval_split: test|validation` (default `test`): the split whose rows are scored. The report states the scored split and its provenance (`human`, `synthetic`, or "provisional synthetic (not human)" for `source=synthetic-provisional`). For the decision task, `eval_split: validation` is flagged as optimistic: $\tau$ and the metrics then come from the same split.
+
 When running full calibration on real curated data splits (`data/eval/synthetic/`), output directly to `reports/`:
 ```bash
 make calibrate TASK=decision CONFIG=path/to/real_data_config.yaml OUT=reports/
