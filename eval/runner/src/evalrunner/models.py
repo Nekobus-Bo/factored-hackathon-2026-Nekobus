@@ -98,6 +98,8 @@ class TurnResult(BaseModel):
     tool_results: list[ToolResult] = Field(default_factory=list)
     tool_call_reports: list[ToolCallReport] = Field(default_factory=list)
     masked_outbound_messages: list[str] = Field(default_factory=list)
+    # Where masked_outbound_messages came from (U6 evidence provenance).
+    outbound_provenance: list[str] = Field(default_factory=list)
     verification_state: VerificationState | str = VerificationState.ANONYMOUS
     handoff: HandoffResult = Field(default_factory=HandoffResult)
     latency_ms: float = 0.0
@@ -141,3 +143,4 @@ class ScenarioRunResult(BaseModel):
     unnecessary_escalation: bool = False
     handoff_quality_pass: bool | None = None
     error: str | None = None
+    not_run_reason: str | None = None

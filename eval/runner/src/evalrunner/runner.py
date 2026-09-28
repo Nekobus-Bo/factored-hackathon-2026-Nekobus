@@ -11,7 +11,11 @@ from contracts.envelope import ToolResultStatus
 from evalrunner.checks import evaluate_scenario_checks
 from evalrunner.guard import guard_fakesystem_output
 from evalrunner.models import Scenario, ScenarioRunResult, TurnResult
-from evalrunner.protocol import SystemUnderTest
+from evalrunner.protocol import (
+    ScenarioNotRunError,
+    SystemUnderTest,
+    TurnFailedError,
+)
 from evalrunner.report import render_evaluation_report
 
 logger = logging.getLogger(__name__)
@@ -29,18 +33,44 @@ def _compute_percentile(values: list[float], p: float) -> float:
     return s[f] + (s[c] - s[f]) * d
 
 
+def _not_run(
+    scenario: Scenario, reason: str, turns: list[TurnResult] | None = None
+) -> ScenarioRunResult:
+    return ScenarioRunResult(
+        scenario_id=scenario.id,
+        lang=scenario.lang,
+        group=scenario.group,
+        passed=False,
+        turns=turns or [],
+        not_run_reason=reason,
+    )
+
+
 def run_scenario(system: SystemUnderTest, scenario: Scenario) -> ScenarioRunResult:
     """Run a single scenario through the system under test turn by turn."""
     logger.info(
         "Running scenario %s (%s, %s)", scenario.id, scenario.lang, scenario.group
     )
-    session = system.start(scenario)
+    try:
+        session = system.start(scenario)
+    except ScenarioNotRunError as exc:
+        logger.info("Scenario %s not run: %s", scenario.id, exc)
+        return _not_run(scenario, str(exc))
     turn_results: list[TurnResult] = []
+    turn_error: str | None = None
 
     try:
         for message in scenario.turns:
             result = system.send(session, message)
             turn_results.append(result)
+    except ScenarioNotRunError as exc:
+        logger.info("Scenario %s not run: %s", scenario.id, exc)
+        return _not_run(scenario, str(exc), turn_results)
+    except TurnFailedError as exc:
+        # Fails the scenario, but its evidence still goes through the checks.
+        logger.warning("Scenario %s turn failed: %s", scenario.id, exc)
+        turn_results.append(exc.turn)
+        turn_error = str(exc)
     except Exception as exc:
         logger.exception("Error executing scenario %s: %s", scenario.id, exc)
         return ScenarioRunResult(
@@ -60,7 +90,7 @@ def run_scenario(system: SystemUnderTest, scenario: Scenario) -> ScenarioRunResu
     # Determine overall pass
     all_checks_passed = all(c.passed for c in checks)
     no_unsafe_detected = not any(u.detected for u in unsafe_outcomes)
-    passed = all_checks_passed and no_unsafe_detected
+    passed = all_checks_passed and no_unsafe_detected and turn_error is None
 
     # Latencies
     latencies = [t.latency_ms for t in turn_results if t.latency_ms > 0]
@@ -121,6 +151,7 @@ def run_scenario(system: SystemUnderTest, scenario: Scenario) -> ScenarioRunResu
         correct_abstention=correct_abstention,
         unnecessary_escalation=unnecessary_escalation,
         handoff_quality_pass=handoff_quality_pass,
+        error=turn_error,
     )
 
 
@@ -146,8 +177,9 @@ def run_evaluation(
 
     report_path = render_evaluation_report(
         system_name=system.name,
-        results=results,
+        results=[r for r in results if r.not_run_reason is None],
         out_path=out_file,
+        not_run=[r for r in results if r.not_run_reason is not None],
     )
 
     return results, report_path

@@ -14,9 +14,15 @@ def render_evaluation_report(
     results: list[ScenarioRunResult],
     out_path: str | Path,
     languages: tuple[str, ...] = ("es", "pt", "en"),
+    not_run: list[ScenarioRunResult] | None = None,
 ) -> Path:
-    """Render comprehensive Markdown evaluation report and save to out_path."""
+    """Render comprehensive Markdown evaluation report and save to out_path.
+
+    `not_run` scenarios are listed with their reason and excluded from every
+    metric: a scenario that did not run is neither a pass nor a failure.
+    """
     lines: list[str] = []
+    not_run = not_run or []
 
     # Title & Metadata
     now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -27,6 +33,19 @@ def render_evaluation_report(
     lines.append(f"- **Platform:** {platform.platform()} ({platform.machine()})")
     lines.append(f"- **Python:** {platform.python_version()}")
     lines.append(f"- **Total Scenarios Evaluated:** {len(results)}")
+    lines.append(f"- **Scenarios Not Run:** {len(not_run)}")
+    lines.append(
+        "- **Counting rule:** scenarios not run are excluded from every metric; "
+        "evidence errors (e.g. an ambiguous audit window) and turn errors count "
+        "as failures."
+    )
+    sources = sorted(
+        {p for r in results for t in r.turns for p in t.outbound_provenance}
+    )
+    lines.append(
+        "- **U6 evidence provenance:** "
+        + (", ".join(sources) if sources else "none (U6 needs human review)")
+    )
     lines.append("")
 
     # Section 1: System Outcome Metrics broken down by language
@@ -205,6 +224,17 @@ def render_evaluation_report(
         )
 
     lines.append("")
+
+    if not_run:
+        lines.append("## Scenarios not run")
+        lines.append("")
+        lines.append("| Scenario | Lang | Group | Reason |")
+        lines.append("|---|---|---|---|")
+        for r in not_run:
+            lines.append(
+                f"| `{r.scenario_id}` | {r.lang} | {r.group} | {r.not_run_reason} |"
+            )
+        lines.append("")
 
     # Write report
     target_path = Path(out_path)
