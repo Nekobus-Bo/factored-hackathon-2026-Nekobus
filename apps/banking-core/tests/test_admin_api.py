@@ -1,0 +1,386 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from enum import Enum
+from uuid import UUID
+
+import pytest
+import sqlalchemy as sa
+from banking_core.api import admin_router
+from banking_core.control.loader import load_policy_config
+from banking_core.crypto import RecordEncryptor, compute_blind_index, get_master_key
+from banking_core.db.session import get_session_maker
+from banking_core.main import app, mount_admin_router_if_enabled
+from banking_core.models.config import PolicyConfigRecord
+from banking_core.models.core_bank import Account, Card, Customer
+from banking_core.models.enums import DocumentType
+from banking_core.seed.fixtures import create_scenario_fixtures
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+ADMIN_TOKEN = "test-admin-token"
+ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+
+@pytest.fixture
+def admin_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.setenv("ADMIN_API_TOKEN", ADMIN_TOKEN)
+    test_app = FastAPI()
+    test_app.include_router(admin_router)
+    with TestClient(test_app) as client:
+        yield client
+
+
+def _audit_count(action: str) -> int:
+    with get_session_maker()() as session:
+        return session.execute(
+            sa.text("SELECT count(*) FROM ops.audit_log WHERE action = :action"),
+            {"action": action},
+        ).scalar_one()
+
+
+def _active_policy_version() -> int:
+    with get_session_maker()() as session:
+        record = session.execute(
+            sa.select(PolicyConfigRecord)
+            .where(PolicyConfigRecord.is_active.is_(True))
+            .order_by(PolicyConfigRecord.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        return record.version if record is not None else 0
+
+
+def _seed_demo_card() -> tuple[UUID, UUID, UUID, bool, bool, bool]:
+    fixtures = create_scenario_fixtures()
+    customer_data = fixtures.customers[0]
+    account_data = fixtures.accounts[0]
+    card_data = fixtures.cards[0]
+    customer_id = UUID(str(customer_data["id"]))
+    account_id = UUID(str(account_data["id"]))
+    card_id = UUID(str(card_data["id"]))
+    created_customer = False
+    created_account = False
+    created_card = False
+
+    with get_session_maker()() as session:
+        if session.get(Card, card_id) is None:
+            if session.get(Customer, customer_id) is None:
+                document_type = DocumentType(str(customer_data["document_type"]))
+                document_number = str(customer_data["document_number"])
+                email = str(customer_data["email"])
+                phone = str(customer_data["phone"])
+                master_key = get_master_key(
+                    "test-only-admin-api-master-key-0123456789abcdef"
+                )
+                customer_encryptor = RecordEncryptor(
+                    schema="core_bank",
+                    table="customer",
+                    record_id=customer_id,
+                    master_key=master_key,
+                )
+                customer = Customer(
+                    id=customer_id,
+                    document_type=document_type,
+                    document_number_enc=customer_encryptor.encrypt(
+                        "document_number_enc", document_number
+                    ),
+                    document_number_bidx=compute_blind_index(
+                        value=document_number,
+                        field_name="document_number",
+                        salt="admin-api-test-salt",
+                        document_type=document_type,
+                    ),
+                    full_name_enc=customer_encryptor.encrypt(
+                        "full_name_enc", str(customer_data["full_name"])
+                    ),
+                    email_enc=customer_encryptor.encrypt("email_enc", email),
+                    email_bidx=compute_blind_index(
+                        value=email,
+                        field_name="email",
+                        salt="admin-api-test-salt",
+                    ),
+                    phone_enc=customer_encryptor.encrypt("phone_enc", phone),
+                    phone_bidx=compute_blind_index(
+                        value=phone,
+                        field_name="phone",
+                        salt="admin-api-test-salt",
+                    ),
+                    birth_date_enc=customer_encryptor.encrypt(
+                        "birth_date_enc", str(customer_data["birth_date"])
+                    ),
+                    preferred_locale=str(customer_data["preferred_locale"]),
+                    registered_otp_channel=str(customer_data["registered_otp_channel"]),
+                    data_origin="synthetic",
+                    created_at=datetime.fromisoformat(str(customer_data["created_at"])),
+                    source_ref="tests/test_admin_api.py",
+                    loaded_at=datetime.now(UTC),
+                    code_version="test",
+                )
+                session.add(customer)
+                created_customer = True
+
+            if session.get(Account, account_id) is None:
+                account = Account(
+                    id=account_id,
+                    customer_id=customer_id,
+                    type=str(account_data["type"]),
+                    currency=str(account_data["currency"]),
+                    available_balance_minor=int(
+                        account_data["available_balance_minor"]
+                    ),
+                    ledger_balance_minor=int(account_data["ledger_balance_minor"]),
+                    status=str(account_data["status"]),
+                    data_origin="synthetic",
+                    source_ref="tests/test_admin_api.py",
+                    loaded_at=datetime.now(UTC),
+                    code_version="test",
+                )
+                session.add(account)
+                created_account = True
+
+            card_encryptor = RecordEncryptor(
+                schema="core_bank",
+                table="card",
+                record_id=card_id,
+                master_key=get_master_key(
+                    "test-only-admin-api-master-key-0123456789abcdef"
+                ),
+            )
+            card = Card(
+                id=card_id,
+                account_id=account_id,
+                card_ref=str(card_data["card_ref"]),
+                pan_last4=str(card_data["pan_last4"]),
+                pan_enc=card_encryptor.encrypt("pan_enc", str(card_data["pan"])),
+                brand=str(card_data["brand"]),
+                status=str(card_data["status"]),
+                blocked_at=None,
+                blocked_reason=None,
+                card_type=None,
+                expiry_month=None,
+                expiry_year=None,
+                data_origin="synthetic",
+                source_ref="tests/test_admin_api.py",
+                loaded_at=datetime.now(UTC),
+                code_version="test",
+            )
+            session.add(card)
+            created_card = True
+            session.commit()
+
+    return (
+        card_id,
+        customer_id,
+        account_id,
+        created_card,
+        created_account,
+        created_customer,
+    )
+
+
+def _cleanup_demo_card(
+    card_id: UUID,
+    customer_id: UUID,
+    account_id: UUID,
+    created_card: bool,
+    created_account: bool,
+    created_customer: bool,
+) -> None:
+    with get_session_maker()() as session:
+        card = session.get(Card, card_id)
+        if card is not None:
+            if created_card:
+                session.delete(card)
+            else:
+                card.status = "ACTIVE"
+                card.blocked_at = None
+                card.blocked_reason = None
+        account = session.get(Account, account_id)
+        if created_account and account is not None:
+            session.delete(account)
+        customer = session.get(Customer, customer_id)
+        if created_customer and customer is not None:
+            session.delete(customer)
+        session.commit()
+
+
+def test_admin_requests_require_a_valid_bearer_token(
+    admin_client: TestClient,
+) -> None:
+    without_token = admin_client.get("/v1/admin/policy-config")
+    wrong_token = admin_client.get(
+        "/v1/admin/policy-config",
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+
+    assert without_token.status_code == 401
+    assert wrong_token.status_code == 401
+
+
+def test_admin_router_is_not_mounted_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_API_ENABLED", "false")
+    test_app = FastAPI()
+    mount_admin_router_if_enabled(test_app)
+
+    assert not any(route.path.startswith("/v1/admin") for route in test_app.routes)
+
+
+def test_startup_fails_when_admin_api_has_no_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_API_ENABLED", "true")
+    monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
+
+    with pytest.raises(RuntimeError, match="ADMIN_API_TOKEN is required"):
+        with TestClient(app):
+            pass
+
+
+def test_invalid_policy_update_returns_422_without_new_version(
+    admin_client: TestClient,
+) -> None:
+    current = admin_client.get("/v1/admin/policy-config", headers=ADMIN_HEADERS)
+    assert current.status_code == 200
+    version = current.json()["version"]
+
+    response = admin_client.put(
+        "/v1/admin/policy-config",
+        headers=ADMIN_HEADERS,
+        json={
+            "amount_mode": "flag",
+            "thresholds_minor": {"USD": 0},
+        },
+    )
+
+    assert response.status_code == 422
+    assert _active_policy_version() == version
+
+
+def test_policy_update_is_versioned_live_and_audited(
+    admin_client: TestClient,
+) -> None:
+    initial = admin_client.get("/v1/admin/policy-config", headers=ADMIN_HEADERS)
+    assert initial.status_code == 200
+    original = initial.json()
+    if original["amount_mode"] != "flag":
+        setup = admin_client.put(
+            "/v1/admin/policy-config",
+            headers=ADMIN_HEADERS,
+            json={
+                "amount_mode": "flag",
+                "thresholds_minor": original["thresholds_minor"],
+            },
+        )
+        assert setup.status_code == 200
+        original = admin_client.get(
+            "/v1/admin/policy-config", headers=ADMIN_HEADERS
+        ).json()
+
+    audit_before = _audit_count("admin.policy_config.updated")
+    response = admin_client.put(
+        "/v1/admin/policy-config",
+        headers=ADMIN_HEADERS,
+        json={
+            "amount_mode": "block",
+            "thresholds_minor": original["thresholds_minor"],
+        },
+    )
+    try:
+        assert response.status_code == 200
+        updated = response.json()
+        assert updated["amount_mode"] == "block"
+        assert updated["version"] == original["version"] + 1
+        assert _active_policy_version() == updated["version"]
+        assert _audit_count("admin.policy_config.updated") == audit_before + 1
+        assert load_policy_config().amount_mode == "block"
+
+        with get_session_maker()() as session:
+            entry = session.execute(
+                sa.text(
+                    "SELECT actor_type, actor_ref, payload "
+                    "FROM ops.audit_log "
+                    "WHERE action = 'admin.policy_config.updated' "
+                    "ORDER BY id DESC LIMIT 1"
+                )
+            ).one()
+        assert entry.actor_type == "agent"
+        assert entry.actor_ref == "admin"
+        assert entry.payload["version"] == updated["version"]
+        assert entry.payload["before"]["amount_mode"] == "flag"
+        assert entry.payload["after"]["amount_mode"] == "block"
+    finally:
+        restored = admin_client.put(
+            "/v1/admin/policy-config",
+            headers=ADMIN_HEADERS,
+            json={
+                "amount_mode": original["amount_mode"],
+                "thresholds_minor": original["thresholds_minor"],
+            },
+        )
+        assert restored.status_code == 200
+
+
+def test_demo_reset_restores_fixture_card_and_audits_change(
+    admin_client: TestClient,
+) -> None:
+    (
+        card_id,
+        customer_id,
+        account_id,
+        created_card,
+        created_account,
+        created_customer,
+    ) = _seed_demo_card()
+    try:
+        with get_session_maker()() as session:
+            card = session.get(Card, card_id)
+            assert card is not None
+            card.status = "BLOCKED"
+            card.blocked_at = datetime.now(UTC)
+            card.blocked_reason = "SUSPICIOUS_ACTIVITY"
+            session.commit()
+
+        audit_before = _audit_count("admin.demo.fixtures.reset")
+        response = admin_client.post(
+            "/v1/admin/demo/reset-fixtures", headers=ADMIN_HEADERS
+        )
+
+        assert response.status_code == 200
+        assert response.json()["cards_reset"] >= 1
+        assert response.json()["cards_changed"] >= 1
+        assert _audit_count("admin.demo.fixtures.reset") == audit_before + 1
+        with get_session_maker()() as session:
+            restored = session.get(Card, card_id)
+            assert restored is not None
+            status_value = (
+                restored.status.value
+                if isinstance(restored.status, Enum)
+                else restored.status
+            )
+            assert status_value == "ACTIVE"
+            assert restored.blocked_at is None
+            assert restored.blocked_reason is None
+    finally:
+        _cleanup_demo_card(
+            card_id,
+            customer_id,
+            account_id,
+            created_card,
+            created_account,
+            created_customer,
+        )
+
+
+def test_demo_reset_is_denied_in_production_without_override(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DEMO_RESET_ENABLED", "false")
+
+    response = admin_client.post("/v1/admin/demo/reset-fixtures", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 403
