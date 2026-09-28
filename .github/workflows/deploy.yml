@@ -193,6 +193,7 @@ jobs:
 
       - name: Copy compose files
         run: |
+          # shellcheck disable=SC2029 # DEPLOY_PATH/COMPOSE_CMD expand on the runner on purpose (non-secret).
           ssh deploy-target "mkdir -p '$DEPLOY_PATH/infra/compose'"
           scp infra/compose/docker-compose.yml infra/compose/docker-compose.prod.yml infra/compose/docker-compose.bundled.yml \
             "deploy-target:$DEPLOY_PATH/infra/compose/"
@@ -205,6 +206,7 @@ jobs:
         # unavoidable, same convention as MASTER_KEY/BLIND_INDEX_SALT in
         # .env.example.
         run: |
+          # shellcheck disable=SC2029 # DEPLOY_PATH/COMPOSE_CMD expand on the runner on purpose (non-secret).
           {
             echo "APP_ENV=production"
             echo "REGISTRY=$REGISTRY"
@@ -250,6 +252,7 @@ jobs:
 
       - name: Pull, migrate, deploy
         run: |
+          # shellcheck disable=SC2029 # DEPLOY_PATH/COMPOSE_CMD expand on the runner on purpose (non-secret).
           COMPOSE_FILES="-f $DEPLOY_PATH/infra/compose/docker-compose.yml -f $DEPLOY_PATH/infra/compose/docker-compose.prod.yml"
           PROFILE_FLAG=""
           if [ "$DATA_MODE" = "bundled" ]; then
@@ -257,21 +260,27 @@ jobs:
             PROFILE_FLAG="--profile bundled-data"
           fi
           COMPOSE_CMD="env COMPOSE_PROJECT_NAME=pattern-blue docker compose $PROFILE_FLAG $COMPOSE_FILES --env-file $DEPLOY_PATH/.env"
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "$COMPOSE_CMD pull"
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "$COMPOSE_CMD run --rm migrate"
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "$COMPOSE_CMD up -d --wait"
 
       - name: Smoke (orchestrator /health on the server, 127.0.0.1-bound)
         run: |
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "curl -fsS --max-time 5 http://127.0.0.1:\${PORT_ORCHESTRATOR:-8080}/health"
 
       - name: Logs on failure
         if: failure()
         run: |
+          # shellcheck disable=SC2029 # DEPLOY_PATH/COMPOSE_CMD expand on the runner on purpose (non-secret).
           COMPOSE_FILES="-f $DEPLOY_PATH/infra/compose/docker-compose.yml -f $DEPLOY_PATH/infra/compose/docker-compose.prod.yml"
           PROFILE_FLAG=""
           if [ "$DATA_MODE" = "bundled" ]; then
             COMPOSE_FILES="$COMPOSE_FILES -f $DEPLOY_PATH/infra/compose/docker-compose.bundled.yml"
             PROFILE_FLAG="--profile bundled-data"
           fi
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "env COMPOSE_PROJECT_NAME=pattern-blue docker compose $PROFILE_FLAG $COMPOSE_FILES --env-file $DEPLOY_PATH/.env logs --tail=200" || true
