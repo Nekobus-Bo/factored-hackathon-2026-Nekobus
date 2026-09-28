@@ -154,6 +154,27 @@ def _(mo):
 
 
 @app.cell
+def _(con, mo):
+    mo.sql("SELECT count(*) AS n_rows FROM products", engine=con)
+    return
+
+
+@app.cell
+def _(CARD_PRODUCTS, con, mo):
+    # Null % per column: several columns only apply to some product types, so cards are shown apart
+    mo.sql(
+        f"""
+        SELECT column_name, a.null_percentage AS pct_null_all_products, c.null_percentage AS pct_null_cards
+        FROM (SUMMARIZE products) a
+        JOIN (SUMMARIZE SELECT * FROM products WHERE product_type IN ({CARD_PRODUCTS})) c USING (column_name)
+        ORDER BY pct_null_cards DESC, pct_null_all_products DESC
+        """,
+        engine=con,
+    )
+    return
+
+
+@app.cell
 def _(CARD_PRODUCTS, con, mo):
     mo.sql(
         f"""
@@ -257,7 +278,14 @@ def _(mo):
 
 
 @app.cell
-def _(DATASET_CUTOFF, DISPUTE_TYPES, DISPUTE_WINDOW_DAYS, SETTLED_STATUS, con, mo):
+def _(
+    DATASET_CUTOFF,
+    DISPUTE_TYPES,
+    DISPUTE_WINDOW_DAYS,
+    SETTLED_STATUS,
+    con,
+    mo,
+):
     # Purchases only occur on cards (3b), so the card join is not repeated here
     mo.sql(
         f"""
