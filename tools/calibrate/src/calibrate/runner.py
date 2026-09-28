@@ -396,7 +396,7 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
             adapter.load(weights_dir)
 
         # Indexes the whole KB once; the language filter is applied per query.
-        retriever = Retriever(knowledge_base, adapter)
+        retriever = Retriever(knowledge_base, adapter, max_k=max_k)
 
         # Benchmark CPU search latency & peak RAM on the evaluated queries
         bench_res = benchmark_cpu_inference(
@@ -481,6 +481,7 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         rows=report_rows,
         k_list=k_list,
         eval_split=eval_split,
+        eval_sources=sorted({q.source for q in eval_queries}),
     )
 
     out_path = Path(out_dir)

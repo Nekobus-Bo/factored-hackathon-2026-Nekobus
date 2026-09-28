@@ -16,7 +16,10 @@ SOURCE_LABELS = {
 
 
 def render_eval_split_banner(
-    eval_split: str, eval_sources: list[str], tau_from_same_split: bool = False
+    eval_split: str,
+    eval_sources: list[str],
+    tau_from_same_split: bool = False,
+    provisional_note: str | None = None,
 ) -> str:
     """State which split was scored, its provenance, and any caveat."""
     provenance = (
@@ -25,12 +28,14 @@ def render_eval_split_banner(
     lines = [f"- **Scored split:** `{eval_split}` (provenance: {provenance})"]
     warnings = []
     if PROVISIONAL_SOURCE in eval_sources:
-        warnings.append(
+        warning = (
             f"Scored split `{eval_split}` is {PROVISIONAL_LABEL}. It stands in "
             "for the human-written set (docs/labeling-rubric.md) and does not "
-            "replace it. The encoder regex slot rules were tuned on train and "
-            "validation by the same author as this set."
+            "replace it."
         )
+        if provisional_note:
+            warning = f"{warning} {provisional_note}"
+        warnings.append(warning)
     if tau_from_same_split:
         warnings.append(
             "Optimistic: tau is chosen on validation and the metrics are scored "
@@ -94,6 +99,10 @@ def render_decision_report(
         eval_split,
         eval_sources or [],
         tau_from_same_split=eval_split == "validation",
+        provisional_note=(
+            "The encoder regex slot rules were tuned on train and validation "
+            "by the same author as this set."
+        ),
     )
     split_title = eval_split.capitalize()
     env_info = get_execution_environment_info()
@@ -188,8 +197,10 @@ def render_embedding_report(
     rows: list[dict[str, Any]],
     k_list: list[int],
     eval_split: str = "test",
+    eval_sources: list[str] | None = None,
 ) -> str:
     """Generate Markdown report for embedding/retrieval task."""
+    banner = render_eval_split_banner(eval_split, eval_sources or [])
     cfg_hash = file_sha256(config_path)
     env_info = get_execution_environment_info()
 
@@ -241,9 +252,8 @@ def render_embedding_report(
 
     return f"""# Embedding Model Calibration Report
 
-- **Date:** {date_str}
+{banner}- **Date:** {date_str}
 - **Task:** `embedding` (Knowledge Base Policy Retrieval)
-- **Evaluated split:** `{eval_split}`
 - **Execution Environment:** {env_info}
   (MPS/CUDA for training if available, CPU for inference benchmarking)
 

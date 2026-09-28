@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from calibrate.report import PROVISIONAL_LABEL
+from calibrate.report import PROVISIONAL_LABEL, render_embedding_report
 from calibrate.runner import (
     resolve_decision_data_paths,
     resolve_eval_split,
@@ -115,6 +115,28 @@ def test_provisional_test_source_adds_banner(tmp_path):
 
     assert "(provenance: provisional synthetic (not human))" in report
     assert report.index("> [!WARNING]") < report.index("**Date:**")
+
+
+def test_embedding_report_includes_split_provenance(tmp_path: Path) -> None:
+    config = tmp_path / "embedding.yaml"
+    query_data = tmp_path / "queries.jsonl"
+    config.write_text("task: embedding\n", encoding="utf-8")
+    query_data.write_text("", encoding="utf-8")
+
+    report = render_embedding_report(
+        date_str="2026-09-28",
+        config_path=str(config),
+        data_paths=[str(query_data)],
+        rows=[],
+        k_list=[1],
+        eval_split="validation",
+        eval_sources=["synthetic-provisional"],
+    )
+
+    assert f"**Scored split:** `validation` (provenance: {PROVISIONAL_LABEL})" in report
+    assert "> [!WARNING]" in report
+    assert report.index("> [!WARNING]") < report.index("- **Date:**")
+    assert "encoder regex slot rules" not in report
 
 
 def test_guard_applies_to_any_fixture_in_data_paths(tmp_path):
