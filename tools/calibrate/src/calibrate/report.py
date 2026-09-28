@@ -28,7 +28,8 @@ def render_eval_split_banner(
         warnings.append(
             f"Scored split `{eval_split}` is {PROVISIONAL_LABEL}. It stands in "
             "for the human-written set (docs/labeling-rubric.md) and does not "
-            "replace it."
+            "replace it. The encoder regex slot rules were tuned on train and "
+            "validation by the same author as this set."
         )
     if tau_from_same_split:
         warnings.append(
