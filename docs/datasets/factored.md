@@ -21,7 +21,7 @@ The dataset represents an operational snapshot of a simulated retail bank ("Banc
  │ 140,040 Cards        │ 0% English (en)      │ (b) Eval: NOT USABLE │
  │ 4,425,008 Txns       │ Countries: MX/CO/AR  │     (template only)  │
  │ 171,321 Transcripts  │ Currencies: USD/COP/ │ (c) Ingest: designed,│
- │ 67,095 Complaints    │             ARS      │     (PENDING)        │
+ │ 67,095 Complaints    │             ARS      │     make ingest      │
  └──────────────────────┴──────────────────────┴──────────────────────┘
 ```
 
@@ -31,7 +31,7 @@ The dataset represents an operational snapshot of a simulated retail bank ("Banc
    - The dataset provides realistic bulk scale (150,000 customers, 400,000 products, 140,040 cards, 4.42M transactions).
    - Referential integrity across `customers → products → transactions` is **100.0%**.
    - Document types map directly to our core schema (`DNI` and `CC` $\rightarrow$ `NATIONAL_ID`, `CE` $\rightarrow$ `FOREIGN_ID`, `Pasaporte` $\rightarrow$ `PASSPORT`).
-   - Requires ETL adapters to: convert decimal amounts to integer minor units, map product types to cards/accounts, fix distorted phone country codes, and handle Argentine Pesos (`ARS`) in policy thresholds. That ingest path (`make ingest SOURCE=factored`) is **pending** (see section 7).
+   - Requires ETL adapters to: convert decimal amounts to integer minor units, map product types to cards/accounts, fix distorted phone country codes, and handle Argentine Pesos (`ARS`) in policy thresholds. That ingest path is `make ingest SOURCE=factored` (section 7, [ADR-0011](../adr/0011-hybrid-seed-dataset-ingest.md)).
 
 2. **Evaluation & Test Sets (`make eval` / Intent Models): NOT USABLE**
    - **Spanish Only:** 100% of transcripts are labeled `detected_language=es`. There are zero Portuguese or English interactions, violating our three-language operational scope (`es`, `pt`, `en`).
@@ -279,7 +279,7 @@ The banking core uses the contract enum `DocumentType`: `NATIONAL_ID`, `PASSPORT
   - Card number length: Exactly 16 digits across all 140,040 cards.
   - Prefix: **100.0% of card numbers begin with digit '4'** (Visa BIN convention).
   - Luhn validity: **Only 10.02% of card numbers pass the Luhn mod-10 algorithm**. The remaining 89.98% are synthetically generated random digits.
-  - *Architectural Implication:* ADR-0004 specifies that raw PANs must never be exposed or used for IDOR operations. The system uses opaque `card_ref` tokens and `masked_pan` (e.g. `**** **** **** 1234`). The ingest design (section 7, pending) converts full card numbers to opaque references and stores only the final 4 digits, meaning invalid Luhn numbers do not impair card identification or blocking operations.
+  - *Architectural Implication:* ADR-0004 specifies that raw PANs must never be exposed or used for IDOR operations. The system uses opaque `card_ref` tokens and `masked_pan` (e.g. `**** **** **** 1234`). The ingest (section 7) converts full card numbers to opaque references and stores only the final 4 digits, meaning invalid Luhn numbers do not impair card identification or blocking operations.
 - **Product Lifecycle Status:**
   - `Active`: 339,965 (85.0%) $\rightarrow$ `CardStatus.ACTIVE` / `AccountStatus.ACTIVE`
   - `Closed`: 32,039 (8.0%) $\rightarrow$ `CardStatus.EXPIRED`
@@ -294,14 +294,14 @@ Amount thresholds are **configuration, not constants** (AGENTS rule 6): the poli
 |---|---|---|---|
 | `USD` | 2,437,979 (55.1%) | 200,398 (50.1%) | Yes |
 | `COP` | 1,194,444 (27.0%) | 107,975 (27.0%) | Yes |
-| `ARS` | 792,585 (17.9%) | 71,524 (17.9%) | **Pending**, computed in the ingest task |
+| `ARS` | 792,585 (17.9%) | 71,524 (17.9%) | Yes (USD 500 equivalent, computed by the ingest) |
 | `BRL` | 0 (0.0%) | 0 (0.0%) | Yes (no records in the data) |
 | `EUR` | 0 (0.0%) | 0 (0.0%) | Yes (no records in the data) |
 | `MXN` | 0 in tx/products | 0 in products | No (appears only in exchange rates and complaints) |
 
 - **Anomalous Currency Assignment:** All 74,907 Mexican customers hold products denominated 100% in `USD` (200,398 products). No Mexican Peso (`MXN`) accounts or transactions exist.
 - **Unknown-currency semantics:** a currency without a configured threshold is **not rejected**. The policy engine applies block semantics: the action is allowed, flagged (`POLICY_FLAGGED`) and marked `HANDOFF_REQUIRED` + `PRIORITY`, so every amount-bearing action in that currency goes to a priority human handoff.
-- **Argentine Peso (`ARS`) Gap:** 792,585 transactions and 71,524 products are in `ARS`. Without an `ARS` threshold, every such action would take the priority-handoff path above. The `ARS` threshold (≈ USD 500, computed from `daily_exchange_rates` at the dataset cutoff) is **pending, computed in the ingest task**.
+- **Argentine Peso (`ARS`) Gap:** 792,585 transactions and 71,524 products are in `ARS`. Without an `ARS` threshold, every such action would take the priority-handoff path above. The `ARS` threshold is USD 500 converted with the last USD→ARS rate before the cutoff in `daily_exchange_rates`; `make ingest SOURCE=factored` prints the computation in `reports/data-quality-factored.md`, and the value is seeded in `POLICY_SEED_THRESHOLDS_MINOR`.
 
 #### Transaction Contract Compatibility (`transaction_list_recent`)
 
@@ -430,7 +430,7 @@ In `call_transcripts.detected_intents`, there are only two values:
 
 ## 7. Recommended Ingestion Design (`make ingest SOURCE=factored`)
 
-> ⚠️ **Pending — being implemented (hybrid seed, owner decision 2026-09-27).** `make ingest` does **not exist yet**; this section is the design the ingest task implements, not a working command (AGENTS rule 7).
+> **Implemented** as `make ingest SOURCE=factored` (hybrid seed, owner decision 2026-09-27). This section is the original design; where it differs from the implementation, [ADR-0011](../adr/0011-hybrid-seed-dataset-ingest.md) and [data.md §2.1–2.2](../data.md) are the source of truth (for example: the mapping is a JSON file, ARS keeps its own currency with its own threshold instead of being converted, and emails are replaced by a keyed hash).
 
 Following the architecture defined in `docs/data.md`, external datasets must not be imported directly into the live database. Instead, they pass through an idempotent, staged conversion pipeline:
 

@@ -4,12 +4,12 @@
 
 | Source | Use | Notes |
 |---|---|---|
-| Dataset provided by Factored | Seed for the banking core and reference for evaluation scenarios | TODO: entities, volume, date range after exploration |
+| Dataset provided by Factored | Bulk realistic volume for the banking core, through `make ingest SOURCE=factored` | Profile, volumes and date range in [datasets/factored.md](datasets/factored.md); not usable as an evaluation set (Spanish only, template transcripts) |
 | Provided data dictionary | Contract for interpreting fields | TODO: field-by-field mapping against our model |
 | Knowledge base | Policies and responses of the simulated bank | Written by the team from the dataset's domain |
 | Synthetic eval data | Labeled sets for decision calibration and scenario tests | Written by the team and versioned under `data/eval/synthetic/` |
 
-**Principle:** the banking core is seeded **from the delivered dataset**, not from invented data. The organization's dataset stays unversioned in `data/raw/`. Only synthetic data and human-written test sets live in `data/eval/synthetic/` (versioned). Anything derived from the organization's dataset stays in `data/eval/` (ignored). The reproducible `make calibrate` (⚠️ pending) run uses only the synthetic splits.
+**Principle — hybrid seed ([ADR-0011](adr/0011-hybrid-seed-dataset-ingest.md)):** the banking core holds the **synthetic demo identities** (`demo_es`, `demo_pt`, `demo_en` and the rest of the generated sample the scenarios depend on) **plus the delivered dataset**, mapped through a source-pluggable ingest. Demo identities are loaded first and always win a collision. The organization's dataset stays unversioned in `data/raw/`. Only synthetic data and human-written test sets live in `data/eval/synthetic/` (versioned). Anything derived from the organization's dataset stays in `data/eval/` (ignored). The reproducible `make calibrate` (⚠️ pending) run uses only the synthetic splits.
 
 ## 2. Pipeline
 
@@ -22,7 +22,29 @@ data/raw/         immutable copy of what was delivered, untransformed (unversion
               └── synthetic/  versioned synthetic labeled data & human-written test sets
 ```
 
-Every stage is idempotent and re-runnable from `data/raw/`. `make seed` (⚠️ pending) rebuilds the whole database from scratch.
+Every stage is idempotent and re-runnable from `data/raw/`. `make seed` rebuilds the whole database from scratch.
+
+### 2.1 Seeding: synthetic + ingested datasets
+
+```bash
+make ingest SOURCE=factored   # data/raw/factored → data/staging/factored + reports/data-quality-factored.md
+make seed                     # synthetic demo data + every source in data/staging/, one transaction
+```
+
+- `make ingest` rebuilds `data/staging/<source>/` (`customers`, `accounts`, `cards`, `transactions` JSONL plus `manifest.json`) from `data/raw/<source>/` only. The directory is written aside, validated with the dataset staging rules and swapped in, so a failed run leaves the previous staging untouched.
+- `make seed` validates the synthetic data and every staged source, then loads them in one transaction (`data_origin` `synthetic` / `dataset`). A dataset customer whose document, email or phone blind index collides with one already loaded is skipped with everything hanging from it, and the count is printed. If `data/raw/<source>` exists but was never ingested, the seed loads synthetic data only and says so.
+- Variables (seed service, `.env`): `INGEST_MAX_CUSTOMERS` (default 5,000; `0` = full volume) and `INGEST_ANCHOR_DATE` (default: run date). Dataset timestamps at or after the cutoff are clamped to just before it, then shifted by `anchor − cutoff`; the report prints the shift.
+- Dataset rules that differ from synthetic data: no PAN (cards keep `pan_last4`, brand, `card_type`, expiry); each account keeps its own currency (no locale→currency rule); emails are replaced by a keyed hash `@example.com`.
+
+### 2.2 Adding a dataset: the mapping contract
+
+A new source is a mapping file plus, if its layout is new, a small adapter:
+
+1. `apps/banking-core/src/banking_core/seed/ingest/sources/<source>.json`, validated by `SourceMapping` (`seed/ingest/mapping.py`; unknown keys are rejected). It holds every table: `document_types` → `DocumentType`, `countries` (code, phone code), `customer_status_dropped`, `products` (account type or card type; types not listed are dropped), `product_status` (`null` = drop), `transaction_status` (`null` = drop), `mcc_by_category` / `mcc_by_type` / `default_mcc`, `merchant_fallback_by_channel`, `dataset_cutoff`, `history_days` (≤ 120, inside the staging window), `dispute_window_days`, `locale`, `otp_channel`, and optional `policy_threshold_equivalents` (the report converts a base threshold with the dataset's exchange rates).
+2. `"adapter"` names a function registered in `seed/ingest/pipeline.py` (`ADAPTERS`) that reads `data/raw/<source>/` and returns staging records plus a counter per rule. A value missing from a mapping table is dropped and counted, never guessed.
+3. Tests with a small fictitious fixture shaped like the source (see `apps/banking-core/tests/test_ingest.py`); never real rows.
+
+Once the mapping exists, `data/raw/<source>/` is accepted by `make seed`; without one it fails naming the directory.
 
 ## 3. Contracts and quality
 
