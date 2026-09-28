@@ -11,6 +11,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# marimo session cache
+__marimo__/
+
 # JavaScript
 node_modules/
 dist/
