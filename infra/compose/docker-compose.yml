@@ -238,15 +238,22 @@ services:
     build:
       context: ../..
       dockerfile: apps/encoder/Dockerfile
+      args:
+        ENCODER_EXTRAS: ${ENCODER_EXTRAS:-}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/encoder:dev
     environment:
       PORT: "8090"
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENCODER_BACKEND: ${ENCODER_BACKEND:-}
       ENCODER_MODEL: ${ENCODER_MODEL:-}
       ENCODER_DEVICE: ${ENCODER_DEVICE:-cpu}
       ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
       ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD:-}
+      ENCODER_GLINER_MIN_MEMORY_MB: ${ENCODER_GLINER_MIN_MEMORY_MB:-4096}
+    volumes:
+      # Model weights cache (HF_HOME=/models/hf), filled by `make warmup`.
+      - encoder-models:/models
     ports:
       - "127.0.0.1:${PORT_ENCODER:-8090}:8090"
     networks: [edge]
@@ -255,7 +262,8 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8090/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='encoder' else 1)"]
     deploy:
       resources:
-        limits: { cpus: "2.0", memory: 3g }
+        # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS: set ENCODER_MEMORY_LIMIT=4g.
+        limits: { cpus: "2.0", memory: "${ENCODER_MEMORY_LIMIT:-3g}" }
 
 networks:
   core:
@@ -264,3 +272,4 @@ networks:
 
 volumes:
   postgres-data:
+  encoder-models:

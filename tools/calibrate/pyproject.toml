@@ -5,7 +5,7 @@ description = "Calibration harness for decision and embedding models"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "encoder",
+    "encoder[gliner]",
     "retrieval",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",

@@ -11,7 +11,7 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup clean-models deploy calibrate synth-data generate-labels migrate \
+	data-quality verify-audit warmup encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
 	profile-factored
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -71,8 +71,11 @@ data-quality: ## Generate data quality report in reports/data-quality.md
 verify-audit: ## verify the audit log hash chain
 	$(COMPOSE) run --rm banking-core python -m banking_core.audit.verify
 
-warmup: ## pending: preload local models
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+warmup: ## Preload the configured encoder backend (downloads GLiNER weights into the models volume)
+	$(COMPOSE) run --rm --no-deps encoder python -m encoder_service.warmup
+
+encoder-bench: ## Encoder p95 latency and peak RAM on CPU (ENCODER_BACKEND=tfidf_lr|gliner, ENCODER_MODEL=, DATA=)
+	ENCODER_BACKEND=$(or $(ENCODER_BACKEND),tfidf_lr) uv run --package encoder-service $(if $(filter gliner,$(ENCODER_BACKEND)),--extra gliner) python -m encoder_service.bench --data $(or $(DATA),data/eval/synthetic/decision.validation.jsonl)
 
 clean-models: ## pending: drop cached model weights
 	@echo "pending: $@ is not implemented yet" >&2; exit 1

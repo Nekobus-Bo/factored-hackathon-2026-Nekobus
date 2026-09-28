@@ -10,6 +10,8 @@ node_modules
 .pytest_cache
 .ruff_cache
 data/
+# The encoder baseline trains at startup on this versioned synthetic split.
+!data/eval/synthetic/decision.train.jsonl
 reports/
 **/weights/
 *.safetensors
