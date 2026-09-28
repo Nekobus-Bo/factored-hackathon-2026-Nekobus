@@ -226,7 +226,7 @@ name = "calibrate"
 version = "0.1.0"
 source = { editable = "tools/calibrate" }
 dependencies = [
-    { name = "encoder" },
+    { name = "encoder", extra = ["gliner"] },
     { name = "numpy" },
     { name = "psutil" },
     { name = "pydantic" },
@@ -237,7 +237,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "encoder", editable = "packages/encoder" },
+    { name = "encoder", extras = ["gliner"], editable = "packages/encoder" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -454,12 +454,16 @@ name = "encoder"
 version = "0.1.0"
 source = { editable = "packages/encoder" }
 dependencies = [
-    { name = "gliner" },
-    { name = "gliner2" },
     { name = "numpy" },
-    { name = "peft" },
     { name = "pydantic" },
     { name = "scikit-learn" },
+]
+
+[package.optional-dependencies]
+gliner = [
+    { name = "gliner" },
+    { name = "gliner2" },
+    { name = "peft" },
     { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
     { name = "transformers" },
@@ -467,16 +471,17 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gliner", specifier = ">=0.2.0" },
-    { name = "gliner2", specifier = ">=2.0.0" },
+    { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2.0" },
+    { name = "gliner2", marker = "extra == 'gliner'", specifier = ">=2.0.0" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "peft", specifier = ">=0.10.0" },
+    { name = "peft", marker = "extra == 'gliner'", specifier = ">=0.10.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
-    { name = "torch", marker = "sys_platform != 'linux'", specifier = ">=2.2.0" },
-    { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.2.0", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "transformers", specifier = ">=4.40.0" },
+    { name = "torch", marker = "sys_platform == 'linux' and extra == 'gliner'", specifier = ">=2.2.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform != 'linux' and extra == 'gliner'", specifier = ">=2.2.0" },
+    { name = "transformers", marker = "extra == 'gliner'", specifier = ">=4.40.0" },
 ]
+provides-extras = ["gliner"]
 
 [[package]]
 name = "encoder-service"
@@ -484,16 +489,25 @@ version = "0.1.0"
 source = { editable = "apps/encoder" }
 dependencies = [
     { name = "contracts" },
+    { name = "encoder" },
     { name = "fastapi" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+gliner = [
+    { name = "encoder", extra = ["gliner"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "contracts", editable = "packages/contracts" },
+    { name = "encoder", editable = "packages/encoder" },
+    { name = "encoder", extras = ["gliner"], marker = "extra == 'gliner'", editable = "packages/encoder" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
+provides-extras = ["gliner"]
 
 [[package]]
 name = "evalrunner"
@@ -501,6 +515,8 @@ version = "0.1.0"
 source = { editable = "eval/runner" }
 dependencies = [
     { name = "contracts" },
+    { name = "httpx" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -509,12 +525,15 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "respx" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "contracts", editable = "packages/contracts" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
@@ -523,6 +542,7 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "respx", specifier = ">=0.23.1" },
     { name = "ruff", specifier = ">=0.6.0" },
 ]
 
@@ -1056,30 +1076,38 @@ version = "0.1.0"
 source = { editable = "apps/orchestrator" }
 dependencies = [
     { name = "contracts" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "litellm" },
     { name = "pydantic-settings" },
+    { name = "redis" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fakeredis" },
     { name = "respx" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "contracts", editable = "packages/contracts" },
+    { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "litellm", specifier = ">=1.102.1" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
+    { name = "redis", specifier = ">=5.0.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "respx", specifier = ">=0.23.1" }]
+dev = [
+    { name = "fakeredis", specifier = ">=2.20.0" },
+    { name = "respx", specifier = ">=0.23.1" },
+]
 
 [[package]]
 name = "packaging"
