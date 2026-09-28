@@ -1,6 +1,9 @@
 # Synthetic Retrieval Validation Dataset
 
-Provisional synthetic validation query set for evaluating Knowledge Base (KB) policy retrieval accuracy (Hit@k per language, ADR-0006; cross-language is not measured yet, see section 5).
+Provisional synthetic validation query set for evaluating Knowledge Base (KB)
+policy retrieval accuracy (Hit@k per language, ADR-0006). See the [committed
+embedding calibration report](../../../../reports/calibration-embedding-2026-09-27.md)
+for same-language and cross-language metrics.
 
 > **Important Note:** This dataset is designated with `split: "validation"` and marked as a **provisional synthetic validation set**. Following [ADR-0010](../../../../docs/adr/0010-model-selection-calibration-harness.md) and [docs/data.md](../../../../docs/data.md), the `test` split is strictly reserved for human-authored and human-validated benchmarks.
 
@@ -60,25 +63,20 @@ The calibration harness loads this set end to end through its own config (the de
 make calibrate TASK=embedding CONFIG=tools/calibrate/configs/embedding_kb_v1.yaml OUT=/tmp/calib
 ```
 
-> **Pending (harness):** `calibrate` scores only rows with `split: "test"`. Every row here is `validation`, so that run currently loads the KB and queries but reports `no data` for every language. Scoring the validation split is a harness change, not a data change: the `test` split stays reserved for human-validated queries.
+The committed calibration run scores this dataset's `validation` split. The
+`test` split remains reserved for human-authored and human-validated benchmarks.
 
-### BM25 Baseline Results
+### Committed Calibration Results
 
-Computed with the harness's `BM25Adapter` and its `hit_at_k` / `mrr` functions over the 120 validation queries per language (KB: 120 snippets):
-
-| Language | Hit@1 | Hit@3 | Hit@5 | MRR |
-|---|---|---|---|---|
-| **Spanish (`es`)** | 0.325 | 0.458 | 0.550 | 0.407 |
-| **Portuguese (`pt`)** | 0.342 | 0.525 | 0.567 | 0.428 |
-| **English (`en`)** | 0.383 | 0.592 | 0.667 | 0.495 |
+The [committed embedding calibration report](../../../../reports/calibration-embedding-2026-09-27.md)
+contains measured BM25, SentenceTransformers, and hybrid results by language,
+including same-language and cross-language Hit@k/MRR, latency, and RAM.
 
 ---
 
-## 5. Cross-Language Retrieval: Not Covered by This Set
+## 5. Cross-Language Retrieval Results
 
-This set has **no cross-lingual subset**, on purpose. The harness counts a query as cross-language when any of its `relevant_ids` is in another language, and then uses the same `relevant_ids` for Hit@k against the full KB. Two consequences:
-
-1. Listing all three languages as gold makes every query "cross-language", so Cross-Hit@1 equals Hit@1 and measures nothing.
-2. A subset whose gold is only in the *other* languages still does not work, because every topic exists in all three languages and the same-language snippet stays in the index. Retrieving it first (the correct behavior) would be scored as a miss.
-
-A meaningful cross-lingual measure needs a harness change: restrict the searched index to the target languages per query (or exclude the query's language). Until then, cross-language Hit@k is reported as `n/a`.
+The harness evaluates a query against snippets in other languages and maps its
+topic IDs to those translations. Cross-language metrics are `n/a` when the KB
+snippets lack `topic_id`. See the [committed report](../../../../reports/calibration-embedding-2026-09-27.md)
+for the measured scores.
