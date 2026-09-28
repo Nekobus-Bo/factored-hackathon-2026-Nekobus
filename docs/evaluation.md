@@ -129,6 +129,20 @@ make eval-adversarial  # ⚠️ pending
 
 The generated report is versioned in the repository: it is the evidence, not a temporary artifact.
 
+### Orchestrator API evidence
+
+`EVAL_EXPOSE_TURN` is false by default and application startup rejects it in
+production. In non-production evaluation runs, message responses include
+`eval.masked_outbound`, `eval.recording_keys`, `eval.tokens` and
+`eval.cost_usd`. The hook omits the banking session ID and placeholder map.
+Replay misses return HTTP 503 with `detail="replay_miss"`.
+
+Successful handoffs return a receipt-backed `handoff` block. Its server-built
+`summary`, effective `priority`, `handoff_id` and `queue_position` come from the
+successful banking-core `ToolResult`. Model text appears only in
+`summary.open_questions`, as stored by banking-core.
+
+
 ## 6. Threats to validity
 
 - We wrote the suite ourselves, so it may have blind spots. Scenarios were inspired by patterns in the domain; they contain no records from the organization's dataset. Traceability is in [data.md](data.md).

@@ -17,6 +17,11 @@ Operational summary of the decisions taken in [ADR-0004](adr/0004-trust-boundary
 
 **Mask before leaving.** All text headed for the LLM provider passes through local PII detection and is replaced with markers. Rehydration happens on our side, after the response.
 
+**Evaluation hook.** `EVAL_EXPOSE_TURN` is disabled by default and rejected when
+`APP_ENV=production`. When enabled, chat responses expose only masked outbound
+messages, replay keys, token totals and USD cost. The hook never exposes a
+banking session ID or the placeholder map.
+
 **Encryption at rest** at the application level, with envelope encryption. The master key lives in the environment and never in the database. **Known limitation:** in production it belongs in a KMS or HSM.
 
 **Verifiable audit.** Every decision and every action lands in an append-only log with hash chaining. `make verify-audit` (⚠️ pending) walks the chain and detects any later alteration.
@@ -30,6 +35,9 @@ The customer's message and the model's output are data, never instructions. The 
 - The model **proposes** tool calls; `banking-core` **authorizes** ([ADR-0003](adr/0003-deterministic-vs-ai.md)).
 - The session's account holder is pinned server-side and never passed as a parameter from the model.
 - The model may only emit message blocks from a schema-validated allowlist.
+- Handoff blocks are engine-built only from a successful, receipt-backed
+  `handoff.create`. Summary, effective priority, handoff ID and queue position
+  come from its `ToolResult`; model text appears only in stored `open_questions`.
 - Editable configuration cannot modify policy ([ADR-0002](adr/0002-config-code-boundary.md)).
 
 ## 4. Customer authentication
