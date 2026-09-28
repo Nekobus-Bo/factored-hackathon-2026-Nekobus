@@ -26,9 +26,17 @@
           "description": "Type of banking account"
         },
         "available_balance_minor": {
-          "description": "Available spendable balance in integer minor units (e.g. cents)",
-          "title": "Available Balance Minor",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Available spendable balance in minor units, when requested",
+          "title": "Available Balance Minor"
         },
         "currency": {
           "description": "ISO 4217 three-letter currency code",
@@ -39,9 +47,17 @@
           "type": "string"
         },
         "ledger_balance_minor": {
-          "description": "Total ledger balance in integer minor units (e.g. cents)",
-          "title": "Ledger Balance Minor",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total ledger balance in minor units, when requested",
+          "title": "Ledger Balance Minor"
         },
         "status": {
           "$ref": "#/$defs/AccountStatus",
@@ -52,8 +68,6 @@
         "account_ref",
         "account_type",
         "currency",
-        "available_balance_minor",
-        "ledger_balance_minor",
         "status"
       ],
       "title": "AccountSummaryItem",

@@ -56,13 +56,13 @@ class AccountSummaryItem(BaseToolModel):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 three-letter currency code",
     )
-    available_balance_minor: StrictInt = Field(
-        ...,
-        description="Available spendable balance in integer minor units (e.g. cents)",
+    available_balance_minor: StrictInt | None = Field(
+        default=None,
+        description="Available spendable balance in minor units, when requested",
     )
-    ledger_balance_minor: StrictInt = Field(
-        ...,
-        description="Total ledger balance in integer minor units (e.g. cents)",
+    ledger_balance_minor: StrictInt | None = Field(
+        default=None,
+        description="Total ledger balance in minor units, when requested",
     )
     status: AccountStatus = Field(
         ...,
