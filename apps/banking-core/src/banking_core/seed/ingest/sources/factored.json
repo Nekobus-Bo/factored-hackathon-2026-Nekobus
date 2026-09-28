@@ -1,0 +1,75 @@
+{
+  "source": "factored",
+  "adapter": "factored",
+  "description": "Banco LATAM dataset delivered by Factored (partitioned CSV, UTF-8 BOM)",
+  "dataset_cutoff": "2026-06-18",
+  "history_days": 90,
+  "dispute_window_days": 90,
+  "locale": "es",
+  "otp_channel": "sms",
+  "document_types": {
+    "DNI": "NATIONAL_ID",
+    "CC": "NATIONAL_ID",
+    "CE": "FOREIGN_ID",
+    "Pasaporte": "PASSPORT"
+  },
+  "countries": {
+    "México": {"code": "MX", "phone_code": "52"},
+    "Mexico": {"code": "MX", "phone_code": "52"},
+    "Colombia": {"code": "CO", "phone_code": "57"},
+    "Argentina": {"code": "AR", "phone_code": "54"}
+  },
+  "mobile_prefix_by_phone_code": {"54": "9"},
+  "customer_status_dropped": ["Closed"],
+  "products": {
+    "Cuenta Ahorro": {"kind": "account", "account_type": "SAVINGS"},
+    "Cuenta Corriente": {"kind": "account", "account_type": "CHECKING"},
+    "Tarjeta Crédito": {"kind": "card", "card_type": "CREDIT"},
+    "Tarjeta Débito": {"kind": "card", "card_type": "DEBIT"}
+  },
+  "debit_card_account_preference": ["CHECKING", "SAVINGS"],
+  "product_status": {
+    "Active": {"status": "ACTIVE"},
+    "Blocked": {"status": "BLOCKED", "blocked_reason": "CUSTOMER_REQUEST"},
+    "Suspended": {"status": "BLOCKED", "blocked_reason": "SUSPICIOUS_ACTIVITY"},
+    "Closed": null
+  },
+  "card_brand_by_first_digit": {"3": "AMEX", "4": "VISA", "5": "MASTERCARD"},
+  "transaction_status": {
+    "Approved": "SETTLED",
+    "Pending": "PENDING",
+    "Declined": "DECLINED",
+    "Reversed": null
+  },
+  "dispute_eligible_types": ["Purchase"],
+  "mcc_by_category": {
+    "Food": "5812",
+    "Transport": "4111",
+    "Health": "8062",
+    "Entertainment": "7832",
+    "Services": "7399",
+    "Other": "5999"
+  },
+  "mcc_by_type": {
+    "Withdrawal": "6011",
+    "Transfer": "4829",
+    "Deposit": "6012",
+    "Payment": "6012",
+    "Adjustment": "6012"
+  },
+  "default_mcc": "5999",
+  "merchant_fallback_by_channel": {
+    "ATM": "Cajero automático",
+    "Branch": "Sucursal",
+    "Transfer": "Transferencia",
+    "App": "Banca móvil",
+    "Web": "Banca en línea",
+    "POS": "Comercio"
+  },
+  "default_merchant": "Movimiento bancario",
+  "policy_threshold_equivalents": {
+    "base_currency": "USD",
+    "base_amount_minor": 50000,
+    "currencies": ["ARS"]
+  }
+}

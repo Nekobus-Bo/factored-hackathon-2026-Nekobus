@@ -12,11 +12,14 @@ import json
 import re
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
 
 from banking_core.models.enums import BlockReason, DocumentType
+
+DataOrigin = Literal["synthetic", "dataset"]
 
 
 class StagingValidationError(Exception):
@@ -50,12 +53,17 @@ class StagingCard(BaseModel):
     id: UUID
     account_id: UUID
     card_ref: str
-    pan: str
+    # Synthetic cards only. Dataset cards carry last4 and never the PAN.
+    pan: str | None = None
     pan_last4: str
     brand: str
     status: str
     blocked_at: datetime | None = None
     blocked_reason: BlockReason | None = None
+    # Dataset cards only.
+    card_type: Literal["DEBIT", "CREDIT"] | None = None
+    expiry_month: int | None = None
+    expiry_year: int | None = None
 
 
 class StagingTransaction(BaseModel):
@@ -80,15 +88,27 @@ class StagingDataset:
         accounts: list[StagingAccount],
         cards: list[StagingCard],
         transactions: list[StagingTransaction],
+        origin: DataOrigin = "synthetic",
+        source: str = "synthetic",
     ) -> None:
         self.customers = customers
         self.accounts = accounts
         self.cards = cards
         self.transactions = transactions
+        self.origin: DataOrigin = origin
+        self.source = source
 
 
-def load_and_validate_staging(raw_dir: Path | str) -> StagingDataset:
+def load_and_validate_staging(
+    raw_dir: Path | str,
+    origin: DataOrigin = "synthetic",
+    source: str | None = None,
+) -> StagingDataset:
     """Read raw JSONL files and run all 5 staging validation checks.
+
+    ``origin`` selects the origin-specific rules: synthetic data must follow the
+    demo locale→currency convention and carries a synthetic PAN; dataset data
+    keeps its own currencies and must never carry a PAN (ADR-0011).
 
     Fails loudly naming the field on any check failure.
     """
@@ -300,7 +320,9 @@ def load_and_validate_staging(raw_dir: Path | str) -> StagingDataset:
             )
         parent_cust = customer_lookup[a.customer_id]
         expected_curr = expected_currencies[parent_cust.preferred_locale]
-        if a.currency != expected_curr:
+        # The locale→currency convention belongs to the synthetic demo data only;
+        # delivered datasets keep the currency of each product.
+        if origin == "synthetic" and a.currency != expected_curr:
             raise StagingValidationError(
                 "Range/domain violation on account.currency: account currency "
                 f"'{a.currency}' does not match customer locale "
@@ -334,14 +356,34 @@ def load_and_validate_staging(raw_dir: Path | str) -> StagingDataset:
                     "Range/domain violation on card.blocked_at: ACTIVE card "
                     f"'{cd.card_ref}' must not have blocked_at or blocked_reason"
                 )
-        if len(cd.pan) != 16 or not cd.pan.isdigit():
+        if len(cd.pan_last4) != 4 or not cd.pan_last4.isdigit():
             raise StagingValidationError(
-                f"Range/domain violation on card.pan: '{cd.pan}' must be 16 digits"
+                f"Range/domain violation on card.pan_last4: card '{cd.card_ref}' "
+                "must have 4 digits"
             )
-        if cd.pan_last4 != cd.pan[-4:]:
+        if origin == "dataset":
+            if cd.pan is not None:
+                raise StagingValidationError(
+                    f"Range/domain violation on card.pan: dataset card "
+                    f"'{cd.card_ref}' must not carry a PAN"
+                )
+        else:
+            if cd.pan is None or len(cd.pan) != 16 or not cd.pan.isdigit():
+                raise StagingValidationError(
+                    f"Range/domain violation on card.pan: card '{cd.card_ref}' "
+                    "must have a 16-digit synthetic PAN"
+                )
+            if cd.pan_last4 != cd.pan[-4:]:
+                raise StagingValidationError(
+                    f"Range/domain violation on card.pan_last4: '{cd.pan_last4}' "
+                    "does not match pan end"
+                )
+        if (cd.expiry_month is None) != (cd.expiry_year is None) or (
+            cd.expiry_month is not None and not 1 <= cd.expiry_month <= 12
+        ):
             raise StagingValidationError(
-                f"Range/domain violation on card.pan_last4: '{cd.pan_last4}' "
-                "does not match pan end"
+                f"Range/domain violation on card.expiry_month: card '{cd.card_ref}' "
+                "needs both expiry fields with a month in 1..12"
             )
 
     for tx in transactions:
@@ -407,7 +449,6 @@ def load_and_validate_staging(raw_dir: Path | str) -> StagingDataset:
             "id",
             "account_id",
             "card_ref",
-            "pan",
             "pan_last4",
             "brand",
             "status",
@@ -440,4 +481,6 @@ def load_and_validate_staging(raw_dir: Path | str) -> StagingDataset:
         accounts=accounts,
         cards=cards,
         transactions=transactions,
+        origin=origin,
+        source=source or origin,
     )

@@ -179,20 +179,21 @@ def test_staging_fails_on_duplicate_doc() -> None:
 
 
 def test_raw_directory_check_fails_on_unexpected_files() -> None:
-    """Test check_raw_directory permits only README.md and synthetic/."""
+    """check_raw_directory permits README.md, synthetic/ and mapped sources only."""
     with TemporaryDirectory() as tmp_dir:
         raw_dir = Path(tmp_dir)
         (raw_dir / "README.md").write_text("dataset info")
         (raw_dir / "synthetic").mkdir()
+        # A delivered dataset with an ingest mapping is accepted
+        (raw_dir / "factored").mkdir()
 
-        # Allowed files pass without error
         check_raw_directory(raw_dir)
 
-        # Unexpected file fails loudly with exact pending message
+        # Anything without a mapping fails loudly, naming it
         (raw_dir / "customer_raw.csv").write_text("col1,col2")
         with pytest.raises(
             RuntimeError,
-            match="organization dataset mapping is not implemented yet \\(pending\\)",
+            match="no ingest mapping for data/raw/customer_raw.csv",
         ):
             check_raw_directory(raw_dir)
 
