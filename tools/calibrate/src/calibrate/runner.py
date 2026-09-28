@@ -343,7 +343,7 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
     kb = load_kb_dataset(kb_file)
     knowledge_base = KnowledgeBase(kb)
 
-    eval_split = config.get("eval_split", "test")
+    eval_split = resolve_eval_split(config)
     queries = load_queries_dataset(queries_file)
     train_queries = [q for q in queries if q.split == "train"]
     val_queries = [q for q in queries if q.split == "validation"]
