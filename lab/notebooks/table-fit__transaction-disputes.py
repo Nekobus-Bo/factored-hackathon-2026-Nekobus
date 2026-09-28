@@ -359,8 +359,29 @@ def _(mo):
     The threshold is set once in USD; a disputed amount above it forces a priority handoff (`control/policy.py`).
     Charges are in ARS, COP and USD, so the threshold needs a per-currency equivalent.
 
-    **4a. Is the rates table consistent with the transactions?** If `amount_usd` equals `amount × rate` for the same day, the table can convert the threshold.
+    **4a. Is the rates table consistent with the transactions?** If `amount_usd` is close to `amount × rate` for the same day (`ratio` near 1), the table can convert the threshold.
+    The match is close, not exact: `amount_usd` sits within about 2% of the day's rate, and no other rate column or date matches better.
     """)
+    return
+
+
+@app.cell
+def _(con, mo):
+    # Worked example: the first 3 transactions per currency, with each step of the check
+    mo.sql(
+        """
+        SELECT t.transaction_date::DATE AS day, t.currency, t.amount, r.exchange_rate AS rate_to_usd,
+               round(t.amount * r.exchange_rate, 2) AS amount_x_rate, t.amount_usd,
+               round(t.amount_usd / (t.amount * r.exchange_rate), 4) AS ratio
+        FROM transactions t
+        JOIN daily_exchange_rates r
+          ON r.date = t.transaction_date::DATE AND r.source_currency = t.currency AND r.target_currency = 'USD'
+        WHERE t.amount_usd IS NOT NULL  -- §3: null whenever currency = 'USD'
+        QUALIFY row_number() OVER (PARTITION BY t.currency ORDER BY t.transaction_date, t.transaction_id) <= 3
+        ORDER BY t.currency, day
+        """,
+        engine=con,
+    )
     return
 
 
@@ -517,7 +538,7 @@ def _(mo):
     | `customers` | **Use** | Step 1. Status and mobile phone for the OTP (section 1). Closed customers are dropped at ingest. |
     | `products` | **Use** | Step 2. The two card types, each with an owner in `customers` (section 2). |
     | `transactions` | **Use** | Step 3. Owned by the customer's product (3a); purchases occur only on cards (3b); the rules leave a disputable set in the window (3c) that customers can recognise by merchant (3d). |
-    | `daily_exchange_rates` | **Use** | Step 4. Matches `amount_usd` (4a), so it converts the USD threshold to ARS and COP. |
+    | `daily_exchange_rates` | **Use** | Step 4. Agrees with `amount_usd` within about 2% (4a), so it converts the USD threshold to ARS and COP. |
     | `complaints` | **Do not use** | Has the right subcategory (5a) but cannot be linked to a charge, a card or a conversation (5b; §4, §6.5). Only its aggregate volume can serve as a sizing reference. |
     | `call_center_interactions` | Do not use | No dispute contact reason; outcomes do not link to transactions (§6.1, §6.2). |
     | `call_transcripts` | Do not use | 42 template texts, Spanish only, no dispute content (§7). Evaluation uses team-generated utterances. |
