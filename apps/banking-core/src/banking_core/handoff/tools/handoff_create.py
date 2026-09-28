@@ -20,7 +20,13 @@ from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
-from contracts.envelope import Receipt, ResourceState, VerificationState
+from contracts.audit import AuditPayload
+from contracts.envelope import (
+    Receipt,
+    ResourceState,
+    ToolResultStatus,
+    VerificationState,
+)
 from contracts.tools.handoff_create import (
     Department,
     HandoffCreateInput,
@@ -100,42 +106,86 @@ def _actions_taken(db_session: Session, session_ref: str) -> list[dict[str, Any]
     ]
 
 
+def reread_handoff_create_result(
+    db_session: Session,
+    existing_output: HandoffCreateOutput,
+) -> HandoffCreateResult:
+    """Refresh an idempotent handoff response from committed queue/audit rows."""
+    db_session.expire_all()
+    stored = db_session.scalar(
+        sa.select(Handoff).where(Handoff.handoff_ref == existing_output.handoff_id)
+    )
+    audit_id = int(existing_output.receipt.audit_id.removeprefix("aud_"))
+    audit = db_session.get(AuditLog, audit_id)
+    if stored is None or audit is None:
+        raise RuntimeError("handoff receipt could not be re-read from the database")
+
+    receipt = Receipt(
+        action=ACTION,
+        target_masked=stored.handoff_ref,
+        state_before=ResourceState.NONE,
+        state_after=ResourceState(stored.status),
+        verified_at=stored.created_at,
+        audit_id=f"aud_{audit.id:08d}",
+    )
+    refreshed_output = existing_output.model_copy(
+        update={
+            "handoff_id": stored.handoff_ref,
+            "status": HandoffStatus(stored.status),
+            "department": Department(stored.department),
+            "created_at": stored.created_at,
+            "receipt": receipt,
+        }
+    )
+    return HandoffCreateResult(
+        output=refreshed_output,
+        priority=HandoffPriority(stored.priority),
+    )
+
+
 def execute_handoff_create(
     db_session: Session,
     holder_customer_id: str | uuid.UUID | None,
     args: HandoffCreateInput,
     policy_decision: Decision,
     idempotency_scope: str,
-    verification_state: VerificationState,
-    session_ref: str | None = None,
+    verification_state_before: VerificationState,
+    verification_state_after: VerificationState,
+    session_id: str,
+    *,
+    commit: bool = True,
 ) -> HandoffCreateResult:
-    """Queue a structured handoff and return the receipt re-read after commit.
+    """Queue a handoff and re-read its receipt within the caller's transaction.
+
+    When ``commit`` is false, the dispatcher commits the handoff, audit and
+    idempotency record atomically.
 
     Raises:
         ValueError: If policy_decision does not allow the call.
     """
     if not policy_decision.allowed:
         raise ValueError("handoff.create requires an allowed policy decision")
-    session_ref = session_ref or idempotency_scope
     holder_id = (
         uuid.UUID(str(holder_customer_id)) if holder_customer_id is not None else None
     )
-    priority = resolve_priority(args.priority, policy_decision, verification_state)
+    priority = resolve_priority(
+        args.priority, policy_decision, verification_state_before
+    )
 
     try:
         summary = {
             "verified_facts": {
-                "verification_state": verification_state.value,
+                "verification_state": verification_state_before.value,
                 "customer_identified": holder_id is not None,
                 "policy_flags": list(policy_decision.flags),
             },
-            "actions_taken": _actions_taken(db_session, session_ref),
-            "verification_method": _VERIFICATION_METHOD[verification_state],
+            "actions_taken": _actions_taken(db_session, session_id),
+            "verification_method": _VERIFICATION_METHOD[verification_state_before],
             "open_questions": [{"source": "model_unverified", "text": args.summary}],
         }
         handoff = Handoff(
             handoff_ref=_new_handoff_ref(),
-            session_ref=session_ref,
+            session_ref=session_id,
             customer_id=holder_id,
             reason=args.reason.value,
             priority=priority.value,
@@ -150,27 +200,36 @@ def execute_handoff_create(
         audit_row = append_audit(
             session=db_session,
             actor_type="customer_session",
-            actor_ref=session_ref,
+            actor_ref=session_id,
             action=ACTION,
             decision="allowed",
             reason_code=None,
-            payload={
-                "handoff_ref": handoff.handoff_ref,
-                "reason": args.reason.value,
-                "priority": priority.value,
-                "department": args.department.value,
-                "verification_state": verification_state.value,
-                "flags": list(policy_decision.flags),
-            },
+            payload=AuditPayload(
+                verification_state_before=verification_state_before,
+                verification_state_after=verification_state_after,
+                status=ToolResultStatus.OK,
+                reason=args.reason.value,
+                handoff_status=HandoffStatus.QUEUED,
+                handoff_priority=priority,
+                idempotency_scope=idempotency_scope,
+                details={
+                    "department": args.department.value,
+                    "handoff_ref": handoff.handoff_ref,
+                    "flags": list(policy_decision.flags),
+                },
+            ),
         )
-        handoff_id, audit_id = handoff.id, audit_row.id
-        db_session.commit()
+        handoff_ref, audit_id = handoff.handoff_ref, audit_row.id
+        if commit:
+            db_session.commit()
     except Exception:
         db_session.rollback()
         raise
 
     db_session.expire_all()
-    stored = db_session.get(Handoff, handoff_id)
+    stored = db_session.scalar(
+        sa.select(Handoff).where(Handoff.handoff_ref == handoff_ref)
+    )
     audit = db_session.get(AuditLog, audit_id)
     if stored is None or audit is None:
         raise RuntimeError("handoff receipt could not be re-read from the database")
@@ -190,7 +249,6 @@ def execute_handoff_create(
             ),
         )
     )
-
     receipt = Receipt(
         action=ACTION,
         target_masked=stored.handoff_ref,

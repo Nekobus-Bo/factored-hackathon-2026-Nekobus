@@ -25,11 +25,7 @@ def execute_account_get_summary(
     holder_customer_id: str | uuid.UUID,
     args: AccountGetSummaryInput,
 ) -> AccountGetSummaryOutput:
-    """Summarize the holder's accounts with balances in minor units.
-
-    The contract requires both balances on every item, so include_balances=False
-    cannot omit them; see docs/limitations.md.
-    """
+    """Summarize the holder's accounts, including balances only when requested."""
     holder_id = uuid.UUID(str(holder_customer_id))
     stmt = (
         sa.select(Account)
@@ -41,8 +37,12 @@ def execute_account_get_summary(
             account_ref=str(account.id),
             account_type=AccountType(account.type),
             currency=account.currency,
-            available_balance_minor=account.available_balance_minor,
-            ledger_balance_minor=account.ledger_balance_minor,
+            available_balance_minor=(
+                account.available_balance_minor if args.include_balances else None
+            ),
+            ledger_balance_minor=(
+                account.ledger_balance_minor if args.include_balances else None
+            ),
             status=AccountStatus(account.status),
         )
         for account in db_session.scalars(stmt).all()
