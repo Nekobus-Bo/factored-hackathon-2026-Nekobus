@@ -21,6 +21,8 @@ import redis
 from contracts.envelope import VerificationState
 from pydantic import BaseModel, ConfigDict, Field
 
+from banking_core.redis_client import create_redis_client
+
 
 class SessionState(BaseModel):
     """Customer verification and security session state.
@@ -98,22 +100,18 @@ class RedisSessionStore:
         self,
         redis_client: redis.Redis | None = None,
         default_ttl: int = 3600,
-        key_prefix: str = "session:",
+        key_prefix: str | None = None,
     ) -> None:
         self.default_ttl = default_ttl
-        self.key_prefix = key_prefix
+        self.key_prefix = (
+            key_prefix
+            if key_prefix is not None
+            else os.getenv("REDIS_SESSION_KEY_PREFIX", "session:")
+        )
         if redis_client is not None:
             self._client = redis_client
         else:
-            host = os.getenv("REDIS_HOST", "localhost")
-            port = int(os.getenv("REDIS_PORT", "6379"))
-            password = os.getenv("REDIS_PASSWORD") or None
-            self._client = redis.Redis(
-                host=host,
-                port=port,
-                password=password,
-                decode_responses=True,
-            )
+            self._client = create_redis_client()
 
     @property
     def client(self) -> redis.Redis:

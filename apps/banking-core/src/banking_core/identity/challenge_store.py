@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from banking_core.crypto import get_master_key
+from banking_core.redis_client import create_redis_client
 
 OTP_HMAC_INFO = b"pattern-blue-otp-code-hmac-v1"
 
@@ -39,11 +40,15 @@ class OtpChallengeStore:
         self,
         redis_client: redis.Redis,
         hmac_key: bytes | None = None,
-        key_prefix: str = "otp:challenge:",
+        key_prefix: str | None = None,
     ) -> None:
         self._redis = redis_client
         self._hmac_key = hmac_key
-        self.key_prefix = key_prefix
+        self.key_prefix = (
+            key_prefix
+            if key_prefix is not None
+            else os.getenv("REDIS_OTP_CHALLENGE_KEY_PREFIX", "otp:challenge:")
+        )
 
     def _key(self, challenge_id: str) -> str:
         return f"{self.key_prefix}{challenge_id}"
@@ -151,11 +156,5 @@ def get_challenge_store() -> OtpChallengeStore:
     """Get the singleton challenge store backed by redis-core."""
     global _global_challenge_store
     if _global_challenge_store is None:
-        client = redis.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", "6379")),
-            password=os.getenv("REDIS_PASSWORD") or None,
-            decode_responses=True,
-        )
-        _global_challenge_store = OtpChallengeStore(redis_client=client)
+        _global_challenge_store = OtpChallengeStore(redis_client=create_redis_client())
     return _global_challenge_store
