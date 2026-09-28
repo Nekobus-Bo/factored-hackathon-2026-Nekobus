@@ -51,7 +51,8 @@ def _():
 @app.cell
 def _(mo, os):
     # Settings: change these, the rest of the notebook follows
-    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[1] / "data" / "raw" / "latam_bank"))
+    # Default: the dataset copy next to the repo, at ../dataset_exploration/dataset
+    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[2] / "dataset_exploration" / "dataset"))
     YEAR = "2026"  # fact-table partitions to read; must contain the dispute window below
     # Dispute rules, mirrored from apps/banking-core/src/banking_core/seed/ingest/sources/factored.json
     DATASET_CUTOFF = "2026-06-18"
@@ -76,7 +77,7 @@ def _(mo, os):
 def _(DATA_DIR, YEAR, duckdb, mo, os):
     mo.stop(
         not os.path.isdir(DATA_DIR),
-        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Link it into `data/raw/latam_bank` or set `DATA_DIR`."),
+        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Put it in `../dataset_exploration/dataset` next to the repo or set `DATA_DIR`."),
     )
     con = duckdb.connect()
     for _table in ["transactions", "complaints"]:
