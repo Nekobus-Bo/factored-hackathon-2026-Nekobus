@@ -4,6 +4,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
+from contracts.audit import AuditPayload
+from contracts.envelope import ToolResultStatus
+from contracts.tools import TOOL_CATALOG
 from sqlalchemy.orm import Session
 
 from banking_core.audit.canonical import (
@@ -22,7 +25,7 @@ def append(
     action: str,
     decision: str,
     reason_code: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | AuditPayload,
     occurred_at: datetime | None = None,
 ) -> AuditLog:
     """Append a validated, tamper-evident entry to ops.audit_log.
@@ -34,8 +37,41 @@ def append(
     3. The prev_hash is chained to the latest entry (or GENESIS_PREV_HASH if empty).
     4. The hash is computed deterministically as sha256(prev_hash + canonical_json).
     """
-    # 1. Inspect payload for PII leaks
-    check_payload(payload)
+    tool_definition = TOOL_CATALOG.get(action)
+    if tool_definition is not None:
+        typed_payload = (
+            payload
+            if isinstance(payload, AuditPayload)
+            else AuditPayload.model_validate(payload)
+        )
+        if actor_type != "customer_session" or not actor_ref.strip():
+            raise ValueError("Tool audit rows require a banking-core session actor_ref")
+        if tool_definition.mutates_state and typed_payload.idempotency_scope is None:
+            raise ValueError("Mutating tool audit rows require idempotency_scope")
+        if (
+            action == "card.block"
+            and typed_payload.status == ToolResultStatus.OK
+            and (
+                typed_payload.card_state_before is None
+                or typed_payload.card_state_after is None
+            )
+        ):
+            raise ValueError("card.block audit payload requires card states")
+        if (
+            action == "handoff.create"
+            and typed_payload.status == ToolResultStatus.OK
+            and (
+                typed_payload.handoff_status is None
+                or typed_payload.handoff_priority is None
+            )
+        ):
+            raise ValueError("handoff.create audit payload requires queue state")
+        payload_dict = typed_payload.model_dump(mode="json")
+    elif isinstance(payload, AuditPayload):
+        payload_dict = payload.model_dump(mode="json")
+    else:
+        payload_dict = payload
+    check_payload(payload_dict)
 
     if occurred_at is None:
         occurred_at = datetime.now(UTC)
@@ -66,7 +102,7 @@ def append(
         "actor_type": actor_type,
         "decision": decision,
         "occurred_at": occurred_at,
-        "payload": payload,
+        "payload": payload_dict,
         "reason_code": reason_code,
     }
     canonical_json = canonical_entry_json(entry_dict)
@@ -80,7 +116,7 @@ def append(
         action=action,
         decision=decision,
         reason_code=reason_code,
-        payload=payload,
+        payload=payload_dict,
         prev_hash=prev_hash,
         hash=calculated_hash,
     )
