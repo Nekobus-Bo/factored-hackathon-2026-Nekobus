@@ -123,7 +123,7 @@
 {"id": "test-es-123", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "Quiero ver el extracto de este mes", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-es-124", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "qué transacciones tengo en la tarjeta 7302?", "intent": "check_recent_transactions", "slots": [{"type": "card_last4", "value": "7302", "start": 38, "end": 42}]}
 {"id": "test-es-125", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "Me listas las últimas 10 transacciones de la cuenta?", "intent": "check_recent_transactions", "slots": []}
-{"id": "test-es-126", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "necesito revisar los pagos que hice la semana pasada", "intent": "check_recent_transactions", "slots": []}
+{"id": "test-es-126", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "necesito revisar los pagos que hice la semana pasada", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "semana pasada", "start": 39, "end": 52}]}
 {"id": "test-es-127", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "¿Cuáles fueron mis gastos en Rappi este mes?", "intent": "check_recent_transactions", "slots": [{"type": "merchant", "value": "Rappi", "start": 29, "end": 34}]}
 {"id": "test-es-128", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "historial de movimientos por favor", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-es-129", "split": "test", "source": "synthetic-provisional", "lang": "es", "text": "Muéstrame lo que se ha cargado a la tarjeta desde el 01/09/2026", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "01/09/2026", "start": 53, "end": 63}]}
@@ -273,7 +273,7 @@
 {"id": "test-pt-123", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "Quero ver os lançamentos da fatura deste mês", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-pt-124", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "quais transações tem no cartão final 6284?", "intent": "check_recent_transactions", "slots": [{"type": "card_last4", "value": "6284", "start": 37, "end": 41}]}
 {"id": "test-pt-125", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "Lista as últimas 10 movimentações da conta", "intent": "check_recent_transactions", "slots": []}
-{"id": "test-pt-126", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "preciso ver os pagamentos da semana passada", "intent": "check_recent_transactions", "slots": []}
+{"id": "test-pt-126", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "preciso ver os pagamentos da semana passada", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "semana passada", "start": 29, "end": 43}]}
 {"id": "test-pt-127", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "Quanto gastei no iFood esse mês?", "intent": "check_recent_transactions", "slots": [{"type": "merchant", "value": "iFood", "start": 17, "end": 22}]}
 {"id": "test-pt-128", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "histórico de transações por favor", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-pt-129", "split": "test", "source": "synthetic-provisional", "lang": "pt", "text": "Me mostra o que caiu no cartão desde 01/09/2026", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "01/09/2026", "start": 37, "end": 47}]}
@@ -355,7 +355,7 @@
 {"id": "test-en-055", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I'm formally disputing the transaction from 09/18/2026", "intent": "request_dispute", "slots": [{"type": "transaction_date", "value": "09/18/2026", "start": 44, "end": 54}]}
 {"id": "test-en-056", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I want my money back for this charge, the merchant never delivered", "intent": "request_dispute", "slots": []}
 {"id": "test-en-057", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "open a dispute for me please, the order never arrived", "intent": "request_dispute", "slots": []}
-{"id": "test-en-058", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I need to contest the yesterday charge at Costco", "intent": "request_dispute", "slots": [{"type": "transaction_date", "value": "yesterday", "start": 22, "end": 31}, {"type": "merchant", "value": "Costco", "start": 42, "end": 48}]}
+{"id": "test-en-058", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I need to contest the charge from yesterday at Costco", "intent": "request_dispute", "slots": [{"type": "transaction_date", "value": "yesterday", "start": 34, "end": 43}, {"type": "merchant", "value": "Costco", "start": 47, "end": 53}]}
 {"id": "test-en-059", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "file a chargeback on my Wish order", "intent": "request_dispute", "slots": [{"type": "merchant", "value": "Wish", "start": 24, "end": 28}]}
 {"id": "test-en-060", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I'd like to request a refund for the incorrect charge of $42.10", "intent": "request_dispute", "slots": [{"type": "currency", "value": "$", "start": 57, "end": 58}, {"type": "amount", "value": "42.10", "start": 58, "end": 63}]}
 {"id": "test-en-061", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I want to talk to a real person", "intent": "request_human_agent", "slots": []}
@@ -388,7 +388,7 @@
 {"id": "test-en-088", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "the code from the app is 427851", "intent": "provide_otp_code", "slots": [{"type": "otp_code", "value": "427851", "start": 25, "end": 31}]}
 {"id": "test-en-089", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "done, 863027", "intent": "provide_otp_code", "slots": [{"type": "otp_code", "value": "863027", "start": 6, "end": 12}]}
 {"id": "test-en-090", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "My one-time passcode is 191746", "intent": "provide_otp_code", "slots": [{"type": "otp_code", "value": "191746", "start": 24, "end": 30}]}
-{"id": "test-en-091", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "yes!!", "intent": "confirm", "slots": []}
+{"id": "test-en-091", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "yes, please go ahead with it", "intent": "confirm", "slots": []}
 {"id": "test-en-092", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "Yes, go ahead", "intent": "confirm", "slots": []}
 {"id": "test-en-093", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "correct, that's it", "intent": "confirm", "slots": []}
 {"id": "test-en-094", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "Yes, please block it", "intent": "confirm", "slots": []}
@@ -423,7 +423,7 @@
 {"id": "test-en-123", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I want to see this month's statement", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-en-124", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "what charges are on my card ending 8137?", "intent": "check_recent_transactions", "slots": [{"type": "card_last4", "value": "8137", "start": 35, "end": 39}]}
 {"id": "test-en-125", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "List the last 10 transactions on my account", "intent": "check_recent_transactions", "slots": []}
-{"id": "test-en-126", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I need to review my payments from last week", "intent": "check_recent_transactions", "slots": []}
+{"id": "test-en-126", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I need to review my payments from last week", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "last week", "start": 34, "end": 43}]}
 {"id": "test-en-127", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "How much did I spend at Starbucks this month?", "intent": "check_recent_transactions", "slots": [{"type": "merchant", "value": "Starbucks", "start": 24, "end": 33}]}
 {"id": "test-en-128", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "transaction history please", "intent": "check_recent_transactions", "slots": []}
 {"id": "test-en-129", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "Show me what's been charged since 09/01/2026", "intent": "check_recent_transactions", "slots": [{"type": "transaction_date", "value": "09/01/2026", "start": 34, "end": 44}]}
@@ -437,7 +437,7 @@
 {"id": "test-en-137", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "hey", "intent": "greeting", "slots": []}
 {"id": "test-en-138", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "Hi, anyone there?", "intent": "greeting", "slots": []}
 {"id": "test-en-139", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "hola, hello?", "intent": "greeting", "slots": []}
-{"id": "test-en-140", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "Hello!", "intent": "greeting", "slots": []}
+{"id": "test-en-140", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "hey there, good morning", "intent": "greeting", "slots": []}
 {"id": "test-en-141", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "can you recommend a movie?", "intent": "out_of_scope", "slots": []}
 {"id": "test-en-142", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "what's the euro to dollar rate?", "intent": "out_of_scope", "slots": []}
 {"id": "test-en-143", "split": "test", "source": "synthetic-provisional", "lang": "en", "text": "I want to apply for a mortgage", "intent": "out_of_scope", "slots": []}
