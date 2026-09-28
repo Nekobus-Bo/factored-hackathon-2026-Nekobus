@@ -12,9 +12,15 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "pydantic>=2.7.0",
     "redis>=5.0.0",
+    "retrieval",
     "sqlalchemy>=2.0.0",
     "uvicorn>=0.30.0",
 ]
+
+[project.optional-dependencies]
+# Dense kb.search backend (the configured default). Without it, only an
+# explicitly configured BM25 backend works; vector fails loudly.
+vector = ["retrieval[vector]"]
 
 [build-system]
 requires = ["hatchling"]
