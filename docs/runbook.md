@@ -169,6 +169,8 @@ Reports are written to `reports/` and versioned in the repository: you can compa
 
 ## 9. Deployed environment (⚠️ pending)
 
+For production architecture, host Redis ACL configuration, and scalability limits, see **[deployment.md](deployment.md)**.
+
 > ⚠️ **Pending:** Local-first development; the private VM environment is not yet provisioned. The deployment instructions and targets below are pending VM availability.
 
 There is an instance running in a **private environment managed by the team**, available during the evaluation window, in case you prefer not to run anything locally. The link is in the submission email and in the repository README.

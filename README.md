@@ -36,6 +36,7 @@ For manual testing and live LLM credentials, see **[docs/runbook.md](docs/runboo
 2. **[ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)**, **[ADR-0002](docs/adr/0002-config-code-boundary.md)**, **[ADR-0003](docs/adr/0003-deterministic-vs-ai.md)** — the three core architectural decisions.
 3. **[docs/evaluation.md](docs/evaluation.md)** — benchmark protocol, failure taxonomy, and metrics definitions written *before* measuring.
 4. **[docs/limitations.md](docs/limitations.md)** — explicit operational limits, known gaps, and future roadmap.
+5. **[docs/deployment.md](docs/deployment.md)** — deployment architecture, host Redis ACLs, scalability and operational limits.
 
 Full documentation index: **[docs/README.md](docs/README.md)**. Working conventions: **[AGENTS.md](AGENTS.md)**.
 
