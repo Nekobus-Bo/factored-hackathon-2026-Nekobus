@@ -2,7 +2,7 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29, 06:45 UTC.
+**Last update:** 2026-09-29 (F5, the integration, added).
 
 ## 1. Done and merged to `main`
 
@@ -44,7 +44,11 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 | F2 | Orchestrator agent API: reverse index from session to conversation, takeover, agent messages. After a takeover the LLM never sees the conversation again | **Done** (on this branch, 130 new tests) | — |
 | F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | **Done** (on this branch; tests against a fake orchestrator; the takeover part needs F2's orchestrator to run for real; Dockerfile built and run once by hand) | F0 (F2 for the takeover part) |
 | F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | **Done** (on this branch; 371 tests against fake upstreams; Dockerfile built once in the sandbox with an extra CA mount, not as committed) | F0, F1, F2 |
-| F5 | Integration: compose services and healthchecks, `make smoke`, both apps in the CI `images` matrix, `TRUSTED_PROXY_HOPS` for the web-client BFF, the runbook's "⚠️ pending UI" marks, `limitations.md` | Not started | F3, F4 |
+| F5 | Integration: compose services and healthchecks, `make smoke`, both apps in the CI `images` matrix, `TRUSTED_PROXY_HOPS` for the web-client BFF, the runbook's "⚠️ pending UI" marks, `limitations.md` | **Done** (on this branch; run on a live compose stack in the sandbox, with the caveats below) | F3, F4 |
+
+**What F5 verified, and what it could not.** Run in the sandbox, where the model server cannot download PyTorch and the TLS interception needs a CA mounted into image builds:
+- Verified: both front-end images build through `docker compose build` exactly as committed (the install step served from the BuildKit cache; a cold-cache install fails with `SELF_SIGNED_CERT_IN_CHAIN` unless the CA is mounted, so it was checked once with a temporary Dockerfile copy that does, nothing committed); the whole stack came up healthy with no `.env`; `make smoke` printed all eight services and the migration; the two `make` dev-server targets served `/healthz` and the page; the demo summary ran against the live stack. A takeover ran end to end through both BFFs with the compose defaults (claim, agent reply masked, the customer reading it, the queue showing `ASSIGNED`), and a Guardrails save went through the BFF to the admin API. The production images start under the overlay's constraints (read-only root, no capabilities) and the back office refuses the development values.
+- Not verified: `make up` itself (its `--build` needs the Python images to build from the committed Dockerfiles, which the sandbox blocks; they were built from temporary copies and the stack was started without `--build`, with the embedding model off); `make demo` from start to finish (it downloads the embedding model); the CI and deploy workflows (only YAML-parsed, never run on GitHub); the images pulled from a registry, and the `linux/arm64` builds; the UI in a browser (no browser here). Do these on the clean-machine check.
 
 **Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed. Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
 
@@ -54,7 +58,7 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 3. Implement the contract exactly. If the contract is wrong, change [front-ends.md](front-ends.md) first, in the same PR.
 4. Validate:
    - Python: `uv run pytest -q` and `uv run ruff check .`.
-   - TypeScript: `make web-check` once F0 has landed; until then, `make design-tokens-check`.
+   - TypeScript: `make web-check` and `make design-tokens-check`.
    - Stack: `make demo`, then walk through [runbook.md](runbook.md) section 7.
 5. Update this file's table and [limitations.md](limitations.md).
 
@@ -98,5 +102,8 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 make demo                 # the whole stack in replay mode; talking to the assistant needs an LLM key in .env (no recordings yet)
 uv run pytest -q          # Python tests; the DB tests create their own disposable bank_test database
 make design-tokens-check  # TypeScript: design tokens
-make web-check            # TypeScript: contracts and both web apps (once F0 has landed)
+make web-check            # TypeScript: contracts and both web apps
+make web-client           # the customer app's dev server on the host (make web-backoffice for the back office); needs Bun
 ```
+
+`make demo` serves the customer chat on http://localhost:5173 and the back office on http://localhost:5174 (login `agent@demo.local` / `demo-only-change-me`, development only).
