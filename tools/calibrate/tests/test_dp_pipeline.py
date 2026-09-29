@@ -538,3 +538,24 @@ def test_decide_on_the_written_spec_matches_the_pydantic_round_trip(
         lang="es",
     )
     assert decision.outcome in {"decided", "abstained"}
+
+
+def test_the_report_leads_with_where_the_validation_tau_did_not_hold(
+    tiny_repo, tmp_path
+) -> None:
+    result = run(tiny_repo, tmp_path / "scratch")
+    report = result.report_path.read_text(encoding="utf-8")
+    assert "\n## Findings\n" in report
+    below = [c for r in result.dps for c in r.chosen.certifications if c.below_floor]
+    if below:  # the tiny data is noisy enough that some label misses its floor
+        first = below[0]
+        assert f"{first.tp} of {first.accepted} decisions correct on test" in report
+    else:
+        assert "Nothing to flag" in report
+
+
+def test_an_official_report_names_paths_relative_to_the_repo(tiny_repo) -> None:
+    result = run(tiny_repo, tiny_repo.root / "reports")
+    report = result.report_path.read_text(encoding="utf-8")
+    assert str(tiny_repo.root) not in report
+    assert "`packages/encoder/calibration/decision_points.json`" in report

@@ -26,7 +26,7 @@ import logging
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -398,6 +398,15 @@ class Certification:
     @property
     def certified(self) -> bool:
         return self.wilson is not None and self.wilson >= self.p_min
+
+    @property
+    def point(self) -> float | None:
+        return self.tp / self.accepted if self.accepted else None
+
+    @property
+    def below_floor(self) -> bool:
+        """Under the floor even by the point estimate (the tau did not hold)."""
+        return self.point is not None and self.point < self.p_min
 
     @property
     def needs(self) -> int:
@@ -977,6 +986,9 @@ def run_decision_points_calibration(
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     try:
         config = load_run_config(config_path)
+        # Recorded relative to the repo when it is inside it: a report and an
+        # artifact are read on other machines.
+        config = replace(config, path=_report_reference(Path(config_path), root))
         selected = select_dps(config, list(dp_ids) if dp_ids else None)
     except ConfigError as exc:
         raise RunError(str(exc)) from exc
@@ -1108,7 +1120,7 @@ def run_decision_points_calibration(
         config=config,
         run_id=run_id,
         artifact_id=artifact_id,
-        artifact_target=str(target),
+        artifact_target=_report_reference(target, root),
         official=official,
         date=date,
         embedded=embedded,
