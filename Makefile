@@ -50,8 +50,8 @@ build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (u
 		docker buildx build $$B --platform linux/amd64,linux/arm64 -f apps/$$s/Dockerfile . || exit 1; \
 	done
 
-demo: ## pending: full startup in replay mode
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+demo: ## One command: build, start, seed, preload models, print URLs and demo customers
+	@COMPOSE="$(COMPOSE)" MAKE="$(MAKE)" bash infra/compose/demo.sh
 
 seed: ## Seed the database: synthetic demo data + every ingested dataset in data/staging
 	$(COMPOSE) run --rm seed python -m banking_core.seed.cli seed
