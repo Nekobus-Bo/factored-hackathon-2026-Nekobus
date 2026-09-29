@@ -225,7 +225,11 @@ async def test_happy_path_es_identify_otp_verify_block(mock_services: Any) -> No
     assert match_call["args"]["document_number"] == RAW_DOCUMENT
     assert banking.calls_to("otp.verify")[0]["args"]["code"] == RAW_OTP
     block_call = banking.calls_to("card.block")[0]
-    assert block_call["args"] == {"card_ref": "card_ab12cd34", "reason": "LOST"}
+    assert block_call["args"] == {
+        "card_ref": "card_ab12cd34",
+        "reason": "LOST",
+        "transaction_id": None,
+    }
     assert block_call["idempotency_key"].startswith("pb-")
     assert match_call.get("idempotency_key") is None
     assert [r["body"]["tool"] for r in banking.requests] == [

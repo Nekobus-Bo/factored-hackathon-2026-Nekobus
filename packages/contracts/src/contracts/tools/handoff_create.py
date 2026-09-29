@@ -3,10 +3,14 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from contracts.envelope import Receipt
-from contracts.tools.base import BaseToolInput, BaseToolOutput
+from contracts.tools.base import BaseToolInput, BaseToolModel, BaseToolOutput
+from contracts.tools.transaction_list_recent import (
+    TRANSACTION_ID_MAX_LENGTH,
+    TRANSACTION_ID_MIN_LENGTH,
+)
 
 
 class HandoffReason(str, Enum):
@@ -43,6 +47,53 @@ class HandoffStatus(str, Enum):
     QUEUED = "QUEUED"
     ASSIGNED = "ASSIGNED"
     PENDING = "PENDING"
+
+
+class HandoffRequirementLevel(str, Enum):
+    """How strongly banking-core policy asks for a human on this case (ADR-0003).
+
+    RECOMMENDED is advisory. REQUIRED is enforced: the turn engine creates the
+    handoff itself when the model has not.
+    """
+
+    NONE = "NONE"
+    RECOMMENDED = "RECOMMENDED"
+    REQUIRED = "REQUIRED"
+
+
+class HandoffRequirement(BaseToolModel):
+    """Policy outcome for a case, decided by banking-core and never by the model.
+
+    When the level is NONE nothing else is set; otherwise the priority,
+    department and reason a handoff for this case must carry are all set.
+    """
+
+    level: HandoffRequirementLevel = Field(
+        default=HandoffRequirementLevel.NONE,
+        description="NONE, RECOMMENDED (advisory) or REQUIRED (enforced)",
+    )
+    priority: HandoffPriority | None = Field(
+        default=None,
+        description="Minimum queue priority of the handoff; unset when level is NONE",
+    )
+    department: Department | None = Field(
+        default=None,
+        description="Department the handoff must be routed to; unset when level is NONE",
+    )
+    reason: HandoffReason | None = Field(
+        default=None,
+        description="Categorized reason the handoff must carry; unset when level is NONE",
+    )
+
+    @model_validator(mode="after")
+    def _details_match_level(self) -> "HandoffRequirement":
+        details = (self.priority, self.department, self.reason)
+        if self.level is HandoffRequirementLevel.NONE:
+            if any(detail is not None for detail in details):
+                raise ValueError("priority, department and reason must be unset when level is NONE")
+        elif any(detail is None for detail in details):
+            raise ValueError("priority, department and reason are required unless level is NONE")
+        return self
 
 
 type JsonScalar = str | int | float | bool | None
@@ -90,6 +141,16 @@ class HandoffCreateInput(BaseToolInput):
     department: Department = Field(
         default=Department.FRAUD_OPERATIONS,
         description="Target specialized department queue",
+    )
+    transaction_id: str | None = Field(
+        default=None,
+        min_length=TRANSACTION_ID_MIN_LENGTH,
+        max_length=TRANSACTION_ID_MAX_LENGTH,
+        description=(
+            "Opaque transaction id returned by transaction.list_recent for the "
+            "charge the customer disputes. banking-core reads its details from "
+            "the database. Never invent or guess one"
+        ),
     )
 
 

@@ -13,7 +13,7 @@
       "requires_idempotency": false
     },
     "card.block": {
-      "description": "Blocks a payment card by opaque card_ref. Requires idempotency key.",
+      "description": "Blocks a payment card by opaque card_ref. Pass the transaction_id (from transaction.list_recent) of the charge the customer disputes; the policy reads its amount from the database. Returns the handoff_requirement the policy decided. Requires idempotency key.",
       "input_schema_file": "tools/card_block.input.json",
       "is_write": true,
       "mutates_state": true,

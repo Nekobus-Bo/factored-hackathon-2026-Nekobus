@@ -7,6 +7,11 @@ from pydantic import Field
 from contracts.envelope import Receipt
 from contracts.tools.base import BaseToolInput, BaseToolOutput
 from contracts.tools.card_list import CardStatus
+from contracts.tools.handoff_create import HandoffRequirement
+from contracts.tools.transaction_list_recent import (
+    TRANSACTION_ID_MAX_LENGTH,
+    TRANSACTION_ID_MIN_LENGTH,
+)
 
 
 class BlockReason(str, Enum):
@@ -25,6 +30,10 @@ class CardBlockInput(BaseToolInput):
     HARD RULE (ADR-0004 IDOR): targets a card ONLY by an opaque card_ref
     previously returned by card.list. Free-text notes are removed to eliminate
     PII leakage into DB/audit.
+
+    There is deliberately no amount field (ADR-0003 amendment 2026-09-29): the
+    amount the risk threshold compares comes from the database row of the
+    disputed transaction, never from the model or the customer's words.
     """
 
     card_ref: str = Field(
@@ -37,6 +46,17 @@ class CardBlockInput(BaseToolInput):
     reason: BlockReason = Field(
         ...,
         description="Structured business reason for blocking the card",
+    )
+    transaction_id: str | None = Field(
+        default=None,
+        min_length=TRANSACTION_ID_MIN_LENGTH,
+        max_length=TRANSACTION_ID_MAX_LENGTH,
+        description=(
+            "Opaque transaction id returned by transaction.list_recent for the "
+            "charge the customer disputes, on the card being blocked. "
+            "banking-core reads its amount from the database. Never invent or "
+            "guess one, and never state an amount"
+        ),
     )
 
 
@@ -57,4 +77,14 @@ class CardBlockOutput(BaseToolOutput):
     receipt: Receipt = Field(
         ...,
         description="Verified receipt re-read from the database",
+    )
+    handoff_requirement: HandoffRequirement = Field(
+        default_factory=HandoffRequirement,
+        description=(
+            "Policy outcome for the case (NONE, RECOMMENDED or REQUIRED, with "
+            "priority, department and reason), decided by banking-core from the "
+            "disputed transaction in the database. Also returned on an "
+            "idempotent replay. The default only lets a response stored before "
+            "this field existed validate; banking-core always sets it"
+        ),
     )

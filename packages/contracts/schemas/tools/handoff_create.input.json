@@ -58,6 +58,21 @@
       "minLength": 5,
       "title": "Summary",
       "type": "string"
+    },
+    "transaction_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 8,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Opaque transaction id returned by transaction.list_recent for the charge the customer disputes. banking-core reads its details from the database. Never invent or guess one",
+      "title": "Transaction Id"
     }
   },
   "required": [
