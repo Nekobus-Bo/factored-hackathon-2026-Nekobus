@@ -70,7 +70,7 @@ flowchart LR
     ORC --> RE[(Redis Edge<br/>chat cache)]
 ```
 
-**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies and risk thresholds can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config`, bearer token; on in the development compose with a development-only token, off in production unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
+**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies, risk thresholds and which tools are enabled can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config` and `/v1/admin/tool-policy`, bearer token; on in the development compose with a development-only token, off in production unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
 
 ---
 

@@ -32,7 +32,7 @@ That lets a single demo session show what we consider the heart of the challenge
 The system is built as a **configurable generic engine**: intents, knowledge, message templates and policies live in the database and are edited from the back office (see [ADR-0002](adr/0002-config-code-boundary.md)). Rather than leave that as a claim, we demonstrate it:
 
 - The compromised-card workflow is **evaluated in depth**, with real data from the dataset and the full suite.
-- A **second workflow** (account and payment inquiries, read-only) is added **live during the demo, without touching code** — configuration and rules only. It is covered by a 5-case smoke test, not the full suite.
+- A **second workflow** (account and payment inquiries, read-only) is added **live during the demo, without touching code**. Concretely: `account.get_summary`, a tool that already exists in the catalog, starts disabled in the versioned tool policy, and an operator enables it live with an audited change that can never go beyond the code floor. No deployment, no restart ([ADR-0002](adr/0002-config-code-boundary.md), amendment of 2026-09-29). Until the back office exists this is one admin API call ([runbook](runbook.md), demo step 5). It is covered by the `account_inquiry` scenarios (8 of the suite's 56, three of them with the tool disabled), not by the full suite.
 
 Generality is a property of the system; depth is a property of our submission. We would rather both be verifiable in 3 minutes.
 

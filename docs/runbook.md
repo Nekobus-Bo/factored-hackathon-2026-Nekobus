@@ -179,7 +179,15 @@ Works the same in replay and live mode.
 2. **The system stops (⚠️ pending UI).** Ask to dispute the charge. The structured handoff appears and the case enters the back-office queue with verified facts, actions taken, verification method and open questions.
 3. **Takeover (⚠️ pending UI).** From the back office, take the conversation and reply as a human agent.
 4. **Guardrail, live (⚠️ pending UI).** The threshold is compared against the amount of the disputed charge **as stored in the database**, never against what the customer types. The demo customer holds an unrecognized charge (Global Electronics Megastore, USD 139.99 for the English customer), and the default USD threshold is USD 500, so step 1 ends with the card blocked and no handoff. Lower the USD threshold to, say, USD 100 and set the mode to `block` (handoff required), then repeat the same conversation: the card is still blocked, but the conversation now ends in a **priority handoff** to a human agent, created by the system itself and not by the model, instead of automated resolution. No deployment, no restart. Until the back-office UI exists, change the policy with the banking-core admin API (`PUT /v1/admin/policy-config`, see [deployment.md](deployment.md)); in `flag` mode (handoff recommended) the same change only suggests the handoff.
-5. **Another workflow, no code (⚠️ pending UI).** Load the second workflow's configuration and use it right away. The diff is on screen: configuration only.
+5. **Another workflow, no code (⚠️ pending UI: back-office toggle; today one admin API call).** The second workflow, account inquiries, uses `account.get_summary`, which starts disabled. As a verified customer, ask for your balance: the assistant says it cannot help with that here, because banking-core refuses the tool (audited as `TOOL_DISABLED`). Then enable it, live, with the admin API (`ADMIN_API_ENABLED=true` and `ADMIN_API_TOKEN` set in `.env`; banking-core listens on `PORT_BANKING_CORE`, 8081 by default):
+
+   ```bash
+   curl -sS -X PUT http://localhost:8081/v1/admin/tool-policy \
+     -H "Authorization: Bearer $ADMIN_API_TOKEN" -H "Content-Type: application/json" \
+     -d '{"tools": {"account.get_summary": ["VERIFIED"]}}'
+   ```
+
+   Ask again: the balance comes back. No deployment, no restart, no code: the response is the new policy version, and the audit row `admin.tool_policy.updated` keeps the before and after. `GET /v1/admin/tool-policy` shows the policy in force and the code floor; asking for a state beyond it (for example `card.block` for `ANONYMOUS`) is refused with a 422. To run the demo again, `POST /v1/admin/demo/reset-fixtures` with the same header (and `DEMO_RESET_ENABLED=true` under `APP_ENV=production`) puts the tool back to disabled, along with the demo cards.
 6. **Language (⚠️ pending UI).** Repeat step 1 in Portuguese.
 
 Full scripts with exact messages: `demo/scripts/`.
