@@ -242,6 +242,10 @@ services:
       ENCODER_ENABLED: ${ENCODER_ENABLED:-true}
       ENCODER_TIMEOUT_SECONDS: ${ENCODER_TIMEOUT_SECONDS:-2}
       MAX_TOOL_ROUNDS: ${MAX_TOOL_ROUNDS:-5}
+      # ADR-0012: blank = apps/orchestrator/config/decision_effects.yaml (baked into
+      # the image, every decision point in shadow); the second is the mode kill switch.
+      DECISION_EFFECTS_FILE: ${DECISION_EFFECTS_FILE:-}
+      DECISION_POINTS_MODES: ${DECISION_POINTS_MODES:-}
       # Where replay mode reads recordings (mounted below).
       REPLAY_DIR: /app/eval/replay
       REDIS_HOST: redis-edge
