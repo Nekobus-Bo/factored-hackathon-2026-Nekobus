@@ -4,16 +4,28 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
-from evalrunner.guard import (
-    BaselineSystem,
-    ProposedSystem,
-    guard_fakesystem_output,
-)
+from evalrunner.guard import guard_fakesystem_output, is_real_system
 from evalrunner.models import CheckDetail, ScenarioRunResult, TurnResult, UnsafeOutcome
 from evalrunner.report import render_evaluation_report
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+class MarkedSystem:
+    """Declares itself real the way ProposedSystem does, with nothing else to it."""
+
+    name = "marked"
+    real_system: ClassVar[bool] = True
+
+
+class UnmarkedSystem:
+    """Named like the real one but without the marker: a fake."""
+
+    name = "proposed"
 
 
 def test_guard_fakesystem_output_raises_for_reports_dir():
@@ -67,9 +79,9 @@ def test_guard_non_fakesystem_allows_reports():
         repo_path = Path(fake_repo)
         (repo_path / "reports").mkdir()
 
-        # Real proposed system is allowed to write into reports/
+        # A system that declares itself real is allowed to write into reports/
         guard_fakesystem_output(
-            system=ProposedSystem(),
+            system=MarkedSystem(),
             out_path=repo_path / "reports" / "eval.md",
             repo_root=repo_path,
         )
@@ -93,14 +105,9 @@ def test_guard_from_eval_runner_relative_reports():
             repo_root=None,
         )
 
-    # Real systems like BaselineSystem and ProposedSystem are allowed
+    # A system that declares itself real is allowed
     guard_fakesystem_output(
-        system=BaselineSystem(),
-        out_path=target_abs,
-        repo_root=None,
-    )
-    guard_fakesystem_output(
-        system=ProposedSystem(),
+        system=MarkedSystem(),
         out_path=target_abs,
         repo_root=None,
     )
@@ -119,6 +126,49 @@ def test_guard_rejects_fake_system_named_proposed():
 
     with pytest.raises(ValueError, match="Refusing to write fake evaluation report"):
         guard_fakesystem_output(system=fake, out_path=target_abs)
+
+
+def test_only_a_class_level_marker_makes_a_system_real():
+    class InstanceMarked:
+        name = "proposed"
+
+        def __init__(self) -> None:
+            self.real_system = True
+
+    assert is_real_system(MarkedSystem())
+    assert is_real_system(MarkedSystem)
+    assert not is_real_system(UnmarkedSystem())
+    assert not is_real_system(InstanceMarked())
+    assert not is_real_system("proposed")
+    assert not is_real_system(None)
+
+    with pytest.raises(ValueError, match="Refusing to write fake evaluation report"):
+        guard_fakesystem_output(
+            system=UnmarkedSystem(), out_path=REPO_ROOT / "reports" / "eval.md"
+        )
+
+
+def test_run_evaluation_default_path_refuses_a_fake(monkeypatch):
+    # The default report path is reports/eval-<date>.md relative to the repo root.
+    from evalrunner import runner
+
+    try:
+        from fake_system import FakeSystem
+    except ImportError:
+        from .fake_system import FakeSystem
+
+    rendered: list[dict] = []
+
+    def fake_render(**kwargs):
+        rendered.append(kwargs)
+        return kwargs["out_path"]
+
+    monkeypatch.setattr(runner, "render_evaluation_report", fake_render)
+    monkeypatch.chdir(REPO_ROOT)
+
+    with pytest.raises(ValueError, match="Refusing to write fake evaluation report"):
+        runner.run_evaluation(system=FakeSystem(name="proposed"), scenarios=[])
+    assert rendered == []
 
 
 def test_run_evaluation_enforces_guard():

@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID
 
 import httpx
@@ -118,6 +118,8 @@ class ProposedSystem:
     """SystemUnderTest for the real stack (orchestrator + banking-core)."""
 
     name = "proposed"
+    # Lets its report be written into reports/ (see evalrunner.guard).
+    real_system: ClassVar[bool] = True
 
     def __init__(
         self,
