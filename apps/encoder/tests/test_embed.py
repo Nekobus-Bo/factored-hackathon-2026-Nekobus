@@ -204,13 +204,11 @@ def test_a_model_returning_non_finite_or_misshapen_vectors_is_a_503() -> None:
         assert client.post("/v1/embed", json={"texts": ["a", "b"]}).status_code == 503
 
 
-def test_ready_reports_the_embedding_state() -> None:
+def test_ready_reports_the_embedding_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ABSTENTION_THRESHOLD", "0.5")
     set_backend(FakeEncoderBackend())
-    client = TestClient(app)
-    import os
-
-    os.environ["ABSTENTION_THRESHOLD"] = "0.5"
     try:
+        client = TestClient(app)
         assert client.get("/ready").json()["embedding"] == {"configured": False}
         set_embedding(fake_backend())
         ready = client.get("/ready").json()["embedding"]
@@ -227,7 +225,6 @@ def test_ready_reports_the_embedding_state() -> None:
         assert down.json()["embedding"]["state"] == "unavailable"
         assert down.json()["embedding"]["reason"] == "not cached"
     finally:
-        os.environ.pop("ABSTENTION_THRESHOLD", None)
         set_backend(None)
 
 
