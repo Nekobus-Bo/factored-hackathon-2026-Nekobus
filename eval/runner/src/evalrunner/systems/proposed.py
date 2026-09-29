@@ -164,6 +164,13 @@ class ProposedSystem:
             f"{self.config.orchestrator_url}/v1/conversations",
             json={"lang": scenario.lang},
         )
+        if response.status_code == 429:
+            raise RuntimeError(
+                "could not open a conversation: HTTP 429, the orchestrator's "
+                "per-address limit was reached (RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR; "
+                "the suite opens one conversation per scenario from one address, "
+                "so raise it for evaluation runs)"
+            )
         if response.status_code != 201:
             raise RuntimeError(
                 f"could not open a conversation: HTTP {response.status_code}"
