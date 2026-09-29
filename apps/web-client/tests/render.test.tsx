@@ -325,6 +325,16 @@ describe("the landing", () => {
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
+  test("the FAQ is the design system's accordion: five items, the first open, no div inside a trigger", () => {
+    const html = page("es");
+    const triggers = [...html.matchAll(/<button[^>]*pb-faq__trigger[^>]*>(.*?)<\/button>/gs)];
+    expect(triggers).toHaveLength(5);
+    expect(triggers.map((match) => match[0].includes('aria-expanded="true"'))).toEqual([true, false, false, false, false]);
+    for (const trigger of triggers) expect(trigger[1]).not.toContain("<div");
+    expect(html).toContain('data-scope="accordion"');
+    expect(html).toContain("pb-faq__indicator");
+  });
+
   test("no chat request is made by rendering it: the conversation is lazy", () => {
     const env: AppEnv = { storage: null, root: null, navigatorLanguage: "es" };
     const world = createWorld();

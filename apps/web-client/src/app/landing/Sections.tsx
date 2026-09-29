@@ -131,9 +131,12 @@ export function FaqAccordion() {
             <h3 className="pb-faq__heading">
               <Accordion.ItemTrigger className="pb-faq__trigger">
                 <span>{item.q}</span>
-                <Accordion.ItemIndicator className="pb-faq__indicator" aria-hidden="true">
-                  <Icon name="plus" />
-                  <Icon name="minus" />
+                {/* A span, as in the design system's markup: a div is not allowed inside a button. */}
+                <Accordion.ItemIndicator asChild>
+                  <span className="pb-faq__indicator" aria-hidden="true">
+                    <Icon name="plus" />
+                    <Icon name="minus" />
+                  </span>
                 </Accordion.ItemIndicator>
               </Accordion.ItemTrigger>
             </h3>
