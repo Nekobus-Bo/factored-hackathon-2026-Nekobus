@@ -191,7 +191,7 @@ Infrastructure Plumbing (.env / Container Environment)
         ▼ (Seed only on initial boot)
 Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
   ├── Risk thresholds per currency (minor units)
-  ├── Policy evaluation mode (flag vs block)
+  ├── Policy amount mode (`flag` = handoff recommended, `block` = handoff required)
   └── Allowed tool dispatch matrices per FSM state
 ```
 
@@ -203,7 +203,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
 
 2. **Database Runtime Configuration:**
-   - Policy thresholds (`POLICY_SEED_THRESHOLDS_MINOR`), action modes (`POLICY_SEED_AMOUNT_MODE`), and verification policies are **not constants in code**.
+   - Policy thresholds (`POLICY_SEED_THRESHOLDS_MINOR`), the amount mode (`POLICY_SEED_AMOUNT_MODE`: `flag` recommends a handoff above the threshold, `block` requires one), and verification policies are **not constants in code**.
    - The environment variables only seed initial values into PostgreSQL tables on first boot.
    - Active policies reside in the database and can be queried and modified at runtime via the banking-core Admin API (`GET` / `PUT /v1/admin/policy-config`, authenticated via bearer token when `ADMIN_API_ENABLED=true`), with zero service restart or redeployment.
 

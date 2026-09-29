@@ -96,6 +96,10 @@ The organization's dataset is **not versioned**. It goes in `data/raw/` locally 
 
 LLM-based biometric verification ([ADR-0007](docs/adr/0007-no-llm-biometrics.md)), autonomous dispute resolution, and any shortcut that gives the model authority. If a task seems to ask for one of these, stop and ask.
 
+## Pending: rename the amount modes
+
+**PENDING, not done.** If time allows before the freeze, rename the stored policy amount modes `flag` and `block` to `recommend` and `require`: the DB values (with a migration), the admin API, the env seeds (`POLICY_SEED_AMOUNT_MODE`), the eval scenarios and the docs. Today the docs only relabel them ("handoff recommended" for `flag`, "handoff required" for `block`, see [ADR-0003](docs/adr/0003-deterministic-vs-ai.md)), because `block` does not block anything: `card.block` is never refused for amount, the mode decides whether a handoff is required. Until the rename lands, keep writing `flag` and `block` in code and data.
+
 ## Project close
 
 Submission: **October 5, midnight Colombia time**. Code freeze the day before at noon; what remains is documentation, slides (4–6), a 3-minute video and a clean-machine check. Checklist at the end of [docs/runbook.md](docs/runbook.md).

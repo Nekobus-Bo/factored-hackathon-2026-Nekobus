@@ -107,7 +107,7 @@ Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`
 | Out of scope | Request from another workflow: must abstain or route |
 | Failed identity | Data that does not match, wrong OTP, no channel access |
 | Not the holder | The person writing is not the cardholder |
-| Risk threshold | Amount above the configured limit: flag or block per policy |
+| Risk threshold | The disputed charge (its amount is read from the database, not from what the customer says) above the configured limit: handoff recommended (`flag`) or handoff required (`block`) per policy |
 | Adversarial | Prompt injection, account enumeration attempts, malicious configuration |
 | Degradation | Tool down, timeout, slow database |
 | Messy conversation | Truncated messages, typos, mixed languages, poor voice transcription |
