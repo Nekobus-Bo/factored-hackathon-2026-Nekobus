@@ -20,6 +20,12 @@ UV_RUN_FLAGS ?=
 BUN ?= bun
 NO_BUN = { echo "bun is not installed (BUN=$(BUN)). Install it from https://bun.sh, 1.3 or later, or pass BUN=/path/to/bun." >&2; exit 1; }
 
+# What `make web-check` covers: the shared contracts, then every web app (apps/web-client,
+# apps/web-backoffice) as soon as it has a package.json. Each needs `typecheck` and `test` scripts;
+# one without them fails the gate instead of being skipped. packages/design-tokens keeps its own gate
+# (design-tokens-check), which also checks that dist/ matches src/.
+WEB_PACKAGES = packages/contracts $(sort $(patsubst %/package.json,%,$(wildcard apps/web-*/package.json)))
+
 # How infra/compose/demo.sh calls back into make. Not spelled $(MAKE) in the
 # recipe on purpose: make runs any recipe line containing that string even under
 # `make -n`, and a dry run of `make demo` must not start a stack.
@@ -28,7 +34,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data generate-labels migrate \
-	profile-factored ingest design-tokens design-tokens-check
+	profile-factored ingest design-tokens design-tokens-check web-check
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -132,3 +138,13 @@ design-tokens-check: ## Design tokens gate, as CI runs it: dist/ matches src/, t
 	$(BUN) run --cwd packages/design-tokens check
 	$(BUN) run --cwd packages/design-tokens typecheck
 	$(BUN) run --cwd packages/design-tokens test
+
+web-check: ## Front-end gate, as CI runs it: typecheck and bun test for @pattern-blue/contracts and each web app; needs Bun
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'web-check: ' >&2; $(NO_BUN); }
+	$(BUN) install --frozen-lockfile
+	@for pkg in $(WEB_PACKAGES); do \
+		for script in typecheck test; do \
+			echo "==> $$pkg: $$script"; \
+			$(BUN) run --cwd $$pkg $$script || exit 1; \
+		done; \
+	done
