@@ -40,6 +40,7 @@ from banking_core.seed.staging import (
     StagingDataset,
     StagingTransaction,
 )
+from banking_core.transactions.lookup import TransactionNotFoundError
 from contracts.envelope import ReasonCode, ResourceState, VerificationState
 from contracts.tools.card_block import BlockReason, CardBlockInput, CardBlockOutput
 from contracts.tools.handoff_create import (
@@ -89,6 +90,7 @@ def execute_handoff_create(
     policy_decision: Decision,
     idempotency_scope: str,
     verification_state_before: VerificationState,
+    session_requirement: HandoffRequirement | None = None,
 ) -> HandoffCreateResult:
     return _execute_handoff_create(
         db_session=db_session,
@@ -99,6 +101,7 @@ def execute_handoff_create(
         verification_state_before=verification_state_before,
         verification_state_after=VerificationState.HANDED_OFF,
         session_id=idempotency_scope,
+        session_requirement=session_requirement,
     )
 
 
@@ -694,6 +697,282 @@ def test_second_handoff_in_a_session_returns_the_open_one(seeded: Session) -> No
     # The dispatcher's post-commit re-read agrees with what was returned.
     reread = reread_handoff_create_result(seeded, again.output)
     assert reread.output.model_dump(mode="json") == again.output.model_dump(mode="json")
+
+
+def _requirement(
+    level: HandoffRequirementLevel = HandoffRequirementLevel.REQUIRED,
+    priority: HandoffPriority = HandoffPriority.URGENT,
+) -> HandoffRequirement:
+    return HandoffRequirement(
+        level=level,
+        priority=priority,
+        department=Department.DISPUTES,
+        reason=HandoffReason.UNRECOGNIZED_TRANSACTION,
+    )
+
+
+def _lowball_args(**overrides: object) -> HandoffCreateInput:
+    """What a model that wants the case out of the way would ask for."""
+    fields: dict[str, object] = {
+        "reason": HandoffReason.CUSTOMER_REQUEST,
+        "summary": "Customer asks for a person.",
+        "priority": HandoffPriority.LOW,
+        "department": Department.CUSTOMER_SUPPORT,
+        **overrides,
+    }
+    return HandoffCreateInput.model_validate(fields)
+
+
+def test_session_requirement_raises_the_priority_and_forces_the_department(
+    seeded: Session,
+) -> None:
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        "sess_required",
+        VerificationState.VERIFIED,
+        session_requirement=_requirement(),
+    )
+
+    assert result.output.priority == HandoffPriority.URGENT
+    assert result.output.department == Department.DISPUTES
+    seeded.expire_all()
+    [row] = seeded.scalars(sa.select(Handoff)).all()
+    assert (row.priority, row.department) == ("URGENT", "DISPUTES")
+    [audit] = _handoff_audits(seeded, "sess_required")
+    assert audit.payload["details"]["department"] == "DISPUTES"
+    assert audit.payload["details"]["department_requested"] == "CUSTOMER_SUPPORT"
+    assert audit.payload["details"]["priority_raised_from"] == "LOW"
+    assert audit.payload["details"]["handoff_requirement"] == "REQUIRED"
+
+
+def test_session_requirement_never_lowers_a_higher_request(seeded: Session) -> None:
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(priority=HandoffPriority.URGENT),
+        ALLOWED,
+        "sess_higher",
+        VerificationState.VERIFIED,
+        session_requirement=_requirement(
+            HandoffRequirementLevel.RECOMMENDED, HandoffPriority.NORMAL
+        ),
+    )
+
+    assert result.output.priority == HandoffPriority.URGENT
+    assert result.output.department == Department.DISPUTES
+    [audit] = _handoff_audits(seeded, "sess_higher")
+    assert "priority_raised_from" not in audit.payload["details"]
+    assert audit.payload["details"]["handoff_requirement"] == "RECOMMENDED"
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    [None, HandoffRequirement()],
+    ids=["none-remembered", "level-none"],
+)
+def test_no_session_requirement_leaves_the_request_alone(
+    seeded: Session, requirement: HandoffRequirement | None
+) -> None:
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        "sess_none",
+        VerificationState.VERIFIED,
+        session_requirement=requirement,
+    )
+
+    assert result.output.priority == HandoffPriority.LOW
+    assert result.output.department == Department.CUSTOMER_SUPPORT
+    [audit] = _handoff_audits(seeded, "sess_none")
+    assert "handoff_requirement" not in audit.payload["details"]
+
+
+def test_transaction_id_adds_the_database_facts_to_the_verified_facts(
+    seeded: Session,
+) -> None:
+    unrecognized = str(fixture_uuid("es-demo-unrecognized-tx"))
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        HandoffCreateInput(
+            reason=HandoffReason.UNRECOGNIZED_TRANSACTION,
+            summary="The customer says the charge is 5 dollars, it is not.",
+            transaction_id=unrecognized,
+        ),
+        ALLOWED,
+        "sess_facts",
+        VerificationState.VERIFIED,
+    )
+
+    facts = result.output.summary.verified_facts["disputed_transaction"]
+    assert facts == {
+        "transaction_id": unrecognized,
+        "amount_minor": 35000000,
+        "currency": "COP",
+        "merchant": "Global Electronics Megastore",
+        "posted_at": facts["posted_at"],
+        "card_masked": "**** **** **** 1050",
+    }
+    assert isinstance(facts, dict) and isinstance(facts["posted_at"], str)
+    # The model's words stay in the unverified open question, never in the facts.
+    assert "5 dollars" not in str(result.output.summary.verified_facts)
+    [audit] = _handoff_audits(seeded, "sess_facts")
+    assert audit.payload["details"]["transaction_id"] == unrecognized
+
+
+def test_a_handoff_without_transaction_id_has_no_disputed_transaction_fact(
+    seeded: Session,
+) -> None:
+    result = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        HANDOFF_ARGS,
+        ALLOWED,
+        "sess_nofacts",
+        VerificationState.VERIFIED,
+    )
+
+    assert "disputed_transaction" not in result.output.summary.verified_facts
+
+
+@pytest.mark.parametrize(
+    ("holder", "transaction_id"),
+    [
+        (demo_holder("es"), str(fixture_uuid("pt-demo-unrecognized-tx"))),
+        (demo_holder("es"), str(uuid.uuid4())),
+        (None, str(fixture_uuid("es-demo-unrecognized-tx"))),
+    ],
+    ids=["foreign", "missing", "no-holder"],
+)
+def test_an_unresolved_transaction_creates_no_handoff(
+    seeded: Session, holder: uuid.UUID | None, transaction_id: str
+) -> None:
+    with pytest.raises(TransactionNotFoundError):
+        execute_handoff_create(
+            seeded,
+            holder,
+            HandoffCreateInput(
+                reason=HandoffReason.DISPUTE_CLAIM,
+                summary="Customer disputes a charge.",
+                transaction_id=transaction_id,
+            ),
+            ALLOWED,
+            "sess_unresolved",
+            VerificationState.VERIFIED,
+        )
+
+    assert seeded.scalars(sa.select(Handoff)).all() == []
+    assert _handoff_audits(seeded, "sess_unresolved") == []
+
+
+def test_a_stronger_requirement_raises_the_open_handoff_and_says_so(
+    seeded: Session,
+) -> None:
+    scope = "sess_raise_open"
+    first = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        scope,
+        VerificationState.VERIFIED,
+    )
+    assert first.output.priority == HandoffPriority.LOW
+
+    again = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        scope,
+        VerificationState.HANDED_OFF,
+        session_requirement=_requirement(),
+    )
+
+    seeded.expire_all()
+    [row] = seeded.scalars(sa.select(Handoff)).all()
+    assert again.output.handoff_id == first.output.handoff_id == row.handoff_ref
+    assert row.priority == "URGENT"
+    assert again.output.priority == HandoffPriority.URGENT
+    _, second_audit = _handoff_audits(seeded, scope)
+    assert second_audit.payload["handoff_priority"] == "URGENT"
+    assert second_audit.payload["details"]["already_open"] is True
+    assert second_audit.payload["details"]["priority_raised_from"] == "LOW"
+    assert second_audit.payload["details"]["handoff_requirement"] == "REQUIRED"
+    # The dispatcher's post-commit re-read agrees with what was returned.
+    reread = reread_handoff_create_result(seeded, again.output)
+    assert reread.output.priority == HandoffPriority.URGENT
+
+
+def test_raising_an_open_handoff_survives_the_dispatchers_deferred_commit(
+    seeded: Session,
+) -> None:
+    """With commit=False the raise is still written before the receipt re-read."""
+    scope = "sess_raise_deferred"
+    execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        scope,
+        VerificationState.VERIFIED,
+    )
+
+    again = _execute_handoff_create(
+        db_session=seeded,
+        holder_customer_id=demo_holder("es"),
+        args=_lowball_args(),
+        policy_decision=ALLOWED,
+        idempotency_scope=scope,
+        verification_state_before=VerificationState.HANDED_OFF,
+        verification_state_after=VerificationState.HANDED_OFF,
+        session_id=scope,
+        session_requirement=_requirement(),
+        commit=False,
+    )
+    seeded.commit()
+
+    assert again.output.priority == HandoffPriority.URGENT
+    seeded.expire_all()
+    [row] = seeded.scalars(sa.select(Handoff)).all()
+    assert row.priority == "URGENT"
+
+
+def test_a_weaker_requirement_leaves_the_open_handoff_alone(seeded: Session) -> None:
+    scope = "sess_no_lower_open"
+    first = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        HANDOFF_ARGS,
+        Decision(allowed=True, flags=["HANDOFF_REQUIRED", "PRIORITY"]),
+        scope,
+        VerificationState.VERIFIED,
+    )
+    assert first.output.priority == HandoffPriority.URGENT
+
+    again = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        _lowball_args(),
+        ALLOWED,
+        scope,
+        VerificationState.HANDED_OFF,
+        session_requirement=_requirement(
+            HandoffRequirementLevel.RECOMMENDED, HandoffPriority.NORMAL
+        ),
+    )
+
+    assert again.output.priority == HandoffPriority.URGENT
+    seeded.expire_all()
+    [row] = seeded.scalars(sa.select(Handoff)).all()
+    assert row.priority == "URGENT"
+    _, second_audit = _handoff_audits(seeded, scope)
+    assert "priority_raised_from" not in second_audit.payload["details"]
 
 
 def test_open_handoff_of_another_session_is_not_reused(seeded: Session) -> None:
