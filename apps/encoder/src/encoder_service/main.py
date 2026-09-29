@@ -2,7 +2,7 @@
 
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -17,6 +17,11 @@ from contracts.encoder import (
     Slot,
 )
 from contracts.labels import Intent, PiiType, SlotType
+from encoder.decision_points import (
+    ArtifactError,
+    check_tau_raise,
+    seed_backend_and_dp,
+)
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -45,7 +50,7 @@ from encoder_service.embedding import (
     readiness,
     set_embedding,
 )
-from encoder_service.model_backends import build_backend
+from encoder_service.model_backends import BackendConfigError, build_backend
 from encoder_service.scoring import RequestScores
 
 logger = logging.getLogger(__name__)
@@ -70,6 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runtime = load_runtime(settings)
     set_runtime(runtime)
     if runtime is None:
+        _check_seed_tau_raise(settings.tau_raise)
         logger.info("decision points: legacy seed mode (ABSTENTION_THRESHOLD)")
     else:
         logger.info("decision points: artifact %s", runtime.config_version)
@@ -146,6 +152,23 @@ def ready() -> JSONResponse:
             "embedding": readiness(get_embedding()),
         }
     return JSONResponse(status_code=status_code, content=payload)
+
+
+def _check_seed_tau_raise(tau_raise: Mapping[tuple[str, str], float]) -> None:
+    """A raise-only override in seed mode must raise the seed's threshold, or stop."""
+    if not tau_raise:
+        return
+    tau = get_abstention_threshold()
+    if tau is None:
+        raise BackendConfigError(
+            "DECISION_POINTS_TAU_RAISE is set but there is no threshold to raise: "
+            "set ABSTENTION_THRESHOLD or provide a calibration artifact"
+        )
+    _, seed_dp = seed_backend_and_dp(tau, [i.value for i in Intent], "seed")
+    try:
+        check_tau_raise({TURN_INTENT: seed_dp}, tau_raise)
+    except ArtifactError as exc:
+        raise BackendConfigError(str(exc)) from exc
 
 
 def _decision_points_readiness(runtime: DecisionRuntime | None) -> dict[str, Any]:
