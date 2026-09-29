@@ -18,6 +18,7 @@ Covers:
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -446,6 +447,66 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     assert verify_audit.action == "otp.verify"
     assert verify_audit.payload["verification_state_before"] == "OTP_PENDING"
     assert verify_audit.payload["verification_state_after"] == "VERIFIED"
+
+
+def test_the_simulated_inbox_serves_the_code_only_to_the_session_that_asked(
+    test_setup, caplog: pytest.LogCaptureFixture
+) -> None:
+    """otp.send -> inbox endpoint -> otp.verify; the code goes nowhere else."""
+    client, mock_db, _, inbox = test_setup
+
+    def call(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response = client.post(
+            "/v1/tools/call", json=payload, headers={"X-Session-Id": session_id}
+        )
+        assert response.status_code == 200
+        body: dict[str, Any] = response.json()
+        return body
+
+    mine = client.post("/v1/sessions").json()["session_id"]
+    other = client.post("/v1/sessions").json()["session_id"]
+    assert call(
+        mine,
+        {
+            "tool": "customer.match",
+            "args": {"document_type": "NATIONAL_ID", "document_number": "1020304050"},
+        },
+    )["data"] == {"matched": True}
+    with caplog.at_level(logging.DEBUG):
+        sent = call(
+            mine,
+            {"tool": "otp.send", "args": {}, "idempotency_key": "idem_inbox_send_01"},
+        )
+    challenge_id = sent["data"]["challenge_id"]
+
+    listing = client.get(f"/v1/sessions/{mine}/simulated-inbox").json()
+
+    [message] = listing["messages"]
+    code = message["code"]
+    assert re.fullmatch(r"\d{6}", code)
+    assert message["challenge_id"] == challenge_id
+    assert message["channel"] == sent["data"]["channel"]
+    assert message["destination_masked"] == sent["data"]["destination_masked"]
+    assert client.get(f"/v1/sessions/{other}/simulated-inbox").json() == {
+        "messages": []
+    }
+
+    # The code is nowhere the model, the logs or the audit trail could see it.
+    assert code not in json.dumps(sent)
+    assert code not in caplog.text
+    assert all(code not in json.dumps(row.payload) for row in mock_db.audit_logs)
+
+    verified = call(
+        mine,
+        {
+            "tool": "otp.verify",
+            "args": {"code": code},
+            "idempotency_key": "idem_inbox_verify_01",
+        },
+    )
+    assert verified["data"]["verified"] is True
+    assert code not in json.dumps(verified)
+    assert all(code not in json.dumps(row.payload) for row in mock_db.audit_logs)
 
 
 def test_tool_outside_allowed_states_is_refused(test_setup) -> None:
