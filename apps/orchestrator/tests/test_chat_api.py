@@ -565,7 +565,11 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "recording_keys",
             "tokens",
             "cost_usd",
+            "decisions",
+            "effects",
         }
+        # The engine of this test has no decision point wired yet.
+        assert evaluation["decisions"] == evaluation["effects"] == []
         assert len(evaluation["masked_outbound"]) == expected_calls
         assert len(evaluation["recording_keys"]) == expected_calls
         assert evaluation["tokens"] == expected_calls * 15

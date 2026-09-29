@@ -21,7 +21,10 @@ from typing import Any, Literal, Union, get_args, get_origin
 
 import yaml
 from contracts import TOOL_CATALOG
-from contracts.encoder import DECISION_POINT_ID_PATTERN
+from contracts.encoder import (
+    DECISION_POINT_ID_PATTERN,
+    MAX_DECISION_POINTS_PER_REQUEST,
+)
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from orchestrator.conversation.decisions.records import Mode
@@ -216,6 +219,13 @@ def bind_effects(
             f"DECISION_POINTS_MODES names decision point(s) not in the effects "
             f"file: {unknown}"
         )
+    if len(parsed.decision_points) > MAX_DECISION_POINTS_PER_REQUEST:
+        # One analyze call names them all; over the contract ceiling it would be
+        # refused whole, PII spans included.
+        raise EffectsConfigError(
+            f"the effects file names {len(parsed.decision_points)} decision points; "
+            f"a request may name at most {MAX_DECISION_POINTS_PER_REQUEST}"
+        )
     bound: dict[str, DecisionPointConfig] = {}
     for dp_id, raw in parsed.decision_points.items():
         if not re.match(DECISION_POINT_ID_PATTERN, dp_id):
@@ -376,7 +386,7 @@ def _check_select(dp_id: str, params: SelectParams) -> SelectParams:
             seen.add((target.tool, arg))
         for label, values in assignments.items():
             for arg, value in values.items():
-                if value not in _enum_values(target.tool, arg):
+                if value not in enum_values(target.tool, arg):
                     raise EffectsConfigError(
                         f"{dp_id}: {target.tool}.{arg} has no value {value!r} "
                         f"(mapped from {label})"
@@ -384,7 +394,7 @@ def _check_select(dp_id: str, params: SelectParams) -> SelectParams:
         for arg, values in target.keep_llm_call_when.items():
             _check_enum_arg(dp_id, target.tool, arg, selecting=False)
             for value in values:
-                if value not in _enum_values(target.tool, arg):
+                if value not in enum_values(target.tool, arg):
                     raise EffectsConfigError(
                         f"{dp_id}: keep_llm_call_when {target.tool}.{arg} has no "
                         f"value {value!r}"
@@ -425,11 +435,11 @@ def _check_enum_arg(dp_id: str, tool: str, arg: str, selecting: bool = True) -> 
     """The argument exists on the tool and is an enum the effect may touch."""
     if selecting and arg in NEVER_SELECTED:
         raise EffectsConfigError(f"{dp_id}: {tool}.{arg} can never be selected")
-    if not _enum_values(tool, arg):
+    if not enum_values(tool, arg):
         raise EffectsConfigError(f"{dp_id}: {tool}.{arg} is not an enum argument")
 
 
-def _enum_values(tool: str, arg: str) -> frozenset[str]:
+def enum_values(tool: str, arg: str) -> frozenset[str]:
     """Members of the enum behind `tool.arg`; empty if it is not an enum."""
     field_info = TOOL_CATALOG[tool].input_model.model_fields.get(arg)
     if field_info is None:

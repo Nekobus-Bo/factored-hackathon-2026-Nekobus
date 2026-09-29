@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from orchestrator.conversation.decisions.state import DecisionState
+
 Lang = Literal["es", "pt", "en"]
 
 
@@ -68,6 +70,7 @@ class ConversationState(BaseModel):
     - Masked message history
     - Sensitive placeholder map (encrypted at rest in Redis, never returned to client)
     - The last completed turn's masked outcome, for client retries
+    - The decision-point state (consent for a gated write, sticky ledgers)
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -99,6 +102,13 @@ class ConversationState(BaseModel):
         default_factory=dict,
         description=(
             "Placeholder to raw PII mapping (encrypted at rest, server-side only)"
+        ),
+    )
+    decisions: DecisionState = Field(
+        default_factory=DecisionState,
+        description=(
+            "State of the decision-point effects (consent, sticky ledgers, turn "
+            "count; ADR-0012). No text; committed only when a turn completes"
         ),
     )
     last_turn: CompletedTurn | None = Field(

@@ -34,7 +34,7 @@ class DecisionRecord(BaseModel):
 
     dp_id: str
     effect: str
-    mode: Literal["shadow", "enforce"]
+    mode: Mode
     outcome: DecisionOutcome
     label: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -63,7 +63,7 @@ class EffectRecord(BaseModel):
 
     dp_id: str
     effect: Literal["select", "gate"]
-    mode: Literal["shadow", "enforce"]
+    mode: Mode
     tool: str
     applied: bool
     would_apply: bool

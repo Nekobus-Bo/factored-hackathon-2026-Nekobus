@@ -22,6 +22,7 @@ class EngineTurnHandler:
             language=conversation.language,
             history=conversation.llm_history,
             placeholder_map=conversation.placeholder_map,
+            decisions=conversation.decisions,
         )
         result = await self.engine.run_turn(
             context, user_text, lang=conversation.language, turn_id=turn_id
@@ -29,6 +30,7 @@ class EngineTurnHandler:
 
         conversation.llm_history = context.history
         conversation.placeholder_map = context.placeholder_map
+        conversation.decisions = context.decisions
         return TurnOutcome(
             blocks=[block.model_dump(mode="json") for block in result.blocks],
             metadata=result.metadata.model_dump(mode="json"),
