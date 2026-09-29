@@ -234,6 +234,7 @@ That environment runs the same images as `make demo`: there is no special path t
 | `encoder` exits at startup with a message that starts `embedding:` | `EMBEDDING_MODEL` is set but the pin is invalid (`EMBEDDING_REVISION` must be a full 40-hex commit), the cached weights do not match `EMBEDDING_WEIGHTS_SHA256`, or the image was built without `ENCODER_EXTRAS=embed` | Fix the variable the message names, or rebuild with `ENCODER_EXTRAS=embed` (`make up` does), or unset `EMBEDDING_MODEL` to run without `kb.search` |
 | Cannot download models even with a network | Corrupted cache | `make clean-models` (⚠️ pending), or `make clean` (also deletes the data) and `make demo` |
 | A `make` command does not exist | Not implemented yet | `make help` lists the available ones |
+| `orchestrator` exits at startup with a message that starts `effects file` or `DECISION_POINTS_MODES` | The decision-effects file is invalid, or the override in `.env` is malformed or names a decision point that is not in the file. It fails loud on purpose: a gate that cannot be read must not be guessed | Fix what the message names (`apps/orchestrator/config/decision_effects.yaml`, `DECISION_EFFECTS_FILE`, `DECISION_POINTS_MODES`) |
 | Chat replies but takes no actions | `make seed` was not run (`make demo` runs it) | `make seed` and retry |
 | I ran `make demo` again and my cards and handoffs are gone | It re-seeds by design | Expected: the demo data is reset to its seed state |
 | `make seed` fails with a contract error | Dataset missing or schema mismatch | See section 5; the message names the exact field |
@@ -254,6 +255,19 @@ make logs s=banking-core   # from one
 make down                  # stop
 make clean                 # stop and drop volumes (destroys seeded data)
 ```
+
+### Turning a decision point down (the mode kill switch)
+
+Each decision point of [ADR-0012](adr/0012-decision-points.md) has a mode in `apps/orchestrator/config/decision_effects.yaml`: `off` (ignored), `shadow` (computed and recorded, nothing changes) or `enforce` (applied). Every one ships in `shadow`. If one that was flipped to `enforce` misbehaves in a demo or on the presentation environment (a gate asking for a confirmation it should not, a block reason that looks wrong), turn it down with an environment change and no code:
+
+```bash
+# .env
+DECISION_POINTS_MODES=confirm_gate=shadow,block_reason=off
+
+make up          # recreates the orchestrator with the new value
+```
+
+`id=mode` pairs, separated by commas; the override wins over the file. An entry that cannot be read, or that names a decision point the file does not have, stops the orchestrator at startup instead of being skipped, so a typo cannot leave the decision point enforcing. Check it took effect in the turn metadata (`mode` of each decision record) or in the orchestrator log at startup (`Decision points from ...: confirm_gate=shadow, ...`). Emptying the variable restores the modes of the file. Turning `confirm_gate` down to `shadow` removes the confirmation question: `card.block` is again the LLM's proposal, authorized by banking-core as before.
 
 ---
 
