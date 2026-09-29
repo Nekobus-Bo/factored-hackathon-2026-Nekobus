@@ -52,6 +52,26 @@ class SentenceTransformersAdapter(RetrievalAdapter):
                 f"Could not load SentenceTransformer '{self.model_id}': {exc}"
             ) from exc
 
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        """Unit-length float32 embeddings on CPU, one row per text.
+
+        What ``index`` and ``search`` use, and what the model server returns from
+        ``POST /v1/embed``: one function, so in-process and remote vectors are the
+        same vectors.
+        """
+        if self.model is None:
+            raise RuntimeError("SentenceTransformer model is not loaded")
+        # Ensure model is on CPU for inference
+        self.model.to("cpu")
+        embeddings = self.model.encode(
+            list(texts),
+            batch_size=32,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        return np.asarray(embeddings, dtype=np.float32)
+
     def index(self, kb: Sequence[KBSnippet]) -> None:
         """Compute and cache dense embeddings for knowledge base snippets on CPU."""
         if self.model is None:
@@ -64,16 +84,7 @@ class SentenceTransformersAdapter(RetrievalAdapter):
             self.corpus_embeddings = np.empty((0, 384), dtype=np.float32)
             return
 
-        # Ensure model is on CPU for inference
-        self.model.to("cpu")
-        embeddings = self.model.encode(
-            texts,
-            batch_size=32,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
-        self.corpus_embeddings = np.asarray(embeddings, dtype=np.float32)
+        self.corpus_embeddings = self.embed(texts)
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
         """Dense semantic search using cosine similarity on CPU."""
@@ -82,15 +93,7 @@ class SentenceTransformersAdapter(RetrievalAdapter):
         if self.corpus_embeddings is None or len(self.doc_ids) == 0:
             return []
 
-        # Force CPU device for latency measurement
-        self.model.to("cpu")
-        query_emb = self.model.encode(
-            query,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
-        query_emb = np.asarray(query_emb, dtype=np.float32)
+        query_emb = self.embed([query])[0]
 
         # Dot product of normalized vectors equals cosine similarity
         scores = np.dot(self.corpus_embeddings, query_emb)

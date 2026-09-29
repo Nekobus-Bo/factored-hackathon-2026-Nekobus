@@ -115,7 +115,7 @@ Everything named here and in the appendices is **pending** until its work packag
 | `data/eval/synthetic/dp/`, the "gate labels" section of `docs/labeling-rubric.md`, calibration runs, `shadow` to `enforce` flips | WP9 | pending (teammate) |
 | Candidate adapters (`embedding_lr`, `hf_seqcls`), the `llm-local` compose profile, `packages/encoder/prompts/`, `DECISION_BACKEND_HOSTS`, cascading (`escalate_to`) | WP10 | pending (teammate, post-freeze) |
 | `EmbedRequest` and `EmbedResponse` in `packages/contracts/src/contracts/encoder.py`, with exported schemas | WP12 | landed |
-| `SentenceTransformersAdapter.embed` and `RemoteEmbeddingAdapter` in `packages/retrieval` | WP12 | pending |
+| `SentenceTransformersAdapter.embed` and `RemoteEmbeddingAdapter` in `packages/retrieval` | WP12 | landed |
 | `POST /v1/embed`, `EMBEDDING_MODEL`, `EMBEDDING_REVISION`, `EMBEDDING_WEIGHTS_SHA256`, `EMBEDDING_MAX_BATCH`, the `embed` extra and the embedding part of `warmup` in `apps/encoder` | WP12 | pending |
 | banking-core `kb.search` remote backend: `EMBEDDING_BACKEND`, `MODEL_SERVER_URL`, `MODEL_SERVER_TIMEOUT_SECONDS`, `EMBEDDING_REVISION` | WP12 | pending |
 | Compose wiring, `make warmup-retrieval` on the model server, `.env.example`, `docs/deployment.md`, `docs/limitations.md`, `docs/runbook.md` | WP12 | pending |
