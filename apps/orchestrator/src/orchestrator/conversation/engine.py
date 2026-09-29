@@ -109,6 +109,9 @@ class _TurnGuard:
 
     refused: dict[str, ReasonCode] = field(default_factory=dict)
     executed: set[str] = field(default_factory=set)
+    # Writes banking-core acknowledged (status ok), per tool: the ordinal the
+    # next write of that tool takes in its idempotency key.
+    written: dict[str, int] = field(default_factory=dict)
 
 
 class CompletionProvider(Protocol):
@@ -185,6 +188,13 @@ class TurnEngine:
 
         LLM errors (including a replay miss) propagate and leave `context`
         untouched, so a failed turn never persists a half-built transcript.
+
+        `turn_id` names the customer request and seeds the idempotency keys of
+        its writes. A caller that derives it from something the client repeats
+        on a retry (the client message id) makes a retried request reuse the
+        keys of the failed attempt, so banking-core answers from what it already
+        did instead of acting twice. Without it the id is random and a retry is
+        a new request.
         """
         lang = lang or context.language
         metadata = TurnMetadata(turn_id=turn_id or uuid4().hex)
@@ -328,7 +338,7 @@ class TurnEngine:
 
         for call_id, name, args in parsed:
             result = await self._execute(
-                session_id, call_id, name, args, mapping, history, metadata, guard, lang
+                session_id, name, args, mapping, history, metadata, guard, lang
             )
             if result is not None:
                 handoff = self._handoff_block_of(result)
@@ -349,7 +359,6 @@ class TurnEngine:
     async def _execute(
         self,
         session_id: str,
-        call_id: str,
         name: str,
         args: dict[str, Any] | None,
         mapping: dict[str, str],
@@ -392,7 +401,9 @@ class TurnEngine:
 
         definition = TOOL_CATALOG[tool]
         key = (
-            self._idempotency_key(session_id, metadata.turn_id, call_id, tool)
+            self._idempotency_key(
+                session_id, metadata.turn_id, tool, guard.written.get(tool, 0)
+            )
             if definition.mutates_state
             else None
         )
@@ -417,7 +428,9 @@ class TurnEngine:
             result = await self.banking.call_tool(session_id, tool_call)
             executed = True
             guard.executed.add(tool)
-            if result.status is ToolResultStatus.REFUSED:
+            if result.status is ToolResultStatus.OK and definition.mutates_state:
+                guard.written[tool] = guard.written.get(tool, 0) + 1
+            elif result.status is ToolResultStatus.REFUSED:
                 guard.refused[tool] = result.reason_code or ReasonCode.POLICY_BLOCKED
 
         metadata.tool_outcomes.append(
@@ -662,10 +675,18 @@ class TurnEngine:
         )
 
     @staticmethod
-    def _idempotency_key(session_id: str, turn_id: str, call_id: str, tool: str) -> str:
-        """Stable per (session, turn, call): replaying a turn cannot act twice."""
+    def _idempotency_key(session_id: str, turn_id: str, tool: str, ordinal: int) -> str:
+        """Stable per (session, turn, tool, ordinal): a retried turn cannot act twice.
+
+        The ordinal counts the tool's acknowledged writes so far in the turn. It
+        replaces the model's call id, which is random on every completion, so a
+        re-run of the turn asks banking-core for the same thing under the same
+        key. A call that failed without an acknowledgement keeps its ordinal:
+        the retry is the same write, and banking-core answers from its record if
+        the first attempt got through, or does it now.
+        """
         digest = hashlib.sha256(
-            f"{session_id}|{turn_id}|{call_id}|{tool}".encode()
+            f"{session_id}|{turn_id}|{tool}|{ordinal}".encode()
         ).hexdigest()
         return f"pb-{digest[:40]}"
 
