@@ -136,6 +136,9 @@ class RemoteEmbeddingAdapter(RetrievalAdapter):
         self.name = name or f"remote:{model_id.split('/')[-1]}"
         self._post = post
         self.dim: int | None = None
+        # kb.search asks for the same query twice when it falls back from the
+        # customer's language to the others: embed it once.
+        self._last_query: tuple[str, np.ndarray] | None = None
         self.doc_ids: list[str] = []
         self.corpus_embeddings: np.ndarray | None = None
 
@@ -205,7 +208,12 @@ class RemoteEmbeddingAdapter(RetrievalAdapter):
         """Cosine similarity of the query (embedded per call) against the index."""
         if self.corpus_embeddings is None or not self.doc_ids:
             return []
-        query_embedding = self.embed([query])[0]
+        last = self._last_query
+        if last is not None and last[0] == query:
+            query_embedding = last[1]
+        else:
+            query_embedding = self.embed([query])[0]
+            self._last_query = (query, query_embedding)
         scores = np.dot(self.corpus_embeddings, query_embedding)
         ranked = np.argsort(scores)[::-1][:top_k]
         return [(self.doc_ids[i], float(scores[i])) for i in ranked]

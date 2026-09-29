@@ -126,6 +126,18 @@ def test_the_index_is_built_once_and_each_query_is_one_request() -> None:
     assert remote.dim == DIM
 
 
+def test_the_same_query_is_embedded_once() -> None:
+    server = FakeModelServer()
+    remote = adapter(server)
+    remote.index(snippets())
+    before = len(server.calls)
+    first = remote.search("bloquear tarjeta", top_k=3)
+    again = remote.search("bloquear tarjeta", top_k=3)  # the SAME to CROSS fallback
+    assert first == again and len(server.calls) == before + 1
+    remote.search("aviso de viaje", top_k=3)
+    assert len(server.calls) == before + 2
+
+
 def test_an_empty_knowledge_base_searches_to_nothing_without_a_request() -> None:
     server = FakeModelServer()
     remote = adapter(server)
