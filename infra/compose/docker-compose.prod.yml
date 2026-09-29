@@ -98,6 +98,10 @@ services:
       REDIS_URL: ${REDIS_EDGE_URL:?set REDIS_EDGE_URL}
       REDIS_PASSWORD: ""
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      # Conversations one client address may open per hour. The base file's default
+      # is generous, for local development and evaluation runs from one address;
+      # a public environment keeps 30, whatever the base file says.
+      RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       banking-core:
