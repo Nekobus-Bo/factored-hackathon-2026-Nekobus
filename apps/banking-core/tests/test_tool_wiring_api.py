@@ -216,7 +216,7 @@ def test_catalog_tools_execute_over_http_with_scoped_audits(
         "identity.verify_document",
         {
             "document_type": "NATIONAL_ID",
-            "document_front_ref": "card_front_12345",
+            "document_front_ref": "sim-approve-front-0001",
         },
     )
     assert document["status"] == "ok"
