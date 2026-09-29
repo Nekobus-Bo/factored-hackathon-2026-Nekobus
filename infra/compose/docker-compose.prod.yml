@@ -71,6 +71,12 @@ services:
       MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY}
       BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:?set BLIND_INDEX_SALT}
       OTP_CHANNEL_MODE: ${OTP_CHANNEL_MODE:-simulated}
+      # The base file defaults the admin API to on with a public development
+      # token. Production never inherits that: each feature is switched on
+      # explicitly (docs/deployment.md, "Presentation environment").
+      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-false}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       migrate:

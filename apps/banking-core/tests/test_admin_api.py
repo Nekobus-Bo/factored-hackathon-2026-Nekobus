@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 from uuid import UUID
 
 import fakeredis
@@ -26,6 +28,7 @@ from banking_core.seed.fixtures import create_scenario_fixtures
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
 ADMIN_TOKEN = "test-admin-token"
 ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
@@ -316,6 +319,14 @@ def test_startup_accepts_the_admin_settings_that_are_safe(
     monkeypatch.setenv("ADMIN_API_TOKEN", token)
 
     validate_admin_api_settings()
+
+
+def test_compose_default_admin_token_is_the_one_production_refuses() -> None:
+    """If the compose default drifts, the production guard silently stops matching."""
+    compose = (REPO_ROOT / "infra/compose/docker-compose.yml").read_text()
+    defaults = re.findall(r"ADMIN_API_TOKEN: \$\{ADMIN_API_TOKEN:-([^}]*)\}", compose)
+
+    assert defaults == [DEVELOPMENT_ADMIN_TOKEN]
 
 
 @pytest.mark.usefixtures("db_engine")

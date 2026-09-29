@@ -171,8 +171,14 @@ services:
       DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-COP}
       POLICY_SEED_THRESHOLDS_MINOR: '${POLICY_SEED_THRESHOLDS_MINOR:-{"USD": 50000, "EUR": 50000, "BRL": 250000, "COP": 200000000, "ARS": 17795642}}'
       POLICY_SEED_AMOUNT_MODE: ${POLICY_SEED_AMOUNT_MODE:-flag}
-      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-false}
-      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      # Development defaults: the admin API is on with a public, development-only
+      # token so the back office demo steps work with no .env. banking-core refuses
+      # to start with this token under APP_ENV=production, and the production
+      # override pins these three back to off / empty.
+      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-true}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-only-admin-token}
+      # Only consulted when APP_ENV=production; outside it the fixture reset is
+      # always allowed.
       DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
       TRANSACTION_LIST_MAX_LIMIT: ${TRANSACTION_LIST_MAX_LIMIT:-50}
       RATE_LIMIT_ATTEMPTS_PER_SESSION: ${RATE_LIMIT_ATTEMPTS_PER_SESSION:-5}
