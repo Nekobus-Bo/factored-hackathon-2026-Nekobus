@@ -97,8 +97,14 @@ class KbSearcher:
             raise KbSearchUnavailableError(
                 f"knowledge base not readable at '{config.kb_path}'"
             ) from exc
+        if len(kb) == 0:
+            raise KbSearchUnavailableError(
+                f"knowledge base at '{config.kb_path}' has no snippets"
+            )
         self.adapter = adapter or build_adapter(config)
-        self.retriever = Retriever(kb, self.adapter)
+        # The configured cap bounds the request; a KB smaller than it just
+        # returns fewer results.
+        self.retriever = Retriever(kb, self.adapter, max_k=config.max_k)
         self.kb = kb
 
     def _normalizer(self, query: str) -> Callable[[float], float]:

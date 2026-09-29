@@ -191,6 +191,34 @@ def test_k_is_bounded_by_the_request_and_the_config(kb_path: Path) -> None:
         KbSearchConfig(max_k=0)
 
 
+def test_kb_smaller_than_the_configured_k_returns_what_it_has(tmp_path: Path) -> None:
+    path = tmp_path / "small.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "id": "card_block.01.es",
+                "topic_id": "card_block.01",
+                "lang": "es",
+                "title": "Bloqueo de tarjeta",
+                "text": "Para bloquear su tarjeta robada, confirme su identidad.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    searcher = bm25_searcher(path, max_k=5, score_floor=0.0)
+
+    out = searcher.search(KbSearchInput(query="bloquear tarjeta", locale="es", limit=5))
+
+    assert [r.article_id for r in out.results] == ["card_block.01.es"]
+
+
+def test_empty_kb_fails_loudly(tmp_path: Path) -> None:
+    path = tmp_path / "empty.jsonl"
+    path.write_text("\n", encoding="utf-8")
+    with pytest.raises(KbSearchUnavailableError, match="no snippets"):
+        bm25_searcher(path)
+
+
 def test_config_from_env_defaults_to_vector_and_validates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

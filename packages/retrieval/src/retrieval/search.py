@@ -22,6 +22,10 @@ class Retriever:
     ranking, so a single index serves every mode. For dense scores this is
     identical to searching a per-language index; for BM25 the IDF statistics
     come from the whole multilingual KB.
+
+    ``max_k`` caps what a caller may ask for (default: the KB size). It does not
+    promise that many results: a KB with fewer matching snippets returns what it
+    has, so a cap above the KB size is valid.
     """
 
     def __init__(
