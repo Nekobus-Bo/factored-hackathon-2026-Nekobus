@@ -96,8 +96,10 @@ class DatabaseControlConfigRepository:
     """PostgreSQL-backed implementation of ControlConfigRepository.
 
     Reads policy configuration and tool authorization matrices from the DB,
-    seeded from environment on first run if empty (ADR-0002).
-    Strictly validates against CODE_FLOOR on reads and writes (ADR-0003 Appendix A).
+    seeded from environment on first run if empty (ADR-0002). Both are versioned:
+    every read takes the active version, with no cache, so a change applies to the
+    next call in every process. Strictly validates against CODE_FLOOR on reads and
+    writes (ADR-0003 Appendix A).
     """
 
     def __init__(
@@ -129,39 +131,27 @@ class DatabaseControlConfigRepository:
         if tool_name not in TOOL_CATALOG and tool_name not in CODE_FLOOR:
             raise ValueError(f"Unknown tool '{tool_name}'")
 
-        from banking_core.models.config import ToolPolicyRecord
+        from banking_core.control.tool_policy import load_tool_permitted_states
 
         with self._get_session() as session:
-            record = session.get(ToolPolicyRecord, tool_name)
-            # An empty list is an operator disabling the tool, not a missing row.
-            if record is not None:
-                configured = {VerificationState(s) for s in record.permitted_states}
-                return get_effective_permitted_states(tool_name, configured)
-
-        # Baseline fallback from catalog or code floor
-        if tool_name in TOOL_CATALOG:
-            return TOOL_CATALOG[tool_name].permitted_states
-        return CODE_FLOOR[tool_name]
+            # An empty list is an operator disabling the tool, not a missing entry.
+            return load_tool_permitted_states(session, tool_name)
 
     def set_tool_permitted_states(
         self,
         tool_name: str,
         states: set[VerificationState] | frozenset[VerificationState],
     ) -> None:
-        effective = get_effective_permitted_states(tool_name, states)
-        from banking_core.models.config import ToolPolicyRecord
+        """Save a new, audited tool policy version with `tool_name` set to `states`."""
+        from banking_core.control.tool_policy import save_tool_policy
 
-        state_values = sorted([s.value for s in effective])
         with self._get_session() as session:
-            record = session.get(ToolPolicyRecord, tool_name)
-            if record is None:
-                record = ToolPolicyRecord(
-                    tool_name=tool_name,
-                    permitted_states=state_values,
-                )
-                session.add(record)
-            else:
-                record.permitted_states = state_values
+            save_tool_policy(
+                session,
+                {tool_name: states},
+                actor_ref="repository",
+                source="repository",
+            )
             session.commit()
 
 

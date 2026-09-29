@@ -253,8 +253,9 @@ def test_widened_tool_row_in_db_is_refused_as_code_floor_violation(
     """A row edited directly in the DB beyond CODE_FLOOR is refused, not a 500."""
     db_session.add(
         ToolPolicyRecord(
-            tool_name="card.block",
-            permitted_states=["ANONYMOUS", "VERIFIED"],
+            version=1,
+            is_active=True,
+            matrix={"card.block": ["ANONYMOUS", "VERIFIED"]},
         )
     )
     db_session.commit()
@@ -304,13 +305,16 @@ def test_empty_permitted_states_in_db_disables_the_tool(
     repo = DatabaseControlConfigRepository(session_factory=sessionmaker(bind=db_engine))
     repo.set_tool_permitted_states("card.block", set())
 
-    stored = db_session.get(ToolPolicyRecord, "card.block")
-    assert stored is not None and stored.permitted_states == []
+    stored = db_session.execute(
+        sa.select(ToolPolicyRecord).where(ToolPolicyRecord.is_active.is_(True))
+    ).scalar_one()
+    assert stored.matrix["card.block"] == []
     assert repo.get_tool_permitted_states("card.block") == frozenset()
     decision = Authorizer(config_repo=repo).authorize(CARD_BLOCK_CALL, VERIFIED_SESSION)
 
     assert decision.allowed is False
     assert decision.reason_code == ReasonCode.STATE_NOT_ALLOWED
+    assert decision.flags == ["TOOL_DISABLED"]
 
 
 def test_corrupt_tool_row_is_config_unavailable_not_code_floor(
@@ -318,7 +322,9 @@ def test_corrupt_tool_row_is_config_unavailable_not_code_floor(
 ) -> None:
     """A non-floor ValueError from stored config maps to INTERNAL_ERROR."""
     db_session.add(
-        ToolPolicyRecord(tool_name="card.block", permitted_states=["NOT_A_STATE"])
+        ToolPolicyRecord(
+            version=1, is_active=True, matrix={"card.block": ["NOT_A_STATE"]}
+        )
     )
     db_session.commit()
     repo = DatabaseControlConfigRepository(session_factory=sessionmaker(bind=db_engine))
