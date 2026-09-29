@@ -388,19 +388,31 @@ def test_policy_card_block_missing_amount_semantics() -> None:
     ]
     assert dec_dispute_no_amount.requires_handoff is True
 
-    # 3. Non-dispute without amount but explicit currency: treated as above threshold
+    # 3. A currency alone is not an amount: with no charge to compare, a
+    #    non-dispute reason carries no flags (the old "explicit currency without
+    #    amount" branch is gone; the trusted context always has both).
     dec_lost_with_curr = engine.evaluate(
         tool="card.block",
         session=session,
         context={"reason": "LOST", "currency": "USD"},
     )
     assert dec_lost_with_curr.allowed is True
-    assert dec_lost_with_curr.reason_code == ReasonCode.POLICY_FLAGGED
-    assert dec_lost_with_curr.flags == [
-        "POLICY_FLAGGED",
-        "HANDOFF_REQUIRED",
-        "PRIORITY",
-    ]
+    assert dec_lost_with_curr.reason_code is None
+    assert dec_lost_with_curr.flags == []
+
+    # 4. The reason also counts when it arrives in the tool arguments.
+    dec_dispute_in_args = engine.evaluate(
+        tool="card.block",
+        session=session,
+        args={"card_ref": "card_demo_es", "reason": "SUSPICIOUS_ACTIVITY"},
+    )
+    assert dec_dispute_in_args.requires_handoff is True
+    dec_lost_in_args = engine.evaluate(
+        tool="card.block",
+        session=session,
+        args={"card_ref": "card_demo_es", "reason": "STOLEN"},
+    )
+    assert dec_lost_in_args.flags == []
 
 
 def test_policy_card_block_amount_le_threshold() -> None:
@@ -553,15 +565,24 @@ def test_policy_card_block_missing_amount() -> None:
     assert dec_none.reason_code == ReasonCode.POLICY_FLAGGED
     assert dec_none.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
-    # 2. Key entirely missing
+    # 2. Key entirely missing: no lookup ran, so there is no amount context.
+    #    Without a dispute reason there is no charge to compare.
     dec_empty = engine.evaluate(
         tool="card.block",
         session=session,
         context={"currency": "USD"},
     )
     assert dec_empty.allowed is True
-    assert dec_empty.reason_code == ReasonCode.POLICY_FLAGGED
-    assert dec_empty.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+    assert dec_empty.reason_code is None
+    assert dec_empty.flags == []
+
+    # 3. Currency missing from an amount context: unknown currency, fail safe
+    dec_no_currency = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"disputed_amount_minor": 100},
+    )
+    assert dec_no_currency.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
 
 def test_policy_card_block_negative_amount() -> None:
@@ -583,6 +604,76 @@ def test_policy_card_block_negative_amount() -> None:
     assert dec_neg.allowed is True
     assert dec_neg.reason_code == ReasonCode.POLICY_FLAGGED
     assert dec_neg.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+
+
+@pytest.mark.parametrize(
+    "amount_args",
+    [
+        {"amount_minor": 1},
+        {"disputed_amount_minor": 1},
+        {"disputed_amount": 0.01},
+        {"amount": 0.01},
+        {"currency": "USD"},
+        {"amount_minor": 1, "currency": "USD"},
+    ],
+)
+def test_policy_card_block_ignores_an_amount_in_the_tool_arguments(
+    amount_args: dict[str, object],
+) -> None:
+    """An amount the model puts in the arguments neither lowers nor raises anything.
+
+    The amount is a database fact banking-core puts in the trusted context
+    (ADR-0003 amendment 2026-09-29): model output derived from customer text
+    is not evidence.
+    """
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000}, currency="USD", amount_mode="block"
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+    args = {"card_ref": "card_demo_es", "reason": "LOST", **amount_args}
+
+    # No trusted context: nothing to compare for LOST, whatever the args say.
+    assert engine.evaluate("card.block", session, args=args).flags == []
+
+    # A dispute reason with no trusted amount fails safe, a tiny amount in the
+    # arguments does not talk it down.
+    dispute = {**args, "reason": "UNRECOGNIZED_CHARGE"}
+    assert engine.evaluate("card.block", session, args=dispute).requires_handoff
+
+    # The trusted context wins whatever the arguments claim.
+    above = engine.evaluate(
+        "card.block",
+        session,
+        args=args,
+        context={"disputed_amount_minor": 60000, "currency": "USD"},
+    )
+    assert above.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+    below = engine.evaluate(
+        "card.block",
+        session,
+        args={**dispute, "amount_minor": 10**9, "currency": "COP"},
+        context={"disputed_amount_minor": 40000, "currency": "USD"},
+    )
+    assert below.flags == []
+
+
+@pytest.mark.parametrize("amount", [60000.0, "60000", True, [60000], {"v": 1}])
+def test_policy_card_block_context_amount_must_be_an_integer(amount: object) -> None:
+    """An amount that is not an int (including a bool) is not trusted: fail safe."""
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000}, currency="USD", amount_mode="flag"
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+
+    decision = engine.evaluate(
+        "card.block",
+        session,
+        context={"disputed_amount_minor": amount, "currency": "USD"},
+    )
+
+    assert decision.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
 
 def test_policy_card_block_multi_currency() -> None:
