@@ -61,13 +61,13 @@ Opening a new session resets the per-session counters, so brute force is limited
 | Per session | Total attempts, failed matches, failed OTP verifications and resends of one session | Session `LOCKED`; only `handoff.create` and `kb.search` remain | `RATE_LIMIT_ATTEMPTS_PER_SESSION`, `OTP_MAX_ATTEMPTS`, `OTP_MAX_RESENDS` |
 | Per customer | Failed `otp.verify` of the pinned customer, in any session, in a fixed window | Customer locked for a duration: no new code, no code compared, the session goes to a human | `RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES` (5), `_WINDOW_SECONDS` (3600), `_LOCK_SECONDS` (1800) |
 | Per document | Failed `customer.match` on the claimed document (its blind index), in any session, whether or not a customer has it | Past the maximum, `matched=false` without a lookup | `RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES` (10), `_WINDOW_SECONDS` (3600) |
-| Per IP | `POST /v1/conversations` per client address, one-hour fixed window, at the orchestrator | HTTP 429 with `Retry-After`; no banking session opened | `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` (30; 1000 in the development compose), `TRUSTED_PROXY_HOPS` (0) |
+| Per IP | `POST /v1/conversations` per client address, one-hour fixed window, at the orchestrator | HTTP 429 with `Retry-After`; no banking session opened | `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` (30; 1000 in the development compose), `TRUSTED_PROXY_HOPS` (0 in the orchestrator, 1 in the compose files) |
 
 The customer and document thresholds are policy configuration in `config.policy_config` (seeded from the environment, [ADR-0002](adr/0002-config-code-boundary.md)); the per-IP settings are read by the orchestrator, which has no database.
 
 - **Nothing personal is stored to count.** Redis keys hold an internal customer UUID, a blind index (HMAC, not reversible without `BLIND_INDEX_SALT`) or an HMAC of the client address keyed from `SESSION_SECRET`; never a document number, a contact or a raw address. Lock events are audited with the same identifiers and the thresholds only.
 - **Responses stay indistinguishable.** A document that does not exist is counted, limited and answered exactly like one that does; the only outcome that differs is a correct match, which is the intended one.
-- **Behind a reverse proxy**, set `TRUSTED_PROXY_HOPS` to the number of proxies. Left at 0 every customer shares the proxy's address; set too high, the client can choose its own. `X-Forwarded-For` is otherwise ignored.
+- **Behind a reverse proxy**, set `TRUSTED_PROXY_HOPS` to the number of proxies. Left at 0 every customer shares the proxy's address; set too high, the client can choose its own. `X-Forwarded-For` is otherwise ignored. The compose files set 1, because the customer path is the web-client BFF, which sends the address of its connection; the orchestrator's port is published on `127.0.0.1` only, so a forged header can come only from the host itself ([deployment.md](deployment.md), section 1).
 - **Gaps** (distributed attackers, per-IP limit on messages, `otp.send` volume across sessions, fixed-window boundary, lock as denial of service) are declared in [limitations](limitations.md).
 
 ## 5. Retention
