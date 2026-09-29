@@ -34,8 +34,8 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
    - back-office queue: every 3 s;
    - back-office open conversation: every 2 s;
    - customer chat while a takeover is active: every 2 s;
-   - OTP inbox, after the assistant asks for a code: every 2 s until a message arrives or it expires.
-   - Polling stops when the tab is hidden and resumes when it is visible.
+   - OTP inbox: **not polled**. The code is delivered synchronously during the turn that calls `otp.send`, so it is already in the inbox when that turn's answer arrives. The customer app reads the inbox once after every completed turn (with the transcript, to detect a takeover); an unexpired message received after the last successful verification shows the notice, and the notice hides itself at `expires_at`.
+   - The polling above stops when the tab is hidden and resumes when it is visible.
 8. **Shared TypeScript contracts:**
    - `packages/contracts` gains a TS entry: `package.json` named `@pattern-blue/contracts`, Zod schemas in `packages/contracts/ts/`. It joins the Bun workspace through the existing `packages/*` glob; the Python package is untouched.
    - It holds the message block schemas (text, receipt, handoff, mirroring `packages/contracts/src/contracts/blocks.py`), and a drift test compares them against the committed JSON Schemas that `export_schemas.py` writes (field names, required fields, enums).
@@ -144,7 +144,7 @@ Rules:
   - Items marked "In design" or "Pending" in that README are not built.
 - **State chip in the chat header:** derived only from what the blocks prove. When nothing proves a state, show none; never guess.
 - **Global machine:** theme (system, light or dark; persisted in localStorage with try/catch; `data-theme` on `<html>`) and lang.
-- **Chat machine:** create lazily on the first message, send, retry, rate limit, unavailable, takeover polling, inbox polling.
+- **Chat machine:** create lazily on the first message, send, retry, rate limit, unavailable, takeover polling, and the inbox read once after every completed turn.
 - **Tests:** machines (every transition that matters), BFF routes against a fake upstream `Bun.serve` on an ephemeral port, and block rendering against fixtures.
 
 ## Back office (web-backoffice) scope

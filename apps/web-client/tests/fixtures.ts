@@ -72,7 +72,7 @@ export const HANDOFF_BLOCK = {
 
 export const UNKNOWN_BLOCK = { type: "carousel", items: ["a", "b"] };
 
-export const CREATE_RESPONSE = { conversation_id: CONVERSATION_ID, language: "es" };
+export const CREATE_RESPONSE = { conversation_id: CONVERSATION_ID, language: "es" as const };
 
 export const SEND_RESPONSE = { conversation_id: CONVERSATION_ID, blocks: [TEXT_BLOCK] };
 
