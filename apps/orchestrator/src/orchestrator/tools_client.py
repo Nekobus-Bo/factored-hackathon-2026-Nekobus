@@ -1,10 +1,13 @@
 """Typed HTTP client for calling banking-core tools through contracts."""
 
 import logging
+from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from contracts.envelope import ReasonCode, ToolCall, ToolResult, ToolResultStatus
+from pydantic import BaseModel, Field, ValidationError
 
 from orchestrator.config import Settings, get_settings
 
@@ -19,6 +22,39 @@ class SessionCreationError(BankingCoreError):
     """Raised when creating a session with banking-core fails."""
 
 
+class InboxUnavailableError(BankingCoreError):
+    """Raised when the simulated inbox cannot be read from banking-core."""
+
+
+class InboxMessage(BaseModel):
+    """One simulated OTP delivery for the customer's browser (ADR-0007).
+
+    The clear code is the point of the simulation: it travels from banking-core to
+    the browser through the route and nowhere else. It is kept out of the repr so
+    a log line or a traceback of the object cannot carry it.
+    """
+
+    channel: str
+    destination_masked: str
+    code: str = Field(repr=False)
+    received_at: datetime
+    expires_at: datetime
+
+
+class _BankingInboxMessage(BaseModel):
+    """banking-core's shape for one message (created_at is when it was delivered)."""
+
+    channel: str
+    destination_masked: str
+    code: str = Field(repr=False)
+    created_at: datetime
+    expires_at: datetime
+
+
+class _BankingInbox(BaseModel):
+    messages: list[_BankingInboxMessage]
+
+
 class BankingCoreClient:
     """Async client communicating with banking-core through the typed contract.
 
@@ -26,6 +62,7 @@ class BankingCoreClient:
     - Never touches database
     - Calls banking-core over HTTP wire contract:
       POST /v1/sessions -> {session_id: str}
+      GET  /v1/sessions/{session_id}/simulated-inbox -> the session's OTP messages
       POST /v1/tools/call with X-Session-Id header -> ToolResult
     - Validates request (ToolCall) and response (ToolResult)
     - Maps timeouts and network/HTTP errors to ToolResult status=error
@@ -91,6 +128,48 @@ class BankingCoreClient:
         except Exception as exc:
             logger.error("Failed to create banking-core session: %s", exc)
             raise SessionCreationError(f"Session creation failed: {exc}") from exc
+
+    async def simulated_inbox(self, session_id: str) -> list[InboxMessage]:
+        """Unexpired simulated OTP messages of this banking session, newest first.
+
+        banking-core answers 404 when the session is gone or delivery is not
+        simulated: there is nothing to show, which is an empty inbox, not an error.
+        Anything else that is not a valid answer raises InboxUnavailableError.
+        The response body holds a live code, so it is never logged or put in an
+        exception message.
+        """
+        client = self._get_client()
+        url = (
+            f"{self.base_url}/v1/sessions/{quote(session_id, safe='')}/simulated-inbox"
+        )
+        try:
+            response = await client.get(url)
+        except httpx.HTTPError as exc:
+            logger.error("Simulated inbox request failed (%s)", type(exc).__name__)
+            raise InboxUnavailableError("banking-core is unreachable") from exc
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return []
+        if response.status_code != httpx.codes.OK:
+            logger.error(
+                "Simulated inbox request refused: HTTP %s", response.status_code
+            )
+            raise InboxUnavailableError("banking-core did not serve the inbox")
+        try:
+            inbox = _BankingInbox.model_validate_json(response.content)
+        except ValidationError:
+            # Not chained: the error carries the input, and the input holds a code.
+            logger.error("Simulated inbox response is outside the contract")
+            raise InboxUnavailableError("banking-core sent an invalid inbox") from None
+        return [
+            InboxMessage(
+                channel=m.channel,
+                destination_masked=m.destination_masked,
+                code=m.code,
+                received_at=m.created_at,
+                expires_at=m.expires_at,
+            )
+            for m in inbox.messages
+        ]
 
     async def call_tool(
         self,
