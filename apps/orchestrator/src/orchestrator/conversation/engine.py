@@ -18,6 +18,7 @@ from contracts import (
     TOOL_CATALOG,
     AnalyzeResponse,
     HandoffBlock,
+    PiiType,
     ReasonCode,
     Receipt,
     ReceiptBlock,
@@ -59,17 +60,18 @@ from orchestrator.tools_client import BankingCoreClient
 
 logger = logging.getLogger(__name__)
 
-# Arguments that carry a secret or an identity claim. The model may only pass
-# a placeholder the customer produced (present in the session mapping); a
-# literal value would be a guess, and guessing burns attempts or enumerates.
-SECRET_ARGS: dict[str, tuple[str, ...]] = {
-    "otp.verify": ("code",),
-    "customer.match": ("document_number",),
+# Arguments that carry a secret or an identity claim, with the placeholder kind
+# the masker gives that data. The model may only pass a placeholder of that kind
+# the customer produced (present in the session mapping); a literal value would
+# be a guess, and guessing burns attempts or enumerates. A placeholder of
+# another kind (a `[DATE_1]` as OTP code) is a wrong value, not a secret.
+SECRET_ARGS: dict[str, dict[str, PiiType]] = {
+    "otp.verify": {"code": PiiType.OTP},
+    "customer.match": {"document_number": PiiType.DOC},
 }
 # Tools that consume a limited attempt budget: at most one execution per turn.
 ONCE_PER_TURN: frozenset[str] = frozenset({"otp.verify"})
 
-_PLACEHOLDER_RE = re.compile(r"^\[[A-Z]+_\d+\]$")
 _OTP_PLACEHOLDER_RE = re.compile(r"^\[OTP_(\d+)\]$")
 # A standalone 4-8 digit OTP, optionally with one internal space or dash.
 _BARE_OTP_RE = re.compile(r"(?<![\w\[\]])\d+(?:[ -]\d+)?(?![\w\]])(?![ -]\d)")
@@ -449,11 +451,11 @@ class TurnEngine:
                 status=ToolResultStatus.REFUSED,
                 reason_code=ReasonCode.RATE_LIMITED,
             )
-        for arg in SECRET_ARGS.get(tool, ()):
+        for arg, kind in SECRET_ARGS.get(tool, {}).items():
             value = args.get(arg)
             if not (
                 isinstance(value, str)
-                and _PLACEHOLDER_RE.match(value)
+                and _is_placeholder(value, kind)
                 and value in mapping
             ):
                 return ToolResult(
@@ -466,7 +468,11 @@ class TurnEngine:
     @staticmethod
     def _mask_bare_otps(text: str, mapping: dict[str, str]) -> str:
         """Mask standalone 4-8 digit OTPs with one optional separator when pending."""
-        reverse = {raw: ph for ph, raw in mapping.items()}
+        # Reuse only OTP placeholders: a code equal to an earlier value of
+        # another kind (a 6-digit document) must not resolve to that one.
+        reverse = {
+            raw: ph for ph, raw in mapping.items() if _OTP_PLACEHOLDER_RE.match(ph)
+        }
         next_index = max(
             (int(m.group(1)) for ph in mapping if (m := _OTP_PLACEHOLDER_RE.match(ph))),
             default=0,
@@ -621,6 +627,11 @@ class TurnEngine:
             f"{session_id}|{turn_id}|{call_id}|{tool}".encode()
         ).hexdigest()
         return f"pb-{digest[:40]}"
+
+
+def _is_placeholder(value: str, kind: PiiType) -> bool:
+    """True if `value` is exactly one placeholder of `kind`, e.g. `[OTP_3]`."""
+    return re.fullmatch(rf"\[{kind.value}_\d+\]", value) is not None
 
 
 def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:

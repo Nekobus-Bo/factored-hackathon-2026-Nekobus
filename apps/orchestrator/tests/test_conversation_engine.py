@@ -627,6 +627,103 @@ async def test_secrets_accept_only_mapped_placeholders(
     assert outcome.reason_code.value == "INVALID_ARGUMENTS"
 
 
+@pytest.mark.parametrize(
+    ("name", "args", "runs"),
+    [
+        ("otp_verify", {"code": "[DATE_1]"}, False),
+        ("otp_verify", {"code": "[DOC_1]"}, False),
+        (
+            "customer_match",
+            {"document_type": "NATIONAL_ID", "document_number": "[OTP_1]"},
+            False,
+        ),
+        (
+            "customer_match",
+            {"document_type": "NATIONAL_ID", "document_number": "[DATE_1]"},
+            False,
+        ),
+        ("otp_verify", {"code": "[OTP_1]"}, True),
+        (
+            "customer_match",
+            {"document_type": "NATIONAL_ID", "document_number": "[DOC_1]"},
+            True,
+        ),
+    ],
+    ids=[
+        "otp-as-date",
+        "otp-as-doc",
+        "doc-as-otp",
+        "doc-as-date",
+        "otp-as-otp",
+        "doc-as-doc",
+    ],
+)
+async def test_secrets_require_a_placeholder_of_the_right_kind(
+    mock_services: Any, name: str, args: dict[str, Any], runs: bool
+) -> None:
+    banking = FakeBankingCore()
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM(
+        [Step(tool_calls=[tool_call("call_1", name, args)]), Step(content="Ok.")]
+    )
+    context = new_context()
+
+    # Every wrong-kind value below also satisfies the target argument's contract
+    # pattern, so only the engine's kind check stops it, not local validation.
+    result = await make_engine(llm).run_turn(
+        context, "Mi cédula es 654321, nací el 15-03-1985 y mi código es 123456"
+    )
+
+    # The masker gave each value a placeholder of its own kind.
+    assert context.placeholder_map == {
+        "[DOC_1]": "654321",
+        "[DATE_1]": "15-03-1985",
+        "[OTP_1]": "123456",
+    }
+    outcome = result.metadata.tool_outcomes[0]
+    assert outcome.executed is runs
+    assert len(banking.requests) == (1 if runs else 0)
+    if not runs:
+        assert outcome.reason_code is not None
+        assert outcome.reason_code.value == "INVALID_ARGUMENTS"
+
+
+async def test_bare_otp_equal_to_an_earlier_document_still_gets_an_otp_placeholder(
+    mock_services: Any,
+) -> None:
+    banking = FakeBankingCore()
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM(
+        [
+            Step(
+                tool_calls=[
+                    tool_call(
+                        "call_1",
+                        "customer_match",
+                        {"document_type": "NATIONAL_ID", "document_number": "[DOC_1]"},
+                    )
+                ]
+            ),
+            Step(tool_calls=[tool_call("call_2", "otp_send", {})]),
+            Step(content="Te envié un código."),
+            Step(tool_calls=[tool_call("call_3", "otp_verify", {"code": "[OTP_1]"})]),
+            Step(content="Verificado."),
+        ]
+    )
+    engine = make_engine(llm)
+    context = new_context()
+
+    # The customer's document number happens to equal the code sent later.
+    await engine.run_turn(context, "Mi cédula es 482913")
+    await engine.run_turn(context, "482913")
+
+    assert context.placeholder_map == {"[DOC_1]": "482913", "[OTP_1]": "482913"}
+    assert "482913" not in json.dumps(context.history)
+    assert banking.calls_to("otp.verify")[0]["args"]["code"] == "482913"
+
+
 def test_from_settings_wires_max_rounds_and_encoder_flag() -> None:
     enabled = TurnEngine.from_settings(
         Settings(max_tool_rounds=3, encoder_enabled=True)
