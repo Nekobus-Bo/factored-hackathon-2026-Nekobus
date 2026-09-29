@@ -41,5 +41,6 @@ In this order, about 15 minutes:
 | [0008](adr/0008-cpu-inference-deployment.md) | CPU inference and private-environment deployment | Accepted |
 | [0009](adr/0009-monorepo-structure.md) | Monorepo structure and service names | Accepted |
 | [0010](adr/0010-model-selection-calibration-harness.md) | Model selection and calibration harness | Accepted |
+| [0012](adr/0012-decision-points.md) | Decision points: calibrated local models decide, the engine applies, banking-core disposes; the model server | Accepted (minimum freeze scope) |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.
