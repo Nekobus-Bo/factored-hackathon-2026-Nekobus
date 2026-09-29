@@ -9,8 +9,9 @@
 - The banking session is correlated through an audit watermark taken at
   scenario start: the eval stack must not run other traffic concurrently. More
   than one session in the window fails closed.
-- {{otp}} turns: the code comes from banking-core's dev OTP sink, looked up by
-  the challenge_id of this session's otp.send audit row.
+- {{otp}} turns: the code comes from banking-core's dev OTP hook (it reads the
+  simulated inbox on redis-core, ADR-0007), looked up by the challenge_id of
+  this session's otp.send audit row.
 - LLM runs in replay mode only; only a 503 with detail "replay_miss" is "not
   run". Any other failed turn FAILS the scenario, and the audit rows already in
   its window still go through U1-U8 (a tool may have run before the failure).
@@ -323,7 +324,7 @@ class ProposedSystem:
             f"{self.config.banking_core_url}/v1/dev/otp/{challenge_id}"
         )
         if response.status_code != 200:
-            raise RuntimeError(f"dev OTP sink unavailable: HTTP {response.status_code}")
+            raise RuntimeError(f"dev OTP hook unavailable: HTTP {response.status_code}")
         return message.replace(OTP_TOKEN, str(response.json()["code"]))
 
     def _recorded_outbound(self, keys: Any) -> list[str]:

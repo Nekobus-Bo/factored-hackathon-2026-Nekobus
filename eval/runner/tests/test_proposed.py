@@ -144,7 +144,7 @@ def test_happy_path_runs_on_trusted_evidence(
     )
 
     assert result.not_run_reason is None and result.error is None
-    assert sent[2] == OTP_CODE  # {{otp}} filled from the dev sink
+    assert sent[2] == OTP_CODE  # {{otp}} filled from the dev OTP hook
     last = result.turns[-1]
     assert last.verification_state == "VERIFIED"
     assert [r.tool for r in last.tool_call_reports] == [
@@ -159,6 +159,27 @@ def test_happy_path_runs_on_trusted_evidence(
     assert failed == []
     assert not [u.code for u in result.unsafe_outcomes if u.detected]
     assert result.passed is True
+
+
+@pytest.mark.parametrize("status_code", [403, 404])
+def test_otp_turn_fails_when_the_hook_has_no_code(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter, status_code: int
+) -> None:
+    """A disabled hook (403) or an expired or unknown challenge (404) is an error."""
+    router.get(f"{BANK}/v1/dev/otp/chal_abc12345").mock(
+        return_value=httpx.Response(status_code, json={"detail": "no"})
+    )
+    handler, sent = scripted_orchestrator(evidence)
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=handler)
+
+    result = run_scenario(
+        make_system(evidence, replay_dir), load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert result.error is not None
+    assert f"dev OTP hook unavailable: HTTP {status_code}" in result.error
+    assert result.passed is False
+    assert "{{otp}}" not in "".join(sent)
 
 
 def test_every_turn_carries_a_fresh_client_message_id(
