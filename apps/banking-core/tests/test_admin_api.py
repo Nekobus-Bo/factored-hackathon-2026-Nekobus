@@ -5,12 +5,16 @@ from datetime import UTC, datetime
 from enum import Enum
 from uuid import UUID
 
+import fakeredis
 import pytest
 import sqlalchemy as sa
 from banking_core.api import admin_router
+from banking_core.api.routes_admin import get_attempt_limit_store
+from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import load_policy_config, save_policy_config
 from banking_core.crypto import RecordEncryptor, compute_blind_index, get_master_key
 from banking_core.db.session import get_session_maker
+from banking_core.identity.config import IdentityConfig
 from banking_core.main import app, mount_admin_router_if_enabled
 from banking_core.models.config import PolicyConfigRecord
 from banking_core.models.core_bank import Account, Card, Customer
@@ -24,10 +28,20 @@ ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @pytest.fixture
-def admin_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def limit_redis() -> fakeredis.FakeRedis:
+    return fakeredis.FakeRedis(decode_responses=True)
+
+
+@pytest.fixture
+def admin_client(
+    monkeypatch: pytest.MonkeyPatch, limit_redis: fakeredis.FakeRedis
+) -> Iterator[TestClient]:
     monkeypatch.setenv("ADMIN_API_TOKEN", ADMIN_TOKEN)
+    monkeypatch.setenv("BLIND_INDEX_SALT", "admin-api-test-salt")
     test_app = FastAPI()
     test_app.include_router(admin_router)
+    store = AttemptLimitStore(redis_client=limit_redis)
+    test_app.dependency_overrides[get_attempt_limit_store] = lambda: store
     with TestClient(test_app) as client:
         yield client
 
@@ -410,6 +424,45 @@ def test_demo_reset_restores_fixture_card_and_audits_change(
             created_account,
             created_customer,
         )
+
+
+@pytest.mark.usefixtures("db_engine")
+def test_demo_reset_forgets_the_attempt_limits_of_fixture_customers_only(
+    admin_client: TestClient, limit_redis: fakeredis.FakeRedis
+) -> None:
+    fixtures = create_scenario_fixtures().customers
+    demo = fixtures[0]
+    demo_id = str(demo["id"])
+    demo_number = str(demo["document_number"])
+    document_type = DocumentType(str(demo["document_type"]))
+    fixture_keys = {
+        f"limit:customer:{demo_id}:otp_failures",
+        f"limit:customer:{demo_id}:otp_lock",
+    }
+    for candidate in IdentityConfig.from_env().resolve_equivalent_document_types(
+        document_type
+    ):
+        bidx = compute_blind_index(
+            demo_number,
+            "document_number",
+            "admin-api-test-salt",
+            document_type=candidate,
+        )
+        fixture_keys.add(f"limit:document:{bidx}:match_failures")
+    stranger_customer = "0d3f2a7c-88b1-4d55-8a4e-5b2c7d1e9f22"
+    stranger_document = f"limit:document:{'d' * 64}:match_failures"
+    for key in (*fixture_keys, f"limit:customer:{stranger_customer}:otp_lock"):
+        limit_redis.set(key, "1")
+    limit_redis.set(stranger_document, "7")
+
+    response = admin_client.post("/v1/admin/demo/reset-fixtures", headers=ADMIN_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["attempt_limits_cleared"] == len(fixture_keys)
+    assert set(limit_redis.keys("limit:*")) == {
+        f"limit:customer:{stranger_customer}:otp_lock",
+        stranger_document,
+    }
 
 
 def test_demo_reset_is_denied_in_production_without_override(

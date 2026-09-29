@@ -309,3 +309,34 @@ def test_limits_take_their_thresholds_from_the_policy_config(
     assert limits.reserve_document_attempt([BIDX]).blocked is False
     assert limits.reserve_document_attempt([BIDX]).blocked is True
     assert 0 < redis_client.ttl(f"limit:document:{BIDX}:match_failures") <= 180
+
+
+def test_clearing_a_customer_forgets_its_failures_and_its_lock(
+    store: AttemptLimitStore,
+) -> None:
+    for _ in range(MAX):
+        fail_verify(store)
+    fail_verify(store, OTHER_CUSTOMER)
+
+    removed = store.clear_customer(CUSTOMER)
+
+    assert removed == 2
+    assert not store.customer_locked(CUSTOMER)
+    # Failures start from zero again; another customer keeps its count.
+    assert [fail_verify(store) for _ in range(MAX)] == [False] * (MAX - 1) + [True]
+    assert [fail_verify(store, OTHER_CUSTOMER) for _ in range(MAX - 2)] == [False] * (
+        MAX - 2
+    )
+    assert fail_verify(store, OTHER_CUSTOMER) is True
+
+
+def test_clearing_documents_forgets_only_those(store: AttemptLimitStore) -> None:
+    for _ in range(MAX + 1):
+        reserve(store, BIDX)
+        reserve(store, OTHER_BIDX)
+
+    assert store.clear_documents([BIDX, BIDX]) == 1
+
+    assert not reserve(store, BIDX).blocked
+    assert reserve(store, OTHER_BIDX).blocked
+    assert store.clear_documents([]) == 0

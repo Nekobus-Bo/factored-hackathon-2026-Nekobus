@@ -6,7 +6,7 @@ import hmac
 import os
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -14,14 +14,18 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from sqlalchemy.orm import Session
 
+from banking_core.api.routes_sessions import get_session_store
 from banking_core.audit.service import append
+from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import (
     load_policy_config,
     record_to_policy_config,
     save_policy_config,
 )
 from banking_core.control.policy import PolicyConfig
+from banking_core.crypto import compute_blind_index
 from banking_core.db.session import get_session_maker
+from banking_core.identity.config import IdentityConfig
 from banking_core.models.config import PolicyConfigRecord
 from banking_core.models.core_bank import Card
 from banking_core.seed.fixtures import create_scenario_fixtures
@@ -77,6 +81,7 @@ class DemoResetResponse(BaseModel):
     cards_reset: int
     cards_changed: int
     cards_missing: int
+    attempt_limits_cleared: int
 
 
 def _environment_flag(name: str) -> bool:
@@ -188,6 +193,38 @@ def put_policy_config(request: AdminPolicyConfigRequest) -> PolicyConfigResponse
         return _response(saved_record)
 
 
+def get_attempt_limit_store() -> AttemptLimitStore:
+    """The cross-session attempt-limit counters, on the same redis-core."""
+    return AttemptLimitStore(redis_client=get_session_store().client)
+
+
+def _clear_fixture_attempt_limits(store: AttemptLimitStore) -> int:
+    """Forget the failures and locks of the scenario fixture customers.
+
+    They are the customers an evaluation run signs in as, over and over from one
+    address: without this a run would inherit the last one's failed verifies and
+    matches, and its outcome would depend on what ran before. Documents of
+    people who are not fixtures are not touched.
+    """
+    identity = IdentityConfig.from_env()
+    cleared = 0
+    for customer in create_scenario_fixtures().customers:
+        cleared += store.clear_customer(str(customer["id"]))
+        cleared += store.clear_documents(
+            [
+                compute_blind_index(
+                    value=str(customer["document_number"]),
+                    field_name="document_number",
+                    document_type=document_type,
+                )
+                for document_type in identity.resolve_equivalent_document_types(
+                    str(customer["document_type"])
+                )
+            ]
+        )
+    return cleared
+
+
 def _demo_card_states() -> dict[UUID, tuple[str, datetime | None, str | None]]:
     states: dict[UUID, tuple[str, datetime | None, str | None]] = {}
     for fixture_card in create_scenario_fixtures().cards:
@@ -214,7 +251,9 @@ def _demo_card_states() -> dict[UUID, tuple[str, datetime | None, str | None]]:
     response_model=DemoResetResponse,
     dependencies=[Depends(require_admin)],
 )
-def reset_demo_fixtures() -> DemoResetResponse:
+def reset_demo_fixtures(
+    limits: Annotated[AttemptLimitStore, Depends(get_attempt_limit_store)],
+) -> DemoResetResponse:
     if os.getenv(
         "APP_ENV", "development"
     ).strip().lower() == "production" and not _environment_flag("DEMO_RESET_ENABLED"):
@@ -224,6 +263,7 @@ def reset_demo_fixtures() -> DemoResetResponse:
         )
 
     seed_states = _demo_card_states()
+    attempt_limits_cleared = _clear_fixture_attempt_limits(limits)
     with get_session_maker()() as session:
         cards = session.scalars(
             sa.select(Card).where(Card.id.in_(tuple(seed_states)))
@@ -245,6 +285,7 @@ def reset_demo_fixtures() -> DemoResetResponse:
             cards_reset=len(cards),
             cards_changed=changed,
             cards_missing=len(seed_states) - len(cards),
+            attempt_limits_cleared=attempt_limits_cleared,
         )
         append(
             session,

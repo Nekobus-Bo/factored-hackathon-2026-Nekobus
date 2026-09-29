@@ -212,6 +212,25 @@ class AttemptLimitStore:
         for key in attempt.counters:
             self._decrement_if_positive(key)
 
+    # -- demo reset ---------------------------------------------------------
+
+    def clear_customer(self, customer_id: str) -> int:
+        """Forget a customer's failures and lock; how many keys were removed.
+
+        For the operator-only demo fixture reset, so evaluation runs start from
+        the same state. Nothing on the tool path calls it.
+        """
+        return int(
+            self._client.delete(
+                self._failures_key(customer_id), self._lock_key(customer_id)
+            )
+        )
+
+    def clear_documents(self, blind_indexes: Sequence[str]) -> int:
+        """Forget the failed matches of documents; how many keys were removed."""
+        keys = [self._document_key(b) for b in dict.fromkeys(blind_indexes)]
+        return int(self._client.delete(*keys)) if keys else 0
+
 
 @dataclass(frozen=True)
 class AttemptLimits:
