@@ -13,6 +13,7 @@ import re
 from typing import Any, Literal
 
 from contracts.envelope import ReasonCode
+from contracts.tools.otp_send import OtpSendOutput
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from banking_core.control.session import SessionState
@@ -28,6 +29,21 @@ RATE_LIMITED_TOOLS: frozenset[str] = frozenset(
         "identity.verify_document",
     }
 )
+
+
+def _otp_ttl_bounds() -> tuple[int, int]:
+    """Bounds of OtpSendOutput.expires_in_seconds: the contract is the source of truth.
+
+    A configured TTL outside them would let otp.send deliver a code and then fail
+    validating its own output, so the policy config accepts exactly this range.
+    """
+    metadata = OtpSendOutput.model_fields["expires_in_seconds"].metadata
+    lower = next(m.ge for m in metadata if hasattr(m, "ge"))
+    upper = next(m.le for m in metadata if hasattr(m, "le"))
+    return int(lower), int(upper)
+
+
+OTP_TTL_MIN_SECONDS, OTP_TTL_MAX_SECONDS = _otp_ttl_bounds()
 
 DEFAULT_THRESHOLDS_MINOR: dict[str, int] = {
     "USD": 50000,
@@ -115,8 +131,12 @@ class PolicyConfig(BaseModel):
     )
     otp_ttl_seconds: int = Field(
         default=300,
-        ge=10,
-        description="Time-to-live for OTP challenges in seconds",
+        ge=OTP_TTL_MIN_SECONDS,
+        le=OTP_TTL_MAX_SECONDS,
+        description=(
+            "Time-to-live for OTP challenges in seconds; bounded by the otp.send "
+            "contract"
+        ),
     )
     session_ttl_seconds: int = Field(
         default=3600,

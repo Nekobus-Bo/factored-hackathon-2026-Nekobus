@@ -17,6 +17,7 @@ Verifies lead's exact policy-mode semantics:
 """
 
 import os
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -24,7 +25,15 @@ from banking_core.control.authorize import Authorizer
 from banking_core.control.config import InMemoryControlConfigRepository
 from banking_core.control.policy import Decision, PolicyConfig, PolicyEngine
 from banking_core.control.session import SessionState
-from contracts.envelope import ReasonCode, ToolCall, VerificationState
+from contracts.envelope import (
+    ReasonCode,
+    Receipt,
+    ResourceState,
+    ToolCall,
+    VerificationState,
+)
+from contracts.tools.otp_send import OtpChannel, OtpSendOutput
+from pydantic import ValidationError
 
 
 def test_decision_model() -> None:
@@ -77,6 +86,53 @@ def test_policy_config_validation() -> None:
 
     with pytest.raises(ValueError, match="Invalid amount_mode"):
         PolicyConfig(amount_mode="invalid_mode")  # type: ignore[arg-type]
+
+
+def _contract_accepts_otp_ttl(ttl: int) -> bool:
+    try:
+        OtpSendOutput(
+            sent=True,
+            challenge_id="chal_abcdefghijklmnop",
+            channel=OtpChannel.SMS,
+            destination_masked="+57 *** *** 4567",
+            expires_in_seconds=ttl,
+            receipt=Receipt(
+                action="otp.send",
+                target_masked="+57 *** *** 4567",
+                state_before=ResourceState.IDENTIFIED,
+                state_after=ResourceState.OTP_PENDING,
+                verified_at=datetime.now(UTC),
+                audit_id="aud_00000001",
+            ),
+        )
+    except ValidationError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("ttl", [-1, 0, 10, 29, 30, 31, 300, 899, 900, 901, 3600])
+def test_otp_ttl_bounds_are_exactly_the_otp_send_contract_bounds(ttl: int) -> None:
+    """A TTL the policy accepts is one otp.send can put in its own output."""
+    try:
+        PolicyConfig(otp_ttl_seconds=ttl)
+        config_accepts = True
+    except ValidationError:
+        config_accepts = False
+
+    assert config_accepts == _contract_accepts_otp_ttl(ttl)
+
+
+@pytest.mark.parametrize("ttl", [-1, 0, 10, 29, 901, 3600])
+def test_otp_ttl_outside_the_contract_bounds_is_rejected(ttl: int) -> None:
+    with pytest.raises(ValidationError, match="otp_ttl_seconds"):
+        PolicyConfig(otp_ttl_seconds=ttl)
+
+
+@pytest.mark.parametrize("ttl", ["10", "901"])
+def test_seed_env_cannot_configure_an_otp_ttl_the_contract_refuses(ttl: str) -> None:
+    with patch.dict(os.environ, {"OTP_TTL_SECONDS": ttl}, clear=False):
+        with pytest.raises(ValidationError, match="otp_ttl_seconds"):
+            PolicyConfig.from_env()
 
 
 def test_policy_config_from_env() -> None:
