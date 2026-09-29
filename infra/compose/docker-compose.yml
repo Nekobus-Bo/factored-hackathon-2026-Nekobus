@@ -18,6 +18,11 @@
 # banking-core is the only service on both. The orchestrator has no network path
 # to postgres or redis-core. One Redis per trust zone, each with a password.
 #
+# The encoder is the model server (ADR-0012, Appendix J): it serves the decision model
+# (/v1/analyze) and the embedding model (/v1/embed) and receives raw customer text, so it
+# stays inside this private network. banking-core reaches it at MODEL_SERVER_URL for
+# kb.search. To run it on its own host, point MODEL_SERVER_URL and ENCODER_URL there.
+#
 # postgres and the Redis instances are not published to the host on purpose (they
 # collide with local installs). Use `docker compose exec postgres psql -U app bank`.
 
@@ -99,7 +104,9 @@ services:
       context: ../..
       dockerfile: apps/banking-core/Dockerfile
       args:
-        # Dense kb.search backend (the default); set to "" for a BM25-only image.
+        # Only EMBEDDING_BACKEND=local needs it (in-process model, tests and local
+        # development). The default embeds through the model server, and nothing in
+        # banking-core imports torch then; "" builds a smaller image (ADR-0012, J.6).
         BANKING_CORE_SYNC_ARGS: ${BANKING_CORE_SYNC_ARGS---extra vector}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     command: ["alembic", "-c", "apps/banking-core/alembic.ini", "upgrade", "head"]
@@ -193,12 +200,16 @@ services:
       SESSION_LOCK_WAIT_MS: ${SESSION_LOCK_WAIT_MS:-2000}
       AUDIT_HASH_CHAIN_ENABLED: ${AUDIT_HASH_CHAIN_ENABLED:-true}
       RETRIEVAL_MODE: ${RETRIEVAL_MODE:-vector}
+      # The embedding model runs on the model server. banking-core checks that the
+      # server reports exactly this model and revision on every answer (the same two
+      # variables configure the encoder service).
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-remote}
+      MODEL_SERVER_URL: ${MODEL_SERVER_URL:-http://encoder:8090}
+      MODEL_SERVER_TIMEOUT_SECONDS: ${MODEL_SERVER_TIMEOUT_SECONDS:-10}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
       RETRIEVAL_SCORE_FLOOR: ${RETRIEVAL_SCORE_FLOOR:-0.3}
-      HF_HUB_OFFLINE: "1"
-    volumes:
-      - hf-cache:/models/hf:ro
     ports:
       - "127.0.0.1:${PORT_BANKING_CORE:-8081}:8081"
     depends_on:
@@ -211,38 +222,10 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8081/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='banking-core' else 1)"]
     deploy:
       resources:
-        # The embedding model adds ~1.3 GB (see docs/limitations.md).
+        # The embedding model no longer loads here (it was ~1.3 GB, see docs/limitations.md),
+        # so this ceiling can be lowered once a Linux measurement exists. EMBEDDING_BACKEND=local
+        # needs it.
         limits: { cpus: "1.0", memory: "${BANKING_CORE_MEMORY_LIMIT:-2g}" }
-
-  # `make warmup-retrieval`: puts the embedding model into hf-cache. Network is
-  # used only when the model is not cached yet, so a second `make demo` works
-  # offline. The only banking-core container with egress (edge); it gets no
-  # credentials or keys.
-  warmup:
-    <<: *app-hardening
-    build: *banking-core-build
-    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
-    command:
-      - python
-      - -c
-      - |
-        import os
-        from huggingface_hub import snapshot_download
-        model = os.environ["EMBEDDING_MODEL"]
-        try:
-            path = snapshot_download(model, local_files_only=True)
-            print(f"warmup: {model} already cached at {path}")
-        except Exception:
-            print(f"warmup: {model} is not cached; downloading (needs network)")
-            path = snapshot_download(model)
-            print(f"warmup: {model} downloaded to {path}")
-    environment:
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-    volumes:
-      - hf-cache:/models/hf
-    networks: [edge]
-    restart: "no"
-    profiles: ["tools"]
 
   orchestrator:
     <<: *app-hardening
@@ -315,7 +298,10 @@ services:
       context: ../..
       dockerfile: apps/encoder/Dockerfile
       args:
-        ENCODER_EXTRAS: ${ENCODER_EXTRAS:-}
+        # `embed` adds PyTorch and sentence-transformers for POST /v1/embed; `gliner` adds
+        # PyTorch for ENCODER_BACKEND=gliner (several: "embed gliner"). Empty builds the
+        # decision baseline only, and then EMBEDDING_MODEL must be empty too.
+        ENCODER_EXTRAS: ${ENCODER_EXTRAS-embed}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/encoder:dev
     environment:
       PORT: "8090"
@@ -330,13 +316,22 @@ services:
       ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
       ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD-0.37}
       ENCODER_GLINER_MIN_MEMORY_MB: ${ENCODER_GLINER_MIN_MEMORY_MB:-4096}
+      # The embedding model for kb.search (POST /v1/embed), pinned: a full 40-hex commit
+      # for a hub model, verified against the cache before it loads. The hash pin is
+      # optional and recommended: `make warmup-retrieval` prints it. Empty
+      # EMBEDDING_MODEL turns /v1/embed off.
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
+      EMBEDDING_WEIGHTS_SHA256: ${EMBEDDING_WEIGHTS_SHA256:-}
+      EMBEDDING_MAX_BATCH: ${EMBEDDING_MAX_BATCH:-64}
       # Decision points (ADR-0012). No artifact ships yet: legacy seed mode.
       DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-}
       DECISION_POINTS_ALLOW_STALE: ${DECISION_POINTS_ALLOW_STALE:-false}
       DECISION_POINTS_TAU_RAISE: ${DECISION_POINTS_TAU_RAISE:-}
     volumes:
-      # Model weights cache (HF_HOME=/models/hf), filled by `make warmup`.
-      - encoder-models:/models
+      # Model weights cache (HF_HOME=/models/hf) for both models, filled by
+      # `make warmup` (decision backend) and `make warmup-retrieval` (embedding model).
+      - hf-cache:/models/hf
     ports:
       - "127.0.0.1:${PORT_ENCODER:-8090}:8090"
     networks: [edge]
@@ -345,7 +340,9 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8090/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='encoder' else 1)"]
     deploy:
       resources:
-        # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS: set ENCODER_MEMORY_LIMIT=4g.
+        # tfidf_lr plus the embedding model should fit 3g (estimate; Linux figure pending).
+        # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS alone: set ENCODER_MEMORY_LIMIT=5g
+        # with the embedding model.
         limits: { cpus: "2.0", memory: "${ENCODER_MEMORY_LIMIT:-3g}" }
 
 networks:
@@ -355,5 +352,4 @@ networks:
 
 volumes:
   postgres-data:
-  encoder-models:
   hf-cache:

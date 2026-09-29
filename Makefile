@@ -80,13 +80,13 @@ data-quality: ## Generate data quality report in reports/data-quality.md
 verify-audit: ## verify the audit log hash chain
 	$(COMPOSE) run --rm banking-core python -m banking_core.audit.verify
 
-warmup: warmup-encoder warmup-retrieval ## Preload every local model (encoder backend + kb.search embeddings)
+warmup: warmup-encoder warmup-retrieval ## Preload every local model on the model server (decision backend + kb.search embeddings)
 
-warmup-encoder: ## Preload the configured encoder backend (GLiNER weights into the models volume; tfidf_lr only checks its data)
-	$(COMPOSE) run --rm --no-deps encoder python -m encoder_service.warmup
+warmup-encoder: ## Preload the configured decision backend (GLiNER weights into the hf-cache volume; tfidf_lr only checks its data)
+	$(COMPOSE) run --rm --no-deps encoder python -m encoder_service.warmup --only decision
 
-warmup-retrieval: ## Download the kb.search embedding model into the hf-cache volume (needs network once)
-	$(COMPOSE) --profile tools run --rm warmup
+warmup-retrieval: ## Download the pinned kb.search embedding model onto the model server (needs network once) and print its hash pin
+	$(COMPOSE) run --rm --no-deps encoder python -m encoder_service.warmup --only embedding
 
 encoder-bench: ## Encoder p95 latency and peak RAM on CPU (ENCODER_BACKEND=tfidf_lr|gliner, ENCODER_MODEL=, DATA=)
 	ENCODER_BACKEND=$(or $(ENCODER_BACKEND),tfidf_lr) uv run --package encoder-service $(if $(filter gliner,$(ENCODER_BACKEND)),--extra gliner) python -m encoder_service.bench --data $(or $(DATA),data/eval/synthetic/decision.validation.jsonl)
