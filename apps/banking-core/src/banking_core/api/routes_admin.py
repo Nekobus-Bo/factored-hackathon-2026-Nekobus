@@ -164,6 +164,9 @@ def put_policy_config(request: AdminPolicyConfigRequest) -> PolicyConfigResponse
                 **current_config.model_dump(),
                 "amount_mode": request.amount_mode,
                 "thresholds_minor": request.thresholds_minor,
+                # The current single-currency copy would overwrite the requested
+                # threshold of the default currency; it is derived from the map.
+                "amount_threshold_minor": None,
             }
         )
         next_version = (

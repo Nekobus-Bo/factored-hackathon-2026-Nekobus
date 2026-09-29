@@ -375,6 +375,45 @@ def test_policy_update_keeps_the_attempt_limits(admin_client: TestClient) -> Non
 
 
 @pytest.mark.usefixtures("db_engine")
+def test_policy_update_can_lower_or_drop_the_default_currency_threshold(
+    admin_client: TestClient,
+) -> None:
+    """The threshold of the default currency (COP) follows the request too.
+
+    A stale single-threshold copy of the current config used to win over the
+    requested map, so the demo could not lower the COP threshold live.
+    """
+    original = admin_client.get("/v1/admin/policy-config", headers=ADMIN_HEADERS).json()
+    lowered = {"COP": 20000000, "USD": 10000, "BRL": 30000, "EUR": 50000}
+    without_default = {"USD": 10000, "EUR": 50000}
+
+    def put(thresholds: dict[str, int]) -> dict[str, int]:
+        response = admin_client.put(
+            "/v1/admin/policy-config",
+            headers=ADMIN_HEADERS,
+            json={"amount_mode": "block", "thresholds_minor": thresholds},
+        )
+        assert response.status_code == 200
+        assert response.json()["thresholds_minor"] == thresholds
+        return load_policy_config().thresholds_minor
+
+    try:
+        assert put(lowered) == lowered
+        assert put(without_default) == without_default
+        assert put(lowered) == lowered
+    finally:
+        restored = admin_client.put(
+            "/v1/admin/policy-config",
+            headers=ADMIN_HEADERS,
+            json={
+                "amount_mode": original["amount_mode"],
+                "thresholds_minor": original["thresholds_minor"],
+            },
+        )
+        assert restored.status_code == 200
+
+
+@pytest.mark.usefixtures("db_engine")
 def test_demo_reset_restores_fixture_card_and_audits_change(
     admin_client: TestClient,
 ) -> None:
