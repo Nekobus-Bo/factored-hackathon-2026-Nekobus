@@ -1,8 +1,11 @@
 """Configuration management for encoder service."""
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from encoder.decision_points import DEFAULT_ARTIFACT_PATH, parse_tau_raise
 
 DEFAULT_TRAIN_DATA = "data/eval/synthetic/decision.train.jsonl"
 # gliner2.5-multi peaks at ~3.5 GB RSS on CPU (make encoder-bench).
@@ -65,3 +68,66 @@ def get_abstention_threshold() -> float | None:
         raise ValueError(f"ABSTENTION_THRESHOLD must be between 0.0 and 1.0, got {tau}")
 
     return tau
+
+
+DEFAULT_DECISION_WORKERS = 4
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"", "0", "false", "no", "off"}
+
+
+@dataclass(frozen=True)
+class DecisionPointSettings:
+    """Decision-point configuration, read from the environment (ADR-0012, Appendix B).
+
+    Only paths and switches live here. Every tau, label map and calibrator lives in
+    the calibration artifact.
+    """
+
+    file: Path
+    # True when DECISION_POINTS_FILE was set: a missing file is then reported.
+    file_explicit: bool
+    allow_stale: bool
+    tau_raise: Mapping[tuple[str, str], float]
+    max_workers: int
+    app_env: str
+
+
+def _flag(environ: Mapping[str, str], name: str) -> bool:
+    raw = environ.get(name, "").strip().lower()
+    if raw in _TRUE:
+        return True
+    if raw in _FALSE:
+        return False
+    raise ValueError(f"{name} must be true or false, got {raw!r}")
+
+
+def get_decision_point_settings(
+    environ: Mapping[str, str] | None = None,
+) -> DecisionPointSettings:
+    """Read DECISION_POINTS_* (see .env.example). Invalid values fail loudly."""
+    env = os.environ if environ is None else environ
+    app_env = env.get("APP_ENV", "").strip().lower()
+    allow_stale = _flag(env, "DECISION_POINTS_ALLOW_STALE")
+    if allow_stale and app_env == "production":
+        raise ValueError(
+            "DECISION_POINTS_ALLOW_STALE is refused when APP_ENV=production: a model "
+            "that does not match its pin must stop the service, not serve"
+        )
+    raw_workers = env.get("DECISION_POINTS_MAX_WORKERS", "").strip()
+    try:
+        workers = int(raw_workers) if raw_workers else DEFAULT_DECISION_WORKERS
+    except ValueError as err:
+        raise ValueError(
+            f"DECISION_POINTS_MAX_WORKERS must be an integer, got {raw_workers!r}"
+        ) from err
+    if workers < 1:
+        raise ValueError("DECISION_POINTS_MAX_WORKERS must be at least 1")
+    explicit = env.get("DECISION_POINTS_FILE", "").strip()
+    return DecisionPointSettings(
+        file=Path(explicit or DEFAULT_ARTIFACT_PATH),
+        file_explicit=bool(explicit),
+        allow_stale=allow_stale,
+        tau_raise=parse_tau_raise(env.get("DECISION_POINTS_TAU_RAISE")),
+        max_workers=workers,
+        app_env=app_env,
+    )

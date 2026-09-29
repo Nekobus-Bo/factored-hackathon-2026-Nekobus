@@ -330,6 +330,10 @@ services:
       ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
       ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD-0.37}
       ENCODER_GLINER_MIN_MEMORY_MB: ${ENCODER_GLINER_MIN_MEMORY_MB:-4096}
+      # Decision points (ADR-0012). No artifact ships yet: legacy seed mode.
+      DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-}
+      DECISION_POINTS_ALLOW_STALE: ${DECISION_POINTS_ALLOW_STALE:-false}
+      DECISION_POINTS_TAU_RAISE: ${DECISION_POINTS_TAU_RAISE:-}
     volumes:
       # Model weights cache (HF_HOME=/models/hf), filled by `make warmup`.
       - encoder-models:/models

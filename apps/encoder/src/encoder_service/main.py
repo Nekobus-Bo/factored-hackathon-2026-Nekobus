@@ -1,5 +1,6 @@
-"""Encoder service entrypoint and FastAPI endpoints."""
+"""Encoder service (the model server) entrypoint and FastAPI endpoints."""
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +9,8 @@ from typing import Any
 from contracts.encoder import (
     AnalyzeRequest,
     AnalyzeResponse,
+    DecisionPointsResponse,
+    DecisionResult,
     PiiSpan,
     Slot,
 )
@@ -21,8 +24,24 @@ from encoder_service.backend import (
     get_backend,
     set_backend,
 )
-from encoder_service.config import get_abstention_threshold, get_backend_settings
+from encoder_service.config import (
+    get_abstention_threshold,
+    get_backend_settings,
+    get_decision_point_settings,
+)
+from encoder_service.decisions import (
+    TURN_INTENT,
+    DecisionRuntime,
+    get_runtime,
+    load_runtime,
+    set_runtime,
+)
 from encoder_service.model_backends import build_backend
+from encoder_service.scoring import RequestScores
+
+logger = logging.getLogger(__name__)
+
+UNCALIBRATED = "uncalibrated: ABSTENTION_THRESHOLD not set (ADR-0010)"
 
 
 @asynccontextmanager
@@ -35,7 +54,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     backend = build_backend(get_backend_settings())
     if backend is not None:
         set_backend(backend)
-    yield
+    # Fails loud if the calibration artifact is invalid, a backend cannot be built
+    # or does not match its pin. No artifact file: legacy seed mode (get_runtime()
+    # stays None and ABSTENTION_THRESHOLD stands for a one-DP artifact).
+    settings = get_decision_point_settings()
+    runtime = load_runtime(settings)
+    set_runtime(runtime)
+    if runtime is None:
+        logger.info("decision points: legacy seed mode (ABSTENTION_THRESHOLD)")
+    else:
+        logger.info("decision points: artifact %s", runtime.config_version)
+        if get_abstention_threshold() is not None:
+            logger.info(
+                "ABSTENTION_THRESHOLD is set but a calibration artifact exists: "
+                "the artifact's thresholds win; the environment value is ignored"
+            )
+    try:
+        yield
+    finally:
+        if runtime is not None:
+            runtime.close()
+        set_runtime(None)
 
 
 app = FastAPI(title="encoder", lifespan=lifespan)
@@ -56,13 +95,14 @@ def health() -> HealthResponse:
 def ready() -> JSONResponse:
     """Readiness endpoint indicating if inference backend is ready and calibrated."""
     tau = get_abstention_threshold()
-    if tau is None:
+    runtime = get_runtime()
+    if tau is None and runtime is None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "status": "unavailable",
                 "ready": False,
-                "reason": "uncalibrated: ABSTENTION_THRESHOLD not set (ADR-0010)",
+                "reason": UNCALIBRATED,
                 "service": "encoder",
             },
         )
@@ -78,6 +118,7 @@ def ready() -> JSONResponse:
             "ready": True,
             "backend": getattr(backend, "model_id", "unknown"),
             "service": "encoder",
+            "decision_points": _decision_points_readiness(runtime),
         }
     else:
         payload = {
@@ -89,14 +130,58 @@ def ready() -> JSONResponse:
     return JSONResponse(status_code=status_code, content=payload)
 
 
+def _decision_points_readiness(runtime: DecisionRuntime | None) -> dict[str, Any]:
+    """Source, artifact id and the state of each decision point, for /ready."""
+    if runtime is None:
+        return {
+            "source": "legacy_seed",
+            "config_version": None,
+            "states": {TURN_INTENT: "ready"},
+        }
+    return {
+        "source": runtime.source,
+        "config_version": runtime.config_version,
+        "states": {dp_id: runtime.state(dp_id) for dp_id in runtime.decision_points},
+    }
+
+
+def _seed_runtime(raw_model_id: str) -> DecisionRuntime:
+    """Legacy seed mode: ABSTENTION_THRESHOLD as a one-DP artifact (uncalibrated)."""
+    tau = get_abstention_threshold()
+    if tau is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNCALIBRATED
+        )
+    return DecisionRuntime.seed(
+        tau, raw_model_id, get_decision_point_settings().tau_raise
+    )
+
+
+@app.get("/v1/decision-points", response_model=DecisionPointsResponse)
+def decision_points() -> DecisionPointsResponse:
+    """The decision points this service evaluates and how calibrated they are."""
+    runtime = get_runtime()
+    if runtime is None:
+        runtime = _seed_runtime(getattr(get_backend(), "model_id", "unavailable"))
+    return runtime.info()
+
+
 @app.post("/v1/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     """Analyze customer message for intent, extracted slots, and PII spans."""
     tau = get_abstention_threshold()
-    if tau is None:
+    runtime = get_runtime()
+    if runtime is None and tau is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="uncalibrated: ABSTENTION_THRESHOLD not set (ADR-0010)",
+            detail=UNCALIBRATED,
+        )
+    known = runtime.known_ids() if runtime is not None else {TURN_INTENT}
+    unknown = sorted(set(request.decision_points or []) - known)
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"unknown decision points {unknown}; known: {sorted(known)}",
         )
 
     start_time = time.perf_counter()
@@ -109,6 +194,7 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+    legacy_ms = (time.perf_counter() - start_time) * 1000.0
 
     # Validate intent against typed Intent enum
     if raw_result.intent is not None:
@@ -149,18 +235,62 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             ) from exc
         pii_spans.append(PiiSpan(type=pii_type, start=p.start, end=p.end))
 
-    # Evaluate abstention by tau
-    abstain = raw_result.confidence < tau
-    intent = None if abstain else raw_result.intent
+    # Decision points. The legacy fields follow turn_intent (ADR-0012, Appendix D).
+    active = runtime if runtime is not None else _seed_runtime(raw_result.model_id)
+    scores = RequestScores(
+        text=request.text,
+        lang=request.lang,
+        legacy=raw_result,
+        legacy_latency_ms=legacy_ms,
+    )
+    requested = (
+        request.decision_points
+        if request.decision_points is not None
+        else active.default_ids()
+    )
+    to_run = list(dict.fromkeys([*requested, *_legacy_source(active)]))
+    results = active.evaluate(to_run, scores)
+    decisions = {dp_id: results[dp_id] for dp_id in requested}
+
+    if active.turn_intent_enabled():
+        intent, confidence, abstain = _legacy_from_turn_intent(results[TURN_INTENT])
+    else:
+        # The artifact has no enabled turn_intent: the legacy fields fall back to the
+        # legacy backend and ABSTENTION_THRESHOLD.
+        if tau is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "uncalibrated: the calibration artifact has no enabled turn_intent "
+                    "and ABSTENTION_THRESHOLD is not set (ADR-0012)"
+                ),
+            )
+        confidence = raw_result.confidence
+        abstain = confidence < tau
+        intent = None if abstain else raw_result.intent
 
     latency_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
 
     return AnalyzeResponse(
         intent=intent,
-        confidence=raw_result.confidence,
+        confidence=confidence,
         abstain=abstain,
         slots=slots,
         pii_spans=pii_spans,
         model_id=raw_result.model_id,
         latency_ms=latency_ms,
+        decisions=decisions,
+        config_version=active.config_version,
     )
+
+
+def _legacy_source(runtime: DecisionRuntime) -> list[str]:
+    """turn_intent is always evaluated when enabled: the legacy fields come from it."""
+    return [TURN_INTENT] if runtime.turn_intent_enabled() else []
+
+
+def _legacy_from_turn_intent(result: DecisionResult) -> tuple[str | None, float, bool]:
+    """(intent, confidence, abstain) from turn_intent. Anything but decided abstains."""
+    if result.label is not None:
+        return result.label, result.confidence, False
+    return None, result.confidence, True
