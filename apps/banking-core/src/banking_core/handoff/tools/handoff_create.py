@@ -55,6 +55,7 @@ from sqlalchemy.orm import Session
 
 from banking_core.audit.service import append as append_audit
 from banking_core.control.policy import Decision
+from banking_core.handoff.queue import PRIORITY_ORDER, queue_position
 from banking_core.models.ops import AuditLog, Handoff
 from banking_core.transactions.lookup import (
     DisputedTransaction,
@@ -66,13 +67,6 @@ ACTION = "handoff.create"
 
 # Every status the queue holds is an open one (see ck_handoff_status).
 _OPEN_STATUSES = tuple(status.value for status in HandoffStatus)
-
-_PRIORITY_ORDER = [
-    HandoffPriority.LOW,
-    HandoffPriority.NORMAL,
-    HandoffPriority.HIGH,
-    HandoffPriority.URGENT,
-]
 
 _VERIFICATION_METHOD = {
     VerificationState.ANONYMOUS: "none",
@@ -106,12 +100,12 @@ def resolve_priority(
         or verification_state == VerificationState.LOCKED
     ):
         floor = HandoffPriority.HIGH
-    return max(requested, floor, key=_PRIORITY_ORDER.index)
+    return max(requested, floor, key=PRIORITY_ORDER.index)
 
 
 def _raise_to(priority: HandoffPriority, floor: HandoffPriority) -> HandoffPriority:
     """The higher of two priorities."""
-    return max(priority, floor, key=_PRIORITY_ORDER.index)
+    return max(priority, floor, key=PRIORITY_ORDER.index)
 
 
 def _applicable_requirement(
@@ -379,21 +373,7 @@ def execute_handoff_create(
     if stored is None or audit is None:
         raise RuntimeError("handoff receipt could not be re-read from the database")
 
-    queue_position = db_session.scalar(
-        sa.select(sa.func.count())
-        .select_from(Handoff)
-        .where(
-            Handoff.status == HandoffStatus.QUEUED.value,
-            Handoff.department == stored.department,
-            sa.or_(
-                _rank(Handoff.priority) > _rank(sa.literal(stored.priority)),
-                sa.and_(
-                    Handoff.priority == stored.priority,
-                    Handoff.created_at <= stored.created_at,
-                ),
-            ),
-        )
-    )
+    position = queue_position(db_session, stored)
     receipt = Receipt(
         action=ACTION,
         target_masked=stored.handoff_ref,
@@ -408,16 +388,8 @@ def execute_handoff_create(
         department=Department(stored.department),
         priority=HandoffPriority(stored.priority),
         summary=HandoffSummary.model_validate(stored.summary),
-        queue_position=queue_position or None,
+        queue_position=position,
         created_at=stored.created_at,
         receipt=receipt,
     )
     return HandoffCreateResult(output=output, priority=HandoffPriority(stored.priority))
-
-
-def _rank(column: Any) -> Any:
-    return sa.case(
-        {p.value: i for i, p in enumerate(_PRIORITY_ORDER)},
-        value=column,
-        else_=0,
-    )
