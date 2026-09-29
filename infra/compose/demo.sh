@@ -190,6 +190,16 @@ EOF
 else
   echo "  (could not read them from banking-core; see apps/banking-core/src/banking_core/seed/fixtures.py)"
 fi
+case "$(cfg ALLOW_DEV_OTP_HOOK false | tr '[:upper:]' '[:lower:]')" in
+  true | 1 | yes | on)
+    echo "  OTP codes: GET $core_url/v1/dev/otp/<challenge_id> (dev hook enabled)"
+    ;;
+  *)
+    echo "  OTP codes go to a simulated channel that the customer web client will show (pending). Until then,"
+    echo "  for local use only: set ALLOW_DEV_OTP_HOOK=true in .env, run 'make up', and read a code at"
+    echo "  GET $core_url/v1/dev/otp/<challenge_id>"
+    ;;
+esac
 
 admin_enabled=$(cfg ADMIN_API_ENABLED true | tr '[:upper:]' '[:lower:]')
 case "$admin_enabled" in
