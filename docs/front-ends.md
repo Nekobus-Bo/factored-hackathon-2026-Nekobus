@@ -1,6 +1,6 @@
 # Front ends: specification and HTTP contract
 
-> **Status: in progress** (2026-09-29). The Zod mirror of every shape below is `@pattern-blue/contracts` (`packages/contracts/ts/`, conventions in `packages/contracts/README.md`): requests are strict, responses strip unknown keys, and `blocks` stay raw until `parseBlocks`. Progress and next steps: [status-and-plan.md](status-and-plan.md). The decisions are recorded in ADR-0013 (`docs/adr/0013-front-ends-bff-takeover.md`, landing with the back-office API work).
+> **Status: implemented** on the front-ends branch (2026-09-29; work packages F0 to F5). The Zod mirror of every shape below is `@pattern-blue/contracts` (`packages/contracts/ts/`, conventions in `packages/contracts/README.md`): requests are strict, responses strip unknown keys, and `blocks` stay raw until `parseBlocks`. What was verified and what was not: [status-and-plan.md](status-and-plan.md). The decisions are recorded in [ADR-0013](adr/0013-front-ends-bff-takeover.md).
 
 Everyone working on the front ends reads this file. The API shapes below are the contract between work packages: implement them exactly. Anything this file does not fix is yours to decide; record what you decided. If something here is impossible or contradicts the code, raise it and change this file first; do not improvise around it.
 
