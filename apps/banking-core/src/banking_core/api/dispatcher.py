@@ -68,6 +68,7 @@ from banking_core.identity.config import IdentityConfig
 from banking_core.identity.ports import OtpDeliveryPort, get_delivery_port
 from banking_core.identity.tools import (
     NoOtpChannelError,
+    OtpResendLimitError,
     execute_customer_match,
     execute_identity_verify_document,
     execute_otp_send,
@@ -140,12 +141,20 @@ class ToolDispatcher:
         verification_state_after: VerificationState,
         reason: str | None = None,
         details: dict[str, AuditDetail] | None = None,
+        session_after: SessionState | None = None,
     ) -> ToolResult:
-        """Audit a refused call and return the refusal envelope."""
+        """Audit a refused call and return the refusal envelope.
+
+        session_after is a state the refusal itself causes (a lock). It is saved
+        only once the refusal's audit row is committed, so the stored session
+        never moves ahead of the audit trail; if either step fails the session
+        simply does not advance.
+        """
         tool_def = TOOL_CATALOG.get(tool_call.tool)
         idempotency_scope = (
             session_id if tool_def is not None and tool_def.mutates_state else None
         )
+        audited = False
         try:
             append_audit(
                 session=db_session,
@@ -164,12 +173,22 @@ class ToolDispatcher:
                 ),
             )
             db_session.commit()
+            audited = True
         except Exception as exc:
             logger.warning(
                 "Failed to record audit log for refused call: %s",
                 type(exc).__name__,
             )
             db_session.rollback()
+        if audited and session_after is not None:
+            try:
+                self.session_store.save(session_after)
+            except Exception as exc:
+                logger.error(
+                    "Failed to save session after refused '%s': %s",
+                    tool_call.tool,
+                    type(exc).__name__,
+                )
         return ToolResult(
             tool=tool_call.tool,
             status=ToolResultStatus.REFUSED,
@@ -396,7 +415,7 @@ class ToolDispatcher:
                     status=ToolResultStatus.OK,
                     data=result_data,
                 )
-            except NoOtpChannelError:
+            except NoOtpChannelError as exc:
                 db_session.rollback()
                 return self._refuse(
                     tool_call,
@@ -405,7 +424,22 @@ class ToolDispatcher:
                     db_session,
                     verification_state_before=verification_state_before,
                     verification_state_after=session.state,
-                    reason="no_registered_otp_channel",
+                    reason=exc.audit_reason,
+                )
+            except OtpResendLimitError as exc:
+                # Nothing was delivered or stored: the resend that would have
+                # tripped the limit is refused and locks the session instead.
+                db_session.rollback()
+                return self._refuse(
+                    tool_call,
+                    session.session_id,
+                    ReasonCode.RATE_LIMITED,
+                    db_session,
+                    verification_state_before=verification_state_before,
+                    verification_state_after=exc.locked_session.state,
+                    reason="otp_resend_limit_exceeded",
+                    details={"flags": ["OTP_RESEND_LIMIT_EXCEEDED"]},
+                    session_after=exc.locked_session,
                 )
             except Exception as exc:
                 db_session.rollback()

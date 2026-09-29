@@ -1045,3 +1045,119 @@ def test_customer_match_spends_one_decrypt_on_hit_and_miss(
 
     assert result["status"] == "ok"
     assert decrypt.call_count == 1
+
+
+def _otp_send(h: Harness, session_id: str, key: str) -> dict[str, Any]:
+    return h.call(session_id, {"tool": "otp.send", "args": {}, "idempotency_key": key})
+
+
+def _stored_challenges(h: Harness) -> set[str]:
+    return {
+        key
+        for key in h.redis.keys("otp:challenge:*")
+        if not key.endswith(":evaluations")
+    }
+
+
+def test_locking_resend_delivers_nothing_stores_no_challenge_and_locks(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OTP_MAX_RESENDS", "2")
+    h = make_harness()
+    session_id, _ = _to_otp_pending(h)
+    resent = _otp_send(h, session_id, "idem_resend_allowed_01")
+    assert resent["status"] == "ok"
+    challenge_id = resent["data"]["challenge_id"]
+    challenges_before = _stored_challenges(h)
+    audits_before = len(h.db.audit_logs)
+
+    sink = get_dev_sink()
+    with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
+        locking = _otp_send(h, session_id, "idem_resend_locking_01")
+
+    assert locking == {
+        "tool": "otp.send",
+        "status": "refused",
+        "reason_code": "RATE_LIMITED",
+        "data": None,
+    }
+    deliver.assert_not_called()
+    assert _stored_challenges(h) == challenges_before
+    session = h.session_store.get(session_id)
+    assert session is not None
+    assert session.state == VerificationState.LOCKED
+    assert session.otp_challenge_id == challenge_id
+    assert len(h.db.audit_logs) == audits_before + 1
+    audit = h.db.audit_logs[-1]
+    assert (audit.action, audit.decision, audit.reason_code) == (
+        "otp.send",
+        "refused",
+        "RATE_LIMITED",
+    )
+    assert audit.payload["verification_state_before"] == "OTP_PENDING"
+    assert audit.payload["verification_state_after"] == "LOCKED"
+    assert audit.payload["reason"] == "otp_resend_limit_exceeded"
+
+    # Locked for good: no further code, and no way to verify the earlier one.
+    for tool, args in (("otp.send", {}), ("otp.verify", {"code": "000000"})):
+        after = h.call(
+            session_id,
+            {"tool": tool, "args": args, "idempotency_key": f"idem_after_lock_{tool}"},
+        )
+        assert after["reason_code"] == "STATE_NOT_ALLOWED"
+
+
+def test_replayed_resend_is_not_counted_against_the_limit(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OTP_MAX_RESENDS", "2")
+    h = make_harness()
+    session_id, _ = _to_otp_pending(h)
+    first = _otp_send(h, session_id, "idem_resend_replayed_01")
+    assert first["status"] == "ok"
+
+    sink = get_dev_sink()
+    with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
+        replays = [
+            _otp_send(h, session_id, "idem_resend_replayed_01") for _ in range(3)
+        ]
+
+    assert replays == [first] * 3
+    deliver.assert_not_called()
+    session = h.session_store.get(session_id)
+    assert session is not None
+    assert session.state == VerificationState.OTP_PENDING
+    assert session.otp_resends == 1
+
+
+@pytest.mark.parametrize("channel", ["pigeon", "", "   "])
+def test_unrecognized_registered_channel_fails_closed_like_none(
+    make_harness, channel: str
+) -> None:
+    h = make_harness()
+    h.db.customers[0].registered_otp_channel = channel
+    session_id = h.new_session()
+    assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
+
+    sink = get_dev_sink()
+    with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
+        result = _otp_send(h, session_id, "idem_unknown_channel_01")
+
+    assert result == {
+        "tool": "otp.send",
+        "status": "refused",
+        "reason_code": "POLICY_BLOCKED",
+        "data": None,
+    }
+    deliver.assert_not_called()
+    assert not _stored_challenges(h)
+    session = h.session_store.get(session_id)
+    assert session is not None
+    assert session.state == VerificationState.IDENTIFIED
+    audit = h.db.audit_logs[-1]
+    assert (audit.action, audit.decision, audit.reason_code) == (
+        "otp.send",
+        "refused",
+        "POLICY_BLOCKED",
+    )
+    assert audit.payload["reason"] == "unrecognized_otp_channel"

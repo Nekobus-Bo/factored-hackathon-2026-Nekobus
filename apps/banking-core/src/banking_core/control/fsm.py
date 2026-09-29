@@ -144,6 +144,38 @@ class VerificationFSM:
 
         return session
 
+    def _otp_send_limit_reached(self, resends: int, attempts: int) -> bool:
+        return resends >= self.max_otp_resends or attempts >= self.max_failed_matches
+
+    def otp_send_would_lock(self, session: "SessionState") -> bool:
+        """Whether an otp.send now would trip the resend or attempt limit.
+
+        Lets the caller decide BEFORE generating or delivering a code: a resend
+        that locks the session must not deliver a working one. Only a resend
+        (OTP_PENDING) counts; the first send from IDENTIFIED never locks.
+        Reads the session, never changes it.
+        """
+        return session.state == VerificationState.OTP_PENDING and (
+            self._otp_send_limit_reached(session.otp_resends + 1, session.attempts + 1)
+        )
+
+    def on_otp_send_limit_exceeded(self, session: "SessionState") -> "SessionState":
+        """Lock a session whose resend exceeded the limit; nothing was delivered.
+
+        Counts the resend and the attempt like a locking otp.send does, and
+        leaves otp_challenge_id as it was: no new challenge was created.
+        """
+        if not self.otp_send_would_lock(session):
+            raise InvalidFSMTransitionError(
+                current_state=session.state,
+                action="otp.send",
+                reason="the resend limit has not been reached",
+            )
+        session.otp_resends += 1
+        session.attempts += 1
+        session.state = VerificationState.LOCKED
+        return session
+
     def on_otp_send(
         self,
         session: "SessionState",
@@ -168,15 +200,12 @@ class VerificationFSM:
                 reason="otp.send is only allowed in IDENTIFIED or OTP_PENDING states",
             )
 
+        if self.otp_send_would_lock(session):
+            return self.on_otp_send_limit_exceeded(session)
+
         if session.state == VerificationState.OTP_PENDING:
             session.otp_resends += 1
             session.attempts += 1
-            if (
-                session.otp_resends >= self.max_otp_resends
-                or session.attempts >= self.max_failed_matches
-            ):
-                session.state = VerificationState.LOCKED
-                return session
 
         session.state = VerificationState.OTP_PENDING
         session.otp_challenge_id = challenge_id
