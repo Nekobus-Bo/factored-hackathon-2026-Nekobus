@@ -88,7 +88,7 @@ Routes:
 - `GET /v1/admin/handoffs?status=QUEUED&status=ASSIGNED` (default both) → `{items:[HandoffItem]}`, ordered by priority (URGENT, HIGH, NORMAL, LOW) and then `created_at`.
   - `HandoffItem`: `{handoff_ref, status, priority, department, reason, created_at, queue_position|null (only when QUEUED, same rule the handoff block uses), assigned_agent|null, assigned_at|null, session_ref}`.
 - `GET /v1/admin/handoffs/{handoff_ref}` → `HandoffItem` + `summary`, exactly as stored: `verified_facts`, `actions_taken`, `verification_method`, `open_questions`, and any other stored keys. 404 when unknown.
-- `POST /v1/admin/handoffs/{handoff_ref}/claim` `{agent_ref}` (an email, 3..254) → the detail above.
+- `POST /v1/admin/handoffs/{handoff_ref}/claim` `{agent_ref}` (an email, 3..128, the width of `ops.audit_log.actor_ref`) → the detail above.
   - The status becomes `ASSIGNED`, with `assigned_agent` and `assigned_at` set.
   - Idempotent for the same agent. 409 `{detail:"claimed_by_another_agent"}` otherwise.
   - Writes audit action `admin.handoff.claimed` with `actor_type='agent'`, `actor_ref=agent_ref` and payload `{handoff_ref, before_status, after_status}`, with no PII.

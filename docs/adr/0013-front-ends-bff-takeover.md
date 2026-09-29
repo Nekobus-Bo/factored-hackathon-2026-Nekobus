@@ -19,7 +19,7 @@ Two front ends start now: a simulated fintech with the customer chat (`web-clien
 - **`web-backoffice` BFF** authenticates one demo agent (`DEMO_AGENT_EMAIL` / `DEMO_AGENT_PASSWORD`, constant-time compare) and issues an HttpOnly, `SameSite=Strict` cookie signed with HMAC-SHA256 (`BACKOFFICE_SESSION_SECRET`), 8 h. It holds `ADMIN_API_TOKEN` and `AGENT_API_TOKEN` server-side; neither reaches the browser. Under `APP_ENV=production` it refuses to start with the default password or secret. Mutating routes need the session and `Content-Type: application/json`.
 - **Split data path for the back office.** Queue, handoff detail, claim, guardrails and metrics come from the **banking-core admin API** (`/v1/admin`, same bearer auth as today). The conversation (masked transcript, takeover, agent reply) comes from a new **orchestrator agent API** (`/v1/agent`, own bearer token, mounted only when enabled). The back-office server runs on the internal network; in the presentation environment it is either not published or published only behind its login.
 - **Takeover in two idempotent steps, in this order.** The BFF claims the handoff in banking-core first: the write changes the status to `ASSIGNED` and is audited with `actor_type='agent'` and the agent's email as `actor_ref`, in one transaction. Only then does it take over the conversation in the orchestrator. From then on the LLM never sees that conversation again: customer messages are stored masked and reach the agent, agent messages are masked with the same masker before storage (failing closed to `[REDACTED]`). If the second step fails after the first, the BFF answers 502 and the same call can be repeated. **There is no hand-back to the assistant.**
-- **Live updates by polling**, no WebSocket: 3 s for the queue, 2 s for an open conversation, for the customer chat while a takeover is active, and for the OTP inbox. Polling stops when the tab is hidden.
+- **Live updates by polling**, no WebSocket: 3 s for the queue, 2 s for an open conversation and for the customer chat while a takeover is active. Polling stops when the tab is hidden. The OTP inbox needs no polling: the code is delivered during the turn that calls `otp.send`, so the customer app reads the inbox once after each turn.
 - **Shared contracts.** `packages/contracts` gains a TypeScript entry (`@pattern-blue/contracts`, Zod) with the message block schemas and the HTTP shapes, checked by a drift test against the JSON Schemas Python exports.
 
 ## Options considered
@@ -66,6 +66,6 @@ Polling costs up to 3 s of latency and steady small requests against a push chan
 1. [x] banking-core admin API: `GET /v1/admin/handoffs`, `GET /v1/admin/handoffs/{ref}`, `POST /v1/admin/handoffs/{ref}/claim`, `GET /v1/admin/metrics`; migration `0008`
 2. [ ] Orchestrator agent API and the takeover in the conversation flow
 3. [ ] `web-client` and `web-backoffice` BFFs with their closed route lists and tests against fake upstreams
-4. [ ] `packages/contracts` TypeScript entry and drift test
+4. [x] `packages/contracts` TypeScript entry and drift test
 5. [ ] Compose services, healthchecks, `make smoke` and `make web-check`
 6. [ ] `docs/runbook.md`: drop the "pending UI" marks only for what works

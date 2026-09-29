@@ -2,7 +2,7 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29, 05:05 UTC.
+**Last update:** 2026-09-29, 05:25 UTC.
 
 ## 1. Done and merged to `main`
 
@@ -35,18 +35,18 @@ Tests at the last merge:
 
 ## 2. In progress: the front ends
 
-The specification and the HTTP contract between the pieces are in [front-ends.md](front-ends.md). The decisions go into ADR-0013, which lands with F1. Each work package below is one branch off `main` and ships with tests.
+The specification and the HTTP contract between the pieces are in [front-ends.md](front-ends.md). The decisions are in [ADR-0013](adr/0013-front-ends-bff-takeover.md). Each work package below is one branch off `main` and ships with tests.
 
 | WP | What | State | Depends on |
 |---|---|---|---|
 | F0 | `@pattern-blue/contracts`: Zod schemas for the message blocks and every HTTP surface, a drift test against the exported JSON Schemas, and `make web-check` in CI | **Done** (on this branch, 112 tests) | — |
-| F1 | ADR-0013 and the ADR-0004 amendment. banking-core admin routes: handoff queue, detail, claim (audited as the agent), metrics; migration `0008` | In progress | — |
+| F1 | ADR-0013 and the ADR-0004 amendment. banking-core admin routes: handoff queue, detail, claim (audited as the agent), metrics; migration `0008` | **Done** (on this branch, 66 new tests) | — |
 | F2 | Orchestrator agent API: reverse index from session to conversation, takeover, agent messages. After a takeover the LLM never sees the conversation again | In progress | — |
-| F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | Not started | F0 (F2 for the takeover part) |
-| F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | Not started | F0, F1, F2 |
+| F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | In progress | F0 (F2 for the takeover part) |
+| F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | In progress | F0, F1, F2 |
 | F5 | Integration: compose services and healthchecks, `make smoke`, both apps in the CI `images` matrix, `TRUSTED_PROXY_HOPS` for the web-client BFF, the runbook's "⚠️ pending UI" marks, `limitations.md` | Not started | F3, F4 |
 
-**Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed (`wt/admin-handoffs`, `wt/agent-api`, and later `wt/web-client`, `wt/web-backoffice`). Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
+**Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed (`wt/agent-api`, `wt/web-client`, `wt/web-backoffice`). Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
 
 **How to continue a work package**, locally or by hand:
 1. Read `AGENTS.md`, then [front-ends.md](front-ends.md) ("Decisions", "HTTP contract" and the package's scope section).

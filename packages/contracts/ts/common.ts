@@ -40,14 +40,14 @@ export const SessionRefSchema = opaqueRef(128);
 export type SessionRef = z.infer<typeof SessionRefSchema>;
 
 /**
- * The back-office agent, identified by e-mail (3 to 254 characters). The check is deliberately the
+ * The back-office agent, identified by e-mail (3 to 128 characters, the width of `ops.audit_log.actor_ref`). The check is deliberately the
  * shape only (`something@something`, no whitespace): the value also travels in the `X-Agent-Ref`
  * header and in an audit row, and it must never carry a line break.
  */
 export const AgentRefSchema = z
   .string()
   .min(3)
-  .max(254)
+  .max(128)
   .regex(/^[^\s@]+@[^\s@]+$/);
 export type AgentRef = z.infer<typeof AgentRefSchema>;
 
