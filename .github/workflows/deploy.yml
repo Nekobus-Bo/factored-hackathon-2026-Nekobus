@@ -193,8 +193,11 @@ jobs:
 
       - name: Copy compose files
         run: |
+          # eval/replay is the orchestrator's read-only recordings mount (compose resolves it
+          # next to infra/); created here so the ssh user owns it. deploy.yml does not ship
+          # recordings yet, so a server left in replay mode answers 503 (docs/deployment.md, section 7).
           # shellcheck disable=SC2029 # DEPLOY_PATH/COMPOSE_CMD expand on the runner on purpose (non-secret).
-          ssh deploy-target "mkdir -p '$DEPLOY_PATH/infra/compose'"
+          ssh deploy-target "mkdir -p '$DEPLOY_PATH/infra/compose' '$DEPLOY_PATH/eval/replay'"
           scp infra/compose/docker-compose.yml infra/compose/docker-compose.prod.yml infra/compose/docker-compose.bundled.yml \
             "deploy-target:$DEPLOY_PATH/infra/compose/"
 
@@ -219,6 +222,8 @@ jobs:
             echo "BLIND_INDEX_SALT=$BLIND_INDEX_SALT"
             echo "ADMIN_API_ENABLED=${ADMIN_API_ENABLED:-false}"
             echo "ADMIN_API_TOKEN=$ADMIN_API_TOKEN"
+            echo "DEMO_RESET_ENABLED=${DEMO_RESET_ENABLED:-false}"
+            echo "OTP_CHANNEL_MODE=${OTP_CHANNEL_MODE:-simulated}"
             echo "LLM_MODE=${LLM_MODE:-replay}"
             echo "LLM_API_KEY=$LLM_API_KEY"
             echo "LLM_BASE_URL=$LLM_BASE_URL"
@@ -245,6 +250,8 @@ jobs:
           # Optional: only meaningful when the corresponding feature is on.
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          DEMO_RESET_ENABLED: ${{ vars.DEMO_RESET_ENABLED }}
+          OTP_CHANNEL_MODE: ${{ vars.OTP_CHANNEL_MODE }}
           LLM_MODE: ${{ vars.LLM_MODE }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
