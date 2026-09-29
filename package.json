@@ -1,0 +1,5 @@
+{
+  "name": "pattern-blue",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"]
+}
