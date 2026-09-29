@@ -22,12 +22,28 @@ class MessageRole(StrEnum):
 
 
 class Message(BaseModel):
-    """A single message turn in the conversation history."""
+    """A single message turn in the conversation history.
+
+    `content` is always masked: it is what redis-edge holds in clear and the only
+    text anything but a transcript reader may use. An agent message may also keep
+    the text as the agent wrote it, encrypted, in `content_enc`.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     role: MessageRole
     content: str = Field(..., description="Masked message text")
+    content_enc: str | None = Field(
+        default=None,
+        repr=False,
+        description=(
+            "Agent messages only: the text as the agent wrote it, encrypted "
+            "(Fernet, keyed by SESSION_SECRET). Never in clear at rest, never "
+            "read to build the LLM history, never returned as a field: a "
+            "transcript reader decrypts it into `content` (chat/transcript.py). "
+            "Absent on messages stored before it existed"
+        ),
+    )
     blocks: list[dict[str, Any]] = Field(
         default_factory=list,
         description=(
@@ -49,6 +65,12 @@ class Message(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Message timestamp in UTC",
     )
+
+    @model_validator(mode="after")
+    def _only_an_agent_keeps_its_text_as_written(self) -> "Message":
+        if self.content_enc is not None and self.role is not MessageRole.AGENT:
+            raise ValueError("only an agent message keeps its text as written")
+        return self
 
 
 class Takeover(BaseModel):
@@ -106,7 +128,7 @@ class ConversationState(BaseModel):
     - Opaque conversation_id exposed to the web client
     - banking_session_id mapped server-side to banking-core tools (ADR-0001, ADR-0004)
     - Session language (stored as given)
-    - Masked message history
+    - Masked message history (an agent's text also kept as written, encrypted)
     - Sensitive placeholder map (encrypted at rest in Redis, never returned to client)
     - The last completed turn's masked outcome, for client retries
     - The decision-point state (consent for a gated write, sticky ledgers)
@@ -129,7 +151,10 @@ class ConversationState(BaseModel):
     )
     messages: list[Message] = Field(
         default_factory=list,
-        description="Masked transcript shown by GET /v1/conversations/{id}",
+        description=(
+            "Masked transcript behind GET /v1/conversations/{id}; an agent "
+            "message is shown as written (Message.content_enc)"
+        ),
     )
     llm_history: list[dict[str, Any]] = Field(
         default_factory=list,

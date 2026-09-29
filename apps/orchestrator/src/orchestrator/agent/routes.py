@@ -1,7 +1,7 @@
 """Agent API: what the back office needs to read and take over a conversation.
 
 GET  /v1/agent/sessions/{session_ref}/conversation  banking session id -> conversation
-GET  /v1/agent/conversations/{id}                    masked transcript and takeover
+GET  /v1/agent/conversations/{id}                    transcript and takeover
 POST /v1/agent/conversations/{id}/takeover           an agent takes the conversation
 POST /v1/agent/conversations/{id}/messages           an agent writes to the customer
 
@@ -12,10 +12,13 @@ routes write under the conversation's turn lock, so a takeover and a customer
 turn in flight never overwrite each other. The design is in
 docs/adr/0013-front-ends-bff-takeover.md.
 
-The agent sees the masked transcript and nothing else: never the LLM history,
-never the placeholder map. What an agent writes is masked before it is stored,
-like everything else in the transcript. Once a takeover is active it stays so:
-there is no hand-back to the assistant.
+The agent sees the transcript and nothing else: never the LLM history, never the
+placeholder map. What an agent writes is stored twice: masked, like everything
+else in the transcript (that is what redis-edge holds in clear), and as written,
+encrypted, so the customer and the agent read it as written (ADR-0013, amendment
+2026-09-29). The text as written is decrypted only to answer these routes and the
+customer's transcript; it never reaches the LLM, the encoder, a tool or a log.
+Once a takeover is active it stays so: there is no hand-back to the assistant.
 """
 
 import logging
@@ -30,8 +33,10 @@ from orchestrator.chat.transcript import (
     TRANSCRIPT_MASKER,
     TranscriptMessage,
     mask_for_transcript,
+    text_as_written,
     transcript_messages,
 )
+from orchestrator.session.crypto import CryptoError
 from orchestrator.session.models import (
     ConversationState,
     Lang,
@@ -101,6 +106,8 @@ class AgentMessageRequest(BaseModel):
 
 
 class AgentMessage(BaseModel):
+    """The stored message. `content` is the text as the agent wrote it."""
+
     role: MessageRole
     content: str
     blocks: list[dict[str, Any]]
@@ -169,11 +176,12 @@ async def conversation_of_session(
 async def get_conversation(
     request: Request, conversation_id: str
 ) -> AgentTranscriptResponse:
-    state = await _load(_store(request), conversation_id)
+    store = _store(request)
+    state = await _load(store, conversation_id)
     return AgentTranscriptResponse(
         conversation_id=state.conversation_id,
         language=state.language,
-        messages=transcript_messages(state),
+        messages=transcript_messages(state, store.encryptor),
         takeover=_takeover_view(state.takeover),
     )
 
@@ -226,7 +234,11 @@ async def send_agent_message(
     body: AgentMessageRequest,
     x_agent_ref: Annotated[AgentRef, Header()],
 ) -> AgentMessageResponse:
-    """Store the agent's reply, masked. A repeated `client_message_id` is a retry."""
+    """Store the agent's reply and answer with it as written.
+
+    Stored masked in `content` and, encrypted, as written. A repeated
+    `client_message_id` is a retry: it returns the stored message, not a new one.
+    """
     store = _store(request)
     await _load(store, conversation_id)
     wait = request.app.state.agent_lock_wait_seconds
@@ -246,11 +258,20 @@ async def send_agent_message(
             None,
         )
         if stored is None:
+            try:
+                as_written = store.encryptor.encrypt_text(body.text)
+            except CryptoError as exc:
+                logger.error("Agent text could not be encrypted; message not saved")
+                raise HTTPException(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="The message was not saved",
+                ) from exc
             stored = Message(
                 role=MessageRole.AGENT,
                 content=mask_for_transcript(
                     body.text, state.placeholder_map, TRANSCRIPT_MASKER
                 ),
+                content_enc=as_written,
                 client_message_id=body.client_message_id,
             )
             state.messages.append(stored)
@@ -260,7 +281,7 @@ async def send_agent_message(
     return AgentMessageResponse(
         message=AgentMessage(
             role=stored.role,
-            content=stored.content,
+            content=text_as_written(stored, store.encryptor),
             blocks=stored.blocks,
             created_at=stored.created_at,
         )

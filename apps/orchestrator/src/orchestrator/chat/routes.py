@@ -5,8 +5,10 @@ POST /v1/conversations                 open a conversation (and a banking-core s
 POST /v1/conversations/{id}/messages   run one turn, return the blocks; while a human
                                        agent holds the conversation, store the message
                                        for the agent and return no blocks
-GET  /v1/conversations/{id}            masked transcript only, agent messages included,
-                                       and whether an agent holds the conversation
+GET  /v1/conversations/{id}            the transcript, agent messages included, and
+                                       whether an agent holds the conversation:
+                                       everything is masked but the agent's own text,
+                                       shown as the agent wrote it
 GET  /v1/conversations/{id}/inbox      the simulated OTP messages of this conversation
                                        (ADR-0007): the code shown to the browser
                                        that types it, never stored or sent to the LLM
@@ -319,11 +321,12 @@ async def send_message(
 
 @router.get("/{conversation_id}", response_model=TranscriptResponse)
 async def get_transcript(request: Request, conversation_id: str) -> TranscriptResponse:
-    state = await _load(_store(request), conversation_id)
+    store = _store(request)
+    state = await _load(store, conversation_id)
     return TranscriptResponse(
         conversation_id=state.conversation_id,
         language=state.language,
-        messages=transcript_messages(state),
+        messages=transcript_messages(state, store.encryptor),
         takeover=TakeoverStatus(
             active=state.takeover.active, since=state.takeover.since
         ),

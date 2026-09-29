@@ -22,8 +22,11 @@ from orchestrator.agent.auth import DEVELOPMENT_AGENT_TOKEN, validate_agent_api_
 from orchestrator.config import Settings
 from orchestrator.main import create_app
 from orchestrator.privacy.masking import MaskingError, RegexMasker
+from orchestrator.session.crypto import CryptoError, PlaceholderEncryptor
+from orchestrator.session.models import Message, MessageRole
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient
+from pydantic import ValidationError
 
 from .fake_handler import FakeTurnHandler
 from .test_chat_api import BANKING_URL, build_app
@@ -36,6 +39,26 @@ BEN = "ben.agent@bank.example"
 HANDOFF = "hnd_abcdefghijklmnop"
 RAW_DOCUMENT = "1020304050"
 RAW_EMAIL = "carla.cliente@example.com"
+CUSTOMER_EMAIL = "otro.cliente@example.com"
+# An email, a name and a card number, in one agent message.
+AGENT_TEXT = (
+    f"Hola, soy Ana Gómez. Confirmo tu correo {RAW_EMAIL} "
+    "y tu tarjeta 4111 1111 1111 1111."
+)
+AGENT_TEXT_MASKED = (
+    "Hola, soy [NAME_1]. Confirmo tu correo [EMAIL_1] y tu tarjeta [CARD_1]."
+)
+# Pieces of AGENT_TEXT that cannot occur by chance inside a base64 ciphertext
+# (each has a space, a dot, a comma or an @), so "not in Redis" has no false alarm.
+AGENT_TEXT_PIECES = (
+    "Hola, soy Ana",
+    "soy Ana Gómez",
+    "soy Ana G\\u00f3mez",  # the same name as a JSON \u escape
+    RAW_EMAIL,
+    "carla.cliente",
+    "4111 1111 1111 1111",
+    "4111 1111",
+)
 
 MakeClient = Callable[[FastAPI], httpx.AsyncClient]
 
@@ -740,6 +763,7 @@ async def test_an_agent_message_is_stored_and_returned(
 async def test_agent_text_is_masked_before_it_is_stored(
     taken: tuple[httpx.AsyncClient, str, SessionStore],
 ) -> None:
+    """What is stored in clear is masked; the answer is the text as written."""
     client, conversation_id, store = taken
     text = f"Confirmo tu correo {RAW_EMAIL} y tu tarjeta 4111 1111 1111 1111."
 
@@ -750,27 +774,24 @@ async def test_agent_text_is_masked_before_it_is_stored(
     )
 
     assert response.status_code == 200
-    content = response.json()["message"]["content"]
-    assert content == "Confirmo tu correo [EMAIL_1] y tu tarjeta [CARD_1]."
-    # Not in the answer, not in either transcript, not in what Redis holds.
-    for path in (
-        f"/v1/agent/conversations/{conversation_id}",
-        f"/v1/conversations/{conversation_id}",
-    ):
-        body = (await client.get(path, headers=AUTH)).text
-        assert RAW_EMAIL not in body and "4111 1111" not in body
+    assert response.json()["message"]["content"] == text
+    state = await store.get(conversation_id)
+    assert [m.content for m in state.messages] == [
+        "Confirmo tu correo [EMAIL_1] y tu tarjeta [CARD_1]."
+    ]
+    # Not in what Redis holds: the masked text is stored in clear, the text as
+    # written only as ciphertext (test_agent_text_as_written.py goes further).
     stored = await store.redis.get(f"orch:conv:{conversation_id}")
     assert RAW_EMAIL.encode() not in stored and b"4111 1111" not in stored
     # The raw values live only in the encrypted placeholder map.
-    state = await store.get(conversation_id)
     assert state.placeholder_map["[EMAIL_1]"] == RAW_EMAIL
 
 
-async def test_a_name_the_agent_introduces_is_masked_like_any_other(
+async def test_a_name_the_agent_introduces_reaches_the_customer_as_written(
     taken: tuple[httpx.AsyncClient, str, SessionStore],
 ) -> None:
-    """A known limit (docs/limitations.md): the transcript shows masked agent text."""
-    client, conversation_id, _ = taken
+    """ADR-0013, amendment 2026-09-29: "soy Ana" no longer reads "soy [NAME_1]"."""
+    client, conversation_id, store = taken
 
     response = await client.post(
         f"/v1/agent/conversations/{conversation_id}/messages",
@@ -778,9 +799,13 @@ async def test_a_name_the_agent_introduces_is_masked_like_any_other(
         headers=agent_headers(),
     )
 
-    assert response.json()["message"]["content"] == "Hola, soy [NAME_1]."
+    assert response.json()["message"]["content"] == "Hola, soy Ana."
     customer_view = (await client.get(f"/v1/conversations/{conversation_id}")).json()
-    assert customer_view["messages"][0]["content"] == "Hola, soy [NAME_1]."
+    assert customer_view["messages"][0]["content"] == "Hola, soy Ana."
+    # The stored, clear-text twin stays masked.
+    assert (await store.get(conversation_id)).messages[
+        0
+    ].content == "Hola, soy [NAME_1]."
 
 
 async def test_agent_text_shares_the_conversations_placeholders(
@@ -797,9 +822,12 @@ async def test_agent_text_shares_the_conversations_placeholders(
         headers=agent_headers(),
     )
 
-    assert (
-        response.json()["message"]["content"] == "Veo la cédula [DOC_1] en tu perfil."
+    # Masked with the conversation's own placeholder; the answer is as written.
+    assert response.json()["message"]["content"] == (
+        f"Veo la cédula {RAW_DOCUMENT} en tu perfil."
     )
+    state = await store.get(conversation_id)
+    assert state.messages[0].content == "Veo la cédula [DOC_1] en tu perfil."
 
 
 async def test_agent_text_fails_closed_to_redacted(
@@ -821,7 +849,9 @@ async def test_agent_text_fails_closed_to_redacted(
     )
 
     assert response.status_code == 200
-    assert response.json()["message"]["content"] == "[REDACTED]"
+    # The stored twin fails closed; the text as written is not affected by it.
+    assert response.json()["message"]["content"] == f"cédula {RAW_DOCUMENT}"
+    assert (await store.get(conversation_id)).messages[0].content == "[REDACTED]"
     assert RAW_DOCUMENT.encode() not in await store.redis.get(
         f"orch:conv:{conversation_id}"
     )
@@ -928,6 +958,376 @@ async def test_the_longest_agent_message_is_accepted(
     )
 
     assert response.status_code == 200
+
+
+# ------------------------------------------------ agent text, as written (ADR-0013)
+
+
+def messages_url(conversation_id: str) -> str:
+    return f"/v1/agent/conversations/{conversation_id}/messages"
+
+
+READS = ("/v1/agent/conversations/{}", "/v1/conversations/{}")
+
+
+async def post_agent_text(
+    client: httpx.AsyncClient,
+    conversation_id: str,
+    text: str = AGENT_TEXT,
+    cid: str = "cmid-0000001",
+) -> httpx.Response:
+    return await client.post(
+        messages_url(conversation_id),
+        json=message_body(text, cid),
+        headers=agent_headers(),
+    )
+
+
+async def stored_json(store: SessionStore, conversation_id: str) -> dict[str, Any]:
+    raw = await store.redis.get(f"orch:conv:{conversation_id}")
+    assert raw is not None
+    return dict(json.loads(raw))
+
+
+async def rewrite_message_field(
+    store: SessionStore,
+    conversation_id: str,
+    field: str,
+    value: Any,
+    index: int = 0,
+    remove: bool = False,
+) -> None:
+    """Edit one stored message in Redis by hand: what an old or damaged value is."""
+    key = f"orch:conv:{conversation_id}"
+    payload = await stored_json(store, conversation_id)
+    if remove:
+        del payload["messages"][index][field]
+    else:
+        payload["messages"][index][field] = value
+    await store.redis.set(key, json.dumps(payload), keepttl=True)
+
+
+async def test_the_text_as_written_is_not_in_redis_in_clear(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+
+    response = await post_agent_text(client, conversation_id)
+
+    assert response.status_code == 200
+    raw = await store.redis.get(f"orch:conv:{conversation_id}")
+    for piece in AGENT_TEXT_PIECES:
+        assert piece.encode() not in raw, piece
+    message = (await stored_json(store, conversation_id))["messages"][0]
+    # The clear field is the masked twin; the text as written is a Fernet token.
+    assert message["content"] == AGENT_TEXT_MASKED
+    assert message["content_enc"].startswith("gAAAA")
+    assert message["content_enc"] != AGENT_TEXT
+    assert store.encryptor.decrypt_text(message["content_enc"]) == AGENT_TEXT
+    # Every string the state holds in clear is free of the raw values.
+    assert not any(piece in json.dumps(message) for piece in AGENT_TEXT_PIECES)
+
+
+async def test_the_stored_text_is_the_one_that_passed_the_strip(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+
+    response = await post_agent_text(client, conversation_id, "  \n Hola, soy Ana.  \n")
+
+    assert response.json()["message"]["content"] == "Hola, soy Ana."
+    stored = (await store.get(conversation_id)).messages[0]
+    assert store.encryptor.decrypt_text(stored.content_enc) == "Hola, soy Ana."
+
+
+async def test_only_agent_messages_carry_the_text_as_written(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: MakeClient
+) -> None:
+    app = build_app(redis, FakeTurnHandler(), settings=agent_settings())
+    client = make_client(app)
+    store: SessionStore = app.state.session_store
+    conversation_id = await open_conversation(client)
+    messages = f"/v1/conversations/{conversation_id}/messages"
+    await client.post(messages, json={"text": f"Mi correo es {CUSTOMER_EMAIL}"})
+    await take_over(client, conversation_id)
+    await post_agent_text(client, conversation_id)
+    await client.post(messages, json={"text": "Gracias"})
+
+    stored = (await stored_json(store, conversation_id))["messages"]
+
+    assert [(m["role"], m["content_enc"] is not None) for m in stored] == [
+        ("user", False),
+        ("assistant", False),
+        ("agent", True),
+        ("user", False),
+    ]
+    raw = await store.redis.get(f"orch:conv:{conversation_id}")
+    assert CUSTOMER_EMAIL.encode() not in raw
+
+
+@pytest.mark.parametrize(
+    "role", [MessageRole.USER, MessageRole.ASSISTANT, MessageRole.SYSTEM]
+)
+def test_a_message_that_is_not_the_agents_cannot_carry_the_text(
+    role: MessageRole,
+) -> None:
+    with pytest.raises(ValidationError):
+        Message(role=role, content="hola", content_enc="gAAAAA-anything")
+
+    assert Message(role=role, content="hola").content_enc is None
+    assert Message(role=MessageRole.AGENT, content="hola", content_enc="x").content_enc
+
+
+async def test_both_reads_return_the_text_as_the_agent_wrote_it(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, _ = taken
+    await post_agent_text(client, conversation_id)
+    await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        json={"text": f"Mi correo es {CUSTOMER_EMAIL}"},
+    )
+
+    for template in READS:
+        response = await client.get(template.format(conversation_id), headers=AUTH)
+
+        assert response.status_code == 200
+        shown = response.json()["messages"]
+        # The agent's text as written; the customer's own message still masked.
+        assert [(m["role"], m["content"]) for m in shown] == [
+            ("agent", AGENT_TEXT),
+            ("user", "Mi correo es [EMAIL_2]"),
+        ]
+        assert CUSTOMER_EMAIL not in response.text
+        # The shape is what it was: no new field, no ciphertext anywhere.
+        for message in shown:
+            assert set(message) == {"role", "content", "blocks", "created_at"}
+        assert "content_enc" not in response.text
+        assert "gAAAA" not in response.text
+
+
+async def test_the_answer_to_a_write_is_the_text_as_written_in_the_same_shape(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, _ = taken
+
+    response = await post_agent_text(client, conversation_id)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"message"}
+    assert set(body["message"]) == {"role", "content", "blocks", "created_at"}
+    assert body["message"]["content"] == AGENT_TEXT
+    assert "content_enc" not in response.text and "gAAAA" not in response.text
+    # What the write answered is what a read shows.
+    read = (await client.get(READS[0].format(conversation_id), headers=AUTH)).json()
+    assert read["messages"] == [body["message"]]
+
+
+async def test_the_replay_of_a_write_returns_the_text_as_written_and_stores_nothing(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+    first = await post_agent_text(client, conversation_id)
+    stored_before = (await stored_json(store, conversation_id))["messages"]
+
+    same = await post_agent_text(client, conversation_id)
+    changed = await post_agent_text(client, conversation_id, "Otro texto de Ana")
+
+    assert first.status_code == same.status_code == changed.status_code == 200
+    assert first.json()["message"]["content"] == AGENT_TEXT
+    # The replay is the stored message, whatever text the retry carries.
+    assert same.json() == first.json() == changed.json()
+    # One message, one ciphertext: the retry did not encrypt or write again.
+    assert (await stored_json(store, conversation_id))["messages"] == stored_before
+    assert (
+        "Otro texto"
+        not in (await store.redis.get(f"orch:conv:{conversation_id}")).decode()
+    )
+
+
+async def test_the_replay_after_the_customer_wrote_still_gives_the_text_as_written(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, _ = taken
+    first = await post_agent_text(client, conversation_id)
+    await client.post(
+        f"/v1/conversations/{conversation_id}/messages", json={"text": "gracias"}
+    )
+
+    repeat = await post_agent_text(client, conversation_id)
+
+    assert repeat.json() == first.json()
+    assert repeat.json()["message"]["content"] == AGENT_TEXT
+
+
+CORRUPTIONS = {
+    "garbage": lambda good: "this-is-not-a-fernet-token",
+    "empty": lambda good: "",
+    "tampered": lambda good: good[:-8] + ("A" if good[-8] != "A" else "B") + good[-7:],
+    "another-secret": lambda good: PlaceholderEncryptor("not-our-secret").encrypt_text(
+        AGENT_TEXT
+    ),
+}
+
+
+@pytest.mark.parametrize("corruption", list(CORRUPTIONS))
+async def test_a_ciphertext_that_cannot_be_read_falls_back_to_the_masked_text(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+    caplog: pytest.LogCaptureFixture,
+    corruption: str,
+) -> None:
+    client, conversation_id, store = taken
+    await post_agent_text(client, conversation_id)
+    good = (await stored_json(store, conversation_id))["messages"][0]["content_enc"]
+    bad = CORRUPTIONS[corruption](good)
+    await rewrite_message_field(store, conversation_id, "content_enc", bad)
+    caplog.clear()
+
+    with caplog.at_level("DEBUG"):
+        reads = [
+            await client.get(template.format(conversation_id), headers=AUTH)
+            for template in READS
+        ]
+        replay = await post_agent_text(client, conversation_id)
+
+    # Never a 5xx: the masked text stands in, on every route that shows the text.
+    for response in reads:
+        assert response.status_code == 200
+        assert [m["content"] for m in response.json()["messages"]] == [
+            AGENT_TEXT_MASKED
+        ]
+    assert replay.status_code == 200
+    assert replay.json()["message"]["content"] == AGENT_TEXT_MASKED
+    # A warning was logged, and neither the text nor a ciphertext is in any record.
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    for secret in (*AGENT_TEXT_PIECES, good, bad):
+        if secret:
+            assert secret not in logged, secret
+    # The conversation is still usable afterwards.
+    again = await post_agent_text(client, conversation_id, "Sigo aquí", "cmid-0000002")
+    assert again.status_code == 200
+    assert again.json()["message"]["content"] == "Sigo aquí"
+
+
+@pytest.mark.parametrize("as_stored", ["missing", "null"])
+async def test_a_message_stored_before_the_field_existed_reads_as_it_always_did(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+    caplog: pytest.LogCaptureFixture,
+    as_stored: str,
+) -> None:
+    client, conversation_id, store = taken
+    await post_agent_text(client, conversation_id)
+    await rewrite_message_field(
+        store,
+        conversation_id,
+        "content_enc",
+        None,
+        remove=as_stored == "missing",
+    )
+    caplog.clear()
+
+    with caplog.at_level("DEBUG"):
+        reads = [
+            await client.get(template.format(conversation_id), headers=AUTH)
+            for template in READS
+        ]
+        replay = await post_agent_text(client, conversation_id)
+        new = await post_agent_text(
+            client, conversation_id, "Nuevo, soy Ana", "cmid-0000002"
+        )
+
+    for response in reads:
+        assert [m["content"] for m in response.json()["messages"]] == [
+            AGENT_TEXT_MASKED
+        ]
+    assert replay.json()["message"]["content"] == AGENT_TEXT_MASKED
+    # Nothing to decrypt is not a failure: no warning, and no attempt to log one.
+    assert not [r for r in caplog.records if r.levelname in ("WARNING", "ERROR")]
+    # Old and new messages live side by side.
+    assert new.json()["message"]["content"] == "Nuevo, soy Ana"
+    shown = (await client.get(READS[1].format(conversation_id))).json()["messages"]
+    assert [m["content"] for m in shown] == [AGENT_TEXT_MASKED, "Nuevo, soy Ana"]
+
+
+async def test_an_old_state_with_no_field_at_all_still_loads(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: MakeClient
+) -> None:
+    """The stored JSON of a deployment that never wrote `content_enc`."""
+    app = build_app(redis, FakeTurnHandler(), settings=agent_settings())
+    client = make_client(app)
+    conversation_id = await open_conversation(client)
+    key = f"orch:conv:{conversation_id}"
+    payload = json.loads(await redis.get(key))
+    payload["messages"] = [
+        {
+            "role": "agent",
+            "content": "Hola, soy [NAME_1].",
+            "blocks": [],
+            "metadata": {},
+            "client_message_id": "cmid-0000001",
+            "created_at": "2026-09-28T12:00:00Z",
+        }
+    ]
+    await redis.set(key, json.dumps(payload), keepttl=True)
+
+    for template in READS:
+        response = await client.get(template.format(conversation_id), headers=AUTH)
+
+        assert response.status_code == 200
+        assert response.json()["messages"][0]["content"] == "Hola, soy [NAME_1]."
+
+
+async def test_a_text_that_cannot_be_encrypted_is_not_saved_and_not_logged(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, conversation_id, store = taken
+
+    def broken(text: str) -> str:
+        raise CryptoError("Text encryption failed")
+
+    monkeypatch.setattr(store.encryptor, "encrypt_text", broken)
+    with caplog.at_level("DEBUG"):
+        response = await post_agent_text(client, conversation_id)
+
+    # Never stored with only its masked twin: the customer would read a
+    # different text from the one the agent sent, and the agent would not know.
+    assert response.status_code == 503
+    assert response.json() == {"detail": "The message was not saved"}
+    assert (await store.get(conversation_id)).messages == []
+    assert not any(
+        piece in r.getMessage() for r in caplog.records for piece in AGENT_TEXT_PIECES
+    )
+
+
+async def test_no_log_carries_the_text_an_agent_wrote(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, conversation_id, store = taken
+    ciphertexts: list[str] = []
+
+    with caplog.at_level("DEBUG"):
+        await post_agent_text(client, conversation_id)
+        await post_agent_text(client, conversation_id)  # the replay
+        for template in READS:
+            await client.get(template.format(conversation_id), headers=AUTH)
+        ciphertexts.append(
+            (await stored_json(store, conversation_id))["messages"][0]["content_enc"]
+        )
+        await rewrite_message_field(store, conversation_id, "content_enc", "corrupt")
+        for template in READS:
+            await client.get(template.format(conversation_id), headers=AUTH)
+
+    logged = "\n".join(
+        f"{r.name} {r.getMessage()} {r.exc_text or ''}" for r in caplog.records
+    )
+    for secret in (*AGENT_TEXT_PIECES, *ciphertexts):
+        assert secret not in logged, secret
 
 
 # ---------------------------------------------------------------- transcript shapes
