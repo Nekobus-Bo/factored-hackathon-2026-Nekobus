@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,8 @@ import httpx
 import pytest
 import respx
 from fastapi import FastAPI
-from orchestrator.chat.handler import TurnHandler, TurnOutcome
+from orchestrator.chat.engine_handler import EngineTurnHandler
+from orchestrator.chat.handler import TurnHandler, TurnOutcome, derive_turn_id
 from orchestrator.config import Settings
 from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.main import create_app
@@ -22,7 +24,7 @@ from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient
 
 from .fake_handler import RECEIPT_BLOCK, FakeTurnHandler
-from .fake_llm import tool_call
+from .fake_llm import ScriptedLLM, Step, tool_call
 from .test_conversation_engine import FakeBankingCore
 
 BANKING_URL = "http://banking-core.test"
@@ -327,7 +329,10 @@ async def test_invalid_message_block_is_not_persisted(
 ) -> None:
     class InvalidBlockHandler:
         async def handle_turn(
-            self, conversation: ConversationState, user_text: str
+            self,
+            conversation: ConversationState,
+            user_text: str,
+            turn_id: str | None = None,
         ) -> TurnOutcome:
             return TurnOutcome(blocks=[{"type": "handoff"}], metadata={})
 
@@ -632,7 +637,10 @@ async def test_handoff_block_pii_is_masked_only_in_persisted_transcript(
 ) -> None:
     class HandoffTurnHandler:
         async def handle_turn(
-            self, conversation: ConversationState, user_text: str
+            self,
+            conversation: ConversationState,
+            user_text: str,
+            turn_id: str | None = None,
         ) -> TurnOutcome:
             conversation.placeholder_map["[DOC_1]"] = RAW_DOCUMENT
             return TurnOutcome(
@@ -702,3 +710,330 @@ async def test_handoff_block_pii_is_masked_only_in_persisted_transcript(
     raw_state = await redis.get(f"orch:conv:{conversation_id}")
     assert raw_state is not None
     assert RAW_DOCUMENT.encode() not in raw_state
+
+
+# --------------------------------------------------------------- client retries
+
+
+def _message_url(conversation_id: str) -> str:
+    return f"/v1/conversations/{conversation_id}/messages"
+
+
+def _engine_handler(llm: ScriptedLLM, settings: Settings) -> EngineTurnHandler:
+    engine = TurnEngine(
+        llm=llm,
+        banking=BankingCoreClient(base_url=BANKING_URL, settings=settings),
+        collect_eval=settings.eval_expose_turn,
+    )
+    return EngineTurnHandler(engine)
+
+
+BLOCK_CALL = {"card_ref": "card_ab12cd34", "reason": "LOST"}
+
+
+async def test_retry_after_a_failed_turn_reuses_the_write_idempotency_key(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    fake_banking = FakeBankingCore()
+    banking.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=fake_banking)
+    settings = Settings()
+    # card.block runs, then the LLM fails (the script has no next step): 503.
+    failing = ScriptedLLM(
+        [Step(tool_calls=[tool_call("call_lost", "card_block", BLOCK_CALL)])]
+    )
+    handler = _engine_handler(failing, settings)
+    client = make_client(build_app(redis, handler))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+    body = {"text": "Bloquea mi tarjeta", "client_message_id": "msg-0001-abcd"}
+
+    failed = await client.post(_message_url(conversation_id), json=body)
+
+    assert failed.status_code == 503
+    assert len(fake_banking.calls_to("card.block")) == 1
+    assert (await client.get(f"/v1/conversations/{conversation_id}")).json()[
+        "messages"
+    ] == []
+
+    # The client retries the same message; the model now answers with new ids.
+    handler.engine.llm = ScriptedLLM(
+        [
+            Step(tool_calls=[tool_call("call_new", "card_block", BLOCK_CALL)]),
+            Step(content="Listo: bloqueé tu tarjeta."),
+        ]
+    )
+    retried = await client.post(_message_url(conversation_id), json=body)
+
+    assert retried.status_code == 200
+    first, second = fake_banking.calls_to("card.block")
+    assert first["idempotency_key"] == second["idempotency_key"]
+    blocks = retried.json()["blocks"]
+    assert [b["type"] for b in blocks] == ["text", "receipt"]
+    transcript = (await client.get(f"/v1/conversations/{conversation_id}")).json()
+    assert [m["role"] for m in transcript["messages"]] == ["user", "assistant"]
+
+
+async def test_a_new_message_id_is_a_new_write(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    fake_banking = FakeBankingCore()
+    banking.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=fake_banking)
+    llm = ScriptedLLM(
+        [
+            Step(tool_calls=[tool_call("call_1", "card_block", BLOCK_CALL)]),
+            Step(content="Bloqueada."),
+            Step(tool_calls=[tool_call("call_2", "card_block", BLOCK_CALL)]),
+            Step(content="Bloqueada otra vez."),
+        ]
+    )
+    client = make_client(build_app(redis, _engine_handler(llm, Settings())))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+
+    for message_id in ("msg-0001-abcd", "msg-0002-abcd"):
+        response = await client.post(
+            _message_url(conversation_id),
+            json={"text": "Bloquea mi tarjeta", "client_message_id": message_id},
+        )
+        assert response.status_code == 200
+
+    first, second = fake_banking.calls_to("card.block")
+    assert first["idempotency_key"] != second["idempotency_key"]
+
+
+async def test_duplicate_of_the_completed_turn_returns_its_outcome_without_running(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    fake_banking = FakeBankingCore()
+    banking.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=fake_banking)
+    llm = ScriptedLLM(
+        [
+            Step(tool_calls=[tool_call("call_1", "card_block", BLOCK_CALL)]),
+            Step(content="Registré tu documento [DOC_1] y bloqueé la tarjeta."),
+        ]
+    )
+    settings = Settings(eval_expose_turn=True)
+    client = make_client(
+        build_app(redis, _engine_handler(llm, settings), settings=settings)
+    )
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+    body = {
+        "text": f"Mi cédula es {RAW_DOCUMENT}, bloquea mi tarjeta",
+        "client_message_id": "msg-0001-abcd",
+    }
+
+    first = await client.post(_message_url(conversation_id), json=body)
+    second = await client.post(_message_url(conversation_id), json=body)
+
+    assert first.status_code == second.status_code == 200
+    assert (
+        f"Registré tu documento {RAW_DOCUMENT} y" in first.json()["blocks"][0]["text"]
+    )
+    assert second.json()["blocks"] == first.json()["blocks"]
+    assert "eval" in first.json()
+    assert "eval" not in second.json()
+    assert len(llm.calls) == 2  # the first turn's two completions, none for the retry
+    assert len(fake_banking.calls_to("card.block")) == 1
+    transcript = (await client.get(f"/v1/conversations/{conversation_id}")).json()
+    assert [m["role"] for m in transcript["messages"]] == ["user", "assistant"]
+    state = json.loads(await redis.get(f"orch:conv:{conversation_id}"))
+    assert len(state["llm_history"]) == 4  # user, tool call, tool result, reply
+
+
+async def test_stored_outcome_never_holds_raw_pii(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    class EchoHandler:
+        """Replies with the customer's own values, in text and in a handoff."""
+
+        calls = 0
+
+        async def handle_turn(
+            self,
+            conversation: ConversationState,
+            user_text: str,
+            turn_id: str | None = None,
+        ) -> TurnOutcome:
+            type(self).calls += 1
+            conversation.placeholder_map["[DOC_1]"] = RAW_DOCUMENT
+            conversation.placeholder_map["[NAME_1]"] = RAW_NAME
+            handoff = {
+                "type": "handoff",
+                "handoff_id": "hnd_abcd1234",
+                "status": "QUEUED",
+                "department": "DISPUTES",
+                "priority": "HIGH",
+                "queue_position": 4,
+                "summary": {
+                    "verified_facts": {"verification_state": "VERIFIED"},
+                    "actions_taken": [],
+                    "verification_method": "document_match_and_otp",
+                    "open_questions": [
+                        {
+                            "source": "model_unverified",
+                            "text": f"{RAW_NAME} asks about document {RAW_DOCUMENT}.",
+                        }
+                    ],
+                },
+                "receipt": {**RECEIPT_BLOCK["receipt"], "action": "handoff.create"},
+            }
+            return TurnOutcome(
+                blocks=[
+                    {
+                        "type": "text",
+                        "text": f"Hola {RAW_NAME}, documento {RAW_DOCUMENT}.",
+                    },
+                    {"type": "text", "text": "Segundo párrafo."},
+                    handoff,
+                    RECEIPT_BLOCK,
+                ],
+                metadata={},
+            )
+
+    client = make_client(build_app(redis, EchoHandler()))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+    body = {"text": "Necesito ayuda", "client_message_id": "msg-0001-abcd"}
+
+    first = await client.post(_message_url(conversation_id), json=body)
+    second = await client.post(_message_url(conversation_id), json=body)
+
+    assert EchoHandler.calls == 1  # the second answer came from the stored outcome
+    assert second.json() == first.json()
+    assert RAW_DOCUMENT in json.dumps(second.json()["blocks"])
+    assert RAW_NAME in second.json()["blocks"][0]["text"]
+    raw_state = await redis.get(f"orch:conv:{conversation_id}")
+    assert raw_state is not None
+    assert RAW_DOCUMENT.encode() not in raw_state
+    assert RAW_NAME.encode() not in raw_state
+    stored = json.loads(raw_state)["last_turn"]
+    assert stored["client_message_id"] == "msg-0001-abcd"
+    assert stored["blocks"][0]["text"] == "Hola [NAME_1], documento [DOC_1]."
+
+
+async def test_message_ids_scope_which_requests_are_deduplicated(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    handler = FakeTurnHandler()
+    client = make_client(build_app(redis, handler))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+    url = _message_url(conversation_id)
+
+    async def send(message_id: str | None) -> Any:
+        body: dict[str, Any] = {"text": "hola"}
+        if message_id is not None:
+            body["client_message_id"] = message_id
+        response = await client.post(url, json=body)
+        assert response.status_code == 200
+        return response
+
+    await send("msg-A-000001")
+    await send("msg-A-000001")  # duplicate of the last completed turn
+    assert len(handler.calls) == 1
+    await send("msg-B-000001")
+    await send("msg-B-000001")  # duplicate
+    assert len(handler.calls) == 2
+    await send(None)  # no id: never deduplicated, and it becomes the last turn
+    await send(None)
+    assert len(handler.calls) == 4
+    await send("msg-B-000001")  # no longer the last completed turn: runs again
+    assert len(handler.calls) == 5
+
+    turn_a, turn_b, none_1, none_2, turn_b_again = handler.turn_ids
+    assert turn_a is not None and turn_b is not None
+    assert turn_a != turn_b
+    assert none_1 is None and none_2 is None
+    assert turn_b_again == turn_b
+
+
+async def test_a_failed_turn_is_not_a_completed_turn(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    handler = FakeTurnHandler(fail=True)
+    client = make_client(build_app(redis, handler))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+    body = {"text": "hola", "client_message_id": "msg-0001-abcd"}
+
+    assert (
+        await client.post(_message_url(conversation_id), json=body)
+    ).status_code == 503
+    handler.fail = False
+    retried = await client.post(_message_url(conversation_id), json=body)
+
+    assert retried.status_code == 200
+    assert len(handler.calls) == 2
+    assert handler.turn_ids[0] == handler.turn_ids[1]
+
+
+async def test_the_turn_id_of_a_message_is_stable_per_conversation(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    handler = FakeTurnHandler()
+    client = make_client(build_app(redis, handler))
+    body = {"text": "hola", "client_message_id": "msg-0001-abcd"}
+    ids = []
+    for _ in range(2):  # two conversations, same client message id
+        conversation_id = (await client.post("/v1/conversations")).json()[
+            "conversation_id"
+        ]
+        await client.post(_message_url(conversation_id), json=body)
+        ids.append(derive_turn_id(conversation_id, "msg-0001-abcd"))
+
+    assert handler.turn_ids == ids
+    assert ids[0] != ids[1]
+    assert all(re.fullmatch(r"[0-9a-f]{32}", turn_id) for turn_id in ids)
+
+
+@pytest.mark.parametrize(
+    "message_id",
+    ["abcdefgh", "a" * 64, "0123-4567_89ab", "A1_b2-C3_d4"],
+)
+async def test_valid_client_message_ids_are_accepted(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any, message_id: str
+) -> None:
+    client = make_client(build_app(redis, FakeTurnHandler()))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+
+    response = await client.post(
+        _message_url(conversation_id),
+        json={"text": "hola", "client_message_id": message_id},
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "message_id",
+    [
+        "",
+        "abcdefg",
+        "a" * 65,
+        "abcd efgh",
+        "abcdefgh\n",
+        "abcdefg.",
+        "abcdefg!",
+        "áéíóúñab",
+        "abc/defg",
+        12345678,
+        ["abcdefgh"],
+    ],
+)
+async def test_invalid_client_message_ids_are_rejected(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any, message_id: Any
+) -> None:
+    handler = FakeTurnHandler()
+    client = make_client(build_app(redis, handler))
+    conversation_id = (await client.post("/v1/conversations")).json()["conversation_id"]
+
+    response = await client.post(
+        _message_url(conversation_id),
+        json={"text": "hola", "client_message_id": message_id},
+    )
+
+    assert response.status_code == 422
+    assert handler.calls == []
+
+
+def test_turn_ids_derived_from_message_ids_are_deterministic() -> None:
+    turn_id = derive_turn_id("conv_1", "msg-0001-abcd")
+
+    assert turn_id == derive_turn_id("conv_1", "msg-0001-abcd")
+    assert turn_id != derive_turn_id("conv_2", "msg-0001-abcd")
+    assert turn_id != derive_turn_id("conv_1", "msg-0002-abcd")
