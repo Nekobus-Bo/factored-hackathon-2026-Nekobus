@@ -4,11 +4,18 @@ POST /v1/conversations                 open a conversation (and a banking-core s
                                        limited per client address (429 + Retry-After)
 POST /v1/conversations/{id}/messages   run one turn, return the blocks
 GET  /v1/conversations/{id}            masked transcript only
+GET  /v1/conversations/{id}/inbox      the simulated OTP messages of this conversation
+                                       (ADR-0007): the code shown to the browser
+                                       that types it, never stored or sent to the LLM
 
 A message may carry a `client_message_id`. It makes the request safe to retry:
 the writes of a re-run turn reuse their idempotency keys, and a retry of the
 last completed turn gets its stored outcome back without running again. A
 message without one is not deduplicated.
+
+The inbox is a pass-through to banking-core for the conversation's own banking
+session. It reads the conversation only for that id and saves nothing: the code
+never enters the LLM history, the transcript, the turn metadata or the logs.
 """
 
 import logging
@@ -16,7 +23,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from contracts import MESSAGE_BLOCK_ADAPTER
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from redis.exceptions import RedisError
 
@@ -35,7 +42,11 @@ from orchestrator.session.models import (
 )
 from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
-from orchestrator.tools_client import BankingCoreClient, SessionCreationError
+from orchestrator.tools_client import (
+    BankingCoreClient,
+    InboxUnavailableError,
+    SessionCreationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +100,20 @@ class TranscriptResponse(BaseModel):
     conversation_id: str
     language: Lang
     messages: list[TranscriptMessage]
+
+
+class InboxMessageResponse(BaseModel):
+    """One simulated OTP delivery. It carries the clear code by design (ADR-0007)."""
+
+    channel: str
+    destination_masked: str
+    code: str = Field(repr=False)
+    received_at: datetime
+    expires_at: datetime
+
+
+class InboxResponse(BaseModel):
+    messages: list[InboxMessageResponse]
 
 
 def _store(request: Request) -> SessionStore:
@@ -268,6 +293,40 @@ async def get_transcript(request: Request, conversation_id: str) -> TranscriptRe
             for m in state.messages
             if m.role is not MessageRole.SYSTEM
         ],
+    )
+
+
+@router.get("/{conversation_id}/inbox", response_model=InboxResponse)
+async def get_inbox(
+    request: Request, response: Response, conversation_id: str
+) -> InboxResponse:
+    """Simulated OTP messages of this conversation's banking session, newest first.
+
+    The web client shows them as "you got an email with the code". The
+    conversation is loaded only to find its own banking session, so no other
+    session's code can be asked for. Nothing is saved or logged from the answer.
+    """
+    state = await _load(_store(request), conversation_id)
+    try:
+        messages = await _banking(request).simulated_inbox(state.banking_session_id)
+    except InboxUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The inbox is temporarily unavailable",
+        ) from exc
+    # The body holds a live code: no cache, in the browser or on the way.
+    response.headers["Cache-Control"] = "no-store"
+    return InboxResponse(
+        messages=[
+            InboxMessageResponse(
+                channel=message.channel,
+                destination_masked=message.destination_masked,
+                code=message.code,
+                received_at=message.received_at,
+                expires_at=message.expires_at,
+            )
+            for message in messages
+        ]
     )
 
 
