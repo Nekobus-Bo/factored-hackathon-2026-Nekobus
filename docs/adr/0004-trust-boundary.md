@@ -93,3 +93,16 @@ Rules that make the layers hold:
 - *Harder:* the limits are a denial-of-service lever. Someone who knows a customer's document can lock that document's matches for a window, and someone who fails five OTPs for a customer locks that customer for a while. The way to a human (`handoff.create`) is never limited (ADR-0003 Appendix A), which is the mitigation, not a cure.
 - *Out of scope, declared in [limitations](../limitations.md):* distributed attackers across many addresses; per-IP limits on messages; a limit on `otp.send` volume across sessions (SMS bombing); proxy trust configuration beyond the hop count; the fixed-window boundary (up to twice a maximum can fall around a window change); Redis counters moving before the database commit.
 - *Operations:* Redis ACLs need `~limit:*` for `core-svc` and `+incr +incrby +expire` for `edge-svc` ([deployment](../deployment.md)). Verified against a real Redis 7: the previously documented `core-svc` line lacked `+incrby` (redis-py sends `INCR` as `INCRBY`), which the OTP evaluation counter already needed.
+
+## Amendment 2026-09-29 (2): the back office's data path is split
+
+**Context.** The decision says the orchestrator "exposes the chat and the back office". The back office reads and writes data that lives in `banking-core` (the handoff queue, the configuration, the audit log), and the orchestrator holds no database credentials.
+
+**Decision.** Per [ADR-0013](0013-front-ends-bff-takeover.md), the back office's data path is split by who owns the data:
+
+- Queue, handoff detail, claim, guardrails and metrics come from the `banking-core` admin API (`/v1/admin`, bearer token), reached by the back-office server (its BFF) over the internal network.
+- The conversation (masked transcript, takeover, agent reply) comes from the orchestrator, through an agent API with its own bearer token.
+
+The sentence "exposes the chat and the back office" therefore stays accurate only for the conversation. The orchestrator gains no route to `banking-core`'s administration. "Every takeover is recorded" is now the claim of the handoff in `banking-core`: one audited row with `actor_type='agent'` and the agent's email as `actor_ref`, written in the same transaction as the status change.
+
+**Consequences.** The identity of the agent is asserted by the back-office server, not proven to `banking-core`; the row is only as trustworthy as that server's session ([limitations](../limitations.md)).
