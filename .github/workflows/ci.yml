@@ -62,9 +62,10 @@ jobs:
         if: always()
         run: make down
 
-  # The TypeScript side (Bun workspace, ADR-0009). Independent of the Python job: no database, no Docker.
-  design-tokens:
-    name: design tokens (bun)
+  # The TypeScript side (Bun workspace, ADR-0009): the design tokens, the contracts and the two web apps.
+  # Independent of the Python job: no database, no Docker.
+  typescript:
+    name: typescript (bun)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -82,6 +83,10 @@ jobs:
       - name: Web (contracts and apps, typecheck and tests)
         run: make web-check
 
+  # Every app builds from the repository root with its own Dockerfile. The two web apps have a
+  # Dockerfile.dockerignore next to it (BuildKit reads it instead of the root .dockerignore, which
+  # the three Python images keep using), and pin their build stage to the runner's platform, so
+  # their arm64 image is not built under emulation.
   images:
     name: image (${{ matrix.service }}, amd64 + arm64)
     runs-on: ubuntu-latest
@@ -89,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [banking-core, orchestrator, encoder]
+        service: [banking-core, orchestrator, encoder, web-client, web-backoffice]
     steps:
       - uses: actions/checkout@v7
 
