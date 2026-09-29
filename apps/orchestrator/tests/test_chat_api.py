@@ -347,14 +347,30 @@ async def test_invalid_message_block_is_not_persisted(
     ] == []
 
 
+@pytest.mark.parametrize(
+    "app_env",
+    ["production", "Production", "PRODUCTION", " production ", "\tProduction\n"],
+)
 def test_startup_rejects_eval_hook_in_production(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, app_env: str
 ) -> None:
-    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("APP_ENV", app_env)
     monkeypatch.setenv("EVAL_EXPOSE_TURN", "true")
 
     with pytest.raises(ValueError, match="EVAL_EXPOSE_TURN"):
         create_app(settings=Settings(_env_file=None))
+
+
+@pytest.mark.parametrize("app_env", ["development", "staging", "production-like"])
+def test_startup_allows_eval_hook_outside_production(
+    monkeypatch: pytest.MonkeyPatch, app_env: str
+) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("EVAL_EXPOSE_TURN", "true")
+
+    app = create_app(settings=Settings(_env_file=None))
+
+    assert app.state.eval_expose_turn is True
 
 
 def test_startup_fails_without_session_secret(monkeypatch: pytest.MonkeyPatch) -> None:
