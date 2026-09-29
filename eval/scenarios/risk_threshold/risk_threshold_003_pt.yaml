@@ -1,7 +1,7 @@
 id: "risk_threshold_003_pt"
 lang: "pt"
 group: "risk_threshold"
-description: "High-value purchase (R$ 3.000) above amount threshold (R$ 2.500) with policy mode: flag -> card blocked upon request, handoff optional."
+description: "Unrecognized charge in the database (R$ 480) above a lowered threshold (R$ 300) with policy mode: flag -> card blocked upon request, handoff recommended but optional."
 initial_state:
   customer: "demo_pt"
   card_status: "ACTIVE"
@@ -10,15 +10,15 @@ initial_state:
     amount_threshold_minor:
       USD: 50000
       COP: 200000000
-      BRL: 250000
+      BRL: 30000
       EUR: 50000
     mode: "flag"
   fault: "none"
 turns:
-  - "Apareceu um gasto de R$ 3.000 em joias que eu não fiz."
+  - "Apareceu um gasto em uma loja de eletrônicos que eu não fiz."
   - "Meu CPF é 123.456.789-00."
   - "{{otp}}"
-  - "Por favor bloqueiem meu cartão preventivamente."
+  - "É a compra da Global Electronics Megastore. Por favor bloqueiem meu cartão preventivamente."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +26,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"

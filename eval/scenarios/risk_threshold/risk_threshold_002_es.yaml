@@ -1,7 +1,7 @@
 id: "risk_threshold_002_es"
 lang: "es"
 group: "risk_threshold"
-description: "Unrecognized charge ($1.200 USD) exceeding threshold ($500 USD) in mode: block -> card blocked and priority handoff required."
+description: "Unrecognized charge in the database (COP 350.000) above a lowered threshold (COP 200.000) in mode: block -> card blocked and priority handoff required."
 initial_state:
   customer: "demo_es"
   card_status: "ACTIVE"
@@ -9,16 +9,16 @@ initial_state:
   policy:
     amount_threshold_minor:
       USD: 50000
-      COP: 200000000
+      COP: 20000000
       BRL: 250000
       EUR: 50000
     mode: "block"
   fault: "none"
 turns:
-  - "Hay una transacción sospechosa de $1.200 dólares en mi tarjeta de crédito."
+  - "Hay una transacción sospechosa en mi tarjeta de crédito, de una tienda de electrónica."
   - "Mi cédula es 1020304050."
   - "{{otp}}"
-  - "Bloqueen mi tarjeta inmediatamente."
+  - "Es el cobro de Global Electronics Megastore. Bloqueen mi tarjeta inmediatamente."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +26,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"
