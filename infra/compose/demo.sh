@@ -111,7 +111,7 @@ KB_OK=1
 if [ "$(cfg RETRIEVAL_MODE vector)" = "bm25" ]; then
   echo "kb.search: RETRIEVAL_MODE=bm25, no embedding model to preload"
 else
-  echo "kb.search: embedding model (about 0.5 GB, downloaded once; the network is needed only if it is not cached)"
+  echo "kb.search: embedding model (downloaded once; the network is needed only if it is not cached)"
   if ! $MAKE --no-print-directory warmup-retrieval; then
     KB_OK=0
     warn "the embedding model could not be preloaded, so kb.search will not work. Connect to the network and run: make warmup-retrieval"
