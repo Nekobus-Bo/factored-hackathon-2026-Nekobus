@@ -8,6 +8,8 @@ from contracts.encoder import (
     AnalyzeResponse,
     DecisionPointsResponse,
     DecisionResult,
+    EmbedRequest,
+    EmbedResponse,
     PiiSpan,
     Slot,
 )
@@ -355,3 +357,51 @@ def test_decision_points_response_contract() -> None:
     payload["source"] = "somewhere"
     with pytest.raises(ValidationError):
         DecisionPointsResponse.model_validate(payload)
+
+
+# --- Embeddings (ADR-0012, Appendix J) ---------------------------------------------
+
+
+def test_embed_request_accepts_a_batch_of_texts() -> None:
+    request = EmbedRequest(texts=["bloquear tarjeta", "card block"])
+    assert request.texts == ["bloquear tarjeta", "card block"]
+
+
+@pytest.mark.parametrize(
+    "texts",
+    [
+        [],  # empty batch
+        [""],  # empty text
+        ["x" * 4001],  # too long
+        ["ok"] * 257,  # over the contract ceiling
+    ],
+)
+def test_embed_request_rejects_bad_batches(texts: list[str]) -> None:
+    with pytest.raises(ValidationError):
+        EmbedRequest(texts=texts)
+    with pytest.raises(ValidationError):
+        EmbedRequest(texts=["ok"], extra_field=1)  # type: ignore[call-arg]
+
+
+def test_embed_response_carries_the_model_identity_and_no_text() -> None:
+    response = EmbedResponse(
+        model_id="org/model",
+        revision="86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d",
+        dim=3,
+        vectors=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+    )
+    assert response.dim == 3 and len(response.vectors) == 2
+    assert "texts" not in EmbedResponse.model_fields
+    assert EmbedResponse.model_validate_json(response.model_dump_json()) == response
+
+
+def test_embed_response_rejects_a_wrong_dimension_and_non_finite_values() -> None:
+    base = {"model_id": "m", "revision": "r", "dim": 3}
+    with pytest.raises(ValidationError, match="dim=3"):
+        EmbedResponse(**base, vectors=[[1.0, 0.0]])
+    with pytest.raises(ValidationError):
+        EmbedResponse(**base, vectors=[[1.0, float("nan"), 0.0]])
+    with pytest.raises(ValidationError):
+        EmbedResponse(**base, vectors=[[1.0, float("inf"), 0.0]])
+    with pytest.raises(ValidationError):
+        EmbedResponse(model_id="", revision="r", dim=3, vectors=[])

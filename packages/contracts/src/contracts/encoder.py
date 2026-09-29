@@ -3,9 +3,16 @@
 
 import re
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from contracts.labels import PiiType, SlotType
 
@@ -13,6 +20,10 @@ from contracts.labels import PiiType, SlotType
 DECISION_POINT_ID_PATTERN = r"^[a-z][a-z0-9_]{2,40}$"
 # Contract ceiling on the decision points one request may name.
 MAX_DECISION_POINTS_PER_REQUEST = 16
+# Contract ceilings for POST /v1/embed. The model server's configured batch limit
+# (EMBEDDING_MAX_BATCH) can only lower the first.
+EMBED_MAX_BATCH = 256
+EMBED_MAX_TEXT_CHARS = 4000
 
 
 class Slot(BaseModel):
@@ -304,3 +315,50 @@ class DecisionPointsResponse(BaseModel):
         ),
     )
     decision_points: list[DecisionPointInfo] = Field(default_factory=list)
+
+
+EmbedText = Annotated[str, StringConstraints(min_length=1, max_length=EMBED_MAX_TEXT_CHARS)]
+Finite = Annotated[float, Field(allow_inf_nan=False)]
+
+
+class EmbedRequest(BaseModel):
+    """Input contract for POST /v1/embed (ADR-0012, Appendix J).
+
+    The texts are search queries and public knowledge-base text, never a customer
+    record; the model server still receives them only inside the private network.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    texts: list[EmbedText] = Field(
+        min_length=1,
+        max_length=EMBED_MAX_BATCH,
+        description="Texts to embed, in order",
+    )
+
+
+class EmbedResponse(BaseModel):
+    """Output contract for POST /v1/embed.
+
+    `model_id` and `revision` say which pinned model produced the vectors; the caller
+    compares them with what it expects on every response and refuses a mismatch.
+    Carries no text.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_id: str = Field(min_length=1, max_length=200, description="Configured model id")
+    revision: str = Field(
+        min_length=1,
+        max_length=128,
+        description="Pinned revision: a full commit for a hub model, a label for a directory",
+    )
+    dim: int = Field(ge=1, le=4096, description="Length of every vector")
+    vectors: list[list[Finite]] = Field(description="One unit-length vector per text, in order")
+
+    @model_validator(mode="after")
+    def validate_dimensions(self) -> "EmbedResponse":
+        for vector in self.vectors:
+            if len(vector) != self.dim:
+                raise ValueError(f"every vector must have dim={self.dim} values")
+        return self
