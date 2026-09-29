@@ -9,9 +9,9 @@ from typing import Any
 
 import psutil
 import yaml
-from encoder.adapters import GLiNERAdapter, TFIDFLRAdapter
+from encoder.adapters import TFIDFLRAdapter
 from encoder.models import DecisionExample
-from retrieval.adapters import BM25Adapter, HybridAdapter, SentenceTransformersAdapter
+from retrieval.adapters import BM25Adapter, HybridAdapter
 from retrieval.adapters.hybrid import DEFAULT_RRF_K
 from retrieval.kb import KnowledgeBase
 from retrieval.models import KBSnippet, QueryExample
@@ -196,6 +196,10 @@ def run_decision_calibration(config_path: str | Path, out_dir: str | Path) -> Pa
             # Baseline is always fitted on train split
             adapter.fit(train_exs)
         elif adapter_type == "gliner":
+            # Lazy: importing it loads PyTorch, which the decision-points task
+            # (and its tests) must not need.
+            from encoder.adapters.gliner import GLiNERAdapter
+
             adapter = GLiNERAdapter(model_id=model_id, name=cand_name, device="cpu")
             if mode == "finetune":
                 epochs = int(cand.get("epochs", config.get("epochs", 2)))
@@ -372,10 +376,18 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         elif adapter_type == "bm25":
             adapter = BM25Adapter(name=cand_name)
         elif adapter_type == "sentence_transformers":
+            from retrieval.adapters.sentence_transformers import (
+                SentenceTransformersAdapter,
+            )
+
             adapter = SentenceTransformersAdapter(
                 model_id=model_id, name=cand_name, device="cpu"
             )
         elif adapter_type == "hybrid":
+            from retrieval.adapters.sentence_transformers import (
+                SentenceTransformersAdapter,
+            )
+
             adapter = HybridAdapter(
                 lexical=BM25Adapter(name=f"{cand_name}_bm25"),
                 dense=SentenceTransformersAdapter(
