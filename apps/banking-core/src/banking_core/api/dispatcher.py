@@ -400,6 +400,7 @@ class ToolDispatcher:
                     ttl_seconds=policy_config.session_ttl_seconds,
                 )
                 db_session.commit()
+                # Commit first, save second (see _save_session_after_commit).
                 if advanced_session is not None:
                     self._save_session_after_commit(
                         advanced_session, policy_config.session_ttl_seconds
@@ -524,6 +525,7 @@ class ToolDispatcher:
                     verification_state_before=verification_state_before,
                 )
                 db_session.commit()
+                # Commit first, save second (see _save_session_after_commit).
                 if advanced_session is not None:
                     self._save_session_after_commit(
                         advanced_session, policy_config.session_ttl_seconds
