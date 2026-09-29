@@ -1,7 +1,7 @@
 """Session management and state persistence on redis-core for banking-core.
 
 Session schema: session_id -> {state, pinned_holder_id, attempts,
-otp_challenge_id, updated_at}.
+otp_challenge_id, handoff_requirement, updated_at}.
 Security rules:
 - pinned_holder_id is strictly established server-side on verified match.
 - Pinned holder can NEVER be supplied or altered by model tool args (ADR-0004).
@@ -20,6 +20,7 @@ from typing import Any
 
 import redis
 from contracts.envelope import VerificationState
+from contracts.tools.handoff_create import HandoffRequirement
 from pydantic import BaseModel, ConfigDict, Field
 
 from banking_core.redis_client import create_redis_client
@@ -58,6 +59,16 @@ class SessionState(BaseModel):
     otp_resends: int = Field(
         default=0, ge=0, description="Count of OTP resends in session"
     )
+    handoff_requirement: HandoffRequirement | None = Field(
+        default=None,
+        description=(
+            "Strongest handoff requirement a card.block decided in this session, "
+            "server-side only (ADR-0003 amendment 2026-09-29). handoff.create "
+            "gives a handoff at least this priority and always this department. "
+            "None until a card.block decides one; only ever replaced by a "
+            "stronger one, never weakened"
+        ),
+    )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="Timestamp of last state modification",
@@ -74,6 +85,11 @@ class SessionState(BaseModel):
             "failed_matches": self.failed_matches,
             "failed_verifies": self.failed_verifies,
             "otp_resends": self.otp_resends,
+            "handoff_requirement": (
+                self.handoff_requirement.model_dump(mode="json")
+                if self.handoff_requirement is not None
+                else None
+            ),
             "updated_at": self.updated_at.isoformat(),
         }
 
