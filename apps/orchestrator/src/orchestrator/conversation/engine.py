@@ -74,6 +74,30 @@ SECRET_ARGS: dict[str, dict[str, PiiType]] = {
 # Tools that consume a limited attempt budget: at most one execution per turn.
 ONCE_PER_TURN: frozenset[str] = frozenset({"otp.verify"})
 
+# Output fields (dotted paths into `data`) the model is not shown. They differ on
+# every run (random ids, audit sequence numbers, timestamps, queue length), so
+# each LLM call after a write would get a new replay key, and the model does not
+# need them to act. The customer-facing receipt and handoff blocks are built from
+# the full ToolResult, so they keep everything. What stays is what the model acts
+# on: card_ref, states, masked destination, verification outcome, department.
+_RECEIPT_RUN_FIELDS = (
+    "receipt.target_masked",
+    "receipt.verified_at",
+    "receipt.audit_id",
+)
+LLM_HIDDEN_FIELDS: dict[str, tuple[str, ...]] = {
+    "otp.send": ("challenge_id", *_RECEIPT_RUN_FIELDS),
+    "otp.verify": _RECEIPT_RUN_FIELDS,
+    "card.block": _RECEIPT_RUN_FIELDS,
+    "handoff.create": (
+        "handoff_id",
+        "queue_position",
+        "created_at",
+        "summary",
+        *_RECEIPT_RUN_FIELDS,
+    ),
+}
+
 _OTP_PLACEHOLDER_RE = re.compile(r"^\[OTP_(\d+)\]$")
 # A standalone 4-8 digit OTP, optionally with one internal space or dash.
 _BARE_OTP_RE = re.compile(r"(?<![\w\[\]])\d+(?:[ -]\d+)?(?![\w\]])(?![ -]\d)")
@@ -583,6 +607,8 @@ class TurnEngine:
             }
         else:
             payload = result.model_dump(mode="json")
+            for path in LLM_HIDDEN_FIELDS.get(result.tool, ()):
+                _drop_field(payload.get("data"), path)
         try:
             masked = mask_json_string_values(payload, self.masker, mapping)
             return json.dumps(masked, sort_keys=True, ensure_ascii=False)
@@ -647,6 +673,15 @@ class TurnEngine:
 def _is_placeholder(value: str, kind: PiiType) -> bool:
     """True if `value` is exactly one placeholder of `kind`, e.g. `[OTP_3]`."""
     return re.fullmatch(rf"\[{kind.value}_\d+\]", value) is not None
+
+
+def _drop_field(data: Any, path: str) -> None:
+    """Remove the dotted `path` from nested dicts, if present."""
+    *parents, leaf = path.split(".")
+    for key in parents:
+        data = data.get(key) if isinstance(data, dict) else None
+    if isinstance(data, dict):
+        data.pop(leaf, None)
 
 
 def _tool_results(
