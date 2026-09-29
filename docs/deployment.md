@@ -62,7 +62,7 @@ flowchart TD
    - A single Redis instance partitioned using Redis 6+ Access Control Lists (ACLs).
    - Reachable **only internally** (no public/external port binding).
    - Two distinct ACL accounts with minimal command sets and strictly segmented key patterns:
-     - **`core-svc`:** restricted to keys matching `~session:*`, `~otp:*` and `~limit:*`. Used only by `banking-core` for distributed session locking, FSM state, OTP challenge verification, and the cross-session attempt limits (per-customer OTP lock, per-document match counters).
+     - **`core-svc`:** restricted to keys matching `~session:*`, `~otp:*` and `~limit:*`. Used only by `banking-core` for distributed session locking, FSM state, OTP challenge verification, the simulated OTP inbox (`otp:inbox:*`, [ADR-0007](adr/0007-no-llm-biometrics.md)), and the cross-session attempt limits (per-customer OTP lock, per-document match counters).
      - **`edge-svc`:** restricted to keys matching `~orch:*`. Used only by `orchestrator` for encrypted conversation state caching and turn locks.
    - The orchestrator never receives `REDIS_CORE_URL` or credentials for the `core-svc` account.
 
@@ -81,7 +81,7 @@ The required command sets derived from the codebase:
 
 | Service | User | Key Patterns | Code References | Required Redis Commands |
 |---|---|---|---|---|
-| `banking-core` | `core-svc` | `~session:* ~otp:* ~limit:*` | `control/session.py`<br/>`identity/challenge_store.py`<br/>`control/attempt_limits.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
+| `banking-core` | `core-svc` | `~session:* ~otp:* ~limit:*` | `control/session.py`<br/>`identity/challenge_store.py`<br/>`identity/simulated_inbox.py`<br/>`control/attempt_limits.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
 | `orchestrator` | `edge-svc` | `~orch:*` | `session/store.py`<br/>`session/rate_limit.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
 
 ### Why Transaction Commands Are Mandatory
@@ -89,8 +89,9 @@ The required command sets derived from the codebase:
 1. **`banking-core` session store:** Uses `WATCH` / `MULTI` / `EXEC` for optimistic concurrency during state transitions (`atomic_update`), and `SET ... NX PX` plus a `WATCH`/`GET`/`DEL` pipeline to safely release per-session locks without clearing locks acquired by succeeding callers.
 2. **`banking-core` challenge store:** Uses `INCR` and `EXPIRE` on `otp:challenge:<id>:evaluations` to atomically count attempts before verifying HMAC hashes, and `DEL` to invalidate challenges. redis-py sends `INCR` as `INCRBY key 1`, so `+incrby` is required: an ACL with `+incr` alone fails every `otp.verify` with `NOPERM`.
 3. **`banking-core` attempt limits:** `control/attempt_limits.py` creates a fixed-window counter with `SET key 0 NX EX <window>` and `INCR` in one `MULTI`, reads locks with `GET`, sets them with `SET NX EX`, and gives a successful match's count back with `WATCH` / `GET` / `MULTI` / `SET XX KEEPTTL` / `EXEC`. It needs no command beyond the set above; only the key pattern `~limit:*` is new.
-4. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
-5. **`orchestrator` conversation rate limit:** `session/rate_limit.py` counts `POST /v1/conversations` per client address with `INCR` (sent as `INCRBY`) and `EXPIRE` in one `MULTI`, under `orch:ratelimit:conversations:<keyed hash>:<window>`. An `edge-svc` ACL written before this limit lacks `+incrby +expire`: the limiter then fails closed and every `POST /v1/conversations` answers 503.
+4. **`banking-core` simulated OTP inbox:** `identity/simulated_inbox.py` keeps one entry per challenge (`otp:inbox:challenge:<challenge_id>`, `SET ... EX <challenge TTL>`) and a small index of a session's challenge ids (`otp:inbox:session:<session_id>`, at most 10) so an inbox can be listed. The index is rewritten with `WATCH` / `GET` / `MULTI` / `SET EX` / `DEL` / `EXEC`. It never uses `SCAN`, `KEYS`, `MGET` or sorted sets, which the `core-svc` ACL does not grant. **The entry holds the clear OTP code** (the challenge store keeps only an HMAC): that is the simulated delivery, and it lives for the challenge TTL (`OTP_TTL_SECONDS`) and nowhere else. Keep `redis-core` internal, and keep the inbox prefix under `~otp:*`.
+5. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
+6. **`orchestrator` conversation rate limit:** `session/rate_limit.py` counts `POST /v1/conversations` per client address with `INCR` (sent as `INCRBY`) and `EXPIRE` in one `MULTI`, under `orch:ratelimit:conversations:<keyed hash>:<window>`. An `edge-svc` ACL written before this limit lacks `+incrby +expire`: the limiter then fails closed and every `POST /v1/conversations` answers 503.
 
 If `WATCH`, `MULTI`, `EXEC`, or `UNWATCH` are omitted from the ACL, Redis returns `NOPERM` and operations fail.
 
@@ -106,6 +107,7 @@ ACL SETUSER edge-svc reset on >REPLACE_WITH_EDGE_REDIS_PASSWORD ~orch:* -@all +p
 Ensure the key prefix variables in `.env` match these patterns:
 - `REDIS_SESSION_KEY_PREFIX=session:` (covered by `~session:*`)
 - `REDIS_OTP_CHALLENGE_KEY_PREFIX=otp:challenge:` (covered by `~otp:*`)
+- `REDIS_OTP_INBOX_KEY_PREFIX=otp:inbox:` (covered by `~otp:*`; the simulated OTP inbox)
 - `REDIS_ATTEMPT_LIMIT_KEY_PREFIX=limit:` (covered by `~limit:*`)
 - `REDIS_EDGE_KEY_PREFIX=orch:conv:` (covered by `~orch:*`)
 - `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX=orch:ratelimit:` (covered by `~orch:*`)
@@ -197,7 +199,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 
 1. **Pure Environment (`.env`):**
    - **Data connectivity:** Plugging your own external PostgreSQL (`DATABASE_URL`, pgvector extension required) or Redis instances (`REDIS_CORE_URL`, `REDIS_EDGE_URL` supporting `redis://` or `rediss://` with username, password, port and TLS; use database 0, or add `+select` to both ACL users if you pick another DB number).
-   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
+   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_OTP_INBOX_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
    - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), embedding models (`EMBEDDING_MODEL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
    - **LLM engine:** Switching between deterministic `replay` and live provider (`live`), model names (`LLM_MODEL`), base URLs, and timeouts.
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
@@ -215,7 +217,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 
 The application services are architecturally stateless:
 - **`orchestrator`:** Holds no local state. Conversation transcripts and masked placeholder maps are stored in Redis (`edge-svc`). Turn execution is serialized via Redis turn locks (`acquire_turn_lock`), and writes are fenced against token expiration (`save_fenced`).
-- **`banking-core`:** Holds no local state. FSM verification states, attempt counters, cross-session attempt limits (per-customer OTP failures and lock, per-document match failures), and OTP challenge hashes reside in Redis (`core-svc`). Domain entities and append-only audit chains reside in PostgreSQL. Tool invocations acquire an exclusive per-session distributed lock (`lock` with `nx=True, px=...`).
+- **`banking-core`:** Holds no local state. FSM verification states, attempt counters, cross-session attempt limits (per-customer OTP failures and lock, per-document match failures), OTP challenge hashes and the simulated OTP inbox entries (with the clear code, for the challenge TTL) reside in Redis (`core-svc`). Domain entities and append-only audit chains reside in PostgreSQL. Tool invocations acquire an exclusive per-session distributed lock (`lock` with `nx=True, px=...`).
 - **Idempotency:** Tool invocations accept an `idempotency_key`, preventing duplicate card blocks or dispute actions across retries.
 
 > [!WARNING]
