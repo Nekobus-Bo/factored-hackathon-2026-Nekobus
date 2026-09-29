@@ -157,3 +157,22 @@ def test_outside_the_view_counts_as_a_wrong_decision() -> None:
     fit = fit_label_threshold(rows, "LOST", p_min=0.9, ci="point", n_min=1)
     assert fit.tau == pytest.approx(0.9)
     assert fit.accepted == 1
+
+
+def test_a_constraint_that_rejects_nothing_is_reported_as_not_binding() -> None:
+    # Every prediction is right at every confidence: tau is only the lowest seen, and
+    # validation says nothing about how low a confidence is still safe.
+    easy = [row("A", 0.9 - i / 20, "A") for i in range(6)]
+    fit = fit_label_threshold(easy, "A", p_min=0.9, ci="point", n_min=1)
+    assert fit.feasible and not fit.binding
+    assert fit.tau == pytest.approx(easy[-1].confidence, abs=1e-6)
+
+    hard = [*easy, row("A", 0.3, "B")]
+    binding = fit_label_threshold(hard, "A", p_min=0.9, ci="point", n_min=1)
+    assert binding.feasible and binding.binding
+    assert binding.n_predicted == 7 and binding.accepted == 6
+
+    scalar = fit_scalar_threshold(easy, {"A": 0.9}, ci="point", n_min=1)
+    assert scalar.feasible and not scalar.binding
+    scalar_hard = fit_scalar_threshold(hard, {"A": 0.9}, ci="point", n_min=1)
+    assert scalar_hard.binding
