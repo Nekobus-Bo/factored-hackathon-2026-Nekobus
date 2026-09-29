@@ -12,6 +12,23 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Database for the banking-core DB tests. The tests create and migrate their own
+    # `bank_test` database on it. Compose's postgres is not published to the host,
+    # so this port does not clash with the stack started below. The healthcheck goes
+    # over TCP: the image's temporary init server only listens on its socket.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: dev-only-change-me
+        ports:
+          - 38432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v7
 
@@ -22,6 +39,8 @@ jobs:
 
       - name: Tests
         run: uv run pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://app:dev-only-change-me@127.0.0.1:38432/bank_test
 
       - name: Tests (packages outside the root testpaths)
         run: |
