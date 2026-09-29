@@ -17,7 +17,7 @@ An explicit, verifiable boundary:
 | Intents and slots of the classification schema | The tools: real banking operations |
 | Knowledge snippets and their retrieval | The policy engine and its evaluator |
 | Message templates, forms and buttons | The verification state machine |
-| Policy rules, thresholds and mode (blocking / flag) | The trust boundary and authentication |
+| Policy rules, thresholds and amount mode (handoff required / recommended) | The trust boundary and authentication |
 | Which tools each state enables | The message block schema |
 | Agent queue priority | The audit log |
 
