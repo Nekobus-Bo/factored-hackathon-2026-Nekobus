@@ -224,6 +224,8 @@ jobs:
             echo "BLIND_INDEX_SALT=$BLIND_INDEX_SALT"
             echo "ADMIN_API_ENABLED=${ADMIN_API_ENABLED:-false}"
             echo "ADMIN_API_TOKEN=$ADMIN_API_TOKEN"
+            echo "AGENT_API_ENABLED=${AGENT_API_ENABLED:-false}"
+            echo "AGENT_API_TOKEN=$AGENT_API_TOKEN"
             echo "DEMO_RESET_ENABLED=${DEMO_RESET_ENABLED:-false}"
             echo "OTP_CHANNEL_MODE=${OTP_CHANNEL_MODE:-simulated}"
             echo "LLM_MODE=${LLM_MODE:-replay}"
@@ -252,6 +254,8 @@ jobs:
           # Optional: only meaningful when the corresponding feature is on.
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          AGENT_API_ENABLED: ${{ vars.AGENT_API_ENABLED }}
+          AGENT_API_TOKEN: ${{ secrets.AGENT_API_TOKEN }}
           DEMO_RESET_ENABLED: ${{ vars.DEMO_RESET_ENABLED }}
           OTP_CHANNEL_MODE: ${{ vars.OTP_CHANNEL_MODE }}
           LLM_MODE: ${{ vars.LLM_MODE }}

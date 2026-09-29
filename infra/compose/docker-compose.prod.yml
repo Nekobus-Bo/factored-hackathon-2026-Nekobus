@@ -102,6 +102,11 @@ services:
       # is generous, for local development and evaluation runs from one address;
       # a public environment keeps 30, whatever the base file says.
       RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}
+      # The base file enables the agent API with a public development token.
+      # Production never inherits that: the orchestrator would refuse to start.
+      # Switch it on explicitly, with a secret of your own.
+      AGENT_API_ENABLED: ${AGENT_API_ENABLED:-false}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       banking-core:
