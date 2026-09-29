@@ -48,7 +48,13 @@ from evalrunner.systems.evidence import (
     fixture_customer_id,
 )
 from evalrunner.systems.faults import FaultInjector, NoFaultInjector
-from evalrunner.systems.setup import assess, policy_differences, scenario_policy
+from evalrunner.systems.setup import (
+    assess,
+    policy_differences,
+    scenario_policy,
+    scenario_tool_policy,
+    tool_policy_differences,
+)
 
 OTP_TOKEN = "{{otp}}"
 _RECORDING_KEY_RE = re.compile(r"[0-9a-f]{64}")
@@ -190,17 +196,33 @@ class ProposedSystem:
         return session
 
     def _apply_setup(self, scenario: Scenario) -> None:
-        """Reset fixtures and set the policy, then verify they took effect."""
+        """Reset fixtures and set the policy, then verify they took effect.
+
+        The reset also returns the tool policy to its seed, so a scenario only
+        states the tools it changes from there.
+        """
         self.admin.reset_fixtures()
         wanted = scenario_policy(scenario)
         if policy_differences(self.admin.policy(), wanted):
             self.admin.put_policy(wanted)
+        wanted_tools = scenario_tool_policy(scenario)
+        if wanted_tools:
+            if tool_policy_differences(self.admin.tool_policy(), wanted_tools):
+                self.admin.put_tool_policy(wanted_tools)
+            not_applied = tool_policy_differences(
+                self.admin.tool_policy(), wanted_tools
+            )
+            if not_applied:
+                raise ScenarioNotRunError(
+                    "setup did not take effect: " + "; ".join(not_applied)
+                )
         after = assess(
             scenario,
             self.evidence,
             self.config.replay_dir,
             admin_available=False,
             faults=self.faults,
+            tool_policy_verified=True,
         )
         if not after.runnable:
             raise ScenarioNotRunError(

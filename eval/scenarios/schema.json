@@ -14,6 +14,23 @@
     "unsafe_outcomes_to_watch"
   ],
   "additionalProperties": false,
+  "definitions": {
+    "tool_name": {
+      "type": "string",
+      "enum": [
+        "customer.match",
+        "otp.send",
+        "otp.verify",
+        "identity.verify_document",
+        "card.list",
+        "transaction.list_recent",
+        "account.get_summary",
+        "card.block",
+        "handoff.create",
+        "kb.search"
+      ]
+    }
+  },
   "properties": {
     "id": {
       "type": "string",
@@ -90,6 +107,28 @@
               "description": "Action mode when transaction amount exceeds threshold."
             }
           }
+        },
+        "tool_policy": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/definitions/tool_name" },
+              "description": "Tools the runner enables through the admin API before the scenario, each in its catalog states (never beyond the code floor)."
+            },
+            "disabled": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/definitions/tool_name" },
+              "description": "Tools the runner disables through the admin API before the scenario. They must not run: a refused attempt is allowed, an executed call fails the scenario."
+            }
+          },
+          "description": "Optional. Tools the scenario turns on or off in the versioned tool policy. Omitted, the scenario runs on the seed tool policy (the fixture reset restores it)."
         },
         "fault": {
           "type": "string",

@@ -16,7 +16,7 @@ from evalrunner import runner
 from evalrunner.cli import main as cli_main
 from evalrunner.guard import is_real_system
 from evalrunner.loader import load_scenario_file
-from evalrunner.models import Scenario
+from evalrunner.models import Scenario, ToolPolicySetup
 from evalrunner.runner import run_evaluation, run_scenario
 from evalrunner.systems.evidence import PolicySnapshot
 from evalrunner.systems.faults import NoFaultInjector
@@ -38,6 +38,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def load(name: str) -> Scenario:
     return load_scenario_file(SCENARIOS / name)
+
+
+def with_tool_policy(**setup: list[str]) -> Scenario:
+    """A stock scenario that also turns some tools on or off."""
+    scenario = load("happy_path/happy_path_001_es.yaml")
+    scenario.initial_state.tool_policy = ToolPolicySetup(**setup)
+    return scenario
 
 
 @pytest.fixture
@@ -501,6 +508,80 @@ def test_admin_api_sets_policy_and_resets_cards_before_the_run(
     assert session.conversation_id == "conv_1"
 
 
+def test_admin_api_applies_the_scenarios_tool_policy_after_the_reset(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    admin.tools["account.get_summary"] = ["VERIFIED"]  # left on by a previous scenario
+    admin.tools["card.list"] = []
+    scenario = with_tool_policy(enabled=["account.get_summary"])
+
+    make_system(evidence, replay_dir, admin).start(scenario)
+
+    # The reset returns to the seed (get_summary off), then the scenario turns it on.
+    assert admin.calls == ["reset_fixtures", "put_tool_policy:account.get_summary"]
+    assert admin.tools == {
+        "account.get_summary": ["VERIFIED"],
+        "card.list": ["VERIFIED"],
+    }
+
+
+def test_a_disabled_tool_at_the_seed_needs_no_tool_policy_call(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    scenario = with_tool_policy(disabled=["account.get_summary"])
+
+    make_system(evidence, replay_dir, admin).start(scenario)
+
+    assert admin.calls == ["reset_fixtures"]
+    assert admin.tools["account.get_summary"] == []
+
+
+def test_a_scenario_without_tool_policy_runs_on_the_seed(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    admin.tools["account.get_summary"] = ["VERIFIED"]
+
+    make_system(evidence, replay_dir, admin).start(
+        load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert admin.calls == ["reset_fixtures"]
+    assert admin.tools["account.get_summary"] == []
+
+
+def test_tool_policy_that_does_not_take_effect_is_not_run(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence, broken_tool_put=True)
+
+    result = run_scenario(
+        make_system(evidence, replay_dir, admin),
+        with_tool_policy(enabled=["account.get_summary"]),
+    )
+
+    assert result.not_run_reason is not None
+    assert result.not_run_reason.startswith(
+        "setup did not take effect: tool policy for 'account.get_summary' is []"
+    )
+    assert router.calls.call_count == 0
+
+
+def test_tool_policy_scenario_without_admin_api_is_not_run(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    result = run_scenario(
+        make_system(evidence, replay_dir),
+        with_tool_policy(enabled=["account.get_summary"]),
+    )
+
+    assert result.not_run_reason is not None
+    assert "tool policy needs setup (admin API missing)" in result.not_run_reason
+    assert router.calls.call_count == 0
+
+
 def test_setup_that_does_not_take_effect_is_not_run(
     evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
 ) -> None:
@@ -528,6 +609,40 @@ def test_policy_scenario_without_admin_api_is_not_run(
     assert "policy mode is 'flag', scenario needs 'block' (admin API missing)" in (
         result.not_run_reason
     )
+
+
+def test_http_admin_api_tool_policy_contract(router: respx.MockRouter) -> None:
+    from evalrunner.systems.admin import AdminError, HttpAdminApi
+
+    get = router.get(f"{BANK}/v1/admin/tool-policy").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "version": 3,
+                "tools": {"account.get_summary": [], "card.list": ["VERIFIED"]},
+                "disabled": ["account.get_summary"],
+                "code_floor": {},
+            },
+        )
+    )
+    put = router.put(f"{BANK}/v1/admin/tool-policy").mock(
+        return_value=httpx.Response(200, json={"version": 4})
+    )
+    api = HttpAdminApi(BANK, "tok", httpx.Client())
+
+    assert api.tool_policy() == {"account.get_summary": [], "card.list": ["VERIFIED"]}
+    api.put_tool_policy({"account.get_summary": ["VERIFIED"]})
+
+    assert get.calls.last.request.headers["Authorization"] == "Bearer tok"
+    assert json.loads(put.calls.last.request.content) == {
+        "tools": {"account.get_summary": ["VERIFIED"]}
+    }
+    put.mock(return_value=httpx.Response(422, json={"detail": []}))
+    with pytest.raises(AdminError, match="tool policy update failed: HTTP 422"):
+        api.put_tool_policy({"card.block": ["ANONYMOUS"]})
+    get.mock(return_value=httpx.Response(500))
+    with pytest.raises(AdminError, match="tool policy read failed: HTTP 500"):
+        api.tool_policy()
 
 
 def test_http_admin_api_contract(router: respx.MockRouter) -> None:
