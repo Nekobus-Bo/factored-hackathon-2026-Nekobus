@@ -1261,3 +1261,42 @@ def test_session_creation_falls_back_to_the_seed_ttl_without_configuration(
     assert response.status_code == 201
     [key] = fake.keys("session:*")
     assert 900 < fake.ttl(key) <= 3600
+
+
+def test_idempotency_key_reused_with_other_arguments_is_a_refusal(
+    make_harness,
+) -> None:
+    h = make_harness()
+    session_id, challenge_id = _to_otp_pending(h)
+    key = "idem_verify_conflict_01"
+
+    first = h.call(
+        session_id,
+        {"tool": "otp.verify", "args": {"code": "000000"}, "idempotency_key": key},
+    )
+    assert first["status"] == "ok" and first["data"]["verified"] is False
+    before = h.session_store.get(session_id)
+    audits_before = len(h.db.audit_logs)
+
+    conflict = h.call(
+        session_id,
+        {"tool": "otp.verify", "args": {"code": "111111"}, "idempotency_key": key},
+    )
+
+    assert conflict == {
+        "tool": "otp.verify",
+        "status": "refused",
+        "reason_code": "INVALID_ARGUMENTS",
+        "data": None,
+    }
+    # The runner never ran: no second evaluation, no session change.
+    assert h.challenge_store.evaluations(challenge_id) == 1
+    assert h.session_store.get(session_id) == before
+    assert len(h.db.audit_logs) == audits_before + 1
+    audit = h.db.audit_logs[-1]
+    assert (audit.action, audit.decision, audit.reason_code) == (
+        "otp.verify",
+        "refused",
+        "INVALID_ARGUMENTS",
+    )
+    assert audit.payload["idempotency_scope"] == session_id

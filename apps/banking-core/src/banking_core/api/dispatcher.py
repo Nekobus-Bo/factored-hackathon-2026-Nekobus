@@ -60,6 +60,7 @@ from banking_core.handoff.tools import (
     execute_handoff_create,
     reread_handoff_create_result,
 )
+from banking_core.idempotency.exceptions import IdempotencyConflictError
 from banking_core.idempotency.service import get_or_run
 from banking_core.identity.challenge_store import (
     OtpChallengeStore,
@@ -447,6 +448,19 @@ class ToolDispatcher:
                     tool=tool_call.tool,
                     status=ToolResultStatus.OK,
                     data=result_data,
+                )
+            except IdempotencyConflictError:
+                # A key reused with different arguments is a caller error, not a
+                # server fault: nothing ran, and the caller must use a new key.
+                db_session.rollback()
+                return self._refuse(
+                    tool_call,
+                    session.session_id,
+                    ReasonCode.INVALID_ARGUMENTS,
+                    db_session,
+                    verification_state_before=verification_state_before,
+                    verification_state_after=session.state,
+                    reason="idempotency_key_reused_with_different_arguments",
                 )
             except NoOtpChannelError as exc:
                 db_session.rollback()
