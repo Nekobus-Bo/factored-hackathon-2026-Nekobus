@@ -2,6 +2,7 @@
 
 import threading
 
+import banking_core.main as main
 import pytest
 import sqlalchemy as sa
 from banking_core.control.authorize import Authorizer
@@ -18,9 +19,11 @@ from banking_core.control.tool_policy import (
     seed_disabled_tools,
     seed_matrix,
 )
+from banking_core.main import app
 from banking_core.models.config import ToolPolicyRecord
 from contracts.envelope import ReasonCode, ToolCall, VerificationState
 from contracts.tools import CODE_FLOOR, TOOL_CATALOG
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 VERIFIED = VerificationState.VERIFIED
@@ -43,12 +46,18 @@ def _versions(session: Session) -> list[tuple[int, bool]]:
     return [(row.version, row.is_active) for row in rows]
 
 
-def _audit_rows(session: Session) -> list[sa.Row]:  # type: ignore[type-arg]
+def _audit_rows(
+    session: Session,
+    seed: bool = False,
+) -> list[sa.Row]:  # type: ignore[type-arg]
+    """Tool policy audit rows: the changes, or with `seed` the seeding of version 1."""
+    op = "=" if seed else "<>"
     return list(
         session.execute(
             sa.text(
                 "SELECT actor_type, actor_ref, decision, payload FROM ops.audit_log "
-                "WHERE action = :action ORDER BY id"
+                "WHERE action = :action "
+                f"AND payload->>'source' {op} 'seed' ORDER BY id"
             ),
             {"action": TOOL_POLICY_AUDIT_ACTION},
         )
@@ -68,6 +77,31 @@ def test_seed_disables_only_account_summary_by_default(
     record = db_session.execute(sa.select(ToolPolicyRecord)).scalar_one()
     assert record.matrix["account.get_summary"] == []
     assert set(record.matrix) == set(TOOL_CATALOG)
+
+
+def test_the_seed_is_audited_once_as_a_change_from_the_catalog_defaults(
+    db_engine: sa.Engine, db_session: Session
+) -> None:
+    maker = sessionmaker(bind=db_engine)
+    for _ in range(3):
+        with maker() as session:
+            active_tool_policy(session)
+
+    [entry] = _audit_rows(db_session, seed=True)
+    assert (entry.actor_type, entry.actor_ref, entry.decision) == (
+        "system",
+        "seed",
+        "allowed",
+    )
+    assert entry.payload == {
+        "version": 1,
+        "previous_version": None,
+        "source": "seed",
+        "changes": [
+            {"tool": "account.get_summary", "before": ["VERIFIED"], "after": []}
+        ],
+    }
+    assert _audit_rows(db_session) == []
 
 
 def test_seed_from_environment_lists_disabled_tools(
@@ -204,6 +238,29 @@ def test_a_save_carries_over_the_tools_it_does_not_name(
     assert [v for v, _ in _versions(db_session)] == [1, 2, 3]
 
 
+def test_a_version_is_not_saved_when_its_audit_row_cannot_be(
+    db_engine: sa.Engine,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    maker = sessionmaker(bind=db_engine)
+    with maker() as session:
+        active_tool_policy(session)
+
+    def failing_append(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr("banking_core.control.tool_policy.append", failing_append)
+    with maker() as session:
+        with pytest.raises(RuntimeError, match="audit unavailable"):
+            save_tool_policy(session, {"account.get_summary": {VERIFIED}})
+            session.commit()
+
+    assert _versions(db_session) == [(1, True)]
+    with maker() as session:
+        assert active_tool_policy(session).matrix["account.get_summary"] == []
+
+
 def test_a_state_beyond_the_floor_is_refused_not_clamped(
     db_engine: sa.Engine, db_session: Session
 ) -> None:
@@ -293,6 +350,25 @@ def test_an_enabled_tool_is_still_refused_outside_its_states(
     assert decision.allowed is False
     assert decision.reason_code == ReasonCode.STATE_NOT_ALLOWED
     assert decision.flags == ["STATE_ANONYMOUS_NOT_PERMITTED"]
+
+
+def test_readiness_needs_a_loadable_tool_policy(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bad seed is a not-ready service, not a refusal on a customer's first call."""
+    monkeypatch.setattr(main, "get_kb_searcher", lambda: None)
+    client = TestClient(app)
+
+    monkeypatch.setenv("POLICY_SEED_DISABLED_TOOLS", "card.nuke")
+    broken = client.get("/ready")
+    assert broken.status_code == 503
+    assert broken.json()["reason"] == "policy config unavailable (ValueError)"
+    assert _versions(db_session) == []
+
+    monkeypatch.delenv("POLICY_SEED_DISABLED_TOOLS")
+    ready = client.get("/ready")
+    assert ready.status_code == 200
+    assert _versions(db_session) == [(1, True)]
 
 
 def test_effective_matrix_of_the_active_version(
