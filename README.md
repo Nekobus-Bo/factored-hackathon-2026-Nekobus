@@ -84,7 +84,7 @@ flowchart LR
 
 ## Evaluation & empirical evidence
 
-We evaluate the system using a scenario suite of **53 scenarios across 10 failure groups** in Spanish, Portuguese, and English: `happy_path`, `failed_identity`, `not_the_holder`, `risk_threshold`, `ambiguity`, `out_of_scope`, `adversarial`, `degradation`, `messy_conversation`, and `account_inquiry`.
+We evaluate the system using a scenario suite of **56 scenarios across 10 failure groups** in Spanish, Portuguese, and English: `happy_path`, `failed_identity`, `not_the_holder`, `risk_threshold`, `ambiguity`, `out_of_scope`, `adversarial`, `degradation`, `messy_conversation`, and `account_inquiry`.
 
 Empirical calibration and validation reports are versioned under [`reports/`](reports/):
 - **Decision calibration:** [`reports/calibration-decision-2026-09-28.md`](reports/calibration-decision-2026-09-28.md) (macro-F1, expected calibration error, latency/RAM benchmarks comparing TF-IDF and GLiNER2.5 models).
@@ -149,7 +149,7 @@ packages/
   design-tokens/        (pending) shared design tokens and primitives
 data/                   raw/ staging/ curated/ eval/
 eval/
-  scenarios/            53 executable test scenarios across 10 categories
+  scenarios/            56 executable test scenarios across 10 categories
   runner/               scenario execution engine
   replay/               (recordings pending) deterministic conversation replays
 infra/
