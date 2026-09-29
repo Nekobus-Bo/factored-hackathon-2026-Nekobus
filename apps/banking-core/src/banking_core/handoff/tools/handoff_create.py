@@ -9,12 +9,22 @@ Rules (ADR-0003 Appendix A, AGENTS rule 4):
   model's summary, labeled as unverified.
 - Priority is the highest of the requested one and what policy flags and the
   session state require; the model can raise it, never lower it.
+- A session that remembers a handoff requirement (a card.block decided one,
+  ADR-0003 amendment 2026-09-29) gets at least that priority and always that
+  department, whatever the model asked for: banking-core raises, never lowers.
+- A transaction_id names the disputed charge. It is loaded from the database
+  for the session holder, and its amount, currency, merchant, date and masked
+  card go into the server-built verified facts; an id that does not resolve
+  raises TransactionNotFoundError, the same for every reason.
 - The queue row and its audit row commit in one transaction; the receipt is
   then re-read from the database.
 - At most one open handoff (QUEUED, ASSIGNED or PENDING) per banking session: a
   further call returns the existing handoff instead of queueing a duplicate, and
   is audited like any other call. A customer who asks twice reaches the same
-  human once.
+  human once. If the session's requirement asks for more priority than that
+  handoff has, the handoff is raised to it (and the raise is audited) rather
+  than answered as it was; only the requirement raises it, a higher priority
+  requested by the model does not.
 """
 
 import secrets
@@ -36,6 +46,8 @@ from contracts.tools.handoff_create import (
     HandoffCreateInput,
     HandoffCreateOutput,
     HandoffPriority,
+    HandoffRequirement,
+    HandoffRequirementLevel,
     HandoffStatus,
     HandoffSummary,
 )
@@ -44,6 +56,11 @@ from sqlalchemy.orm import Session
 from banking_core.audit.service import append as append_audit
 from banking_core.control.policy import Decision
 from banking_core.models.ops import AuditLog, Handoff
+from banking_core.transactions.lookup import (
+    DisputedTransaction,
+    TransactionNotFoundError,
+    load_disputed_transaction,
+)
 
 ACTION = "handoff.create"
 
@@ -90,6 +107,32 @@ def resolve_priority(
     ):
         floor = HandoffPriority.HIGH
     return max(requested, floor, key=_PRIORITY_ORDER.index)
+
+
+def _raise_to(priority: HandoffPriority, floor: HandoffPriority) -> HandoffPriority:
+    """The higher of two priorities."""
+    return max(priority, floor, key=_PRIORITY_ORDER.index)
+
+
+def _applicable_requirement(
+    requirement: HandoffRequirement | None,
+) -> HandoffRequirement | None:
+    """The session requirement when it asks for anything (NONE asks for nothing)."""
+    if requirement is None or requirement.level is HandoffRequirementLevel.NONE:
+        return None
+    return requirement
+
+
+def _disputed_transaction_facts(disputed: DisputedTransaction) -> dict[str, Any]:
+    """The database facts about the disputed charge, as verified handoff facts."""
+    return {
+        "transaction_id": disputed.transaction_id,
+        "amount_minor": disputed.amount_minor,
+        "currency": disputed.currency,
+        "merchant": disputed.merchant_name,
+        "posted_at": disputed.posted_at.isoformat(),
+        "card_masked": disputed.card_masked,
+    }
 
 
 def _new_handoff_ref() -> str:
@@ -186,20 +229,28 @@ def execute_handoff_create(
     verification_state_before: VerificationState,
     verification_state_after: VerificationState,
     session_id: str,
+    session_requirement: HandoffRequirement | None = None,
     *,
     commit: bool = True,
 ) -> HandoffCreateResult:
     """Queue a handoff and re-read its receipt within the caller's transaction.
 
+    `session_requirement` is the strongest requirement banking-core remembers for
+    the session (never from the model): its priority is a floor for the queued
+    priority and its department replaces the requested one.
+
     When the session already has an open handoff nothing is queued: that handoff
     is returned (receipt state_before = state_after = its status) and the call is
-    audited with already_open.
+    audited with already_open; a session requirement with a higher priority
+    raises that handoff to it.
 
     When ``commit`` is false, the dispatcher commits the handoff, audit and
     idempotency record atomically.
 
     Raises:
         ValueError: If policy_decision does not allow the call.
+        TransactionNotFoundError: If args.transaction_id is not a transaction of
+            the holder (missing, someone else's, or there is no holder).
     """
     if not policy_decision.allowed:
         raise ValueError("handoff.create requires an allowed policy decision")
@@ -209,6 +260,25 @@ def execute_handoff_create(
     priority = resolve_priority(
         args.priority, policy_decision, verification_state_before
     )
+    department = args.department
+    requirement = _applicable_requirement(session_requirement)
+    requirement_details: dict[str, AuditDetail] = {}
+    if requirement is not None:
+        requirement_priority = requirement.priority or HandoffPriority.LOW
+        floored = _raise_to(priority, requirement_priority)
+        if floored != priority:
+            requirement_details["priority_raised_from"] = priority.value
+            priority = floored
+        if requirement.department is not None and requirement.department != department:
+            requirement_details["department_requested"] = department.value
+            department = requirement.department
+        requirement_details["handoff_requirement"] = requirement.level.value
+
+    disputed: DisputedTransaction | None = None
+    if args.transaction_id is not None:
+        if holder_id is None:
+            raise TransactionNotFoundError
+        disputed = load_disputed_transaction(db_session, holder_id, args.transaction_id)
 
     try:
         _lock_session_handoffs(db_session, session_id)
@@ -219,15 +289,30 @@ def execute_handoff_create(
             state_before = ResourceState(existing.status)
             queued_status = HandoffStatus(existing.status)
             queued_priority = HandoffPriority(existing.priority)
-            department = existing.department
+            queued_department = existing.department
             extra_details["already_open"] = True
+            # Only the requirement raises an open handoff; a priority the model
+            # asks for on a repeat does not.
+            if requirement is not None and requirement.priority is not None:
+                raised = _raise_to(queued_priority, requirement.priority)
+                if raised != queued_priority:
+                    extra_details["priority_raised_from"] = queued_priority.value
+                    extra_details["handoff_requirement"] = requirement.level.value
+                    # Flushed with the audit row below, before the re-read.
+                    existing.priority = raised.value
+                    queued_priority = raised
         else:
+            verified_facts: dict[str, Any] = {
+                "verification_state": verification_state_before.value,
+                "customer_identified": holder_id is not None,
+                "policy_flags": list(policy_decision.flags),
+            }
+            if disputed is not None:
+                verified_facts["disputed_transaction"] = _disputed_transaction_facts(
+                    disputed
+                )
             summary = {
-                "verified_facts": {
-                    "verification_state": verification_state_before.value,
-                    "customer_identified": holder_id is not None,
-                    "policy_flags": list(policy_decision.flags),
-                },
+                "verified_facts": verified_facts,
                 "actions_taken": _actions_taken(db_session, session_id),
                 "verification_method": _VERIFICATION_METHOD[verification_state_before],
                 "open_questions": [
@@ -240,7 +325,7 @@ def execute_handoff_create(
                 customer_id=holder_id,
                 reason=args.reason.value,
                 priority=priority.value,
-                department=args.department.value,
+                department=department.value,
                 status=HandoffStatus.QUEUED.value,
                 summary=summary,
                 idempotency_scope=idempotency_scope,
@@ -251,7 +336,10 @@ def execute_handoff_create(
             state_before = ResourceState.NONE
             queued_status = HandoffStatus.QUEUED
             queued_priority = priority
-            department = args.department.value
+            queued_department = department.value
+            extra_details.update(requirement_details)
+            if disputed is not None:
+                extra_details["transaction_id"] = disputed.transaction_id
         # The model's free text stays in the queue row, never in the audit log.
         audit_row = append_audit(
             session=db_session,
@@ -269,7 +357,7 @@ def execute_handoff_create(
                 handoff_priority=queued_priority,
                 idempotency_scope=idempotency_scope,
                 details={
-                    "department": department,
+                    "department": queued_department,
                     "handoff_ref": handoff_ref,
                     "flags": list(policy_decision.flags),
                     **extra_details,
