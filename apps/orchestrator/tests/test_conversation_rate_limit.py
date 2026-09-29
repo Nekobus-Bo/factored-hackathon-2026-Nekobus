@@ -1,7 +1,9 @@
 """Per-client-IP limit on POST /v1/conversations (redis-edge, fixed window)."""
 
 import ipaddress
+import re
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 import fakeredis
@@ -17,6 +19,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from .fake_handler import FakeTurnHandler
 from .test_chat_api import BANKING_URL, build_app
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
 LIMIT = 3
 CLIENT_A = "203.0.113.7"
 CLIENT_B = "198.51.100.23"
@@ -280,6 +283,21 @@ def test_settings_seed_the_limit_and_ignore_the_header_by_default(
     assert seeded.rate_limit_conversations_per_ip_hour == 30
     assert seeded.trusted_proxy_hops == 0
     assert seeded.redis_edge_rate_limit_key_prefix == "orch:ratelimit:"
+
+
+def test_the_compose_file_and_env_example_trust_the_web_client_bff_as_one_hop() -> None:
+    """The customer path is the web-client BFF, which sends the address it saw.
+
+    With 0 every customer would share the BFF's bucket. The service's own default
+    stays 0 (test above), and a copied .env.example must not undo the compose one.
+    """
+    compose = (REPO_ROOT / "infra/compose/docker-compose.yml").read_text()
+    env_example = (REPO_ROOT / ".env.example").read_text()
+
+    assert re.findall(
+        r"TRUSTED_PROXY_HOPS: \$\{TRUSTED_PROXY_HOPS:-([^}]*)\}", compose
+    ) == ["1"]
+    assert re.findall(r"^TRUSTED_PROXY_HOPS=(.*)$", env_example, re.MULTILINE) == ["1"]
 
 
 @pytest.mark.parametrize(

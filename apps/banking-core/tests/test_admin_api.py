@@ -326,7 +326,8 @@ def test_compose_default_admin_token_is_the_one_production_refuses() -> None:
     compose = (REPO_ROOT / "infra/compose/docker-compose.yml").read_text()
     defaults = re.findall(r"ADMIN_API_TOKEN: \$\{ADMIN_API_TOKEN:-([^}]*)\}", compose)
 
-    assert defaults == [DEVELOPMENT_ADMIN_TOKEN]
+    # banking-core, and web-backoffice, which sends the token banking-core expects.
+    assert defaults == [DEVELOPMENT_ADMIN_TOKEN, DEVELOPMENT_ADMIN_TOKEN]
 
 
 @pytest.mark.usefixtures("db_engine")

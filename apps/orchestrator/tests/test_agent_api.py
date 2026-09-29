@@ -332,8 +332,10 @@ def test_compose_default_agent_token_is_the_one_production_refuses() -> None:
     compose = (REPO_ROOT / "infra/compose/docker-compose.yml").read_text()
     env_example = (REPO_ROOT / ".env.example").read_text()
 
+    # The orchestrator, and web-backoffice, which sends the token it expects.
     assert re.findall(r"AGENT_API_TOKEN: \$\{AGENT_API_TOKEN:-([^}]*)\}", compose) == [
-        DEVELOPMENT_AGENT_TOKEN
+        DEVELOPMENT_AGENT_TOKEN,
+        DEVELOPMENT_AGENT_TOKEN,
     ]
     assert re.findall(
         r"AGENT_API_ENABLED: \$\{AGENT_API_ENABLED:-([^}]*)\}", compose
