@@ -63,7 +63,7 @@ Polling costs up to 3 s of latency and steady small requests against a push chan
 
 ## Action items
 
-1. [ ] banking-core admin API: `GET /v1/admin/handoffs`, `GET /v1/admin/handoffs/{ref}`, `POST /v1/admin/handoffs/{ref}/claim`, `GET /v1/admin/metrics`; migration `0008`
+1. [x] banking-core admin API: `GET /v1/admin/handoffs`, `GET /v1/admin/handoffs/{ref}`, `POST /v1/admin/handoffs/{ref}/claim`, `GET /v1/admin/metrics`; migration `0008`
 2. [ ] Orchestrator agent API and the takeover in the conversation flow
 3. [ ] `web-client` and `web-backoffice` BFFs with their closed route lists and tests against fake upstreams
 4. [ ] `packages/contracts` TypeScript entry and drift test

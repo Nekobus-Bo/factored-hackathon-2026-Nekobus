@@ -135,7 +135,7 @@ Backend containers include `postgres`, `banking-core`, `orchestrator`, `encoder`
 
 Each language also has a customer whose card is already blocked and one with no OTP channel (the latter must end in a human handoff).
 
-**Back-office actions over HTTP** (until the back office exists): in development the admin API is on with the public, development-only token `dev-only-admin-token`, so `GET`/`PUT http://localhost:8081/v1/admin/policy-config` work with `Authorization: Bearer dev-only-admin-token`. `banking-core` refuses to start with that token under `APP_ENV=production`. Agent login for the back office (⚠️ pending) is `DEMO_AGENT_*` in `.env.example`.
+**Back-office actions over HTTP** (until the back office exists): in development the admin API is on with the public, development-only token `dev-only-admin-token`, so `GET`/`PUT http://localhost:8081/v1/admin/policy-config` work with `Authorization: Bearer dev-only-admin-token`. `banking-core` refuses to start with that token under `APP_ENV=production`. The same token lists the handoff queue (`GET /v1/admin/handoffs`), shows a case (`GET /v1/admin/handoffs/<handoff_ref>`), takes it (`POST /v1/admin/handoffs/<handoff_ref>/claim` with `{"agent_ref": "<email>"}`) and returns counts (`GET /v1/admin/metrics?hours=24`). Agent login for the back office (⚠️ pending) is `DEMO_AGENT_*` in `.env.example`.
 
 **OTP codes** go to a simulated channel that the customer web client will show (⚠️ pending). Until then, for local use only, set `ALLOW_DEV_OTP_HOOK=true` in `.env`, run `make up`, and read a code at `GET http://localhost:8081/v1/dev/otp/<challenge_id>`.
 
