@@ -560,3 +560,73 @@ def test_an_official_report_names_paths_relative_to_the_repo(tiny_repo) -> None:
     report = result.report_path.read_text(encoding="utf-8")
     assert str(tiny_repo.root) not in report
     assert "`packages/encoder/calibration/decision_points.json`" in report
+
+
+def test_uncovered_scopes_list_acted_labels_without_a_threshold(tiny_repo) -> None:
+    from calibrate.dp import uncovered_scopes
+
+    config = load_run_config(tiny_repo.config)
+    gate = config.dps["gate"]
+    scopes = {
+        "es": {"confirm": "language", "deny": None, "other": "language"},
+        "pt": {"confirm": None, "deny": None, "other": "language"},
+        # en is missing altogether: an unusable language covers nothing.
+    }
+    assert uncovered_scopes(gate, ["es", "pt", "en"], scopes) == [
+        "es/deny",
+        "pt/confirm",
+        "pt/deny",
+        "en/confirm",
+        "en/deny",
+    ]
+
+
+def test_a_decision_point_that_decides_nowhere_lists_what_it_does_not_cover(
+    tiny_repo, tmp_path
+) -> None:
+    tiny_repo.write_config(
+        tiny_repo.config.read_text().replace(
+            "calibrator_min_rows: 20", "calibrator_min_rows: 500"
+        )
+    )
+    result = run(tiny_repo, tmp_path / "scratch", dp_ids=["gate"])
+    entry = json.loads(result.artifact_path.read_text())["decision_points"]["gate"]
+    assert entry["evidence"]["uncovered"] == [
+        f"{lang}/{label}"
+        for lang in ("es", "pt", "en")
+        for label in ("confirm", "deny")
+    ]
+    assert "Acted labels with no threshold" in result.report_path.read_text()
+
+
+def test_the_command_reports_an_unknown_decision_point_and_misplaced_options(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    from calibrate.cli import main
+
+    root = Path(__file__).resolve().parents[3]
+    monkeypatch.chdir(root)  # the default config path is relative to the repo root
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "calibrate",
+            "--task",
+            "decision-points",
+            "--dp",
+            "nope",
+            "--out",
+            str(tmp_path),
+        ],
+    )
+    with pytest.raises(SystemExit) as stop:
+        main()
+    assert stop.value.code == 1
+    assert "unknown decision point" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["calibrate", "--task", "decision", "--dp", "x", "--out", str(tmp_path)],
+    )
+    with pytest.raises(SystemExit):
+        main()
+    assert "only apply to TASK=decision-points" in capsys.readouterr().err

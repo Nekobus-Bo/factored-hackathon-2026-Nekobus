@@ -83,7 +83,7 @@ def main() -> None:
             run = run_decision_points_calibration(
                 config_path, args.out, dp_ids=wanted, artifact_path=args.artifact
             )
-        except (RunError, NotImplementedError) as exc:
+        except (RunError, NotImplementedError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
         kind = "official" if run.official else "dev"
