@@ -15,6 +15,13 @@ from banking_core.control.session import (
     validate_no_holder_tampering,
 )
 from contracts.envelope import ToolCall, VerificationState
+from contracts.tools.handoff_create import (
+    Department,
+    HandoffPriority,
+    HandoffReason,
+    HandoffRequirement,
+    HandoffRequirementLevel,
+)
 
 
 @pytest.fixture
@@ -49,6 +56,42 @@ def test_session_state_schema_and_serialization() -> None:
     assert loaded.state == session.state
     assert loaded.pinned_holder_id == session.pinned_holder_id
     assert loaded.otp_resends == session.otp_resends
+
+
+def test_session_remembers_a_handoff_requirement_through_redis(
+    fake_redis: fakeredis.FakeRedis,
+) -> None:
+    store = RedisSessionStore(redis_client=fake_redis, default_ttl=3600)
+    requirement = HandoffRequirement(
+        level=HandoffRequirementLevel.REQUIRED,
+        priority=HandoffPriority.URGENT,
+        department=Department.DISPUTES,
+        reason=HandoffReason.UNRECOGNIZED_TRANSACTION,
+    )
+    session = store.get_or_create("sess_requirement")
+    assert session.handoff_requirement is None
+    assert session.to_redis_dict()["handoff_requirement"] is None
+
+    store.save(session.model_copy(update={"handoff_requirement": requirement}))
+
+    loaded = store.get("sess_requirement")
+    assert loaded is not None
+    assert loaded.handoff_requirement == requirement
+    assert loaded.to_redis_dict()["handoff_requirement"] == {
+        "level": "REQUIRED",
+        "priority": "URGENT",
+        "department": "DISPUTES",
+        "reason": "UNRECOGNIZED_TRANSACTION",
+    }
+
+
+def test_a_session_stored_before_the_requirement_existed_still_loads() -> None:
+    legacy = '{"session_id": "sess_legacy", "state": "VERIFIED", "attempts": 1}'
+
+    loaded = SessionState.model_validate_json(legacy)
+
+    assert loaded.state == VerificationState.VERIFIED
+    assert loaded.handoff_requirement is None
 
 
 def test_redis_session_store_crud(fake_redis: fakeredis.FakeRedis) -> None:
