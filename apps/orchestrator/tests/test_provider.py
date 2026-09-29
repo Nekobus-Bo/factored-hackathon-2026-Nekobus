@@ -420,3 +420,35 @@ async def test_provider_live_mode_with_record(tmp_path: Path) -> None:
         # Verify recording was written to disk
         expected_file = tmp_path / f"{res.recording_key}.json"
         assert expected_file.is_file()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("configured", "sent"), [("none", "none"), ("  ", None)])
+async def test_provider_reasoning_effort_sent_only_when_configured(
+    tmp_path: Path, configured: str, sent: str | None
+) -> None:
+    settings = Settings(
+        llm_mode="live",
+        llm_model="test-model",
+        llm_reasoning_effort=configured,
+        replay_dir=str(tmp_path),
+        record=False,
+    )
+    provider = LLMProvider(settings=settings)
+
+    mock_response = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "ok"
+    mock_choice.message.tool_calls = []
+    mock_response.choices = [mock_choice]
+    mock_response.usage.model_dump.return_value = {}
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomplete,
+        patch("litellm.completion_cost", return_value=0.0),
+    ):
+        mock_acomplete.return_value = mock_response
+        await provider.complete(messages=[{"role": "user", "content": "hola"}])
+
+    assert mock_acomplete.call_args.kwargs.get("reasoning_effort") == sent
+    assert mock_acomplete.call_args.kwargs["temperature"] == 0.0
