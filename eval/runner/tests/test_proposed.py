@@ -11,7 +11,9 @@ import httpx
 import pytest
 import respx
 
+from evalrunner import runner
 from evalrunner.cli import main as cli_main
+from evalrunner.guard import is_real_system
 from evalrunner.loader import load_scenario_file
 from evalrunner.models import Scenario
 from evalrunner.runner import run_evaluation, run_scenario
@@ -30,6 +32,7 @@ BANK = "http://banking-core.test"
 SESSION = "sess_eval_0001"
 OTP_CODE = "482913"
 SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def load(name: str) -> Scenario:
@@ -362,6 +365,28 @@ def test_report_lists_not_run_apart_from_metrics(
     assert "- **Total Scenarios Evaluated:** 0" in text
     assert "- **Scenarios Not Run:** 1" in text
     assert "| `happy_path_001_es` | es | happy_path | replay miss |" in text
+
+
+def test_proposed_system_may_write_its_report_to_the_default_path(
+    evidence: FakeEvidence, replay_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered: list[dict[str, Any]] = []
+
+    def fake_render(**kwargs: Any) -> Path:
+        rendered.append(kwargs)
+        return kwargs["out_path"]
+
+    monkeypatch.setattr(runner, "render_evaluation_report", fake_render)
+    # The default path, reports/eval-<date>.md, is relative to the working directory.
+    monkeypatch.chdir(REPO_ROOT)
+    system = make_system(evidence, replay_dir)
+
+    assert is_real_system(system)
+    run_evaluation(system, [])
+
+    out_path = rendered[0]["out_path"]
+    assert out_path.parent == Path("reports")
+    assert out_path.resolve().is_relative_to(REPO_ROOT / "reports")
 
 
 def test_cli_dry_run_offline_lists_every_scenario(

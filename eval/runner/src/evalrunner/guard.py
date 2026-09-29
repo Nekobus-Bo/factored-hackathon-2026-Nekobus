@@ -5,27 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
-class BaselineSystem:
-    """Baseline system under test (pending implementation)."""
-
-    name: str = "baseline"
-
-
-class ProposedSystem:
-    """Proposed Pattern Blue system under test (pending implementation)."""
-
-    name: str = "proposed"
-
-
-REAL_SYSTEM_CLASSES: tuple[type, ...] = (BaselineSystem, ProposedSystem)
+# A real system under test (the proposed one, the baseline once it exists) declares
+# `real_system: ClassVar[bool] = True` on its class. Test doubles do not, so a fake
+# never gets to write into reports/. It is read from the class, not the instance.
+REAL_SYSTEM_MARKER = "real_system"
 
 
 def is_real_system(system: Any) -> bool:
-    """Check if the system under test is an instance or subclass of a real system."""
-    if isinstance(system, type):
-        return any(issubclass(system, cls) for cls in REAL_SYSTEM_CLASSES)
-    return isinstance(system, REAL_SYSTEM_CLASSES)
+    """Check if the system under test (an instance or a class) is marked as real."""
+    system_class = system if isinstance(system, type) else type(system)
+    return getattr(system_class, REAL_SYSTEM_MARKER, False) is True
 
 
 def guard_fakesystem_output(
@@ -35,7 +24,7 @@ def guard_fakesystem_output(
     *,
     system_name: Any = None,
 ) -> None:
-    """Refuse to write reports into reports/ when system is not allowlisted."""
+    """Refuse to write reports into reports/ unless the system is marked real."""
     target_system = system if system is not None else system_name
     if is_real_system(target_system):
         return
