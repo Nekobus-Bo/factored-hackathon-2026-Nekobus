@@ -1,0 +1,152 @@
+# Decision-point calibration (ADR-0012, Appendix F): one entry per DP.
+#
+#   make calibrate TASK=decision-points OUT=/tmp/calib              # dev run, every DP
+#   make calibrate TASK=decision-points DP=confirm_gate OUT=/tmp/calib
+#   make calibrate TASK=decision-points OUT=reports                 # official run
+#
+# Nothing here is a threshold. tau is *found* on the validation split and written to
+# the artifact by the run; what this file holds is the question (which labels, which
+# candidates, which constraint), not the answer. See tools/calibrate/README.md.
+#
+# SEED STATE (2026-09-29): the data is synthetic-provisional and small (validation
+# and test hold 10 rows per intent and language), so this file selects tau with the
+# POINT estimate of precision on validation (`ci: point`) and lowers `n_min` to the
+# 10 rows there are. Every run still CERTIFIES on test with the Wilson 95% lower
+# bound at the same floor, and nothing certifies yet. When validation grows to what
+# Appendix F.1 asks for (73 correct decisions per label and language for 0.95), set
+# `ci: wilson95_lower` and `n_min: 30` back and recalibrate.
+task: decision-points
+
+languages: [es, pt, en]
+
+# The committed artifact. Only an official run (OUT under reports/) writes it.
+artifact: packages/encoder/calibration/decision_points.json
+
+# Fewer validation rows than this in a language and the temperature is not fitted:
+# the DP has no calibrator there, so it abstains (Appendix B.3).
+calibrator_min_rows: 30
+
+# Default data for every DP; a DP may set its own `data:` with the same three keys
+# (for example data/eval/synthetic/dp/<dp_id>.{train,validation,test}.jsonl).
+# Paths are relative to the repository root: the encoder resolves them from its own,
+# and only data/eval/synthetic/decision.train.jsonl is copied into its image.
+data:
+  train: data/eval/synthetic/decision.train.jsonl
+  validation: data/eval/synthetic/decision.validation.jsonl
+  test: data/eval/synthetic/decision.test.provisional.jsonl
+
+# Candidate backends, by name. The name is the backend's id in the artifact. A DP
+# lists the names it wants to compare (or writes a candidate inline). Rung 0 of the
+# ladder (Appendix C.2): TF-IDF + logistic regression, trained from `data.train`
+# when the encoder starts, pinned by that file's SHA-256.
+backends:
+  intent_tfidf:
+    kind: tfidf_lr
+    timeout_ms: 200
+  gate_tfidf:
+    kind: tfidf_lr
+    timeout_ms: 200
+
+decision_points:
+  # Recorded, never acted on by itself. It feeds the sticky ledgers of block_reason
+  # and handoff_route and the explicit-request consent of confirm_gate, so the
+  # constraint binds the labels those consume: the report and block-request intents
+  # and the two human-routing intents. The other eight intents are recorded with the
+  # same tau but are not constrained.
+  turn_intent:
+    candidates: [intent_tfidf]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10
+
+  # The one decision only a model can make: "yes" or "no" in three languages, with
+  # typos. Own backend: the 15 intents relabeled confirm / deny / everything else.
+  # The engine acts on confirm (grants consent) and deny (revokes it); a false
+  # confirm is the worst error, hence 0.95. `other` decides whenever it is on top.
+  confirm_gate:
+    candidates: [gate_tfidf]
+    label_map: {confirm: confirm, deny: deny, "*": other}
+    view: {kind: labels, labels: [confirm, deny, other]}
+    calibrator: temperature
+    threshold_scope: per_language_per_label
+    constraint:
+      metric: precision
+      p_min: {confirm: 0.95, deny: 0.90}
+      ci: point
+      n_min: 10
+    unconstrained_tau: 0.0
+
+  # Overwrites card.block.reason. A view over the 15-way model; mass on any other
+  # intent lowers every confidence, so an off-topic utterance abstains.
+  block_reason:
+    candidates: [intent_tfidf]
+    view:
+      kind: groups
+      groups:
+        LOST: [report_lost_card]
+        STOLEN: [report_stolen_card]
+        UNRECOGNIZED_CHARGE: [report_unrecognized_charge]
+        SUSPICIOUS_ACTIVITY: [report_suspicious_activity]
+        CUSTOMER_REQUEST: [request_card_block]
+    calibrator: temperature
+    threshold_scope: per_label_pooled
+    constraint:
+      metric: precision
+      p_min: 0.90
+      ci: point
+      n_min: 30
+
+  # Overwrites handoff.create department and reason.
+  handoff_route:
+    candidates: [intent_tfidf]
+    view:
+      kind: groups
+      groups:
+        DISPUTE: [request_dispute]
+        FRAUD: [report_stolen_card, report_suspicious_activity]
+        UNRECOGNIZED: [report_unrecognized_charge]
+        HUMAN_REQUEST: [request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_label_pooled
+    constraint:
+      metric: precision
+      p_min: 0.90
+      ci: point
+      n_min: 30
+
+  # Recorded only (shadow); measures how often the model would have answered
+  # small talk on a turn where the LLM called a tool.
+  smalltalk_route:
+    candidates: [intent_tfidf]
+    view:
+      kind: groups
+      groups:
+        greeting: [greeting]
+        out_of_scope: [out_of_scope]
+        other: [check_balance, check_recent_transactions, confirm, deny,
+                provide_identity_data, provide_otp_code, report_lost_card,
+                report_stolen_card, report_suspicious_activity,
+                report_unrecognized_charge, request_card_block, request_dispute,
+                request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [greeting, out_of_scope]
+      p_min: 0.95
+      ci: point
+      n_min: 10

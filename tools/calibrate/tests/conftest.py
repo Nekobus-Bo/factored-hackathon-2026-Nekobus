@@ -94,3 +94,152 @@ def make_entry():
         }
 
     return make
+
+
+# --- A tiny repository for end-to-end runs of the decision-points task ---
+
+_WORDS = {
+    "confirm": {
+        "en": ["yes", "sure", "okay", "please", "do it", "go ahead"],
+        "es": ["si", "claro", "vale", "adelante", "hazlo", "dale"],
+        "pt": ["sim", "claro", "certo", "pode", "faca", "vai"],
+    },
+    "deny": {
+        "en": ["no", "nope", "never", "dont", "stop", "cancel"],
+        "es": ["no", "nunca", "para", "cancela", "jamas", "deja"],
+        "pt": ["nao", "nunca", "pare", "cancela", "jamais", "deixa"],
+    },
+    "lost": {
+        "en": ["lost", "misplaced", "cannot find", "missing", "my card", "wallet"],
+        "es": ["perdi", "extravie", "no encuentro", "falta", "mi tarjeta", "cartera"],
+        "pt": ["perdi", "extraviei", "nao acho", "sumiu", "meu cartao", "carteira"],
+    },
+    "stolen": {
+        "en": ["stolen", "robbed", "thief", "mugged", "took my", "pickpocket"],
+        "es": ["robaron", "asaltaron", "ladron", "hurto", "se llevaron", "carterista"],
+        "pt": ["roubaram", "assaltaram", "ladrao", "furto", "levaram", "batedor"],
+    },
+    "greeting": {
+        "en": ["hello", "hi", "good morning", "hey", "greetings", "howdy"],
+        "es": ["hola", "buenas", "buen dia", "saludos", "que tal", "ey"],
+        "pt": ["ola", "oi", "bom dia", "salve", "e ai", "opa"],
+    },
+}
+INTENTS = list(_WORDS)
+LANGS = ("es", "pt", "en")
+
+
+def _rows(split: str, per: int, seed: int, noise: float, source: str) -> list[dict]:
+    import random
+
+    rng = random.Random(seed)
+    rows = []
+    for lang in LANGS:
+        for intent in INTENTS:
+            for i in range(per):
+                words = rng.sample(_WORDS[intent][lang], 2)
+                if rng.random() < noise:
+                    other = rng.choice([x for x in INTENTS if x != intent])
+                    words.append(rng.choice(_WORDS[other][lang]))
+                rng.shuffle(words)
+                rows.append(
+                    {
+                        "id": f"{split}-{lang}-{intent}-{i}",
+                        "text": " ".join(words),
+                        "lang": lang,
+                        "intent": intent,
+                        "slots": [],
+                        "split": split,
+                        "source": source,
+                    }
+                )
+    return rows
+
+
+TINY_CONFIG = """
+task: decision-points
+languages: [es, pt, en]
+artifact: packages/encoder/calibration/decision_points.json
+calibrator_min_rows: 20
+data:
+  train: data/train.jsonl
+  validation: data/validation.jsonl
+  test: data/test.jsonl
+backends:
+  intent_tfidf: {kind: tfidf_lr, timeout_ms: 200}
+  gate_tfidf: {kind: tfidf_lr, timeout_ms: 200}
+decision_points:
+  intent:
+    candidates: [intent_tfidf]
+    view: {kind: labels, labels: [confirm, deny, lost, stolen, greeting]}
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      labels: [lost, stolen]
+      p_min: 0.8
+      ci: point
+      n_min: 10
+  gate:
+    candidates: [gate_tfidf]
+    label_map: {confirm: confirm, deny: deny, "*": other}
+    view: {kind: labels, labels: [confirm, deny, other]}
+    calibrator: temperature
+    threshold_scope: per_language_per_label
+    constraint:
+      p_min: {confirm: 0.9, deny: 0.8}
+      ci: point
+      n_min: 10
+  reason:
+    candidates: [intent_tfidf]
+    view:
+      kind: groups
+      groups: {LOST: [lost], STOLEN: [stolen]}
+    calibrator: temperature
+    threshold_scope: per_label_pooled
+    constraint: {p_min: 0.8, ci: point, n_min: 30}
+"""
+
+
+class TinyRepo:
+    """A repository root with data, a config and a ``reports/`` directory."""
+
+    def __init__(self, root) -> None:
+        import json
+
+        self.root = root
+        (root / "data").mkdir()
+        (root / "reports").mkdir()
+        (root / "packages/encoder/calibration").mkdir(parents=True)
+        for split, per, seed, noise, source in (
+            ("train", 30, 1, 0.15, "synthetic"),
+            ("validation", 12, 2, 0.25, "synthetic"),
+            ("test", 12, 3, 0.35, "synthetic-provisional"),
+        ):
+            rows = _rows(split, per, seed, noise, source)
+            (root / f"data/{split}.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8"
+            )
+        self.config = root / "tools/calibrate/configs/decision_points.yaml"
+        self.write_config(TINY_CONFIG)
+
+    def write_config(self, text: str) -> None:
+        self.config.parent.mkdir(parents=True, exist_ok=True)
+        self.config.write_text(text, encoding="utf-8")
+
+    @property
+    def committed(self):
+        return self.root / "packages/encoder/calibration/decision_points.json"
+
+
+@pytest.fixture
+def tiny_repo(tmp_path, monkeypatch) -> TinyRepo:
+    """Data paths in the artifact are relative to the working directory, as in the
+    service, so runs happen from the tiny repository's root."""
+    repo = TinyRepo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    return repo
+
+
+@pytest.fixture
+def tiny_config_text() -> str:
+    return TINY_CONFIG
