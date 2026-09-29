@@ -9,6 +9,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import fakeredis
@@ -36,6 +37,9 @@ from pydantic import ValidationError
 from .fake_handler import RECEIPT_BLOCK, FakeTurnHandler
 from .fake_llm import ScriptedLLM, Step
 from .test_agent_api import (
+    AGENT_TEXT,
+    AGENT_TEXT_MASKED,
+    AGENT_TEXT_PIECES,
     ANA,
     AUTH,
     HANDOFF,
@@ -44,6 +48,7 @@ from .test_agent_api import (
     agent_settings,
     message_body,
     open_conversation,
+    post_agent_text,
     take_over,
 )
 from .test_chat_api import BANKING_URL, build_app
@@ -623,6 +628,125 @@ async def test_the_flag_is_set_from_the_conversation_by_the_handler() -> None:
 
 def test_a_context_is_open_unless_the_conversation_says_otherwise() -> None:
     assert ConversationContext(session_id=SESSION_ID).human_takeover is False
+
+
+# ------------------------------- the agent's text as written never reaches the LLM
+
+
+async def test_the_engine_refuses_a_conversation_that_holds_agent_text() -> None:
+    """The guard is the door: agent text, masked or as written, changes nothing."""
+    llm = ScriptedLLM([Step(content="respuesta")], repeat_last=True)
+    engine = TurnEngine(llm=llm, banking=NeverBanking(), encoder=None)
+    encryptor = PlaceholderEncryptor("test-secret")
+    state = taken_over_state()
+    state.messages.append(
+        Message(
+            role="agent",
+            content=AGENT_TEXT_MASKED,
+            content_enc=encryptor.encrypt_text(AGENT_TEXT),
+        )
+    )
+
+    with pytest.raises(TakeoverActiveError):
+        await EngineTurnHandler(engine).handle_turn(state, "hola")
+
+    assert llm.calls == []
+
+
+async def test_a_takeover_cleared_by_hand_still_sends_the_llm_no_agent_text(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: MakeClient
+) -> None:
+    """Belt and braces: the history the engine builds never holds agent messages.
+
+    The takeover guard already keeps the model out of a taken-over conversation.
+    Suppose it were cleared by hand after an agent wrote: the engine would run
+    again, and what it builds from the conversation is `llm_history`, which agent
+    messages never enter. Neither the text as written, nor its ciphertext, nor
+    even its masked twin reaches the provider.
+    """
+    llm = ScriptedLLM([Step(content="Hola, ¿en qué te ayudo?"), Step(content="Sigo")])
+    engine = TurnEngine(llm=llm, banking=NeverBanking(), encoder=None)
+    cfg = agent_settings()
+    store = new_store(redis)
+    client = make_client(
+        create_app(
+            settings=cfg,
+            session_store=store,
+            banking_client=BankingCoreClient(base_url=BANKING_URL, settings=cfg),
+            turn_handler=EngineTurnHandler(engine),
+        )
+    )
+    conversation_id = await open_conversation(client)
+    await client.post(messages_url(conversation_id), json={"text": "Hola"})
+    await take_over(client, conversation_id)
+    assert (await post_agent_text(client, conversation_id)).status_code == 200
+    await client.post(messages_url(conversation_id), json={"text": "Gracias"})
+    assert len(llm.calls) == 1
+
+    state = await store.get(conversation_id)
+    assert state is not None and state.takeover.active
+    agent_message = next(m for m in state.messages if m.role.value == "agent")
+    assert agent_message.content == AGENT_TEXT_MASKED
+    assert agent_message.content_enc is not None
+    ciphertext = agent_message.content_enc
+    history_before = state.llm_history
+    state.takeover = Takeover()  # the hand-edit
+    await store.save(state)
+
+    response = await client.post(
+        messages_url(conversation_id), json={"text": "¿Sigues ahí?"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["blocks"] == [{"type": "text", "text": "Sigo"}]
+    assert len(llm.calls) == 2
+    sent = llm.calls[1]["messages"]
+    assert [(m["role"], m["content"]) for m in sent[1:]] == [
+        ("user", "Hola"),
+        ("assistant", "Hola, ¿en qué te ayudo?"),
+        ("user", "¿Sigues ahí?"),
+    ]
+    payload = llm.payload_dump()
+    for secret in (*AGENT_TEXT_PIECES, ciphertext, "content_enc", AGENT_TEXT_MASKED):
+        assert secret not in payload, secret
+    # What the engine left behind is the same: no agent text in the history.
+    after = await store.get(conversation_id)
+    assert after is not None
+    assert after.llm_history[: len(history_before)] == history_before
+    assert [m["role"] for m in after.llm_history] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+    assert not any(
+        piece in json.dumps(after.llm_history) for piece in AGENT_TEXT_PIECES
+    )
+
+
+def test_only_the_transcript_and_the_agent_route_touch_the_text_as_written() -> None:
+    """A structural guard: nothing on the LLM side can read `content_enc`.
+
+    The engine, the provider, the encoder client, the tools client and the turn
+    handlers never name it; a new reader has to show up in this list, and so in
+    review.
+    """
+    import orchestrator
+
+    root = Path(orchestrator.__file__).parent
+    names = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*.py")
+        if "content_enc" in path.read_text()
+    )
+
+    assert names == [
+        "agent/routes.py",  # writes it, and reads it back to answer
+        "chat/transcript.py",  # decrypts it for a reader
+        "session/models.py",  # declares it
+    ]
+    # And the engine's only view of a conversation has no room for its messages.
+    assert "messages" not in ConversationContext.model_fields
 
 
 # ------------------------------------------------------------- the takeover state
