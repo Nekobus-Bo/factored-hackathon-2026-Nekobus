@@ -208,7 +208,7 @@ Illustrative fragment (values are written by the harness; `…` stands for them)
     "intent_tfidf": {"kind": "tfidf_lr", "model_id": "tfidf_lr@train-sha256:a563c0c445d6",
                      "train": {"path": "data/eval/synthetic/decision.train.jsonl", "sha256": "…"},
                      "probability_kind": "distribution", "local_only": true, "cost_class": "low", "timeout_ms": 200},
-    "gate_tfidf":   {"kind": "tfidf_lr", "model_id": "tfidf_lr@gate/train-sha256:…",
+    "gate_tfidf":   {"kind": "tfidf_lr", "model_id": "tfidf_lr@map-<8 hex>/train-sha256:<12 hex>",
                      "train": {"path": "…", "sha256": "…", "label_map": {"confirm": "confirm", "deny": "deny", "*": "other"}},
                      "probability_kind": "distribution", "local_only": true, "cost_class": "low", "timeout_ms": 200}
   },
