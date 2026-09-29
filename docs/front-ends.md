@@ -1,6 +1,6 @@
 # Front ends: specification and HTTP contract
 
-> **Status: in progress** (2026-09-29). Progress and next steps: [status-and-plan.md](status-and-plan.md). The decisions are recorded in ADR-0013 (`docs/adr/0013-front-ends-bff-takeover.md`, landing with the back-office API work).
+> **Status: in progress** (2026-09-29). The Zod mirror of every shape below is `@pattern-blue/contracts` (`packages/contracts/ts/`, conventions in `packages/contracts/README.md`): requests are strict, responses strip unknown keys, and `blocks` stay raw until `parseBlocks`. Progress and next steps: [status-and-plan.md](status-and-plan.md). The decisions are recorded in ADR-0013 (`docs/adr/0013-front-ends-bff-takeover.md`, landing with the back-office API work).
 
 Everyone working on the front ends reads this file. The API shapes below are the contract between work packages: implement them exactly. Anything this file does not fix is yours to decide; record what you decided. If something here is impossible or contradicts the code, raise it and change this file first; do not improvise around it.
 
@@ -107,7 +107,7 @@ These map 1:1 to the four orchestrator chat routes:
 - `GET /api/conversations/:id/inbox`
 
 Rules:
-- `:id` must be a UUID. Validate the request, forward, then validate the response with Zod.
+- `:id` is an opaque path-safe token, `^[A-Za-z0-9_-]{1,64}$` (`ConversationIdSchema`). The orchestrator's ids are `conv_<hex>`, not UUIDs. Validate the request, forward, then validate the response with Zod.
 - Status codes and `Retry-After` pass through.
 - Upstream unreachable → 503 `{detail:"unavailable"}`.
 
@@ -120,7 +120,7 @@ Rules:
 - **Queue and handoffs:**
   - `GET /api/handoffs` → the admin list.
   - `GET /api/handoffs/:ref` → the admin detail, plus `conversation_id|null` resolved through the agent API.
-  - `POST /api/handoffs/:ref/claim` → claims in banking-core with the session's agent, then takes over in the orchestrator. It returns `{handoff, takeover}`. If the takeover fails after the claim succeeded, it returns 502 `{detail:"claimed_but_takeover_failed"}`, and a retry of the same call is safe because both steps are idempotent.
+  - `POST /api/handoffs/:ref/claim` → claims in banking-core with the session's agent, then takes over in the orchestrator. It returns `{handoff, takeover}`: `handoff` is the claim's handoff detail, and `takeover` is the agent API's takeover response verbatim, `{conversation_id, takeover:{active, since, agent_ref}}`. If the takeover fails after the claim succeeded, it returns 502 `{detail:"claimed_but_takeover_failed"}`, and a retry of the same call is safe because both steps are idempotent.
 - **Conversations:**
   - `GET /api/conversations/:id` → the agent transcript.
   - `POST /api/conversations/:id/messages` `{text, client_message_id}` → the agent API, with `X-Agent-Ref` from the session.
