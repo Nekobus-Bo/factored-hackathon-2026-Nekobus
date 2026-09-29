@@ -33,6 +33,11 @@ from banking_core.seed.fixtures import create_scenario_fixtures
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 _CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
 
+# What infra/compose/docker-compose.yml defaults ADMIN_API_TOKEN to, so the back
+# office demo steps work with no .env. Public by construction: startup refuses
+# it under APP_ENV=production. A test keeps the two spellings in step.
+DEVELOPMENT_ADMIN_TOKEN = "dev-only-admin-token"
+
 
 class AdminPolicyConfigRequest(BaseModel):
     """Editable policy fields accepted at the administrator boundary."""
@@ -88,14 +93,31 @@ def _environment_flag(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _running_in_production() -> bool:
+    return os.getenv("APP_ENV", "development").strip().lower() == "production"
+
+
 def admin_api_enabled() -> bool:
     return _environment_flag("ADMIN_API_ENABLED")
 
 
 def validate_admin_api_settings() -> None:
-    """Fail startup rather than expose an enabled API without a token."""
-    if admin_api_enabled() and not os.getenv("ADMIN_API_TOKEN", "").strip():
+    """Fail startup rather than expose an enabled API without a real token.
+
+    A missing token is refused everywhere. The development token is accepted
+    outside production only: it is published in this repository, so under
+    APP_ENV=production it would be a known password.
+    """
+    if not admin_api_enabled():
+        return
+    token = os.getenv("ADMIN_API_TOKEN", "").strip()
+    if not token:
         raise RuntimeError("ADMIN_API_TOKEN is required when ADMIN_API_ENABLED=true")
+    if token == DEVELOPMENT_ADMIN_TOKEN and _running_in_production():
+        raise RuntimeError(
+            "ADMIN_API_TOKEN is the public development token; set a secret of "
+            "your own when APP_ENV=production"
+        )
 
 
 def require_admin(authorization: str | None = Header(default=None)) -> None:
