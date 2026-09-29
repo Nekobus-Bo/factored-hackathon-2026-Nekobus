@@ -77,8 +77,7 @@ We establish a single, unified calibration harness for local decision and embedd
 ### 7. Conversational LLM selection (distinct from this harness)
 
 Conversational LLM selection is decoupled from the encoder calibration harness:
-- **Default model:** DeepSeek V4 Flash 0731.
-- **Alternative candidates:** DeepSeek V4.1 Flash and GPT 6 Luna.
+- **Model:** GPT 6 Luna, the single model of the submission (amendment of 2026-09-29 in [ADR-0001](0001-cheap-llm-specialized-encoder.md)). DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, the earlier candidates, are future work.
 - **Evaluation framework:** Evaluated using the multi-turn scenario evaluation runner (`make eval` ⚠️ pending, documented in [evaluation.md](../evaluation.md)), not this calibration harness.
 - **Criteria (broken down per language):** Tool-call correctness, rate of unsafe outcomes ([evaluation.md](../evaluation.md) §3 taxonomy), cost per conversation, and p95 end-to-end turn latency.
 
