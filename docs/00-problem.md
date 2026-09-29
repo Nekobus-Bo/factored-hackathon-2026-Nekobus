@@ -41,7 +41,7 @@ Generality is a property of the system; depth is a property of our submission. W
 | Out of scope | Reason |
 |---|---|
 | Real biometric verification (selfie against ID document) | Requires a certified provider with liveness detection; a vision LLM gives neither a calibrated score nor spoof detection. See [ADR-0007](adr/0007-no-llm-biometrics.md). We leave the interface defined and a simulated provider behind it. |
-| Real outbound OTP delivery | Delivery channel is an open decision (email, Telegram, WhatsApp or SMS; chosen by feasibility / free tier); delivery is currently simulated in a panel. The model never chooses the channel. |
+| Real outbound OTP delivery | The OTP is not sent by email, SMS or any other external channel: the web client simulates a "you got an email with the code" notice from an in-app inbox, behind the delivery port a real provider would implement ([ADR-0007](adr/0007-no-llm-biometrics.md)). The model never chooses the channel. |
 | End-to-end dispute resolution | A judgment call with monetary impact. It is our test case for "AI should not be autonomous just because it can be". |
 | Customer onboarding / credit origination | A different workflow; adds nothing to the depth of the chosen one. |
 | Real multi-tenancy | Anticipated in the data model (schema separation), not implemented. |
