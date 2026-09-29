@@ -4,7 +4,11 @@ Rules (ADR-0003, ADR-0004, AGENTS rule 4):
 - The card is resolved by card_ref AND the holder from the caller's session; a
   card of another customer is indistinguishable from a missing one.
 - The authorizer's policy decision is an input: card.block is never refused by
-  amount here, its flags only travel with the result and the audit row.
+  amount here. Its flags go to the audit row and, turned into the
+  handoff_requirement of the output, to the caller (ADR-0003 amendment
+  2026-09-29). Every path sets the requirement explicitly, an already BLOCKED
+  card and the re-read of a committed call included: it is rebuilt from the
+  audited flags and block reason, never from what the caller says.
 - The status change and its audit row commit in one transaction; the receipt is
   then re-read from the database, never built from the arguments.
 - An already BLOCKED card is not written again: the call is audited and returns
@@ -23,12 +27,13 @@ from contracts.envelope import (
     ToolResultStatus,
     VerificationState,
 )
-from contracts.tools.card_block import CardBlockInput, CardBlockOutput
+from contracts.tools.card_block import BlockReason, CardBlockInput, CardBlockOutput
 from contracts.tools.card_list import CardStatus
 from sqlalchemy.orm import Session
 
 from banking_core.audit.service import append as append_audit
 from banking_core.control.policy import Decision
+from banking_core.handoff.requirement import requirement_for
 from banking_core.models.core_bank import Account, Card
 from banking_core.models.ops import AuditLog
 
@@ -69,9 +74,16 @@ def reread_card_block_output(
     if stored is None or audit is None or stored.blocked_at is None:
         raise RuntimeError("card.block receipt could not be re-read from the database")
 
+    # What the policy decided is in the audit row this call wrote: its flags and
+    # the block reason. Rebuilding it there keeps a re-read of a committed call
+    # and a first execution answering the same requirement.
+    decision = Decision(allowed=True, flags=list(audit.payload["details"]["flags"]))
+    requirement = requirement_for(decision, BlockReason(audit.payload["reason"]))
+
     return CardBlockOutput(
         card_ref=stored.card_ref,
         status=CardStatus(stored.status),
+        handoff_requirement=requirement,
         receipt=Receipt(
             action=ACTION,
             target_masked=f"**** **** **** {stored.pan_last4}",

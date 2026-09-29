@@ -12,7 +12,7 @@ from collections.abc import Generator
 
 import pytest
 import sqlalchemy as sa
-from banking_core.cards.tools import CardNotFoundError
+from banking_core.cards.tools import CardNotFoundError, reread_card_block_output
 from banking_core.cards.tools.card_block import (
     CardBlockResult,
 )
@@ -49,6 +49,8 @@ from contracts.tools.handoff_create import (
     HandoffOpenQuestion,
     HandoffPriority,
     HandoffReason,
+    HandoffRequirement,
+    HandoffRequirementLevel,
     HandoffSummary,
 )
 from sqlalchemy.orm import Session, sessionmaker
@@ -267,6 +269,130 @@ def test_card_block_propagates_policy_flags_and_is_not_refused_by_amount(
     [audit] = block_audits(seeded)
     assert audit.payload["details"]["flags"] == result.flags
     assert audit.reason_code == ReasonCode.POLICY_FLAGGED.value
+
+
+REQUIRED_DECISION = Decision(
+    allowed=True,
+    reason_code=ReasonCode.POLICY_FLAGGED,
+    flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
+)
+RECOMMENDED_DECISION = Decision(
+    allowed=True,
+    reason_code=ReasonCode.POLICY_FLAGGED,
+    flags=["POLICY_FLAGGED", "HANDOFF_RECOMMENDED"],
+)
+
+
+def test_card_block_without_flags_requires_no_handoff(seeded: Session) -> None:
+    result = execute_card_block(
+        seeded,
+        demo_holder("en"),
+        CardBlockInput(card_ref="card_demo_en", reason=BlockReason.LOST),
+        ALLOWED,
+        SCOPE,
+    )
+
+    assert result.output.handoff_requirement == HandoffRequirement()
+
+
+def test_card_block_returns_the_required_handoff_the_policy_decided(
+    seeded: Session,
+) -> None:
+    result = execute_card_block(
+        seeded,
+        demo_holder("es"),
+        CardBlockInput(card_ref="card_demo_es", reason=BlockReason.UNRECOGNIZED_CHARGE),
+        REQUIRED_DECISION,
+        SCOPE,
+    )
+
+    assert result.output.handoff_requirement == HandoffRequirement(
+        level=HandoffRequirementLevel.REQUIRED,
+        priority=HandoffPriority.URGENT,
+        department=Department.DISPUTES,
+        reason=HandoffReason.UNRECOGNIZED_TRANSACTION,
+    )
+    # The flags still go to the audit row, and the requirement survives the JSON
+    # round trip the dispatcher stores for an idempotent replay.
+    [audit] = block_audits(seeded)
+    assert audit.payload["details"]["flags"] == REQUIRED_DECISION.flags
+    replay = CardBlockOutput.model_validate(result.output.model_dump(mode="json"))
+    assert replay.handoff_requirement == result.output.handoff_requirement
+
+
+def test_card_block_recommends_a_normal_handoff_in_flag_mode(seeded: Session) -> None:
+    result = execute_card_block(
+        seeded,
+        demo_holder("pt"),
+        CardBlockInput(card_ref="card_demo_pt", reason=BlockReason.CUSTOMER_REQUEST),
+        RECOMMENDED_DECISION,
+        SCOPE,
+    )
+
+    assert result.output.handoff_requirement == HandoffRequirement(
+        level=HandoffRequirementLevel.RECOMMENDED,
+        priority=HandoffPriority.NORMAL,
+        department=Department.DISPUTES,
+        reason=HandoffReason.DISPUTE_CLAIM,
+    )
+
+
+def test_card_block_on_an_already_blocked_card_still_returns_the_requirement(
+    seeded: Session,
+) -> None:
+    """A card that is already blocked does not make the case any less urgent."""
+    first = execute_card_block(
+        seeded,
+        demo_holder("en"),
+        CardBlockInput(card_ref="card_demo_en", reason=BlockReason.STOLEN),
+        ALLOWED,
+        SCOPE,
+    )
+    assert first.output.handoff_requirement.level is HandoffRequirementLevel.NONE
+
+    again = execute_card_block(
+        seeded,
+        demo_holder("en"),
+        CardBlockInput(card_ref="card_demo_en", reason=BlockReason.SUSPICIOUS_ACTIVITY),
+        REQUIRED_DECISION,
+        SCOPE,
+    )
+
+    assert again.output.receipt.state_before == ResourceState.BLOCKED
+    assert again.output.handoff_requirement == HandoffRequirement(
+        level=HandoffRequirementLevel.REQUIRED,
+        priority=HandoffPriority.URGENT,
+        department=Department.FRAUD_OPERATIONS,
+        reason=HandoffReason.SUSPECTED_FRAUD,
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "decision"),
+    [
+        (BlockReason.LOST, ALLOWED),
+        (BlockReason.STOLEN, REQUIRED_DECISION),
+        (BlockReason.CUSTOMER_REQUEST, RECOMMENDED_DECISION),
+    ],
+)
+def test_reread_rebuilds_the_requirement_from_the_committed_audit_row(
+    seeded: Session, reason: BlockReason, decision: Decision
+) -> None:
+    result = execute_card_block(
+        seeded,
+        demo_holder("es"),
+        CardBlockInput(card_ref="card_demo_es", reason=reason),
+        decision,
+        SCOPE,
+    )
+    audit_id = int(result.output.receipt.audit_id.removeprefix("aud_"))
+
+    reread = reread_card_block_output(
+        seeded, demo_holder("es"), "card_demo_es", audit_id
+    )
+
+    assert reread.handoff_requirement == result.output.handoff_requirement
+    assert reread == result.output
 
 
 def test_card_block_refuses_a_disallowed_decision(seeded: Session) -> None:
