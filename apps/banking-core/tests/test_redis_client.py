@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import fakeredis
 import pytest
 from banking_core import redis_client
+from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.session import RedisSessionStore
 from banking_core.identity.challenge_store import OtpChallengeStore
 
@@ -67,3 +68,22 @@ def test_core_store_prefixes_are_configurable_and_keep_their_defaults(
     challenge = OtpChallengeStore(redis_client=fake_redis)
     assert challenge._key("c1") == "tenant:otp:c1"
     assert challenge._evaluations_key("c1") == "tenant:otp:c1:evaluations"
+
+
+def test_attempt_limit_prefix_is_configurable_and_keeps_its_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = fakeredis.FakeRedis(decode_responses=True)
+    customer = "6f1b3c1e-2a55-4e0a-9a51-0e6b1a3d9c11"
+    monkeypatch.delenv("REDIS_ATTEMPT_LIMIT_KEY_PREFIX", raising=False)
+    default = AttemptLimitStore(redis_client=fake_redis)
+    assert default.key_prefix == "limit:"
+    assert default._lock_key(customer) == f"limit:customer:{customer}:otp_lock"
+
+    monkeypatch.setenv("REDIS_ATTEMPT_LIMIT_KEY_PREFIX", "tenant:limit:")
+    tenant = AttemptLimitStore(redis_client=fake_redis)
+    assert tenant._lock_key(customer) == f"tenant:limit:customer:{customer}:otp_lock"
+    assert (
+        tenant._document_key("a" * 64)
+        == f"tenant:limit:document:{'a' * 64}:match_failures"
+    )
