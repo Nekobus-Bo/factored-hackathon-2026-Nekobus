@@ -408,3 +408,24 @@ def test_a_select_that_could_set_something_unsafe_stops_startup(
 ) -> None:
     with pytest.raises(EffectsConfigError, match=message):
         load_effects(write(tmp_path, mutated(change)))
+
+
+def test_an_unquoted_off_in_the_yaml_means_off(tmp_path: Path) -> None:
+    # PyYAML reads a bare `off` as the boolean False; the file is written by hand.
+    text = DEFAULT_EFFECTS_FILE.read_text("utf-8").replace(
+        "  smalltalk_route:\n    mode: shadow", "  smalltalk_route:\n    mode: off"
+    )
+    assert "mode: off" in text
+
+    config = load_effects(write(tmp_path, text))
+
+    assert config.decision_points["smalltalk_route"].mode is Mode.OFF
+
+
+def test_an_unquoted_on_is_not_a_mode(tmp_path: Path) -> None:
+    text = DEFAULT_EFFECTS_FILE.read_text("utf-8").replace(
+        "  smalltalk_route:\n    mode: shadow", "  smalltalk_route:\n    mode: on"
+    )
+
+    with pytest.raises(EffectsConfigError, match="smalltalk_route.mode"):
+        load_effects(write(tmp_path, text))

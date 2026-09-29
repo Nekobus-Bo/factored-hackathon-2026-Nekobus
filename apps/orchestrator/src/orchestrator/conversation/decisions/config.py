@@ -115,6 +115,13 @@ class RawDecisionPoint(_Strict):
     on_unavailable: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _yaml_reads_off_as_false(cls, value: object) -> object:
+        # YAML 1.1 (PyYAML) turns an unquoted `off` into False: `mode: off` is what
+        # anyone writes, so read it as what they meant.
+        return Mode.OFF if value is False else value
+
 
 class EffectsFile(_Strict):
     version: int
