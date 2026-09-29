@@ -265,7 +265,10 @@ services:
       REDIS_URL: ${REDIS_EDGE_URL:-}
       REDIS_EDGE_KEY_PREFIX: ${REDIS_EDGE_KEY_PREFIX:-orch:conv:}
       REDIS_EDGE_RATE_LIMIT_KEY_PREFIX: ${REDIS_EDGE_RATE_LIMIT_KEY_PREFIX:-orch:ratelimit:}
-      RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}
+      # Conversations one client address may open per hour. Generous on purpose:
+      # a local session or an evaluation run (one conversation per scenario) comes
+      # from one address. The production overlay pins 30 back. Must be >= 1.
+      RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-1000}
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-regenerate-this-secret}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-3600}
