@@ -1,6 +1,7 @@
 """Customer-facing chat API.
 
-POST /v1/conversations                 open a conversation (and a banking-core session)
+POST /v1/conversations                 open a conversation (and a banking-core session);
+                                       limited per client address (429 + Retry-After)
 POST /v1/conversations/{id}/messages   run one turn, return the blocks
 GET  /v1/conversations/{id}            masked transcript only
 
@@ -17,7 +18,9 @@ from typing import Any
 from contracts import MESSAGE_BLOCK_ADAPTER
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from redis.exceptions import RedisError
 
+from orchestrator.chat.client_ip import client_ip
 from orchestrator.chat.handler import TurnHandler, derive_turn_id
 from orchestrator.chat.transcript import mask_for_transcript
 from orchestrator.conversation.models import TurnEvalData
@@ -30,6 +33,7 @@ from orchestrator.session.models import (
     Message,
     MessageRole,
 )
+from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient, SessionCreationError
 
@@ -97,6 +101,30 @@ def _banking(request: Request) -> BankingCoreClient:
     return banking
 
 
+async def _enforce_conversation_limit(request: Request) -> None:
+    """429 before any banking-core session exists; 503 if the limit cannot be read.
+
+    Fails closed: without redis-edge the limit cannot be enforced, and the
+    conversation itself could not be stored anyway.
+    """
+    limiter: ConversationRateLimiter = request.app.state.conversation_limiter
+    address = client_ip(request, request.app.state.trusted_proxy_hops)
+    try:
+        decision = await limiter.hit(address)
+    except RedisError as exc:
+        logger.error("Conversation rate limiter unavailable (%s)", type(exc).__name__)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversations are temporarily unavailable",
+        ) from exc
+    if not decision.allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many conversations opened from this address; try again later",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+
+
 def _handler(request: Request) -> TurnHandler:
     handler: TurnHandler | None = request.app.state.turn_handler
     if handler is None:
@@ -134,6 +162,7 @@ async def _load(store: SessionStore, conversation_id: str) -> ConversationState:
 async def create_conversation(
     request: Request, body: CreateConversationRequest | None = None
 ) -> CreateConversationResponse:
+    await _enforce_conversation_limit(request)
     try:
         banking_session_id = await _banking(request).create_session()
     except SessionCreationError as exc:

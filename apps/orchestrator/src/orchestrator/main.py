@@ -11,6 +11,7 @@ from orchestrator.config import Settings, get_settings
 from orchestrator.conversation import TurnEngine
 from orchestrator.log_redaction import install_redaction
 from orchestrator.session.crypto import PlaceholderEncryptor
+from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient
 
@@ -57,6 +58,14 @@ def create_app(
             key_prefix=cfg.redis_edge_key_prefix,
         )
     app.state.session_store = session_store
+    # Same redis-edge connection as the conversations, its own key prefix.
+    app.state.conversation_limiter = ConversationRateLimiter(
+        redis=session_store.redis,
+        secret=cfg.require_session_secret(),
+        limit=cfg.rate_limit_conversations_per_ip_hour,
+        key_prefix=cfg.redis_edge_rate_limit_key_prefix,
+    )
+    app.state.trusted_proxy_hops = cfg.trusted_proxy_hops
     banking = banking_client or BankingCoreClient(settings=cfg)
     handler = turn_handler or EngineTurnHandler(
         TurnEngine.from_settings(
