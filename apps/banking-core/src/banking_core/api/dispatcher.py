@@ -143,6 +143,7 @@ class ToolDispatcher:
         reason: str | None = None,
         details: dict[str, AuditDetail] | None = None,
         session_after: SessionState | None = None,
+        session_ttl_seconds: int | None = None,
     ) -> ToolResult:
         """Audit a refused call and return the refusal envelope.
 
@@ -183,7 +184,7 @@ class ToolDispatcher:
             db_session.rollback()
         if audited and session_after is not None:
             try:
-                self._save_session_after_commit(session_after)
+                self._save_session_after_commit(session_after, session_ttl_seconds)
             except Exception as exc:
                 logger.error(
                     "Failed to save session after refused '%s': %s",
@@ -236,7 +237,9 @@ class ToolDispatcher:
             )
             db_session.rollback()
 
-    def _save_session_after_commit(self, session: SessionState) -> None:
+    def _save_session_after_commit(
+        self, session: SessionState, ttl_seconds: int | None
+    ) -> None:
         """Persist a session state to Redis; call it only after the DB commit.
 
         Order matters: the audit row and the idempotency record must exist before
@@ -245,8 +248,11 @@ class ToolDispatcher:
         reports an error and the caller starts the step again), whereas saving
         first would leave Redis ahead of a database that rolled back, e.g.
         VERIFIED with no audit row.
+
+        ttl_seconds is the session TTL of the policy config in force for this call;
+        None leaves it to the store's configured default.
         """
-        self.session_store.save(session)
+        self.session_store.save(session, ttl_seconds=ttl_seconds)
 
     def dispatch_in_session(
         self,
@@ -394,9 +400,14 @@ class ToolDispatcher:
                 )
                 db_session.commit()
                 if advanced_session is not None:
-                    self._save_session_after_commit(advanced_session)
+                    self._save_session_after_commit(
+                        advanced_session, policy_config.session_ttl_seconds
+                    )
                 if tool_call.tool == "handoff.create":
-                    self._save_session_after_commit(fsm.on_handoff_create(session))
+                    self._save_session_after_commit(
+                        fsm.on_handoff_create(session),
+                        policy_config.session_ttl_seconds,
+                    )
                 if not was_replayed:
                     try:
                         if tool_call.tool == "card.block":
@@ -462,6 +473,7 @@ class ToolDispatcher:
                     reason="otp_resend_limit_exceeded",
                     details={"flags": ["OTP_RESEND_LIMIT_EXCEEDED"]},
                     session_after=exc.locked_session,
+                    session_ttl_seconds=policy_config.session_ttl_seconds,
                 )
             except Exception as exc:
                 db_session.rollback()
@@ -499,7 +511,9 @@ class ToolDispatcher:
                 )
                 db_session.commit()
                 if advanced_session is not None:
-                    self._save_session_after_commit(advanced_session)
+                    self._save_session_after_commit(
+                        advanced_session, policy_config.session_ttl_seconds
+                    )
                 return ToolResult(
                     tool=tool_call.tool,
                     status=ToolResultStatus.OK,

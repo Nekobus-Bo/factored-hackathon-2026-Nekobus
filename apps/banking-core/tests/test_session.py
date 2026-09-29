@@ -101,6 +101,76 @@ def test_redis_session_atomic_update(fake_redis: fakeredis.FakeRedis) -> None:
     assert loaded.attempts == 2
 
 
+def _ttl(store: RedisSessionStore, session_id: str) -> int:
+    return int(store.client.ttl(f"{store.key_prefix}{session_id}"))
+
+
+def test_save_uses_the_configured_ttl_not_the_seed_default(
+    fake_redis: fakeredis.FakeRedis,
+) -> None:
+    store = RedisSessionStore(
+        redis_client=fake_redis, default_ttl=3600, ttl_provider=lambda: 900
+    )
+
+    store.save(SessionState(session_id="sess_cfg_ttl"))
+
+    assert 0 < _ttl(store, "sess_cfg_ttl") <= 900
+
+
+def test_configured_ttl_is_read_on_every_save(
+    fake_redis: fakeredis.FakeRedis,
+) -> None:
+    configured = {"ttl": 900}
+    store = RedisSessionStore(
+        redis_client=fake_redis, ttl_provider=lambda: configured["ttl"]
+    )
+    session = SessionState(session_id="sess_cfg_change")
+    store.save(session)
+    assert _ttl(store, "sess_cfg_change") <= 900
+
+    configured["ttl"] = 120  # an operator lowers it; no restart
+    store.save(session)
+
+    assert 0 < _ttl(store, "sess_cfg_change") <= 120
+
+
+def test_explicit_ttl_wins_over_the_provider(fake_redis: fakeredis.FakeRedis) -> None:
+    store = RedisSessionStore(redis_client=fake_redis, ttl_provider=lambda: 900)
+
+    store.save(SessionState(session_id="sess_explicit"), ttl_seconds=60)
+
+    assert 0 < _ttl(store, "sess_explicit") <= 60
+
+
+def test_atomic_update_also_uses_the_configured_ttl(
+    fake_redis: fakeredis.FakeRedis,
+) -> None:
+    store = RedisSessionStore(redis_client=fake_redis, ttl_provider=lambda: 900)
+
+    store.atomic_update("sess_atomic_ttl", lambda s: s)
+
+    assert 0 < _ttl(store, "sess_atomic_ttl") <= 900
+
+
+def _unavailable() -> int:
+    raise ConnectionError("policy database unavailable")
+
+
+@pytest.mark.parametrize("provider", [_unavailable, lambda: 0, lambda: -5])
+def test_unusable_configuration_falls_back_to_the_seed_default(
+    fake_redis: fakeredis.FakeRedis, provider: object
+) -> None:
+    store = RedisSessionStore(
+        redis_client=fake_redis,
+        default_ttl=1800,
+        ttl_provider=provider,  # type: ignore[arg-type]
+    )
+
+    store.save(SessionState(session_id="sess_fallback"))
+
+    assert 900 < _ttl(store, "sess_fallback") <= 1800
+
+
 def test_pinned_holder_cannot_be_tampered_by_tool_args() -> None:
     """ADR-0004 IDOR check: tool args cannot contain customer or holder IDs."""
     illegal_args_list = [

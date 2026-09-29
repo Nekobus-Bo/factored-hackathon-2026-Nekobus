@@ -30,12 +30,14 @@ from unittest.mock import MagicMock, patch
 
 import fakeredis
 import pytest
+from banking_core.api import routes_sessions
 from banking_core.api.dispatcher import ToolDispatcher
 from banking_core.api.routes_sessions import get_session_store, set_session_store
 from banking_core.api.routes_tools import (
     set_dispatcher,
 )
 from banking_core.control.config import InMemoryControlConfigRepository
+from banking_core.control.policy import PolicyConfig
 from banking_core.control.session import RedisSessionStore
 from banking_core.crypto import RecordEncryptor, compute_blind_index
 from banking_core.db import get_db
@@ -1161,3 +1163,101 @@ def test_unrecognized_registered_channel_fails_closed_like_none(
         "POLICY_BLOCKED",
     )
     assert audit.payload["reason"] == "unrecognized_otp_channel"
+
+
+def _session_ttl(h: Harness, session_id: str) -> int:
+    return int(h.redis.ttl(f"{h.session_store.key_prefix}{session_id}"))
+
+
+def test_every_session_save_uses_the_configured_session_ttl(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store's own default is 3600; the policy config says 900."""
+    monkeypatch.setenv("SESSION_TTL_SECONDS", "900")
+    monkeypatch.setenv("OTP_MAX_RESENDS", "2")
+    h = make_harness()
+    assert h.session_store.default_ttl == 3600
+    session_id = h.new_session()
+
+    assert h.call(session_id, MATCH_ES)["status"] == "ok"
+    assert 0 < _session_ttl(h, session_id) <= 900
+
+    # Reset it high to prove each dispatch re-applies the configured TTL.
+    h.redis.expire(f"{h.session_store.key_prefix}{session_id}", 3000)
+    sent = _otp_send(h, session_id, "idem_ttl_send_01")
+    assert sent["status"] == "ok"
+    assert 0 < _session_ttl(h, session_id) <= 900
+
+    h.redis.expire(f"{h.session_store.key_prefix}{session_id}", 3000)
+    code = get_dev_sink().get_code(sent["data"]["challenge_id"], allow_hook=True)
+    verified = h.call(
+        session_id,
+        {
+            "tool": "otp.verify",
+            "args": {"code": code},
+            "idempotency_key": "idem_ttl_verify_01",
+        },
+    )
+    assert verified["data"]["verified"] is True
+    assert 0 < _session_ttl(h, session_id) <= 900
+
+
+def test_locking_refusal_saves_the_session_with_the_configured_ttl(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SESSION_TTL_SECONDS", "900")
+    monkeypatch.setenv("OTP_MAX_RESENDS", "2")
+    h = make_harness()
+    session_id, _ = _to_otp_pending(h)
+    assert _otp_send(h, session_id, "idem_ttl_resend_01")["status"] == "ok"
+    h.redis.expire(f"{h.session_store.key_prefix}{session_id}", 3000)
+
+    locking = _otp_send(h, session_id, "idem_ttl_locking_01")
+
+    assert locking["reason_code"] == "RATE_LIMITED"
+    assert 0 < _session_ttl(h, session_id) <= 900
+
+
+def _fresh_session_store_for_app(
+    monkeypatch: pytest.MonkeyPatch, config: PolicyConfig | None
+) -> fakeredis.FakeRedis:
+    """Let the app build its own store, as on startup, over a fake Redis."""
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(
+        "banking_core.control.session.create_redis_client", lambda: fake
+    )
+    monkeypatch.setattr(routes_sessions, "_session_store", None)
+
+    def repo() -> InMemoryControlConfigRepository:
+        if config is None:
+            raise ConnectionError("policy database unavailable")
+        return InMemoryControlConfigRepository(policy_config=config)
+
+    monkeypatch.setattr(routes_sessions, "get_control_config_repository", repo)
+    return fake
+
+
+def test_session_creation_uses_the_configured_session_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _fresh_session_store_for_app(
+        monkeypatch, PolicyConfig(session_ttl_seconds=900)
+    )
+
+    response = TestClient(app).post("/v1/sessions")
+
+    assert response.status_code == 201
+    [key] = fake.keys("session:*")
+    assert 0 < fake.ttl(key) <= 900
+
+
+def test_session_creation_falls_back_to_the_seed_ttl_without_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _fresh_session_store_for_app(monkeypatch, None)
+
+    response = TestClient(app).post("/v1/sessions")
+
+    assert response.status_code == 201
+    [key] = fake.keys("session:*")
+    assert 900 < fake.ttl(key) <= 3600
