@@ -7,6 +7,7 @@ from contracts.envelope import VerificationState
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from banking_core.control.config import get_control_config_repository
 from banking_core.control.session import RedisSessionStore, SessionState
 
 router = APIRouter(prefix="/v1/sessions", tags=["sessions"])
@@ -14,11 +15,16 @@ router = APIRouter(prefix="/v1/sessions", tags=["sessions"])
 _session_store: RedisSessionStore | None = None
 
 
+def configured_session_ttl_seconds() -> int:
+    """session_ttl_seconds of the active policy config (ADR-0002)."""
+    return get_control_config_repository().get_policy_config().session_ttl_seconds
+
+
 def get_session_store() -> RedisSessionStore:
     """Dependency to provide RedisSessionStore instance."""
     global _session_store
     if _session_store is None:
-        _session_store = RedisSessionStore()
+        _session_store = RedisSessionStore(ttl_provider=configured_session_ttl_seconds)
     return _session_store
 
 

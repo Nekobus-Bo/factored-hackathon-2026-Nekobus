@@ -9,6 +9,7 @@ Security rules:
   lock (SET NX PX + token) that serializes whole tool dispatches.
 """
 
+import logging
 import os
 import secrets
 import time
@@ -22,6 +23,8 @@ from contracts.envelope import VerificationState
 from pydantic import BaseModel, ConfigDict, Field
 
 from banking_core.redis_client import create_redis_client
+
+logger = logging.getLogger(__name__)
 
 
 class SessionState(BaseModel):
@@ -94,6 +97,12 @@ class RedisSessionStore:
     """Redis-backed session store using redis-core.
 
     Supports atomic updates via Redis optimistic locking (WATCH/MULTI/EXEC).
+
+    The session TTL is configuration (policy config, ADR-0002): ttl_provider
+    returns the configured value and is asked on every save that gives no
+    explicit TTL. It is injected, not imported, because the policy config itself
+    depends on SessionState (an import cycle otherwise). default_ttl is only the
+    seed fallback for when no provider is set or the configuration is unavailable.
     """
 
     def __init__(
@@ -101,8 +110,10 @@ class RedisSessionStore:
         redis_client: redis.Redis | None = None,
         default_ttl: int = 3600,
         key_prefix: str | None = None,
+        ttl_provider: Callable[[], int] | None = None,
     ) -> None:
         self.default_ttl = default_ttl
+        self._ttl_provider = ttl_provider
         self.key_prefix = (
             key_prefix
             if key_prefix is not None
@@ -121,6 +132,23 @@ class RedisSessionStore:
     def _key(self, session_id: str) -> str:
         return f"{self.key_prefix}{session_id}"
 
+    def _resolve_ttl(self, ttl_seconds: int | None) -> int:
+        """Explicit TTL, else the configured one, else the seed default."""
+        if ttl_seconds is not None:
+            return ttl_seconds
+        if self._ttl_provider is not None:
+            try:
+                configured = int(self._ttl_provider())
+                if configured >= 1:
+                    return configured
+                raise ValueError("session TTL must be positive")
+            except Exception as exc:
+                logger.warning(
+                    "Session TTL configuration unavailable, using the seed default: %s",
+                    type(exc).__name__,
+                )
+        return self.default_ttl
+
     def get(self, session_id: str) -> SessionState | None:
         """Retrieve session state by ID, or None if expired/not found."""
         key = self._key(session_id)
@@ -138,9 +166,9 @@ class RedisSessionStore:
         return session
 
     def save(self, session: SessionState, ttl_seconds: int | None = None) -> None:
-        """Save session state with configured TTL."""
+        """Save session state with the explicit or configured TTL."""
         key = self._key(session.session_id)
-        ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl
+        ttl = self._resolve_ttl(ttl_seconds)
         session.updated_at = datetime.now(UTC)
         self._client.set(key, session.model_dump_json(), ex=ttl)
 
@@ -157,7 +185,7 @@ class RedisSessionStore:
         is raised and the transaction retries up to max_retries.
         """
         key = self._key(session_id)
-        ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl
+        ttl = self._resolve_ttl(ttl_seconds)
 
         for _ in range(max_retries):
             pipe = self._client.pipeline()
