@@ -5,7 +5,10 @@ which is otherwise done by the regexes alone.
 
 The model proposes tool calls; banking-core decides (AGENTS rules 1 and 2).
 The engine never retries a refused call and never alters model arguments
-beyond rehydrating placeholders for the banking-core request.
+beyond rehydrating placeholders for the banking-core request and, when a
+decision point is in `enforce` (ADR-0012), the bounded effects of
+conversation/decisions: `select` overwrites an enum argument, `gate` withholds a
+write until the customer consents. Neither can make banking-core allow anything.
 
 One thing the engine does on its own, because the model cannot be trusted to
 remember it (ADR-0003 amendment 2026-09-29): when a card.block comes back with
@@ -49,6 +52,8 @@ from pydantic import ValidationError
 from orchestrator.config import Settings
 from orchestrator.conversation.blocks import MAX_TEXT_LENGTH, filter_model_blocks
 from orchestrator.conversation.dates import normalize_date_arguments
+from orchestrator.conversation.decisions.catalog import RequestPlan
+from orchestrator.conversation.decisions.effects import DecisionRuntime, TurnDecisions
 from orchestrator.conversation.models import (
     ConversationContext,
     EncoderSignal,
@@ -146,6 +151,8 @@ class _TurnGuard:
     # The engine tries a required handoff at most once per turn; a failure is
     # retried on the next turn, not in a loop.
     required_handoff_tried: bool = False
+    # The decision-point effects of the turn (ADR-0012); none in a bare guard.
+    decisions: TurnDecisions | None = None
 
 
 @dataclass(frozen=True)
@@ -176,7 +183,12 @@ class ToolCaller(Protocol):
 class Analyzer(Protocol):
     """What the engine needs from the encoder (EncoderClient satisfies it)."""
 
-    async def analyze(self, text: str, lang: Lang | None = ...) -> AnalyzeResponse: ...
+    async def analyze(
+        self,
+        text: str,
+        lang: Lang | None = ...,
+        decision_points: list[str] | None = ...,
+    ) -> AnalyzeResponse: ...
 
 
 class TurnEngine:
@@ -190,6 +202,7 @@ class TurnEngine:
         masker: Masker | None = None,
         max_tool_rounds: int = 5,
         collect_eval: bool = False,
+        decisions: DecisionRuntime | None = None,
     ) -> None:
         if max_tool_rounds < 1:
             raise ValueError("max_tool_rounds must be >= 1")
@@ -199,6 +212,8 @@ class TurnEngine:
         self.masker = masker or RegexMasker()
         self.max_tool_rounds = max_tool_rounds
         self.collect_eval = collect_eval
+        # Without one, no decision point is configured: the engine is what it was.
+        self.decisions = decisions or DecisionRuntime.empty()
         self.tools, self._tool_names = build_llm_tools()
 
     @classmethod
@@ -208,7 +223,11 @@ class TurnEngine:
         banking: ToolCaller | None = None,
         collect_eval: bool = False,
     ) -> "TurnEngine":
-        """Wire the engine from configuration and an optional shared client."""
+        """Wire the engine from configuration and an optional shared client.
+
+        Raises EffectsConfigError when the decision effects file is invalid: the
+        service must not start with a gate it cannot read.
+        """
         return cls(
             llm=LLMProvider(settings=settings),
             banking=banking or BankingCoreClient(settings=settings),
@@ -217,6 +236,7 @@ class TurnEngine:
             else None,
             max_tool_rounds=settings.max_tool_rounds,
             collect_eval=collect_eval,
+            decisions=DecisionRuntime.from_settings(settings),
         )
 
     async def run_turn(
@@ -246,10 +266,15 @@ class TurnEngine:
         history = copy.deepcopy(context.history)
 
         # 1. The encoder reads the raw text first (a local service on the edge
-        # network, see docs/limitations.md): its intent goes to the metadata and
-        # its PII spans widen the masking below. It is optional: on any failure
-        # the turn goes on masked by the regexes alone, never by less.
-        pii_spans = await self._analyze(user_text, lang, metadata)
+        # network, see docs/limitations.md): its intent goes to the metadata, its
+        # decisions feed the decision-point effects (ADR-0012) and its PII spans
+        # widen the masking below. It is optional: on any failure the turn goes
+        # on masked by the regexes alone, never by less, and every decision point
+        # counts as unavailable.
+        turn_decisions = self.decisions.begin_turn(
+            context.decisions.model_copy(deep=True), metadata
+        )
+        pii_spans = await self._analyze(user_text, lang, metadata, turn_decisions)
 
         # 2. Mask the user text: the union of the regexes and the encoder's spans
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
@@ -264,8 +289,11 @@ class TurnEngine:
         except MaskingError:
             logger.warning("Turn %s: user text failed masking", metadata.turn_id)
             metadata.masking_failed = True
+            self._copy_decisions(eval_data, metadata)
             return TurnResult(
-                blocks=[TextBlock(text=REPHRASE_MESSAGES[lang])], metadata=metadata
+                blocks=[TextBlock(text=REPHRASE_MESSAGES[lang])],
+                metadata=metadata,
+                eval=eval_data,
             )
 
         history.append({"role": "user", "content": masked_user})
@@ -273,7 +301,7 @@ class TurnEngine:
         # 3-4. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
         handoffs: list[HandoffBlock] = []
-        guard = _TurnGuard()
+        guard = _TurnGuard(decisions=turn_decisions)
         final: LLMResponse | None = None
         while True:
             # Before every completion: a card.block of the last round, or of an
@@ -333,18 +361,31 @@ class TurnEngine:
 
         context.history = history
         context.placeholder_map = mapping
+        context.decisions = turn_decisions.commit()
+        self._copy_decisions(eval_data, metadata)
         return TurnResult(blocks=blocks, metadata=metadata, eval=eval_data)
 
     # ------------------------------------------------------------------ steps
 
     async def _analyze(
-        self, text: str, lang: Lang, metadata: TurnMetadata
+        self,
+        text: str,
+        lang: Lang,
+        metadata: TurnMetadata,
+        decisions: TurnDecisions,
     ) -> list[PiiSpan]:
-        """Record the encoder signal; return its PII spans (none if it failed)."""
+        """Record the encoder signal; return its PII spans (none if it failed).
+
+        The decision points ride on the same call. Asking for them must never
+        cost the PII spans, so only ids the encoder lists are named, and a 422
+        (the listing went stale) is asked again for the service's default set.
+        """
         if self.encoder is None:
+            self._observe(decisions, RequestPlan(), None, metadata)
             return []
+        plan = await self.decisions.plan(self.encoder)
         try:
-            analysis = await self.encoder.analyze(text, lang)
+            analysis = await self._ask_encoder(text, lang, plan)
         except Exception as exc:
             # Any failure degrades the same way. Only the error type is logged
             # for an unexpected one: its message could quote the customer text.
@@ -360,7 +401,9 @@ class TurnEngine:
             )
             metadata.encoder_unavailable = True
             metadata.masking_regex_only = True
+            self._observe(decisions, plan, None, metadata)
             return []
+        self._observe(decisions, plan, analysis, metadata)
         metadata.encoder = EncoderSignal(
             intent=analysis.intent,
             confidence=analysis.confidence,
@@ -369,6 +412,48 @@ class TurnEngine:
         )
         metadata.encoder_pii_spans = len(analysis.pii_spans)
         return list(analysis.pii_spans)
+
+    async def _ask_encoder(
+        self, text: str, lang: Lang, plan: RequestPlan
+    ) -> AnalyzeResponse:
+        assert self.encoder is not None
+        if plan.ids is None:
+            return await self.encoder.analyze(text, lang)
+        try:
+            return await self.encoder.analyze(text, lang, decision_points=plan.ids)
+        except EncoderUnavailableError as exc:
+            if exc.status_code != 422:
+                raise
+            logger.warning("Encoder refused the decision point ids; asking again")
+            self.decisions.catalog.invalidate()
+            return await self.encoder.analyze(text, lang)
+
+    @staticmethod
+    def _observe(
+        decisions: TurnDecisions,
+        plan: RequestPlan,
+        analysis: AnalyzeResponse | None,
+        metadata: TurnMetadata,
+    ) -> None:
+        """Feed the decisions to the effects; a defect there never costs the turn.
+
+        Nothing is lost in the safe direction: an effect that did not update its
+        state leaves the gate closed and the LLM's arguments as they were.
+        """
+        try:
+            decisions.observe(plan, analysis)
+        except Exception as exc:
+            logger.error(
+                "Turn %s: decision effects failed (%s)",
+                metadata.turn_id,
+                type(exc).__name__,
+            )
+
+    @staticmethod
+    def _copy_decisions(eval_data: TurnEvalData, metadata: TurnMetadata) -> None:
+        """Hand the eval hook the turn's decision records (no text in them)."""
+        eval_data.decisions = list(metadata.decisions)
+        eval_data.effects = list(metadata.effects)
 
     async def _run_tool_round(
         self,
@@ -449,6 +534,16 @@ class TurnEngine:
             return self._local_error(tool)
 
         local = self._local_rejection(tool, args, mapping, history, guard)
+        if local is None and guard.decisions is not None:
+            # A write the customer has not consented to waits for the question the
+            # model is about to ask. Nothing reaches banking-core, and the call
+            # takes no idempotency ordinal.
+            withheld = guard.decisions.gate(tool)
+            if withheld is not None:
+                guard.refused[tool] = withheld
+                local = ToolResult(
+                    tool=tool, status=ToolResultStatus.REFUSED, reason_code=withheld
+                )
         if local is not None:
             logger.warning(
                 "Turn %s: %s rejected locally (%s)",
@@ -483,6 +578,8 @@ class TurnEngine:
                     tool_args["code"] = re.sub(r"[ -]", "", code)
             if isinstance(tool_args, dict):
                 normalize_date_arguments(tool, tool_args, lang)
+                if guard.decisions is not None:
+                    tool_args = guard.decisions.select(tool, tool_args)
             tool_call = ToolCall(
                 tool=tool,
                 args=tool_args,
@@ -499,6 +596,8 @@ class TurnEngine:
                 guard.written[tool] = guard.written.get(tool, 0) + 1
             elif result.status is ToolResultStatus.REFUSED:
                 guard.refused[tool] = result.reason_code or ReasonCode.POLICY_BLOCKED
+            if guard.decisions is not None:
+                guard.decisions.after_result(tool, result)
 
         metadata.tool_outcomes.append(
             ToolOutcome(

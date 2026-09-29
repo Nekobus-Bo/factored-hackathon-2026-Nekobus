@@ -568,8 +568,19 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "decisions",
             "effects",
         }
-        # The engine of this test has no decision point wired yet.
-        assert evaluation["decisions"] == evaluation["effects"] == []
+        # The shipped effects file is loaded, the encoder is off in this test: every
+        # decision point is unavailable and, in shadow, nothing was applied.
+        assert [d["dp_id"] for d in evaluation["decisions"]] == [
+            "turn_intent",
+            "confirm_gate",
+            "block_reason",
+            "handoff_route",
+            "smalltalk_route",
+        ]
+        assert {(d["mode"], d["outcome"]) for d in evaluation["decisions"]} == {
+            ("shadow", "unavailable")
+        }
+        assert not any(e["applied"] for e in evaluation["effects"])
         assert len(evaluation["masked_outbound"]) == expected_calls
         assert len(evaluation["recording_keys"]) == expected_calls
         assert evaluation["tokens"] == expected_calls * 15
