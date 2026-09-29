@@ -420,3 +420,51 @@ def test_random_spans_never_unmask_anything_and_always_round_trip() -> None:
         # deterministic
         again = union_mask(masker, raw, masked, dict(mapping), before, spans)
         assert again == union
+
+
+_REAL_TURNS = [
+    "Hola, mi correo es ana.perez@bank.com y mi tarjeta 4532 1234 5678 9012",
+    "Me llamo Carlos Andrés Gómez, cédula 1020304050, nací el 4 de marzo de 1988",
+    "Meu CPF é 123.456.789-01, nasci em 4 de março de 1988, +55 11 91234-5678",
+    "My name is John Doe, born on March 4, 1988. Call me at +1 415 555 0132",
+    "El código de verificación es 654321 y soy Sra. Ñandú Pérez",
+    "cobro de $1,988.00 en mayo, terminada en 1234, hoy 12/09/2026",
+    "hola, María José Rodríguez aquí; 300 123 4567; ID: AB1234567",
+    "😀 Señor Óscar Núñez, DNI 12.345.678, mi email: o.nunez@x.org, código 8842",
+    "4 de marzo de 1988 y 14 de marzo de 1988 y 5 mar 1990",
+    "Nada sensible aquí, solo perdí mi tarjeta ayer",
+]
+
+
+def test_random_spans_over_the_real_regex_masking_never_unmask_anything() -> None:
+    """Same invariants, with the regexes' own output as the baseline."""
+    rng = random.Random(29092026)
+    masker = RegexMasker()
+    for _ in range(600):
+        raw = rng.choice(_REAL_TURNS)
+        earlier = {"[NAME_1]": "Luis", "[DOC_1]": "999888777"}
+        if rng.random() > 0.3:
+            earlier = {}
+        baseline = masker.mask(raw, state=dict(earlier))
+        mapping = {**earlier, **baseline.mapping}
+        spans = []
+        for _ in range(rng.randint(1, 4)):
+            start = rng.randint(0, len(raw) + 2)
+            spans.append(span(rng.choice(_TOKENS), start, start + rng.randint(0, 25)))
+
+        state = dict(mapping)
+        union = union_mask(
+            masker, raw, baseline.masked_text, state, set(earlier), spans
+        )
+
+        assert masker.unmask(union.masked_text, state) == raw
+        assert masker.verify_safe(union.masked_text)
+        before = _masked_positions(baseline.masked_text, mapping, len(raw))
+        after = _masked_positions(union.masked_text, state, len(raw))
+        assert before <= after
+        assert all(state[token] == mapping[token] for token in earlier)
+        for s in spans:
+            named = raw[s.start : s.end].strip()
+            if named:
+                first = s.start + raw[s.start : s.end].index(named[0])
+                assert set(range(first, first + len(named))) <= after
