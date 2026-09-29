@@ -324,6 +324,7 @@ to the same environment from overlapping.
 | `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API |
 | `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
 | `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
+| `ENCODER_BACKEND`, `ABSTENTION_THRESHOLD` | variable | optional | Default to the calibrated seed in `.env.example` (`tfidf_lr`, `0.37`). `ENCODER_BACKEND=gliner` also needs the `ENCODER_EXTRAS` build variable and about 4 GB of memory |
 | `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
 | `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |
 | `REDIS_EDGE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-edge` container |
