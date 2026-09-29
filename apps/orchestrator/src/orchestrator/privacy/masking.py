@@ -20,6 +20,10 @@ from orchestrator.privacy.written_dates import find_written_dates
 
 logger = logging.getLogger(__name__)
 
+# Placeholder format for rehydration, derived from contracts PiiType.
+_CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
+PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
+
 
 class MaskingError(Exception):
     """Raised when PII masking fails or residual unmasked PII is detected."""
@@ -271,9 +275,7 @@ class RegexMasker(Masker):
         re.IGNORECASE,
     )
 
-    # Placeholder format pattern for rehydration, derived from contracts PiiType
-    _CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
-    PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
+    PLACEHOLDER_RE = PLACEHOLDER_RE
 
     def _init_counters(
         self,
