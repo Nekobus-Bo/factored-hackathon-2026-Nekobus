@@ -201,21 +201,17 @@ Reports are written to `reports/` and versioned in the repository: you can compa
 
 ---
 
-## 9. Deployed environment (⚠️ pending)
+## 9. Deployment and the presentation environment
 
-For production architecture, host Redis ACL configuration, and scalability limits, see **[deployment.md](deployment.md)**.
+**There is no hosted instance for judges.** You run the system on your own machine with `make demo` (section 1); that is the supported way to evaluate it, and nothing here depends on a server of ours being up.
 
-> ⚠️ **Pending:** Local-first development; the private VM environment is not yet provisioned. The deployment instructions and targets below are pending VM availability.
-
-There is an instance running in a **private environment managed by the team**, available during the evaluation window, in case you prefer not to run anything locally. The link is in the submission email and in the repository README.
-
-**Availability:** TODO (dates and hours). Outside that window it may be off; if you need it at another time, write to us and we will bring it up.
+The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. What it is, how it is deployed and which demo features it switches on are described in **[deployment.md](deployment.md)**, section 7 (the platform is still to be decided, `⚠️ pending`). Production architecture, host Redis ACL configuration and scalability limits are in the same document.
 
 ```bash
-make deploy    # ⚠️ pending — requires target environment variables
+make deploy    # ⚠️ pending — the CD workflow deploys over SSH without calling it, see deployment.md
 ```
 
-Deployment uses the same images as the local environment: there is no special path that only works in production.
+That environment runs the same images as `make demo`: there is no special path that only works in production.
 
 ---
 
@@ -270,4 +266,4 @@ Test on a clean machine, with no Docker cache, before submitting:
 - [ ] Tested on x86_64 and on arm64 (`make build-multiarch` builds both; CI does it too. On Linux, install QEMU emulators first: `docker run --privileged --rm tonistiigi/binfmt --install all`)
 - [ ] Tested with no API key and with an invalid key
 - [ ] Every TODO in this document replaced with a real value
-- [ ] The private environment is up and the availability window is stated
+- [ ] Nothing in this document, the README or `00-problem.md` promises judges a hosted instance or an availability window
