@@ -420,3 +420,87 @@ async def test_provider_live_mode_with_record(tmp_path: Path) -> None:
         # Verify recording was written to disk
         expected_file = tmp_path / f"{res.recording_key}.json"
         assert expected_file.is_file()
+
+
+def _litellm_reply(content: str) -> MagicMock:
+    response = MagicMock()
+    choice = MagicMock()
+    choice.message.content = content
+    choice.message.tool_calls = []
+    response.choices = [choice]
+    response.usage.model_dump.return_value = {"total_tokens": 10}
+    return response
+
+
+RAW_DOC_TEXT = "Mi cédula es 1020304050"
+MASKED_DOC_MESSAGES = [{"role": "user", "content": "Mi cédula es [DOC_1]"}]
+
+
+def test_sync_replay_hit_exposes_the_masked_messages(tmp_path: Path) -> None:
+    replay_mgr = ReplayManager(replay_dir=tmp_path, mode="replay", record=True)
+    key = compute_recording_key("test-model", "1.0", MASKED_DOC_MESSAGES, "")
+    replay_mgr.save_recording(
+        key=key,
+        model_id="test-model",
+        prompt_version="1.0",
+        masked_messages=MASKED_DOC_MESSAGES,
+        tool_schema_hash="",
+        response=RecordedResponse(content="Listo."),
+    )
+    settings = Settings(
+        llm_mode="replay", llm_model="test-model", replay_dir=str(tmp_path)
+    )
+    provider = LLMProvider(settings=settings, replay_manager=replay_mgr)
+
+    res = provider.complete_sync(
+        messages=[{"role": "user", "content": RAW_DOC_TEXT}], prompt_version="1.0"
+    )
+
+    assert res.cached is True
+    assert res.masked_messages == MASKED_DOC_MESSAGES
+    assert "1020304050" not in json.dumps(res.masked_messages)
+
+
+def test_sync_live_call_exposes_the_masked_messages(tmp_path: Path) -> None:
+    settings = Settings(
+        llm_mode="live", llm_model="test-model", replay_dir=str(tmp_path)
+    )
+    provider = LLMProvider(settings=settings)
+
+    with (
+        patch("litellm.completion") as completion,
+        patch("litellm.completion_cost", return_value=0.0),
+    ):
+        completion.return_value = _litellm_reply("Listo.")
+        res = provider.complete_sync(
+            messages=[{"role": "user", "content": RAW_DOC_TEXT}], prompt_version="1.0"
+        )
+
+    assert res.cached is False
+    assert res.masked_messages == MASKED_DOC_MESSAGES
+    assert completion.call_args.kwargs["messages"] == res.masked_messages
+
+
+@pytest.mark.asyncio
+async def test_sync_and_async_paths_report_the_same_masked_messages(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        llm_mode="live", llm_model="test-model", replay_dir=str(tmp_path)
+    )
+    provider = LLMProvider(settings=settings)
+    messages = [{"role": "user", "content": RAW_DOC_TEXT}]
+
+    with (
+        patch("litellm.completion") as completion,
+        patch("litellm.acompletion", new_callable=AsyncMock) as acompletion,
+        patch("litellm.completion_cost", return_value=0.0),
+    ):
+        completion.return_value = _litellm_reply("Listo.")
+        acompletion.return_value = _litellm_reply("Listo.")
+        sync_res = provider.complete_sync(messages=messages, prompt_version="1.0")
+        async_res = await provider.complete(messages=messages, prompt_version="1.0")
+
+    assert sync_res.masked_messages == async_res.masked_messages
+    assert sync_res.masked_messages
+    assert sync_res.recording_key == async_res.recording_key
