@@ -1,0 +1,80 @@
+<!-- @dsCard group="Status & feedback" height=580 subtitle="Calibrated confidence against its threshold" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SyncGauge — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 24px; max-width: 560px; padding: 16px; }
+  .panel-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 20px; }
+  .gauges { display: grid; gap: 28px; }
+  .compact { display: grid; gap: 14px; }
+  .compact .pb-gauge { grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) 3rem; align-items: center; gap: 4px 12px; }
+  .compact .pb-gauge__head { display: contents; }
+  .compact .pb-gauge__name { order: 1; font-size: 12px; }
+  .compact .pb-gauge__track { order: 2; }
+  .compact .pb-gauge__val { order: 3; text-align: right; font-size: 15px; line-height: 20px; }
+  @media (max-width: 480px) {
+    .compact .pb-gauge { grid-template-columns: minmax(0, 1fr) auto; }
+    .compact .pb-gauge__val { order: 2; }
+    .compact .pb-gauge__track { order: 3; grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <section class="pb-card pb-ticks" aria-labelledby="g-title">
+    <div class="panel-title">
+      <h2 class="pb-t-label" id="g-title" style="margin:0">Sync ratio · confianza calibrada</h2>
+      <span class="pb-t-small">Modelo local · turno 3</span>
+    </div>
+    <div class="gauges">
+      <div class="pb-gauge" data-state="decided" style="--n: 20; --on: 16; --tau: 0.37">
+        <div class="pb-gauge__head"><span class="pb-gauge__name">turn_intent · report_lost_card</span><span class="pb-gauge__val">0.82 <small>/ <span lang="el">τ</span> 0.37</small></span></div>
+        <div class="pb-gauge__track" role="meter" aria-label="turn_intent report_lost_card" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.82" aria-valuetext="Confianza 0.82, umbral 0.37: decidido">
+          <div class="pb-gauge__fill"></div>
+          <span class="pb-gauge__tau"><span class="pb-gauge__taulab"><span lang="el">τ</span> 0.37</span></span>
+        </div>
+        <div class="pb-gauge__foot"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>DECIDED</span><span class="pb-t-small">0.45 sobre el umbral: propuesta del modelo; banking-core (FSM y política) evalúa y autoriza.</span></div>
+      </div>
+
+      <div class="pb-gauge" data-state="abstained" style="--n: 20; --on: 6; --tau: 0.37">
+        <div class="pb-gauge__head"><span class="pb-gauge__name">turn_intent · request_dispute</span><span class="pb-gauge__val">0.31 <small>/ <span lang="el">τ</span> 0.37</small></span></div>
+        <div class="pb-gauge__track" role="meter" aria-label="turn_intent request_dispute" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.31" aria-valuetext="Confianza 0.31, umbral 0.37: se abstiene">
+          <div class="pb-gauge__fill"></div>
+          <span class="pb-gauge__tau"><span class="pb-gauge__taulab"><span lang="el">τ</span> 0.37</span></span>
+        </div>
+        <div class="pb-gauge__foot"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--pause" aria-hidden="true"></i>ABSTAINED</span><span class="pb-t-small">0.06 bajo el umbral: el asistente pregunta en vez de decidir.</span></div>
+      </div>
+
+      <div class="pb-gauge" data-state="decided" style="--n: 20; --on: 18; --tau: 0.8">
+        <div class="pb-gauge__head"><span class="pb-gauge__name">confirm_gate · confirm</span><span class="pb-gauge__val">0.91 <small>/ <span lang="el">τ</span> 0.80</small></span></div>
+        <div class="pb-gauge__track" role="meter" aria-label="confirm_gate confirm" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.91" aria-valuetext="Confianza 0.91, umbral 0.80: decidido">
+          <div class="pb-gauge__fill"></div>
+          <span class="pb-gauge__tau"><span class="pb-gauge__taulab"><span lang="el">τ</span> 0.80</span></span>
+        </div>
+        <div class="pb-gauge__foot"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>DECIDED</span><span class="pb-t-small">Confirmación decidida: la escritura puede enviarse a banking-core, que la autoriza.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="c-title">
+    <h2 class="pb-t-label" id="c-title" style="margin:0 0 12px">Compacto · listas y colas</h2>
+    <div class="compact">
+      <div class="pb-gauge pb-gauge--sm" data-state="decided" style="--n: 20; --on: 19; --tau: 0.85">
+        <div class="pb-gauge__head"><span class="pb-gauge__name">block_reason · report_lost_card</span><span class="pb-gauge__val">0.97</span></div>
+        <div class="pb-gauge__track" role="meter" aria-label="block_reason report_lost_card" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.97" aria-valuetext="0.97, umbral 0.85: decidido"><div class="pb-gauge__fill"></div><span class="pb-gauge__tau"></span></div>
+      </div>
+      <div class="pb-gauge pb-gauge--sm" data-state="abstained" style="--n: 20; --on: 11; --tau: 0.85">
+        <div class="pb-gauge__head"><span class="pb-gauge__name">handoff_route · request_dispute</span><span class="pb-gauge__val">0.55</span></div>
+        <div class="pb-gauge__track" role="meter" aria-label="handoff_route request_dispute" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.55" aria-valuetext="0.55, umbral 0.85: se abstiene"><div class="pb-gauge__fill"></div><span class="pb-gauge__tau"></span></div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

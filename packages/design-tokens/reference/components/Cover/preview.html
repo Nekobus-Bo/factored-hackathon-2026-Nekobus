@@ -1,0 +1,96 @@
+<!-- @dsCard height=320 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pattern Blue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--surface-000); color: var(--ink); font-family: var(--font-sans); overflow: hidden; }
+  .cover { position: relative; width: 960px; height: 320px; overflow: hidden; }
+  /* the composition: a 480-wide box on the right half of the 960 layout, clear of the name */
+  .art { position: absolute; top: 0; left: 480px; width: 480px; height: 320px; overflow: hidden; }
+  .art svg { display: block; width: 480px; height: 320px; }
+  .v { fill: var(--violet); }
+  .b { fill: var(--pattern); }
+  .f { fill: var(--field); }
+  .s { fill: var(--sync); }
+  .h { fill: var(--hazard); }
+  .hx { fill: none; stroke: var(--line); stroke-width: var(--stroke-hairline, 1px); }
+  .cut { fill: none; stroke: var(--surface-000); stroke-width: var(--stroke-hairline, 1px); }
+  /* name and tagline in flow, pinned by the block's bottom edge */
+  .words { position: absolute; left: var(--space-6, 24px); bottom: var(--space-6, 24px); max-width: 440px; }
+  .name { margin: 0; font-family: var(--font-display); font-weight: 900; font-stretch: 62.5%; font-size: 120px; line-height: .95; letter-spacing: -.01em; color: var(--ink); }
+  .tag { margin: var(--space-2, 8px) 0 0 4px; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 320" width="480" height="320" role="img" aria-label="Pattern Blue: violet, blue and deep-field slabs over a hexagonal grid, a green cell and an orange tag">
+<!--
+  blocks      violet 192×216 bled off the top (largest, the primary action) · pattern blue 144×192 · field 112×256 bled off the right (deep, always dark) · sync-green hex cell 48×56 hanging under the violet slab · hazard tag 72×24 once (it only ever means caution) — ≈32% of 960×320
+  arrangement staggered stack: three slabs at different heights sharing one baseline at y=296 (space-6 above the edge) except the violet one, which hangs from the top edge; gutters space-4
+  pattern     hexagon field, from "literal motif": 33 hexagons in a 48×56 cell (Pattern Blue is the Angel detection code, and the absolute-field cell is a hexagon); hairline in line on the ground, cut into the slabs in surface-000
+  scales      slab sides in space-2 multiples; chamfer cut-lg (12) on one corner of each slab; tag cut-sm; lattice pitch 48 / 42 (space-6 × 2 / space-6 × 1.75)
+-->
+<defs>
+<g id="lattice">
+<polygon points="24,166 48,180 48,208 24,222 0,208 0,180"/>
+<polygon points="72,166 96,180 96,208 72,222 48,208 48,180"/>
+<polygon points="120,166 144,180 144,208 120,222 96,208 96,180"/>
+<polygon points="168,166 192,180 192,208 168,222 144,208 144,180"/>
+<polygon points="216,166 240,180 240,208 216,222 192,208 192,180"/>
+<polygon points="264,166 288,180 288,208 264,222 240,208 240,180"/>
+<polygon points="312,166 336,180 336,208 312,222 288,208 288,180"/>
+<polygon points="360,166 384,180 384,208 360,222 336,208 336,180"/>
+<polygon points="408,166 432,180 432,208 408,222 384,208 384,180"/>
+<polygon points="456,166 480,180 480,208 456,222 432,208 432,180"/>
+<polygon points="504,166 528,180 528,208 504,222 480,208 480,180"/>
+<polygon points="0,208 24,222 24,250 0,264 -24,250 -24,222"/>
+<polygon points="48,208 72,222 72,250 48,264 24,250 24,222"/>
+<polygon points="144,208 168,222 168,250 144,264 120,250 120,222"/>
+<polygon points="192,208 216,222 216,250 192,264 168,250 168,222"/>
+<polygon points="240,208 264,222 264,250 240,264 216,250 216,222"/>
+<polygon points="288,208 312,222 312,250 288,264 264,250 264,222"/>
+<polygon points="336,208 360,222 360,250 336,264 312,250 312,222"/>
+<polygon points="384,208 408,222 408,250 384,264 360,250 360,222"/>
+<polygon points="432,208 456,222 456,250 432,264 408,250 408,222"/>
+<polygon points="480,208 504,222 504,250 480,264 456,250 456,222"/>
+<polygon points="24,250 48,264 48,292 24,306 0,292 0,264"/>
+<polygon points="72,250 96,264 96,292 72,306 48,292 48,264"/>
+<polygon points="120,250 144,264 144,292 120,306 96,292 96,264"/>
+<polygon points="168,250 192,264 192,292 168,306 144,292 144,264"/>
+<polygon points="216,250 240,264 240,292 216,306 192,292 192,264"/>
+<polygon points="264,250 288,264 288,292 264,306 240,292 240,264"/>
+<polygon points="312,250 336,264 336,292 312,306 288,292 288,264"/>
+<polygon points="360,250 384,264 384,292 360,306 336,292 336,264"/>
+<polygon points="408,250 432,264 432,292 408,306 384,292 384,264"/>
+<polygon points="456,250 480,264 480,292 456,306 432,292 432,264"/>
+<polygon points="504,250 528,264 528,292 504,306 480,292 480,264"/>
+</g>
+<clipPath id="slabs">
+<polygon points="16,-8 208,-8 208,196 196,208 16,208"/>
+<polygon points="236,104 368,104 368,296 224,296 224,116"/>
+<polygon points="396,40 496,40 496,296 384,296 384,52"/>
+</clipPath>
+</defs>
+<g class="hx"><use href="#lattice"/></g>
+<polygon class="v" points="16,-8 208,-8 208,196 196,208 16,208"/>
+<polygon class="b" points="236,104 368,104 368,296 224,296 224,116"/>
+<polygon class="f" points="396,40 496,40 496,296 384,296 384,52"/>
+<g class="cut" clip-path="url(#slabs)"><use href="#lattice"/></g>
+<polygon class="s" points="96,208 120,222 120,250 96,264 72,250 72,222"/>
+<polygon class="h" points="142,232 208,232 208,256 136,256 136,238"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">Pattern<br>Blue</h1>
+<p class="tag">Nothing is done until it is verified.</p>
+</div>
+</div>
+</body>
+</html>

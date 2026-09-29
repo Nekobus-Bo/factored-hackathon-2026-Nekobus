@@ -1,0 +1,63 @@
+<!-- @dsCard group="Customer app" height=660 subtitle="Launcher, messages, typing indicator" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatBubble — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; padding: 16px; }
+  .side { display: grid; gap: 24px; flex: 1 1 240px; max-width: 360px; }
+  .group { display: grid; gap: 10px; }
+  .tile { display: flex; align-items: flex-end; justify-content: flex-end; height: 112px; padding: 16px 24px; background: var(--surface-200); }
+  .stack { display: grid; gap: 12px; }
+  .lang { display: flex; align-items: center; gap: 8px; }
+  .lang .pb-msg { max-width: none; flex: 1; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <section class="pb-chat" aria-label="Chat con el asistente">
+    <header class="pb-chat__head">
+      <span class="pb-chat__title"><i class="pb-ico pb-ico--hex" aria-hidden="true"></i> Asistente</span>
+      <span class="pb-chip" data-state="verified"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado</span>
+    </header>
+    <div class="pb-chat__log" role="log" aria-live="polite" aria-label="Mensajes">
+      <div class="pb-msg pb-msg--customer"><span class="pb-msg__meta">Tú · 10:39</span>Perdí mi tarjeta, necesito bloquearla ya.</div>
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:39</span>Lo siento. Puedo bloquearla ahora, pero primero debo verificar tu identidad. Te envié un código de 6 dígitos a d***@example.com.</div>
+      <div class="pb-msg pb-msg--customer"><span class="pb-msg__meta">Tú · 10:42</span>Código: ••••••</div>
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:42</span>Listo, identidad verificada. Bloqueé la tarjeta •••• 4821.
+        <span class="pb-msg__receipt"><i class="pb-ico pb-ico--db" aria-hidden="true"></i>Comprobante AUD-20481</span></div>
+      <div class="pb-typing" role="status"><span class="pb-sr">El asistente está escribiendo</span><i></i><i></i><i></i></div>
+    </div>
+    <form class="pb-chat__composer" onsubmit="return false">
+      <label class="pb-field"><span class="pb-sr">Mensaje</span><input type="text" placeholder="Escribe tu mensaje" autocomplete="off"></label>
+      <button class="pb-btn pb-btn--primary pb-btn--icon" type="submit" aria-label="Enviar mensaje"><i class="pb-ico pb-ico--send" aria-hidden="true"></i></button>
+    </form>
+  </section>
+
+  <div class="side">
+    <div class="group">
+      <span class="pb-t-label">Lanzador</span>
+      <div class="tile">
+        <button class="pb-launcher" type="button" aria-label="Abrir chat de ayuda. Asistente en línea"><i class="pb-ico pb-ico--chat" aria-hidden="true"></i><span class="pb-launcher__live" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="pb-t-label">Português · English</span>
+      <div class="stack">
+        <div class="lang"><span class="pb-tag">PT</span><div class="pb-msg pb-msg--assistant" lang="pt"><span class="pb-msg__meta">Assistente · 10:42</span>Bloqueei o cartão •••• 4821. Comprovante AUD-20481.</div></div>
+        <div class="lang"><span class="pb-tag">EN</span><div class="pb-msg pb-msg--assistant" lang="en"><span class="pb-msg__meta">Assistant · 10:42</span>Card •••• 4821 is now blocked. Receipt AUD-20481.</div></div>
+      </div>
+    </div>
+    <div class="group">
+      <span class="pb-t-label">Escribiendo</span>
+      <div class="pb-typing" role="status"><span class="pb-sr">El asistente está escribiendo</span><i></i><i></i><i></i></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!-- @dsCard group="Back office" height=1760 subtitle="Thresholds, handoff mode and the tool x state matrix" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PolicyControl — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { max-width: 760px; padding: 16px; }
+  .mode-help { margin: var(--space-3) 0 0; }
+  .legend { margin: 0 0 var(--space-3); }
+  .refusal { margin-top: var(--space-2); }
+  .refusal.pb-alert { grid-template-columns: 24px minmax(0, 1fr); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <section class="pb-card pb-policy" aria-labelledby="p-title">
+    <div class="pb-policy__sec">
+      <h2 class="pb-t-h2" id="p-title">Política de handoff</h2>
+      <p style="margin:4px 0 0">Umbrales y modo son configuración libre. Para las herramientas el código fija un piso: la configuración solo puede restringir.</p>
+    </div>
+
+    <div class="pb-policy__sec">
+      <h3>Umbral de monto por moneda</h3>
+      <p>Se muestran en unidades mayores; la API las guarda en unidades menores (<span class="pb-t-mono">thresholds_minor</span>). Se acepta cualquier valor mayor o igual a cero.</p>
+
+      <div class="pb-thr">
+        <span class="pb-thr__cur">USD</span>
+        <label class="pb-field pb-field--mono"><span class="pb-sr">Umbral en USD</span><input type="text" inputmode="decimal" value="100.00" data-usd></label>
+        <div class="pb-thr__side">
+          <div class="pb-thr__seed"><span>Semilla <b>USD 500.00</b></span><span class="pb-chip" data-tone="info"><i class="pb-ico pb-ico--info" aria-hidden="true"></i>Editado</span></div>
+          <div class="pb-thr__demo">
+            <span>Cargo de demo <b>USD 139.99</b> vs umbral <b data-thr-echo>USD 100.00</b> →
+              <span class="pb-chip" data-tone="warning" data-demo-chip><i class="pb-ico pb-ico--warning" aria-hidden="true"></i>POR ENCIMA</span></span>
+            <div class="pb-gauge pb-gauge--sm" data-state="caution" data-demo-gauge style="--n: 20; --on: 14; --tau: 0.5" role="meter" aria-label="Cargo de demo frente al umbral en USD" aria-valuemin="0" aria-valuemax="200" aria-valuenow="139.99" aria-valuetext="Cargo de demo USD 139.99, umbral USD 100.00: por encima">
+              <div class="pb-gauge__track"><div class="pb-gauge__fill"></div><span class="pb-gauge__tau"></span></div>
+            </div>
+            <span>Escala 0 – 200 USD</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pb-thr">
+        <span class="pb-thr__cur">COP</span>
+        <label class="pb-field pb-field--mono"><span class="pb-sr">Umbral en COP</span><input type="text" inputmode="decimal" value="2,000,000"></label>
+        <div class="pb-thr__side">
+          <div class="pb-thr__seed"><span>Semilla <b>COP 2,000,000</b></span><span>· sin cambios</span></div>
+        </div>
+      </div>
+
+      <div class="pb-thr">
+        <span class="pb-thr__cur">BRL</span>
+        <label class="pb-field pb-field--mono"><span class="pb-sr">Umbral en BRL</span><input type="text" inputmode="decimal" value="2,500.00"></label>
+        <div class="pb-thr__side">
+          <div class="pb-thr__seed"><span>Semilla <b>BRL 2,500.00</b></span><span>· sin cambios</span></div>
+        </div>
+      </div>
+
+      <div class="pb-thr">
+        <span class="pb-thr__cur">EUR</span>
+        <label class="pb-field pb-field--mono"><span class="pb-sr">Umbral en EUR</span><input type="text" inputmode="decimal" value="500.00"></label>
+        <div class="pb-thr__side">
+          <div class="pb-thr__seed"><span>Semilla <b>EUR 500.00</b></span><span>· sin cambios</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pb-policy__sec">
+      <h3>Modo de handoff</h3>
+      <p>Qué pasa cuando un monto supera el umbral. Se guarda como <span class="pb-t-mono">amount_mode</span>.</p>
+      <fieldset class="pb-modes" role="radiogroup" aria-describedby="mode-help" style="margin-bottom:0">
+        <legend class="pb-sr">Modo de handoff</legend>
+        <button class="pb-btn pb-btn--sm" type="button" role="radio" aria-checked="false" data-mode="flag">Handoff recomendado</button>
+        <button class="pb-btn pb-btn--sm" type="button" role="radio" aria-checked="true" data-mode="block">Handoff obligatorio</button>
+      </fieldset>
+      <p class="pb-t-small mode-help" id="mode-help">block: sobre el umbral se exige un handoff prioritario. No bloquea la tarjeta.</p>
+    </div>
+
+    <div class="pb-policy__sec">
+      <h3>Herramientas por estado</h3>
+      <p>Cada herramienta solo puede usarse en los estados que el código permite (su piso). La configuración puede apagarla o volver a encenderla dentro de ese piso, nunca ampliarla.</p>
+      <p class="pb-t-small legend">Relleno: habilitada en ese estado. Contorno: permitida por el código, apagada. Gris con ×: fuera del piso del código.</p>
+
+      <div class="pb-tool" data-floor="VERIFIED">
+        <div class="pb-tool__head">
+          <div>
+            <span class="pb-tool__name" id="t1">account.get_summary</span>
+            <p class="pb-tool__meta">Piso del código: <b>VERIFIED</b> · Activa en: <b data-enabled>ninguno</b></p>
+          </div>
+          <div class="pb-tool__ctl"><span data-word>Apagada</span><button class="pb-switch" type="button" role="switch" aria-checked="false" aria-labelledby="t1"><span class="pb-switch__thumb"></span></button></div>
+        </div>
+        <p class="pb-tool__note">Resumen de cuenta: el segundo flujo (consultas). Arranca deshabilitada y se enciende desde este panel.</p>
+        <div class="pb-cells" role="group" aria-label="Estados de account.get_summary">
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="ANONYMOUS: fuera del piso del código" data-fsm="ANONYMOUS"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>ANONYMOUS</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="IDENTIFIED: fuera del piso del código" data-fsm="IDENTIFIED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>IDENTIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="OTP_PENDING: fuera del piso del código" data-fsm="OTP_PENDING"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>OTP_PENDING</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" data-fsm="VERIFIED"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>VERIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="LOCKED: fuera del piso del código" data-fsm="LOCKED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>LOCKED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="HANDED_OFF: fuera del piso del código" data-fsm="HANDED_OFF"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>HANDED_OFF</button>
+        </div>
+      </div>
+
+      <div class="pb-tool" data-floor="VERIFIED">
+        <div class="pb-tool__head">
+          <div>
+            <span class="pb-tool__name" id="t2">card.block</span>
+            <p class="pb-tool__meta">Piso del código: <b>VERIFIED</b> · Activa en: <b data-enabled>VERIFIED</b></p>
+          </div>
+          <div class="pb-tool__ctl"><span data-word>Activa</span><button class="pb-switch" type="button" role="switch" aria-checked="true" aria-labelledby="t2"><span class="pb-switch__thumb"></span></button></div>
+        </div>
+        <p class="pb-tool__note">Bloqueo de tarjeta con comprobante. El código solo lo permite con identidad verificada.</p>
+        <div class="pb-cells" role="group" aria-label="Estados de card.block">
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="ANONYMOUS: fuera del piso del código" data-fsm="ANONYMOUS"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>ANONYMOUS</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="IDENTIFIED: fuera del piso del código" data-fsm="IDENTIFIED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>IDENTIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="OTP_PENDING: fuera del piso del código" data-fsm="OTP_PENDING"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>OTP_PENDING</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="VERIFIED"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>VERIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="LOCKED: fuera del piso del código" data-fsm="LOCKED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>LOCKED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="HANDED_OFF: fuera del piso del código" data-fsm="HANDED_OFF"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>HANDED_OFF</button>
+        </div>
+      </div>
+
+      <div class="pb-tool" data-floor="ANONYMOUS, IDENTIFIED">
+        <div class="pb-tool__head">
+          <div>
+            <span class="pb-tool__name" id="t3">customer.match</span>
+            <p class="pb-tool__meta">Piso del código: <b>ANONYMOUS, IDENTIFIED</b> · Activa en: <b data-enabled>ANONYMOUS, IDENTIFIED</b></p>
+          </div>
+          <div class="pb-tool__ctl"><span data-word>Activa</span><button class="pb-switch" type="button" role="switch" aria-checked="true" aria-labelledby="t3"><span class="pb-switch__thumb"></span></button></div>
+        </div>
+        <p class="pb-tool__note">Identificación del cliente por sus datos.</p>
+        <div class="pb-cells" role="group" aria-label="Estados de customer.match">
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="ANONYMOUS"><i class="pb-ico pb-ico--user-dashed" aria-hidden="true"></i>ANONYMOUS</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="IDENTIFIED"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>IDENTIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="OTP_PENDING: fuera del piso del código" data-fsm="OTP_PENDING"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>OTP_PENDING</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="VERIFIED: fuera del piso del código" data-fsm="VERIFIED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>VERIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="LOCKED: fuera del piso del código" data-fsm="LOCKED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>LOCKED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="HANDED_OFF: fuera del piso del código" data-fsm="HANDED_OFF"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>HANDED_OFF</button>
+        </div>
+      </div>
+
+      <div class="pb-tool" data-floor="IDENTIFIED, OTP_PENDING">
+        <div class="pb-tool__head">
+          <div>
+            <span class="pb-tool__name" id="t4">otp.send</span>
+            <p class="pb-tool__meta">Piso del código: <b>IDENTIFIED, OTP_PENDING</b> · Activa en: <b data-enabled>IDENTIFIED, OTP_PENDING</b></p>
+          </div>
+          <div class="pb-tool__ctl"><span data-word>Activa</span><button class="pb-switch" type="button" role="switch" aria-checked="true" aria-labelledby="t4"><span class="pb-switch__thumb"></span></button></div>
+        </div>
+        <p class="pb-tool__note">Envío del código de verificación (entrega simulada en la demo).</p>
+        <div class="pb-cells" role="group" aria-label="Estados de otp.send">
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="ANONYMOUS: fuera del piso del código" data-fsm="ANONYMOUS"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>ANONYMOUS</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="IDENTIFIED"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>IDENTIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="OTP_PENDING"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>OTP_PENDING</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="VERIFIED: fuera del piso del código" data-fsm="VERIFIED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>VERIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="LOCKED: fuera del piso del código" data-fsm="LOCKED"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>LOCKED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="false" aria-disabled="true" aria-label="HANDED_OFF: fuera del piso del código" data-fsm="HANDED_OFF"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>HANDED_OFF</button>
+        </div>
+      </div>
+
+      <div class="pb-tool" data-floor="todos los estados">
+        <div class="pb-tool__head">
+          <div>
+            <span class="pb-tool__name" id="t5">handoff.create</span>
+            <p class="pb-tool__meta">Piso del código: <b>todos los estados</b> · Activa en: <b data-enabled>todos</b></p>
+          </div>
+          <div class="pb-tool__ctl"><span data-word>Activa</span><button class="pb-switch" type="button" role="switch" aria-checked="true" aria-labelledby="t5"><span class="pb-switch__thumb"></span></button></div>
+        </div>
+        <p class="pb-tool__note">Traspaso a un agente humano. Disponible en todos los estados.</p>
+        <div class="pb-cells" role="group" aria-label="Estados de handoff.create">
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="ANONYMOUS"><i class="pb-ico pb-ico--user-dashed" aria-hidden="true"></i>ANONYMOUS</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="IDENTIFIED"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>IDENTIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="OTP_PENDING"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>OTP_PENDING</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="VERIFIED"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>VERIFIED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="LOCKED"><i class="pb-ico pb-ico--lock" aria-hidden="true"></i>LOCKED</button>
+          <button class="pb-btn pb-btn--sm pb-btn--secondary" type="button" role="switch" aria-checked="true" data-fsm="HANDED_OFF"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>HANDED_OFF</button>
+        </div>
+      </div>
+
+      <div class="pb-alert pb-alert--stripe refusal" data-tone="caution" role="status" id="refusal">
+        <span class="pb-hazard" aria-hidden="true"></span>
+        <i class="pb-ico pb-ico--warning" aria-hidden="true"></i>
+        <div>
+          <span class="pb-alert__eyebrow">Ampliación rechazada</span>
+          <p class="pb-alert__text" id="refusal-text">card.block no puede habilitarse en ANONYMOUS.<small>El código lo permite solo en VERIFIED. La API responde 422: la configuración solo puede restringir.</small></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="pb-policy__sec pb-policy__foot">
+      <span class="pb-t-small">Cada cambio se audita.</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="pb-btn pb-btn--ghost pb-btn--sm" type="button">Descartar</button>
+        <button class="pb-btn pb-btn--primary pb-btn--sm" type="button">Guardar cambios</button>
+      </span>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    var help = {
+      flag: 'flag: sobre el umbral se recomienda un handoff.',
+      block: 'block: sobre el umbral se exige un handoff prioritario. No bloquea la tarjeta.'
+    };
+    var radios = document.querySelectorAll('[role="radio"]');
+    radios.forEach(function (r) {
+      r.addEventListener('click', function () {
+        radios.forEach(function (o) { o.setAttribute('aria-checked', o === r ? 'true' : 'false'); });
+        document.getElementById('mode-help').textContent = help[r.getAttribute('data-mode')];
+      });
+    });
+
+    // Tool x state matrix
+    function refresh(tool) {
+      var on = [];
+      tool.querySelectorAll('.pb-cells [role="switch"]').forEach(function (c) {
+        if (c.getAttribute('aria-checked') === 'true') on.push(c.getAttribute('data-fsm'));
+      });
+      tool.querySelector('[data-enabled]').textContent = on.length === 0 ? 'ninguno' : (on.length === 6 ? 'todos' : on.join(', '));
+      tool.querySelector('.pb-switch').setAttribute('aria-checked', on.length ? 'true' : 'false');
+      tool.querySelector('[data-word]').textContent = on.length ? 'Activa' : 'Apagada';
+    }
+    function refuse(tool, fsm) {
+      var name = tool.querySelector('.pb-tool__name').textContent;
+      var box = document.getElementById('refusal-text');
+      box.textContent = '';
+      box.appendChild(document.createTextNode(name + ' no puede habilitarse en ' + fsm + '.'));
+      var small = document.createElement('small');
+      small.textContent = 'El código lo permite solo en ' + tool.getAttribute('data-floor') + '. La API responde 422: la configuración solo puede restringir.';
+      box.appendChild(small);
+    }
+    document.querySelectorAll('.pb-tool').forEach(function (tool) {
+      tool.querySelectorAll('.pb-cells [role="switch"]').forEach(function (c) {
+        c.addEventListener('click', function () {
+          if (c.getAttribute('aria-disabled') === 'true') { refuse(tool, c.getAttribute('data-fsm')); return; }
+          c.setAttribute('aria-checked', c.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+          refresh(tool);
+        });
+      });
+      tool.querySelector('.pb-switch').addEventListener('click', function () {
+        var turnOn = tool.querySelector('.pb-switch').getAttribute('aria-checked') !== 'true';
+        tool.querySelectorAll('.pb-cells [role="switch"]:not([aria-disabled="true"])').forEach(function (c) {
+          c.setAttribute('aria-checked', turnOn ? 'true' : 'false');
+        });
+        refresh(tool);
+      });
+    });
+
+    // Demo charge vs the USD threshold
+    var usd = document.querySelector('input[data-usd]');
+    var gauge = document.querySelector('[data-demo-gauge]');
+    var chip = document.querySelector('[data-demo-chip]');
+    var echo = document.querySelector('[data-thr-echo]');
+    usd.addEventListener('input', function () {
+      var v = parseFloat(usd.value.replace(/,/g, ''));
+      if (isNaN(v) || v < 0) return;
+      var above = 139.99 > v;
+      gauge.style.setProperty('--tau', Math.min(1, v / 200));
+      gauge.setAttribute('data-state', above ? 'caution' : 'decided');
+      gauge.setAttribute('aria-valuetext', 'Cargo de demo USD 139.99, umbral USD ' + v.toFixed(2) + ': ' + (above ? 'por encima' : 'por debajo'));
+      echo.textContent = 'USD ' + v.toFixed(2);
+      chip.setAttribute('data-tone', above ? 'warning' : 'success');
+      chip.lastChild.textContent = above ? 'POR ENCIMA' : 'POR DEBAJO';
+      chip.firstChild.className = 'pb-ico pb-ico--' + (above ? 'warning' : 'check');
+    });
+  })();
+</script>
+</body>
+</html>
