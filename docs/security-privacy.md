@@ -29,6 +29,8 @@ never exposes a banking session ID or the placeholder map.
 
 **Least privilege.** Only `banking-core` holds database credentials. The back office acts under the agent's identity, and every takeover is recorded with user and timestamp.
 
+**Human takeover.** An agent sees only the masked transcript: never the LLM history, the placeholder map or the raw text the customer typed. What an agent writes is masked with the same masker and placeholder map as the rest of the transcript before it is stored (a masking failure stores `[REDACTED]`), and so are the customer's messages after the takeover, so the stored transcript never holds raw PII. From the moment a conversation is taken over the LLM never sees it again: the turn engine refuses to run for it, so no history, message or tool result of that conversation goes to the provider, the encoder or a tool, and there is no hand-back to the assistant. The agent API (`/v1/agent`) is off unless `AGENT_API_ENABLED=true` and needs its own bearer token ([deployment](deployment.md)); what is left open is in [limitations](limitations.md).
+
 ## 3. Untrusted content
 
 The customer's message and the model's output are data, never instructions. The concrete consequences:
