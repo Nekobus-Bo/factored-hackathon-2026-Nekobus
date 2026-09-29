@@ -4,9 +4,11 @@ Coordinates the end-to-end tool execution pipeline:
 0. Per-session lock: the whole dispatch (read session, execute, save) is serialized
 1. Input validation & IDOR check (validate_no_holder_tampering)
 2. Records verification_state_before for audit trail
-3. Authorizer evaluation (FSM + Matrix + Policy + Rate limits)
+3. Authorizer evaluation (FSM + Matrix + Policy + per-session rate limits)
 4. Idempotency store deduplication for state-mutating tools (scope strictly required)
 5. Tool execution & FSM state mutation, computed on a copy of the session
+   (customer.match, otp.send and otp.verify also apply the cross-session attempt
+   limits per customer and per document: control/attempt_limits.py)
 6. Tamper-evident audit logging with PII safety
 7. DB commit, and only then the new session state is saved to Redis
 8. Return contracts.envelope.ToolResult envelope

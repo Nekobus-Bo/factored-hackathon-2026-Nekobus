@@ -24,8 +24,9 @@ internal customer UUID or a blind index, never PII:
     <prefix>customer:<uuid>:otp_lock        marker,  TTL = lock duration
     <prefix>document:<blind index>:match_failures    counter, TTL = window
 
-Only GET, SET, INCR, WATCH, MULTI, EXEC and UNWATCH are used, all in the
-`core-svc` ACL (docs/deployment.md), plus the prefix pattern `~limit:*`.
+Only GET, SET, INCR, DEL, WATCH, MULTI, EXEC and UNWATCH are used (DEL only by
+the demo fixture reset), all in the `core-svc` ACL (docs/deployment.md), plus the
+prefix pattern `~limit:*`. redis-py sends INCR as INCRBY: the ACL needs both.
 
 Every match is counted BEFORE it is evaluated (an atomic reservation, like the
 OTP evaluation counter) so parallel requests cannot all pass a check-then-act
