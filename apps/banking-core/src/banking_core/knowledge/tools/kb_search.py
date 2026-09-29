@@ -3,10 +3,15 @@
 Permitted in every verification state; the KB is public and carries no PII.
 The index is built once per process (get_kb_searcher) from the configured JSONL.
 
-Backends: vector is the default (ADR-0006). It needs the `vector` extra and the
-embedding model in the local Hugging Face cache; if either is missing the
-searcher fails loudly instead of falling back to BM25. BM25 or hybrid run only
-when configured explicitly.
+Backends: vector is the default (ADR-0006). Its embeddings come from the model
+server (ADR-0012, Appendix J): the KB index is built once, in this process's
+memory, from vectors `POST /v1/embed` returned, and each query is embedded there.
+The model and revision the server reports are checked against the configured pin
+on every response, and a server that is down, unreachable or serving another model
+makes kb.search unavailable: never a fallback to BM25 or to a local model.
+EMBEDDING_BACKEND=local keeps the in-process model (the `vector` extra and the model
+in the local Hugging Face cache) for tests and local development only. BM25 or
+hybrid run only when configured explicitly.
 
 Language: the customer's language first (SAME); cross-language (CROSS) only
 when SAME returns nothing at or above the configured score floor.
@@ -26,8 +31,10 @@ from contracts.tools.kb_search import (
 )
 from retrieval import (
     BM25Adapter,
+    EmbeddingServiceError,
     HybridAdapter,
     KnowledgeBase,
+    RemoteEmbeddingAdapter,
     RetrievalAdapter,
     Retriever,
     SearchMode,
@@ -40,7 +47,7 @@ _TITLE_MAX = 200
 
 
 class KbSearchUnavailableError(RuntimeError):
-    """The configured backend cannot run (missing extra, model or KB file)."""
+    """The configured backend cannot run (model server, extra, model or KB file)."""
 
 
 def resolve_local_model(model: str) -> str:
@@ -62,7 +69,38 @@ def resolve_local_model(model: str) -> str:
         ) from exc
 
 
+def _remote_adapter(config: KbSearchConfig) -> RetrievalAdapter:
+    missing = [
+        name
+        for name, value in (
+            ("MODEL_SERVER_URL", config.model_server_url),
+            ("EMBEDDING_REVISION", config.embedding_revision),
+        )
+        if not value
+    ]
+    if missing:
+        raise KbSearchUnavailableError(
+            "vector kb.search embeds through the model server: set "
+            f"{' and '.join(missing)} (EMBEDDING_BACKEND=local runs the model in "
+            "process, for tests and local development only)"
+        )
+    assert config.model_server_url and config.embedding_revision
+    try:
+        return RemoteEmbeddingAdapter(
+            config.model_server_url,
+            model_id=config.embedding_model,
+            revision=config.embedding_revision,
+            timeout=config.model_server_timeout,
+        )
+    except ValueError as exc:
+        raise KbSearchUnavailableError(
+            f"model server settings are invalid: {exc}"
+        ) from exc
+
+
 def _dense_adapter(config: KbSearchConfig) -> RetrievalAdapter:
+    if config.embedding_backend == "remote":
+        return _remote_adapter(config)
     try:
         from retrieval.adapters.sentence_transformers import (
             SentenceTransformersAdapter,
@@ -103,8 +141,12 @@ class KbSearcher:
             )
         self.adapter = adapter or build_adapter(config)
         # The configured cap bounds the request; a KB smaller than it just
-        # returns fewer results.
-        self.retriever = Retriever(kb, self.adapter, max_k=config.max_k)
+        # returns fewer results. Building the retriever indexes the KB, which with
+        # the remote backend is where the model server is first asked.
+        try:
+            self.retriever = Retriever(kb, self.adapter, max_k=config.max_k)
+        except EmbeddingServiceError as exc:
+            raise KbSearchUnavailableError(f"model server: {exc}") from exc
         self.kb = kb
 
     def _normalizer(self, query: str) -> Callable[[float], float]:
@@ -124,7 +166,10 @@ class KbSearcher:
 
         items: list[KbSearchResultItem] = []
         for mode in (SearchMode.SAME, SearchMode.CROSS):
-            hits = self.retriever.search(args.query, lang=lang, k=k, mode=mode)
+            try:
+                hits = self.retriever.search(args.query, lang=lang, k=k, mode=mode)
+            except EmbeddingServiceError as exc:
+                raise KbSearchUnavailableError(f"model server: {exc}") from exc
             items = [
                 self._item(hit.snippet_id, score)
                 for hit in hits
