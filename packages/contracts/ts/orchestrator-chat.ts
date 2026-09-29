@@ -62,7 +62,7 @@ export type SendMessageResponse = z.infer<typeof SendMessageResponseSchema>;
 
 export const TranscriptMessageSchema = z.object({
   role: TranscriptRoleSchema,
-  /** Masked text: the transcript never holds raw PII. */
+  /** Masked text for customer and assistant messages; an agent message is the text as the agent wrote it. */
   content: z.string(),
   blocks: RawBlocksSchema,
   created_at: IsoDateTimeSchema,

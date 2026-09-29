@@ -2,8 +2,9 @@
 // mounted only when AGENT_API_ENABLED=true, `Authorization: Bearer <AGENT_API_TOKEN>`. Only the
 // web-backoffice BFF calls it; the token never reaches a browser.
 //
-// The masked transcript comes from here. Messages an agent writes are masked with the same masker
-// before they are stored, so the transcript never holds raw PII.
+// The transcript comes from here: customer and assistant messages masked, agent messages as the agent
+// wrote them (stored masked in clear and encrypted as written; ADR-0013, amendment "agent text shown
+// as written"). The LLM never sees a taken-over conversation.
 
 import { z } from "zod";
 import {
@@ -75,7 +76,7 @@ export type AgentMessageRequest = z.infer<typeof AgentMessageRequestSchema>;
 
 export const AgentMessageSchema = z.object({
   role: z.literal("agent"),
-  /** Masked text, as stored. */
+  /** The text as the agent wrote it (the masked copy stays server-side). */
   content: z.string(),
   blocks: RawBlocksSchema,
   created_at: IsoDateTimeSchema,
