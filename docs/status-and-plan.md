@@ -53,7 +53,7 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 **Nothing is in progress in the cloud session.** Every package above is committed and pushed on `claude/optimistic-feynman-tj7ew9`; no work lives only in a local worktree.
 
 **What is left for the front ends:**
-1. Merge the branch into `main` (it is 70+ commits ahead, CI green on every push so far).
+1. Open a pull request and merge the branch into `main` (70+ commits ahead). CI has not run on it yet: `ci.yml` runs on pull requests and on pushes to `main` only. Every check it runs passed locally (`uv run pytest -q`, `ruff`, `make web-check`, `make design-tokens-check`); the `images` job with the two new front-end images and the arm64 builds have never run.
 2. On a real machine, with an LLM key in `.env`: `make demo`, then walk through [runbook.md](runbook.md) section 7 in a browser, in es, pt and en, in light and dark. No browser run against the real stack exists yet; the screens were checked against fake upstreams and the BFFs against the live stack.
 3. The clean-machine check of the runbook's cross-check checklist, including the arm64 images (built in CI, never run).
 4. A decision: agent messages are masked like the rest of the transcript, so the customer reads "soy [NAME_1]" if an agent writes their own name. Keep it (safest, the composer tells agents not to write personal data) or show agent text unmasked on the customer side (a small change that gives up the "transcript never holds PII" property).
