@@ -1,0 +1,89 @@
+# Which decision point drives which engine effect (ADR-0012, Appendix B.4).
+#
+# The effects are code (record, select, gate); this file is the data that binds
+# each decision point to one of them. The thresholds are NOT here: they live in the
+# encoder's calibration artifact (packages/encoder/calibration/decision_points.json),
+# written only by the calibration harness. Changing this file is a reviewed diff.
+#
+# mode:
+#   off      the decision point is ignored
+#   shadow   computed and recorded in the turn metadata (what the effect WOULD do),
+#            and nothing else changes
+#   enforce  applied
+# Every decision point ships in `shadow`. Flipping one to `enforce` is its own PR,
+# after the calibration sign-off of ADR-0012 Appendix F, with the evaluation report
+# attached. In an emergency, DECISION_POINTS_MODES='confirm_gate=shadow' (an env
+# change, no redeploy of code) turns a decision point down; see docs/runbook.md.
+#
+# Failure rule (I2): when a decision point does not decide (abstains, is
+# unavailable, infeasible or off) a `select` keeps the LLM's own argument and a
+# `gate` keeps the write withheld. Nothing ever falls toward acting.
+version: 1
+decision_points:
+  # Observation layer: every other metric needs it, and the explicit request of
+  # confirm_gate reads it.
+  turn_intent:
+    mode: shadow
+    effect: record
+
+  # The one decision only a language model can make: a yes/no in three languages
+  # with typos. It withholds card.block until the customer consented, either by an
+  # explicit request ("block my card") or by a decided `confirm` while the engine's
+  # own confirmation question is open. Consent is per tool, not per card.
+  confirm_gate:
+    mode: shadow
+    effect: gate
+    on_abstain: withhold
+    on_unavailable: withhold
+    params:
+      tool: card.block
+      consent_labels: [confirm]
+      revoke_labels: [deny]
+      explicit_request: {dp: turn_intent, labels: [request_card_block]}
+      max_age_turns: 6
+
+  # Overwrites card.block.reason with the strongest reason the customer gave during
+  # the session, when the model decided it. banking-core still authorizes the block.
+  block_reason:
+    mode: shadow
+    effect: select
+    on_abstain: fallback_llm
+    on_unavailable: fallback_llm
+    params:
+      ledger:
+        policy: priority
+        order: [STOLEN, LOST, UNRECOGNIZED_CHARGE, SUSPICIOUS_ACTIVITY, CUSTOMER_REQUEST]
+      targets:
+        - tool: card.block
+          arg: reason
+          map:
+            LOST: LOST
+            STOLEN: STOLEN
+            UNRECOGNIZED_CHARGE: UNRECOGNIZED_CHARGE
+            SUSPICIOUS_ACTIVITY: SUSPICIOUS_ACTIVITY
+            CUSTOMER_REQUEST: CUSTOMER_REQUEST
+
+  # Routes a handoff the LLM proposes: department and reason only, never priority
+  # (the policy engine decides the effective priority). A call whose reason comes
+  # from the FSM (locked customer, failed verification) is left as the LLM made it.
+  handoff_route:
+    mode: shadow
+    effect: select
+    on_abstain: fallback_llm
+    on_unavailable: fallback_llm
+    params:
+      ledger: {policy: latest}
+      targets:
+        - tool: handoff.create
+          map:
+            DISPUTE: {department: DISPUTES, reason: DISPUTE_CLAIM}
+            FRAUD: {department: FRAUD_OPERATIONS, reason: SUSPECTED_FRAUD}
+            UNRECOGNIZED: {department: FRAUD_OPERATIONS, reason: UNRECOGNIZED_TRANSACTION}
+            HUMAN_REQUEST: {department: CUSTOMER_SUPPORT, reason: CUSTOMER_REQUEST}
+          keep_llm_call_when: {reason: [CUSTOMER_LOCKED, VERIFICATION_FAILED]}
+
+  # Records greeting / out_of_scope / other. It does not act: it would strand a
+  # customer who wrote "hola, me robaron la tarjeta" or a bare OTP.
+  smalltalk_route:
+    mode: shadow
+    effect: record

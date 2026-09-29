@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     encoder_url: str = Field(default="http://encoder:8090", alias="ENCODER_URL")
     encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
 
+    # Decision points (ADR-0012): the effects file binds each decision point to an
+    # engine effect; blank = the file shipped with the service. The mode override
+    # is the kill switch: 'confirm_gate=shadow,block_reason=off' needs no redeploy.
+    decision_effects_file: str | None = Field(
+        default=None, alias="DECISION_EFFECTS_FILE"
+    )
+    decision_points_modes: str = Field(default="", alias="DECISION_POINTS_MODES")
+
     # Redis Edge (Edge trust zone session store & distributed locking)
     redis_edge_url: SecretStr | None = Field(
         default=None,
