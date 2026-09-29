@@ -13,6 +13,7 @@ from banking_core.identity.ports import (
 )
 from banking_core.identity.tools import (
     NoOtpChannelError,
+    OtpResendLimitError,
     execute_customer_match,
     execute_identity_verify_document,
     execute_otp_send,
@@ -25,6 +26,7 @@ __all__ = [
     "NoOtpChannelError",
     "OtpChallengeStore",
     "OtpDeliveryPort",
+    "OtpResendLimitError",
     "execute_customer_match",
     "execute_identity_verify_document",
     "execute_otp_send",
