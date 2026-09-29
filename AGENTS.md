@@ -68,6 +68,8 @@ Not every target is implemented yet; `make help` lists what exists and pending t
 
 **When adding a workflow:** first check whether it is configuration only. If it needs code, that means a new banking operation is required, and that ships with a contract and tests.
 
+**When adding a decision point:** artifact entry through `make calibrate TASK=decision-points` (⚠️ pending until the harness lands, [ADR-0012](docs/adr/0012-decision-points.md) WP3) → effects entry in `apps/orchestrator/config/decision_effects.yaml` (start in `shadow`) → a scenario covering it, including the case where it must abstain → flip to `enforce` in its own PR with the report attached and `docs/limitations.md` updated.
+
 **When touching prompts or the model:** run `make eval` before and after. A prompt change without evaluation is not an improvement, it is a bet.
 
 **When closing a task:** update `docs/limitations.md` if something was left half done. A declared gap is worth more than a discovered one.
