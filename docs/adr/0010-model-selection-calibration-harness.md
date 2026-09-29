@@ -36,7 +36,7 @@ We establish a single, unified calibration harness for local decision and embedd
   - Selected threshold $\tau$
   - p95 CPU latency (ms)
   - Memory consumption (RAM in MB)
-- **Threshold calibration rule:** The abstention threshold $\tau$ is chosen to maximize coverage subject to a minimum per-class precision constraint ($P_{\min}$). Calibration is performed strictly on the **validation split**, never on the test split. Below $\tau$, the system asks for clarification.
+- **Threshold calibration rule:** The abstention threshold $\tau$ is chosen to maximize coverage subject to a minimum per-class precision constraint ($P_{\min}$). Calibration is performed strictly on the **validation split**, never on the test split. Below $\tau$, the system asks for clarification. *(Amended 2026-09-29 for decision points: see the amendment at the end.)*
 
 ### 2. Embedding model evaluation
 
@@ -161,3 +161,14 @@ Conversely, heavyweight MLOps platforms introduce operational fragility and cons
 4. [ ] Implement validation-based $\tau$ threshold optimizer (max coverage @ min precision)
 5. [ ] Provide configuration files defining model candidates and data splits
 6. [ ] Execute initial benchmarks and generate baseline reports in `reports/`
+
+## Amendment 2026-09-29: the harness calibrates decision points, not only one classifier
+
+**Context.** [ADR-0012](0012-decision-points.md) lets the engine act on named decisions (whether the customer confirmed, which reason to put on a block), each with its own label set and its own cost of being wrong. One global $\tau$ over all 15 intents, which the worst class dominates, cannot serve them.
+
+**Decision.** Section 1 keeps its rule and gains three constraints for the decisions the engine acts on:
+- **The constraint is on the labels the engine acts on**, not on all classes: precision of `confirm` for the gate, not the precision of the worst of 15 intents. The thresholds are per language and, where the decision point says so, per label.
+- **The calibrator belongs to the artifact.** Confidence is calibrated (a per-language temperature fitted on validation, never on test) and the calibrated value is what $\tau$ is compared with. The calibrator, $\tau$, the label view and the backend's revision and hash are one atomic unit, the calibration artifact `packages/encoder/calibration/decision_points.json`, written only by the harness and read by the encoder service at startup: a $\tau$ never travels without the model it was fitted on.
+- **Precision is reported with a Wilson lower bound** on the test split, next to "certified: yes/no (needs N)". With the 10 test rows per class and language of today nothing can be certified at 0.95 (22 of 22 has a lower bound of 0.85); the report says so rather than rounding up.
+
+**Consequences.** The harness work (`make calibrate TASK=decision-points`, `make calibration-verify`, the artifact writer) is tracked in the status table of ADR-0012 and is pending until it lands. Until it does the encoder runs in legacy seed mode, one uncalibrated `turn_intent` at the seed $\tau$ of `limitations.md`, and every decision point stays in `shadow`.

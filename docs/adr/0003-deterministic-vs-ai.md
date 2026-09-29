@@ -29,6 +29,7 @@ The LLM emits intents and tool calls; `banking-core` decides whether the call pr
 | Writing the customer-facing reply | LLM | It is a language problem |
 | Handoff summary | LLM, over already-verified facts | It generates text, not facts: the data comes from the system |
 | Confirming the action happened | Re-read from the database | What the model says is not evidence |
+| Choosing an enum argument or releasing a write on the customer's confirmation | Calibrated decision model, applied by the engine through a closed set of restrict-only effects | Evidence-backed and recorded; banking-core still authorizes (amendment 2026-09-29 (2), [ADR-0012](0012-decision-points.md)) |
 
 ### Derived behaviors
 
@@ -227,4 +228,10 @@ The stored values stay `flag` and `block` (database, admin API, environment seed
 
 **To revisit:** if the residual gap matters, banking-core can evaluate the card's recent disputable charges itself instead of relying on the model's link.
 
+## Amendment 2026-09-29 (2): decision points may choose an argument or hold a write
 
+**Context.** The rule above kept every choice between "the model proposes" and "banking-core disposes" out of the encoder's hands: it was advisory. [ADR-0012](0012-decision-points.md) lets a calibrated local decision (a *decision point*) do two narrow things the LLM did unaided: pick the enum argument of a call the LLM proposed (the block reason, a handoff's department), and hold a write until the customer has consented (the gate on `card.block`).
+
+**Decision.** This adds a row to the split above and changes none of the others. The engine applies a decision point only through a closed set of effects that can record, choose among values banking-core already accepts, or withhold a write. None can authorize, create a call, or make one succeed that the state machine and the policy engine refuse; and when a decision point abstains or is unavailable the outcome is the LLM's own argument or a withheld write, never an action. The gate is a control in the untrusted zone and not an authorization: banking-core still requires `VERIFIED`, ownership and an idempotency key for every block. "The engine never alters model arguments" becomes "except the `select` allowlist of the effects file, which cannot touch `priority`, `card_ref`, an identity or a secret".
+
+**Consequences.** Every decision point ships in `shadow` (computed and recorded, nothing changes) and flips to `enforce` only by its own reviewed diff. A fail-closed gate adds a turn when the model abstains on a colloquial "yes": the same trade this ADR already accepts for unnecessary escalation, measured instead of assumed. What is not built and why is in [limitations.md](../limitations.md).
