@@ -1,6 +1,6 @@
 # ADR-0008: CPU inference, offline training and private-environment deployment
 
-**Status:** Accepted · amended 2026-09-26 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-29 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
@@ -56,4 +56,12 @@ Separating training from inference removes the apparent dilemma between "our own
 2. [ ] Quantize if latency requires it
 3. [ ] Version weights and document the training procedure
 4. [ ] Full `docker compose up`, verified on a clean machine
-5. [ ] Confirm environment availability during the evaluation window
+5. [ ] ~~Confirm environment availability during the evaluation window~~ superseded by the amendment of 2026-09-29
+
+## Amendment 2026-09-29: judges run it locally; the private environment is the team's
+
+**Context.** The decision and Option B assumed judges would use an instance the team runs, available during an evaluation window. The team decided otherwise: judges clone the repository and run `make demo` on their own machine, with at most an LLM API key in `.env`. A hosted instance would make the evaluation depend on our server being up, and the first criterion is that a third party can run the system.
+
+**Decision.** The runtime decisions stand: offline training, CPU inference, the LLM API as the only external dependency. What changes is who uses the private environment. There is no environment for judges, no link is published and no availability window is promised. The team keeps its own presentation environment for its live presentation, an ordinary deployment with production-hardened defaults and the demo features switched on explicitly ([deployment.md](../deployment.md), section 7). The hosting platform is still to be decided.
+
+**Consequences.** The "availability during the evaluation window" advantage of Option B no longer applies to judges, and action item 5 is dropped. Sizing the runtime for CPU now protects the judge's machine rather than our server: the requirements in the [runbook](../runbook.md) are the contract, and a clean-machine run of `make demo` is the check that matters.
