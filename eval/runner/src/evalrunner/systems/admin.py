@@ -1,11 +1,16 @@
 """banking-core admin config API, used by the runner to set up scenarios.
 
-Pending in banking-core (Core C). Assumed contract, to align when it lands:
-  GET  /v1/admin/policy-config        -> {"amount_mode": str, "thresholds_minor": {...}}
-  PUT  /v1/admin/policy-config        <- same body
-  POST /v1/admin/demo/reset-fixtures  -> 200/204 (demo cards back to seed state)
-  Auth: "Authorization: Bearer <EVAL_ADMIN_TOKEN>". Every call is audited there.
-Until it exists, availability is False and setup-dependent scenarios are not run.
+Served by apps/banking-core/src/banking_core/api/routes_admin.py, and mounted only
+when ADMIN_API_ENABLED=true there:
+  GET  /v1/admin/policy-config        -> {"amount_mode": str, "thresholds_minor": {...},
+                                          "version": int}
+  PUT  /v1/admin/policy-config        <- {"amount_mode": str, "thresholds_minor": {...}}
+  POST /v1/admin/demo/reset-fixtures  -> 200 (demo cards back to seed state); 403 when
+                                         APP_ENV=production without DEMO_RESET_ENABLED
+  Auth: "Authorization: Bearer <EVAL_ADMIN_TOKEN>" (banking-core's ADMIN_API_TOKEN).
+  Every write is audited there.
+When it is not mounted or unreachable, availability is False and setup-dependent
+scenarios are not run.
 """
 
 from __future__ import annotations
