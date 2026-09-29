@@ -96,6 +96,8 @@ export const ERROR_DETAIL = {
   noActiveTakeover: "no_active_takeover",
   /** Another agent already holds the handoff (banking-core admin API, 409). */
   claimedByAnotherAgent: "claimed_by_another_agent",
+  /** A customer turn holds the conversation's lock past the wait (orchestrator agent API, 503 with Retry-After). Retrying is safe. */
+  turnInProgress: "turn_in_progress",
   /** The claim succeeded and the takeover failed; retrying the same call is safe (back-office BFF, 502). */
   claimedButTakeoverFailed: "claimed_but_takeover_failed",
 } as const;

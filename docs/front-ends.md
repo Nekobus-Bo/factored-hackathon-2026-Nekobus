@@ -82,6 +82,8 @@ Routes:
   - The text is masked before storage.
   - 409 `{detail:"no_active_takeover"}` if not taken over by this agent (the agent is identified by an `X-Agent-Ref` header the BFF sets from the session).
   - A repeated `client_message_id` returns the stored message.
+- Takeover and agent messages take the conversation's turn lock and wait up to `AGENT_LOCK_WAIT_SECONDS` (default 10) for a customer turn in flight; past it they answer 503 `{detail:"turn_in_progress"}` with `Retry-After: 2`, and a retry is safe. A missing or malformed `X-Agent-Ref` is a 422.
+- Agent text is masked like everything stored, so the customer reads it masked too ("soy Ana" reads "soy [NAME_1]"): agents should not write personal data, their own name included. Declared in limitations.
 
 ### banking-core admin API (NEW routes on the existing `/v1/admin` router, same `require_admin`)
 
