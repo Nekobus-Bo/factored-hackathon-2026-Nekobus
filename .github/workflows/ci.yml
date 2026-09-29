@@ -77,6 +77,11 @@ jobs:
       - name: Design tokens (dist matches src, typecheck, tests)
         run: make design-tokens-check
 
+      # @pattern-blue/contracts and every apps/web-* package: typecheck and bun test. The contracts
+      # tests include the drift test against packages/contracts/schemas.
+      - name: Web (contracts and apps, typecheck and tests)
+        run: make web-check
+
   images:
     name: image (${{ matrix.service }}, amd64 + arm64)
     runs-on: ubuntu-latest
