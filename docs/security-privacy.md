@@ -45,7 +45,7 @@ The customer's message and the model's output are data, never instructions. The 
 | Step | Mechanism |
 |---|---|
 | Identification | The customer provides data; the system matches, it does not disclose |
-| Verification | OTP to a **previously registered** channel (channel is an open decision: email, Telegram, WhatsApp or SMS; currently simulated in a panel; the model never chooses the channel) |
+| Verification | OTP for a **previously registered** channel (email or SMS on the customer record), delivered to a simulated in-app inbox instead of a real channel ([ADR-0007](adr/0007-no-llm-biometrics.md)); the model never sees the code or chooses the channel. In the demo whoever sees the browser sees the code, so the OTP does not prove possession of the channel |
 | Document verification | Interface defined, simulated provider ([ADR-0007](adr/0007-no-llm-biometrics.md)) |
 | Attempt limits | Per session, per customer and per document across sessions, and per IP on conversation creation, with indistinguishable responses for non-existent data (below) |
 
