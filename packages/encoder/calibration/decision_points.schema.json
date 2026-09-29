@@ -1,0 +1,575 @@
+{
+  "$defs": {
+    "BackendSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_class": {
+          "default": "low",
+          "enum": [
+            "low",
+            "high"
+          ],
+          "title": "Cost Class",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Key in encoder.registry",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label space of the backend; required when top1_only",
+          "title": "Labels"
+        },
+        "local_only": {
+          "description": "Must be true: raw text never leaves our containers",
+          "title": "Local Only",
+          "type": "boolean"
+        },
+        "model_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "probability_kind": {
+          "enum": [
+            "distribution",
+            "top1_only"
+          ],
+          "title": "Probability Kind",
+          "type": "string"
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resources"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "timeout_ms": {
+          "maximum": 60000,
+          "minimum": 1,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "train": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrainSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "weights_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weights Sha256"
+        }
+      },
+      "required": [
+        "kind",
+        "model_id",
+        "probability_kind",
+        "local_only",
+        "timeout_ms"
+      ],
+      "title": "BackendSpec",
+      "type": "object"
+    },
+    "CalibratorSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "by_lang": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "title": "By Lang",
+          "type": "object"
+        },
+        "kind": {
+          "default": "none",
+          "enum": [
+            "none",
+            "temperature",
+            "isotonic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "CalibratorSpec",
+      "type": "object"
+    },
+    "DataRefs": {
+      "additionalProperties": false,
+      "properties": {
+        "test_provenance": {
+          "anyOf": [
+            {
+              "enum": [
+                "human",
+                "synthetic",
+                "synthetic-provisional"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test Provenance"
+        },
+        "test_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test Sha256"
+        },
+        "train_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Train Sha256"
+        },
+        "validation_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Sha256"
+        }
+      },
+      "title": "DataRefs",
+      "type": "object"
+    },
+    "DecisionPointSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "always_on": {
+          "default": true,
+          "title": "Always On",
+          "type": "boolean"
+        },
+        "backend": {
+          "title": "Backend",
+          "type": "string"
+        },
+        "calibrator": {
+          "$ref": "#/$defs/CalibratorSpec"
+        },
+        "constraint": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Constraint"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "escalate_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalate To"
+        },
+        "evidence": {
+          "additionalProperties": true,
+          "title": "Evidence",
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "calibrated",
+            "infeasible",
+            "uncalibrated_seed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "thresholds": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Thresholds",
+          "type": "object"
+        },
+        "view": {
+          "discriminator": {
+            "mapping": {
+              "groups": "#/$defs/GroupsView",
+              "labels": "#/$defs/LabelsView"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LabelsView"
+            },
+            {
+              "$ref": "#/$defs/GroupsView"
+            }
+          ],
+          "title": "View"
+        }
+      },
+      "required": [
+        "backend",
+        "view",
+        "status"
+      ],
+      "title": "DecisionPointSpec",
+      "type": "object"
+    },
+    "GroupsView": {
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "minProperties": 1,
+          "title": "Groups",
+          "type": "object"
+        },
+        "kind": {
+          "const": "groups",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "groups"
+      ],
+      "title": "GroupsView",
+      "type": "object"
+    },
+    "Harness": {
+      "additionalProperties": false,
+      "properties": {
+        "config_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Path"
+        },
+        "config_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Sha256"
+        },
+        "git_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Sha"
+        }
+      },
+      "title": "Harness",
+      "type": "object"
+    },
+    "LabelsView": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "labels",
+          "title": "Kind",
+          "type": "string"
+        },
+        "labels": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Labels",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "labels"
+      ],
+      "title": "LabelsView",
+      "type": "object"
+    },
+    "Resources": {
+      "additionalProperties": false,
+      "properties": {
+        "measured_on": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured On"
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Ms"
+        },
+        "ram_mb": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ram Mb"
+        }
+      },
+      "title": "Resources",
+      "type": "object"
+    },
+    "TrainSpec": {
+      "additionalProperties": false,
+      "description": "Where a ``tfidf_lr`` backend trains from: the model is a pure function of it.",
+      "properties": {
+        "label_map": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Map"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "TrainSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``packages/encoder/calibration/decision_points.json`` (Appendix B.3).",
+  "properties": {
+    "artifact_id": {
+      "pattern": "^[0-9a-f]{12}$",
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "backends": {
+      "additionalProperties": {
+        "$ref": "#/$defs/BackendSpec"
+      },
+      "minProperties": 1,
+      "title": "Backends",
+      "type": "object"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DataRefs"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "decision_points": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DecisionPointSpec"
+      },
+      "minProperties": 1,
+      "title": "Decision Points",
+      "type": "object"
+    },
+    "harness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Harness"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "backends",
+    "decision_points"
+  ],
+  "title": "DecisionPointsArtifact",
+  "type": "object"
+}

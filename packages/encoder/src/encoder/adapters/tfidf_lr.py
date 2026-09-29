@@ -15,6 +15,9 @@ from encoder.models import DecisionExample, DecisionPrediction
 class TFIDFLRAdapter(DecisionAdapter):
     """Deterministic baseline adapter combining TF-IDF and Logistic Regression."""
 
+    kind = "tfidf_lr"
+    probability_kind = "distribution"
+
     def __init__(self, name: str = "tfidf_lr", c_param: float = 1.0) -> None:
         self.name = name
         self.c_param = c_param
