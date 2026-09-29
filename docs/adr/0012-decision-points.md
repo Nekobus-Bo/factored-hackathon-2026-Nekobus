@@ -93,7 +93,7 @@ Everything named here and in the appendices is **pending** until its work packag
 4. [ ] WP4 orchestrator: effects loader, `DecisionState`, `gate` and `select`, metadata, prompt line (2 d)
 5. [ ] WP5 seed artifact and effects file, every DP in `shadow`, first reports (0.5 d)
 6. [ ] WP6 scenarios, evalrunner DP section, re-record (1 d), below the approved minimum
-7. [ ] WP7 adapter conformance test, `llm_sidecar` stub that fails as "pending" (0.5 d), below the approved minimum; the `encoder-bench` extension stays pending
+7. [x] WP7 adapter conformance test, `llm_sidecar` stub that fails as "pending" (0.5 d), below the approved minimum; the `encoder-bench` extension stays pending
 8. [ ] WP8 docs: cross-links in ADR-0003/0010, `limitations.md`, `evaluation.md`, `AGENTS.md`, runbook kill switch (0.5 d)
 9. [ ] WP12 model server: `POST /v1/embed`, remote embedding adapter, `kb.search` remote backend, compose and docs (1.5 d)
 10. [ ] Teammate: candidates, DP datasets, calibration runs, embedding-model pin, sign-off and `shadow` to `enforce` flips (Appendix H)
@@ -107,7 +107,7 @@ Everything named here and in the appendices is **pending** until its work packag
 | Backend registry `packages/encoder/src/encoder/registry.py` (`tfidf_lr`, `gliner`) | WP2 | landed |
 | `apps/encoder/src/encoder_service/{scoring,decisions}.py`; `decisions` in `/v1/analyze`; `GET /v1/decision-points`; `/ready` per-DP state; legacy seed mode; `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | WP2 | pending |
 | `packages/encoder/calibration/decision_points.json` (the artifact) | WP5 | pending; none ships until the harness writes one, and the service runs in legacy seed mode meanwhile |
-| `packages/encoder/tests/test_adapter_conformance.py`; the `llm_sidecar` stub | WP7 | pending |
+| `packages/encoder/tests/test_adapter_conformance.py`; the `llm_sidecar` stub | WP7 | landed (`llm_sidecar` fails with `pending: llm_sidecar is not implemented (ADR-0012)`) |
 | `encoder-bench` for artifact backends; `make warmup-encoder` fetching pinned decision weights and verifying SHA-256 | WP7 / WP10 | pending |
 | `make calibrate TASK=decision-points`, `make calibration-verify`, `tools/calibrate/configs/decision_points.yaml`, `tools/calibrate/src/calibrate/{calibrators,dp,artifact}.py`, `metrics/decision.py`, `reports/calibration-dp-*.md` | WP3, WP5 | pending |
 | `apps/orchestrator/config/decision_effects.yaml`, `decisions/{config,state,effects}.py`, `DECISION_EFFECTS_FILE`, `DECISION_POINTS_MODES`, the prompt line and `PROMPT_VERSION` bump | WP4 | pending |

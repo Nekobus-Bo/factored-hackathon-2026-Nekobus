@@ -17,6 +17,7 @@ from encoder.decision_points import BackendSpec, load_artifact
 from encoder.pinning import PinError, PinMismatchError
 from encoder.registry import (
     BackendBuildError,
+    BackendPendingError,
     build,
     kinds,
     label_map_tag,
@@ -36,7 +37,7 @@ def spec(**overrides: Any) -> BackendSpec:
 
 
 def test_the_freeze_kinds_are_registered() -> None:
-    assert {"tfidf_lr", "gliner"} <= set(kinds())
+    assert {"tfidf_lr", "gliner", "llm_sidecar"} <= set(kinds())
 
 
 def test_registering_twice_or_empty_is_refused() -> None:
@@ -196,6 +197,17 @@ def test_an_adapter_cannot_answer_to_another_kind(
     register_stub(monkeypatch, lambda spec: Liar())
     with pytest.raises(BackendBuildError, match="declares kind"):
         build(spec(kind="stub"))
+
+
+# --- llm_sidecar: interface only ---
+
+
+def test_llm_sidecar_fails_as_pending() -> None:
+    with pytest.raises(
+        BackendPendingError,
+        match=r"^pending: llm_sidecar is not implemented \(ADR-0012\)$",
+    ):
+        build(spec(kind="llm_sidecar", params={"url": "http://llm-local:8091"}))
 
 
 # --- gliner ---
