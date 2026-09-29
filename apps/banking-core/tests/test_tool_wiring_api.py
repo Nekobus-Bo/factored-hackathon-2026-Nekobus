@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -427,3 +428,191 @@ def test_handoff_failure_before_idempotency_write_rolls_back_side_effects(
         ToolResultStatus.ERROR,
         ToolResultStatus.OK,
     }
+
+
+MATCH_ARGS = {
+    "document_type": "NATIONAL_ID",
+    "document_number": "1020304050",
+    "birth_date": "1988-05-20",
+}
+
+
+def _identified_session(client: TestClient) -> str:
+    session_id: str = client.post("/v1/sessions").json()["session_id"]
+    matched = _call_tool(client, session_id, "customer.match", MATCH_ARGS)
+    assert matched["data"] == {"matched": True}
+    return session_id
+
+
+def _otp_pending_session(client: TestClient) -> tuple[str, str]:
+    session_id = _identified_session(client)
+    sent = _call_tool(client, session_id, "otp.send", {}, "idem_otp_send_setup_01")
+    assert sent["status"] == "ok"
+    return session_id, sent["data"]["challenge_id"]
+
+
+def _dev_otp(client: TestClient, challenge_id: str) -> str:
+    code: str = client.get(f"/v1/dev/otp/{challenge_id}").json()["code"]
+    return code
+
+
+@contextmanager
+def _commit_fails_once() -> Iterator[None]:
+    """Make the next Session.commit raise, as an audit or idempotency write can."""
+    original = Session.commit
+    armed = True
+
+    def commit(self: Session) -> None:
+        nonlocal armed
+        if armed:
+            armed = False
+            raise RuntimeError("injected commit failure")
+        original(self)
+
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(Session, "commit", commit)
+        yield
+
+
+def _decisions(session: Session, action: str, session_id: str) -> list[str]:
+    session.expire_all()
+    return list(
+        session.scalars(
+            sa.select(AuditLog.decision)
+            .where(AuditLog.action == action, AuditLog.actor_ref == session_id)
+            .order_by(AuditLog.id)
+        )
+    )
+
+
+def _idempotency_rows(session: Session, key: str) -> int:
+    session.expire_all()
+    return session.scalar(
+        sa.select(sa.func.count())
+        .select_from(IdempotencyKey)
+        .where(IdempotencyKey.key == key)
+    )
+
+
+def test_failed_commit_leaves_the_session_unchanged_for_customer_match(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = client.post("/v1/sessions").json()["session_id"]
+    store = get_session_store()
+    before = store.get(session_id)
+
+    with _commit_fails_once():
+        failed = _call_tool(client, session_id, "customer.match", MATCH_ARGS)
+
+    assert (failed["status"], failed["reason_code"]) == ("error", "INTERNAL_ERROR")
+    assert store.get(session_id) == before
+    assert before is not None and before.state == VerificationState.ANONYMOUS
+    assert _decisions(db_session, "customer.match", session_id) == ["error"]
+
+    retried = _call_tool(client, session_id, "customer.match", MATCH_ARGS)
+    assert retried["data"] == {"matched": True}
+    stored = store.get(session_id)
+    assert stored is not None and stored.state == VerificationState.IDENTIFIED
+
+
+def test_failed_commit_leaves_the_session_unchanged_for_otp_send(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = _identified_session(client)
+    store = get_session_store()
+    before = store.get(session_id)
+    key = "idem_otp_send_commit_fail"
+
+    with _commit_fails_once():
+        failed = _call_tool(client, session_id, "otp.send", {}, key)
+
+    assert (failed["status"], failed["reason_code"]) == ("error", "INTERNAL_ERROR")
+    assert store.get(session_id) == before
+    assert before is not None and before.state == VerificationState.IDENTIFIED
+    assert before.otp_challenge_id is None
+    assert _decisions(db_session, "otp.send", session_id) == ["error"]
+    assert _idempotency_rows(db_session, key) == 0
+
+    # The same key was never consumed: the retry runs, commits, then advances.
+    retried = _call_tool(client, session_id, "otp.send", {}, key)
+    assert retried["status"] == "ok"
+    stored = store.get(session_id)
+    assert stored is not None
+    assert stored.state == VerificationState.OTP_PENDING
+    assert stored.otp_challenge_id == retried["data"]["challenge_id"]
+    assert _idempotency_rows(db_session, key) == 1
+
+
+def test_failed_commit_never_leaves_a_verified_session_without_audit(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id, challenge_id = _otp_pending_session(client)
+    store = get_session_store()
+    before = store.get(session_id)
+    key = "idem_otp_verify_commit_fail"
+    code = _dev_otp(client, challenge_id)
+
+    with _commit_fails_once():
+        failed = _call_tool(client, session_id, "otp.verify", {"code": code}, key)
+
+    assert (failed["status"], failed["reason_code"]) == ("error", "INTERNAL_ERROR")
+    stored = store.get(session_id)
+    assert stored == before
+    assert stored is not None and stored.state == VerificationState.OTP_PENDING
+    assert _decisions(db_session, "otp.verify", session_id) == ["error"]
+    assert _idempotency_rows(db_session, key) == 0
+
+
+def test_failed_commit_does_not_refund_the_otp_attempt(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    """The attempt counter lives in Redis and is consumed before the comparison."""
+    client, db_session = seeded_api
+    session_id, challenge_id = _otp_pending_session(client)
+    store = get_session_store()
+    before = store.get(session_id)
+    challenges = OtpChallengeStore(redis_client=store.client)
+
+    with _commit_fails_once():
+        failed = _call_tool(
+            client,
+            session_id,
+            "otp.verify",
+            {"code": "000000"},
+            "idem_otp_verify_wrong_commit_fail",
+        )
+
+    assert failed["status"] == "error"
+    assert store.get(session_id) == before
+    assert before is not None and before.failed_verifies == 0
+    assert challenges.evaluations(challenge_id) == 1
+    assert _decisions(db_session, "otp.verify", session_id) == ["error"]
+
+
+def test_session_save_failing_after_the_commit_fails_closed(
+    seeded_api: tuple[TestClient, Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Commit first, save second: a failed save leaves the session where it was."""
+    client, db_session = seeded_api
+    session_id = _identified_session(client)
+    store = get_session_store()
+    before = store.get(session_id)
+    key = "idem_otp_send_save_fail"
+
+    def broken_save(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("redis unavailable")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(RedisSessionStore, "save", broken_save)
+        failed = _call_tool(client, session_id, "otp.send", {}, key)
+
+    assert (failed["status"], failed["reason_code"]) == ("error", "INTERNAL_ERROR")
+    assert store.get(session_id) == before
+    assert before is not None and before.state == VerificationState.IDENTIFIED
+    # The database side committed and says so; only the session did not advance.
+    assert _decisions(db_session, "otp.send", session_id) == ["allowed", "error"]
+    assert _idempotency_rows(db_session, key) == 1

@@ -6,9 +6,10 @@ Coordinates the end-to-end tool execution pipeline:
 2. Records verification_state_before for audit trail
 3. Authorizer evaluation (FSM + Matrix + Policy + Rate limits)
 4. Idempotency store deduplication for state-mutating tools (scope strictly required)
-5. Tool execution & FSM state mutation
+5. Tool execution & FSM state mutation, computed on a copy of the session
 6. Tamper-evident audit logging with PII safety
-7. Return contracts.envelope.ToolResult envelope
+7. DB commit, and only then the new session state is saved to Redis
+8. Return contracts.envelope.ToolResult envelope
 """
 
 import logging
@@ -182,7 +183,7 @@ class ToolDispatcher:
             db_session.rollback()
         if audited and session_after is not None:
             try:
-                self.session_store.save(session_after)
+                self._save_session_after_commit(session_after)
             except Exception as exc:
                 logger.error(
                     "Failed to save session after refused '%s': %s",
@@ -234,6 +235,18 @@ class ToolDispatcher:
                 type(audit_error).__name__,
             )
             db_session.rollback()
+
+    def _save_session_after_commit(self, session: SessionState) -> None:
+        """Persist a session state to Redis; call it only after the DB commit.
+
+        Order matters: the audit row and the idempotency record must exist before
+        the session moves. Committing first and saving second fails closed: if the
+        save fails after the commit, the session simply did not advance (the call
+        reports an error and the caller starts the step again), whereas saving
+        first would leave Redis ahead of a database that rolled back, e.g.
+        VERIFIED with no audit row.
+        """
+        self.session_store.save(session)
 
     def dispatch_in_session(
         self,
@@ -349,8 +362,14 @@ class ToolDispatcher:
                     data=None,
                 )
 
+            # The session state the runner computed, saved only after the commit.
+            # It stays None on an idempotent replay, where the runner never runs:
+            # a replay must not re-apply the transition.
+            advanced_session: SessionState | None = None
+
             def runner() -> dict[str, Any]:
-                return self._execute_mutating_tool(
+                nonlocal advanced_session
+                data, advanced_session = self._execute_mutating_tool(
                     tool_name=tool_call.tool,
                     tool_args=tool_call.args,
                     session=session,
@@ -360,6 +379,7 @@ class ToolDispatcher:
                     policy_decision=decision,
                     verification_state_before=verification_state_before,
                 )
+                return data
 
             try:
                 result_data, was_replayed = get_or_run(
@@ -373,8 +393,10 @@ class ToolDispatcher:
                     ttl_seconds=policy_config.session_ttl_seconds,
                 )
                 db_session.commit()
+                if advanced_session is not None:
+                    self._save_session_after_commit(advanced_session)
                 if tool_call.tool == "handoff.create":
-                    self.session_store.save(fsm.on_handoff_create(session))
+                    self._save_session_after_commit(fsm.on_handoff_create(session))
                 if not was_replayed:
                     try:
                         if tool_call.tool == "card.block":
@@ -466,7 +488,7 @@ class ToolDispatcher:
         else:
             # Non-mutating tool (customer.match, identity.verify_document)
             try:
-                result_data = self._execute_read_tool(
+                result_data, advanced_session = self._execute_read_tool(
                     tool_name=tool_call.tool,
                     tool_args=tool_call.args,
                     session=session,
@@ -476,6 +498,8 @@ class ToolDispatcher:
                     verification_state_before=verification_state_before,
                 )
                 db_session.commit()
+                if advanced_session is not None:
+                    self._save_session_after_commit(advanced_session)
                 return ToolResult(
                     tool=tool_call.tool,
                     status=ToolResultStatus.OK,
@@ -513,8 +537,13 @@ class ToolDispatcher:
         policy_decision: Decision,
         db_session: Session,
         verification_state_before: VerificationState,
-    ) -> dict[str, Any]:
-        """Execute a write inside get_or_run's idempotency transaction."""
+    ) -> tuple[dict[str, Any], SessionState | None]:
+        """Execute a write inside get_or_run's idempotency transaction.
+
+        Returns the response data and the session state to persist after the
+        commit (None when the tool does not move the session here). The session
+        passed in is never modified and nothing is saved to Redis in here.
+        """
         if tool_name == "otp.send":
             input_args = OtpSendInput.model_validate(tool_args)
             output, updated_session = execute_otp_send(
@@ -526,7 +555,6 @@ class ToolDispatcher:
                 challenge_store=self.challenge_store,
                 ttl_seconds=policy_config.otp_ttl_seconds,
             )
-            self.session_store.save(updated_session)
             audit_entry = append_audit(
                 session=db_session,
                 actor_type="customer_session",
@@ -549,7 +577,7 @@ class ToolDispatcher:
             )
             data = output.model_dump(mode="json")
             data["receipt"]["audit_id"] = _format_audit_id(audit_entry)
-            return data
+            return data, updated_session
 
         if tool_name == "otp.verify":
             input_args = OtpVerifyInput.model_validate(tool_args)
@@ -559,7 +587,6 @@ class ToolDispatcher:
                 fsm=fsm,
                 challenge_store=self.challenge_store,
             )
-            self.session_store.save(updated_session)
             audit_entry = append_audit(
                 session=db_session,
                 actor_type="customer_session",
@@ -581,7 +608,7 @@ class ToolDispatcher:
             )
             data = output.model_dump(mode="json")
             data["receipt"]["audit_id"] = _format_audit_id(audit_entry)
-            return data
+            return data, updated_session
 
         if tool_name == "card.block":
             if session.pinned_holder_id is None:
@@ -597,7 +624,7 @@ class ToolDispatcher:
                 session_id=session.session_id,
                 commit=False,
             )
-            return result.output.model_dump(mode="json")
+            return result.output.model_dump(mode="json"), None
 
         if tool_name == "handoff.create":
             updated_session = fsm.on_handoff_create(session.model_copy())
@@ -613,7 +640,9 @@ class ToolDispatcher:
                 commit=False,
             )
 
-            return result.output.model_dump(mode="json")
+            # handoff.create moves the session in dispatch, after the commit and
+            # also on a replay, so a committed handoff always ends in HANDED_OFF.
+            return result.output.model_dump(mode="json"), None
 
         raise ValueError(f"Unsupported mutating tool '{tool_name}'")
 
@@ -626,8 +655,13 @@ class ToolDispatcher:
         policy_config: PolicyConfig,
         db_session: Session,
         verification_state_before: VerificationState,
-    ) -> dict[str, Any]:
-        """Execute one holder-scoped or public read tool."""
+    ) -> tuple[dict[str, Any], SessionState | None]:
+        """Execute one holder-scoped or public read tool.
+
+        Returns the response data and the session state to persist after the
+        commit (only customer.match moves the session). Nothing is saved to
+        Redis in here and the session passed in is never modified.
+        """
         if tool_name == "customer.match":
             input_args = CustomerMatchInput.model_validate(tool_args)
             output, matched_customer_id = execute_customer_match(
@@ -637,13 +671,14 @@ class ToolDispatcher:
             )
             if output.matched and matched_customer_id:
                 updated_session = fsm.on_customer_match(
-                    session=session,
+                    session=session.model_copy(),
                     matched=True,
                     holder_id=matched_customer_id,
                 )
             else:
-                updated_session = fsm.on_customer_match(session=session, matched=False)
-            self.session_store.save(updated_session)
+                updated_session = fsm.on_customer_match(
+                    session=session.model_copy(), matched=False
+                )
             append_audit(
                 session=db_session,
                 actor_type="customer_session",
@@ -659,7 +694,7 @@ class ToolDispatcher:
                     details={"matched": output.matched},
                 ),
             )
-            return output.model_dump(mode="json")
+            return output.model_dump(mode="json"), updated_session
 
         if tool_name == "identity.verify_document":
             input_args = IdentityVerifyDocumentInput.model_validate(tool_args)
@@ -683,7 +718,7 @@ class ToolDispatcher:
                     },
                 ),
             )
-            return output.model_dump(mode="json")
+            return output.model_dump(mode="json"), None
 
         if tool_name in {
             "account.get_summary",
@@ -731,7 +766,7 @@ class ToolDispatcher:
                     details={"result_count": result_count},
                 ),
             )
-            return output.model_dump(mode="json")
+            return output.model_dump(mode="json"), None
 
         if tool_name == "kb.search":
             output = execute_kb_search(KbSearchInput.model_validate(tool_args))
@@ -750,6 +785,6 @@ class ToolDispatcher:
                     details={"result_count": len(output.results)},
                 ),
             )
-            return output.model_dump(mode="json")
+            return output.model_dump(mode="json"), None
 
         raise ValueError(f"Unsupported read tool '{tool_name}'")

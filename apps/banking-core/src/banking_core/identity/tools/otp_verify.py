@@ -41,7 +41,7 @@ def execute_otp_verify(
 
     if not challenge_id:
         # No challenge was active: count as failed verification
-        updated_session = fsm.on_otp_verify(session, valid=False)
+        updated_session = fsm.on_otp_verify(session.model_copy(), valid=False)
         receipt = Receipt(
             action="otp.verify",
             target_masked=target_masked,
@@ -67,7 +67,7 @@ def execute_otp_verify(
     )
 
     if is_valid:
-        updated_session = fsm.on_otp_verify(session, valid=True)
+        updated_session = fsm.on_otp_verify(session.model_copy(), valid=True)
         receipt = Receipt(
             action="otp.verify",
             target_masked=target_masked,
@@ -83,7 +83,7 @@ def execute_otp_verify(
             receipt=receipt,
         )
     else:
-        updated_session = fsm.on_otp_verify(session, valid=False)
+        updated_session = fsm.on_otp_verify(session.model_copy(), valid=False)
         receipt = Receipt(
             action="otp.verify",
             target_masked=target_masked,
