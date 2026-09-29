@@ -18,7 +18,11 @@ from banking_core.control.config import DatabaseControlConfigRepository
 from banking_core.control.session import RedisSessionStore, SessionState
 from banking_core.db import get_db
 from banking_core.db.session import get_session_maker
-from banking_core.identity import OtpChallengeStore, get_dev_sink
+from banking_core.identity import (
+    OtpChallengeStore,
+    SimulatedInbox,
+    set_simulated_inbox,
+)
 from banking_core.seed.curated import load_curated_data
 from banking_core.seed.fixtures import create_scenario_fixtures
 from banking_core.seed.staging import (
@@ -61,14 +65,14 @@ def client(
     previous = (routes_sessions._session_store, routes_tools._dispatcher)
     session_store = RedisSessionStore(redis_client=fake_redis, default_ttl=3600)
     set_session_store(session_store)
-    dev_sink = get_dev_sink()
-    dev_sink.clear()
+    inbox = SimulatedInbox(redis_client=fake_redis)
+    set_simulated_inbox(inbox)
     # The dispatcher reads the tool policy from the database, like production.
     set_dispatcher(
         ToolDispatcher(
             config_repo=DatabaseControlConfigRepository(),
             session_store=session_store,
-            delivery_port=dev_sink,
+            delivery_port=inbox,
             challenge_store=OtpChallengeStore(redis_client=fake_redis),
         )
     )
@@ -88,7 +92,7 @@ def client(
         with TestClient(test_app) as test_client:
             yield test_client
     finally:
-        dev_sink.clear()
+        set_simulated_inbox(None)
         routes_sessions._session_store, routes_tools._dispatcher = previous
 
 
