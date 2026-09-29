@@ -328,10 +328,11 @@ describe("the transcript", () => {
     expect(count(markup, "pb-msg--customer")).toBe(2);
     expect(count(markup, "pb-msg--assistant")).toBe(2);
     expect(count(markup, "pb-msg--agent")).toBe(1);
-    // The transcript is masked: what is on file is what is shown.
+    // The customer's messages are masked at the source and shown as stored; the agent's own text is as written.
     expect(markup).toContain("[EMAIL_1]");
     expect(markup).toContain("[OTP_1]");
-    expect(markup).toContain("[NAME_1]");
+    expect(markup).toContain("Hola, soy Ana, del equipo de fraude.");
+    expect(markup).not.toContain("[NAME_1]");
     // A human's message follows a "joined" line and is labelled.
     expect(markup).toContain('<div class="pb-sys" data-tone="joined">');
     expect(markup).toContain("agent tomó la conversación");
@@ -370,12 +371,15 @@ describe("the composer", () => {
     expect(html(<Composer {...props} enabled={false} lockedReason="lockedOther" />)).toContain("Otro agente tiene la conversación.");
   });
 
-  test("once taken it is a labelled input limited to 2000 characters, and says that the text is masked", () => {
+  test("once taken it is a labelled input limited to 2000 characters, and says what the customer and the assistant see", () => {
     const markup = html(<Composer {...props} enabled />);
     expect(markup).toContain('maxLength="2000"');
     expect(markup).toContain('<span class="pb-sr">Respuesta al cliente</span>');
-    expect(markup).toContain("No escribas datos personales, tampoco tu nombre.");
-    expect(markup).toContain("El texto se enmascara antes de guardarse");
+    expect(markup).toContain("El cliente ve el texto exactamente como lo escribes.");
+    expect(markup).toContain("El asistente no lo ve.");
+    expect(markup).toContain("Escribe solo lo que el cliente necesita.");
+    // The text is not masked any more, so the note must not say that it is.
+    expect(markup).not.toContain("enmascar");
     expect(markup).not.toContain('placeholder="Toma el caso');
   });
 

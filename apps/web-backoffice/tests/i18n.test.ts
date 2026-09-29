@@ -86,13 +86,19 @@ describe("dictionaries", () => {
     expect(dictionaries.en.guardrails.mode.blockLabel).toBe("handoff required");
   });
 
-  test("the composer tells the agent that the customer reads masked text, the agent's own name included", () => {
+  test("the composer tells the agent that the customer sees the text as written and the assistant does not see it", () => {
+    const expected = {
+      es: ["exactamente como lo escribes", "El asistente no lo ve", "Escribe solo lo que el cliente necesita"],
+      pt: ["exatamente como você o escreve", "O assistente não o vê", "Escreva só o que o cliente precisa"],
+      en: ["exactly as you write it", "The assistant does not see it", "Write only what the customer needs"],
+    } as const;
     for (const lang of LANGUAGES) {
       const note = dictionaries[lang].handoff.composer.note;
       expect(note.length).toBeGreaterThan(60);
+      for (const part of expected[lang]) expect(note, lang).toContain(part);
+      // The text is stored masked but shown as written: the note must not claim it is masked.
+      expect(note, lang).not.toMatch(/mask|mascar|enmascar/i);
     }
-    expect(dictionaries.es.handoff.composer.note).toContain("tampoco tu nombre");
-    expect(dictionaries.en.handoff.composer.note).toContain("not even your own name");
   });
 });
 

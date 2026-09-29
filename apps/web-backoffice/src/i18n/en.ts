@@ -176,7 +176,7 @@ export const en: Dictionary = {
       placeholder: "Write your reply",
       send: "Send",
       sending: "Sending…",
-      note: "The text is masked before it is stored and the customer reads it masked. Do not write personal data, not even your own name.",
+      note: "The customer sees the text exactly as you write it. The assistant does not see it. Write only what the customer needs.",
       locked: "Take the case to reply.",
       lockedOther: "Another agent holds the conversation.",
       notSent: "Not sent",

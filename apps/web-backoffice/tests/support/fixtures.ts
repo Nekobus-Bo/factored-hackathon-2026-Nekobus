@@ -153,7 +153,7 @@ export function transcript(
     },
   ];
   if (options.withAgentMessage) {
-    messages.push({ role: "agent", content: "Hola, soy [NAME_1], del equipo de fraude. Ya revisé tu caso.", blocks: [], created_at: isoAgo(20, now) });
+    messages.push({ role: "agent", content: "Hola, soy Ana, del equipo de fraude. Ya revisé tu caso.", blocks: [], created_at: isoAgo(20, now) });
   }
   return {
     conversation_id: CONVERSATION_ID,

@@ -176,7 +176,7 @@ export const pt: Dictionary = {
       placeholder: "Escreva sua resposta",
       send: "Enviar",
       sending: "Enviando…",
-      note: "O texto é mascarado antes de ser guardado e o cliente o lê mascarado. Não escreva dados pessoais, nem o seu nome.",
+      note: "O cliente vê o texto exatamente como você o escreve. O assistente não o vê. Escreva só o que o cliente precisa.",
       locked: "Assuma o caso para poder responder.",
       lockedOther: "Outro agente está com a conversa.",
       notSent: "Não enviado",

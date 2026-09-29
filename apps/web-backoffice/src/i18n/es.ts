@@ -178,7 +178,7 @@ export const es = {
       placeholder: "Escribe tu respuesta",
       send: "Enviar",
       sending: "Enviando…",
-      note: "El texto se enmascara antes de guardarse y el cliente lo lee enmascarado. No escribas datos personales, tampoco tu nombre.",
+      note: "El cliente ve el texto exactamente como lo escribes. El asistente no lo ve. Escribe solo lo que el cliente necesita.",
       locked: "Toma el caso para poder responder.",
       lockedOther: "Otro agente tiene la conversación.",
       notSent: "No enviado",

@@ -1,6 +1,7 @@
-// The agent's view of a conversation: the masked transcript in the design system's chat structure
-// (pb-chat, pb-msg, pb-cmsg, pb-sys) and the reply composer. Nothing here is raw: the orchestrator stores
-// customer messages masked and masks the agent's before storing them, so `[NAME_1]` is what is on file.
+// The agent's view of a conversation: the transcript in the design system's chat structure (pb-chat, pb-msg,
+// pb-cmsg, pb-sys) and the reply composer. The customer's messages are masked at the source and shown as stored.
+// The agent's own messages are shown as the agent wrote them: the orchestrator keeps that text encrypted next to
+// its masked twin and answers with it (ADR-0013, amendment 2026-09-29), so `Hola, soy Ana` reads as typed.
 
 import { parseBlocks, type MessageBlock } from "@pattern-blue/contracts";
 import { useEffect, useRef, useState, type FormEvent } from "react";
