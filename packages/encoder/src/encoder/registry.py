@@ -190,5 +190,21 @@ def _load_gliner() -> Factory:
     return _build_gliner
 
 
+# --- llm_sidecar (interface only; the container is post-freeze) ---
+
+
+def _load_llm_sidecar() -> Factory:
+    from encoder.adapters.llm_sidecar import LLMSidecarAdapter
+
+    def factory(spec: BackendSpec) -> DecisionAdapter:
+        try:
+            return LLMSidecarAdapter(spec)
+        except NotImplementedError as exc:
+            raise BackendPendingError(str(exc)) from exc
+
+    return factory
+
+
 register("tfidf_lr", _load_tfidf)
 register("gliner", _load_gliner)
+register("llm_sidecar", _load_llm_sidecar)
