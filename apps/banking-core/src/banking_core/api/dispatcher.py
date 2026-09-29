@@ -4,13 +4,21 @@ Coordinates the end-to-end tool execution pipeline:
 0. Per-session lock: the whole dispatch (read session, execute, save) is serialized
 1. Input validation & IDOR check (validate_no_holder_tampering)
 2. Records verification_state_before for audit trail
-3. Authorizer evaluation (FSM + Matrix + Policy + per-session rate limits)
+3. card.block and handoff.create that name a transaction_id: the transaction is
+   loaded from the database for the pinned holder (and the card), before the
+   authorizer runs. The policy reads its amount from that row and from nothing
+   the model or the customer says; a transaction that cannot be resolved is
+   refused INVALID_ARGUMENTS, the same for every reason (ADR-0003 amendment
+   2026-09-29)
+3b. Authorizer evaluation (FSM + Matrix + Policy + per-session rate limits)
 4. Idempotency store deduplication for state-mutating tools (scope strictly required)
 5. Tool execution & FSM state mutation, computed on a copy of the session
    (customer.match, otp.send and otp.verify also apply the cross-session attempt
    limits per customer and per document: control/attempt_limits.py)
 6. Tamper-evident audit logging with PII safety
-7. DB commit, and only then the new session state is saved to Redis
+7. DB commit, and only then the new session state is saved to Redis (a
+   card.block also remembers the strongest handoff requirement it decided, on a
+   replay too)
 8. Return contracts.envelope.ToolResult envelope
 """
 
@@ -53,12 +61,18 @@ from banking_core.control.config import (
     get_control_config_repository,
 )
 from banking_core.control.fsm import VerificationFSM
-from banking_core.control.policy import Decision, PolicyConfig
+from banking_core.control.policy import (
+    AMOUNT_CONTEXT_KEY,
+    CURRENCY_CONTEXT_KEY,
+    Decision,
+    PolicyConfig,
+)
 from banking_core.control.session import (
     RedisSessionStore,
     SessionState,
     validate_no_holder_tampering,
 )
+from banking_core.handoff.requirement import stronger
 from banking_core.handoff.tools import (
     execute_handoff_create,
     reread_handoff_create_result,
@@ -81,9 +95,17 @@ from banking_core.identity.tools import (
     execute_otp_verify,
 )
 from banking_core.knowledge.tools.kb_search import execute_kb_search
+from banking_core.transactions.lookup import (
+    DisputedTransaction,
+    TransactionNotFoundError,
+    load_disputed_transaction,
+)
 from banking_core.transactions.tools import execute_transaction_list_recent
 
 logger = logging.getLogger(__name__)
+
+# Write tools that take the opaque transaction_id of the disputed charge.
+TRANSACTION_LINKED_TOOLS: frozenset[str] = frozenset({"card.block", "handoff.create"})
 
 
 class SessionNotFoundError(LookupError):
@@ -300,6 +322,51 @@ class ToolDispatcher:
         """
         self.session_store.save(session, ttl_seconds=ttl_seconds)
 
+    def _load_disputed_transaction(
+        self, tool_call: ToolCall, session: SessionState, db_session: Session
+    ) -> DisputedTransaction:
+        """Load the transaction a write tool names, for the pinned holder.
+
+        card.block also requires it to be on the card being blocked. Every way
+        of not resolving raises TransactionNotFoundError (or ValueError for a
+        malformed holder), so the caller cannot tell them apart.
+        """
+        transaction_id = tool_call.args.get("transaction_id")
+        card_ref: str | None = None
+        if tool_call.tool == "card.block":
+            raw_card_ref = tool_call.args.get("card_ref")
+            if not isinstance(raw_card_ref, str):
+                raise TransactionNotFoundError
+            card_ref = raw_card_ref
+        if not isinstance(transaction_id, str) or session.pinned_holder_id is None:
+            # Nobody's transaction can be linked to a session with no holder.
+            raise TransactionNotFoundError
+        return load_disputed_transaction(
+            db_session, session.pinned_holder_id, transaction_id, card_ref
+        )
+
+    def _remember_handoff_requirement(
+        self, session: SessionState, card_block_data: dict[str, Any], ttl_seconds: int
+    ) -> None:
+        """Keep the strongest handoff requirement a card.block decided in the session.
+
+        Run after the DB commit and before the response goes out. It also runs when
+        the call was an idempotent replay: remembering the strongest requirement is
+        idempotent, and it lets the retry of a call whose session save failed
+        after the commit finish the job. A requirement never weakens the one
+        already remembered.
+        """
+        requirement = CardBlockOutput.model_validate(
+            card_block_data
+        ).handoff_requirement
+        remembered = stronger(session.handoff_requirement, requirement)
+        if remembered == session.handoff_requirement:
+            return
+        self._save_session_after_commit(
+            session.model_copy(update={"handoff_requirement": remembered}),
+            ttl_seconds,
+        )
+
     def dispatch_in_session(
         self,
         tool_call: ToolCall,
@@ -359,8 +426,64 @@ class ToolDispatcher:
         # 2. Capture session verification state BEFORE execution (required for U1 check)
         verification_state_before = session.state
 
-        # 3. Deterministic authorization (FSM + Matrix + Policy + per-session limits)
-        decision = self.authorizer.authorize(tool_call=tool_call, session=session)
+        # 3. The disputed transaction, from the database, BEFORE authorization: the
+        #    risk threshold compares the amount of that row (ADR-0003 amendment
+        #    2026-09-29), never a figure from the model or the customer.
+        policy_context: dict[str, Any] = {}
+        if (
+            tool_call.tool in TRANSACTION_LINKED_TOOLS
+            and tool_call.args.get("transaction_id") is not None
+        ):
+            try:
+                disputed = self._load_disputed_transaction(
+                    tool_call, session, db_session
+                )
+            except (TransactionNotFoundError, ValueError):
+                # One answer and one audit reason for a transaction that does
+                # not exist, is someone else's, is on another card or is not
+                # even an id: the tool must not confirm which (ADR-0004, IDOR).
+                db_session.rollback()
+                return self._refuse(
+                    tool_call,
+                    session.session_id,
+                    ReasonCode.INVALID_ARGUMENTS,
+                    db_session,
+                    verification_state_before=verification_state_before,
+                    verification_state_after=session.state,
+                    reason="disputed_transaction_not_resolved",
+                    details={"flags": ["TRANSACTION_NOT_RESOLVED"]},
+                )
+            except Exception as exc:
+                db_session.rollback()
+                logger.error(
+                    "Error loading the disputed transaction for '%s': %s",
+                    tool_call.tool,
+                    type(exc).__name__,
+                )
+                self._audit_error(
+                    tool_call.tool,
+                    session.session_id,
+                    verification_state_before,
+                    session.state,
+                    db_session,
+                    exc,
+                )
+                return ToolResult(
+                    tool=tool_call.tool,
+                    status=ToolResultStatus.ERROR,
+                    reason_code=ReasonCode.INTERNAL_ERROR,
+                    data=None,
+                )
+            if tool_call.tool == "card.block":
+                policy_context = {
+                    AMOUNT_CONTEXT_KEY: disputed.amount_minor,
+                    CURRENCY_CONTEXT_KEY: disputed.currency,
+                }
+
+        # 3b. Deterministic authorization (FSM + Matrix + Policy + per-session limits)
+        decision = self.authorizer.authorize(
+            tool_call=tool_call, session=session, context=policy_context
+        )
 
         if not decision.allowed:
             return self._refuse(
@@ -449,6 +572,10 @@ class ToolDispatcher:
                 if advanced_session is not None:
                     self._save_session_after_commit(
                         advanced_session, policy_config.session_ttl_seconds
+                    )
+                if tool_call.tool == "card.block":
+                    self._remember_handoff_requirement(
+                        session, result_data, policy_config.session_ttl_seconds
                     )
                 if tool_call.tool == "handoff.create":
                     self._save_session_after_commit(
@@ -749,6 +876,9 @@ class ToolDispatcher:
                 verification_state_before=verification_state_before,
                 verification_state_after=updated_session.state,
                 session_id=session.session_id,
+                # What card.block decided earlier in this session: server-side
+                # state, so the model cannot lower the priority or reroute it.
+                session_requirement=session.handoff_requirement,
                 commit=False,
             )
 

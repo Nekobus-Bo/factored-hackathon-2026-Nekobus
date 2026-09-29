@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,18 +10,21 @@ from typing import Any
 import fakeredis
 import pytest
 import sqlalchemy as sa
+from banking_core.api import routes_tools
 from banking_core.api.dispatcher import ToolDispatcher
 from banking_core.api.routes_sessions import get_session_store, set_session_store
 from banking_core.api.routes_tools import set_dispatcher
 from banking_core.control.config import InMemoryControlConfigRepository
+from banking_core.control.policy import PolicyConfig
 from banking_core.control.session import RedisSessionStore
 from banking_core.db import get_db
 from banking_core.identity import OtpChallengeStore, get_dev_sink
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
 from banking_core.main import app, mount_dev_router_if_enabled
+from banking_core.models.core_bank import Card
 from banking_core.models.ops import AuditLog, Handoff, IdempotencyKey
 from banking_core.seed.curated import load_curated_data
-from banking_core.seed.fixtures import create_scenario_fixtures
+from banking_core.seed.fixtures import create_scenario_fixtures, fixture_uuid
 from banking_core.seed.staging import (
     StagingAccount,
     StagingCard,
@@ -741,3 +745,360 @@ def test_repeated_handoff_returns_the_open_one_even_when_handed_off(
     )
     assert replay["data"] == second["data"]
     assert db_session.scalar(sa.select(sa.func.count()).select_from(Handoff)) == 1
+
+
+# --- The disputed transaction and the handoff requirement (ADR-0003 amendment) ---
+
+ES_CHARGE = str(fixture_uuid("es-demo-unrecognized-tx"))
+PT_CHARGE = str(fixture_uuid("pt-demo-unrecognized-tx"))
+REQUIRED_URGENT_DISPUTES = {
+    "level": "REQUIRED",
+    "priority": "URGENT",
+    "department": "DISPUTES",
+    "reason": "UNRECOGNIZED_TRANSACTION",
+}
+NO_REQUIREMENT = {
+    "level": "NONE",
+    "priority": None,
+    "department": None,
+    "reason": None,
+}
+
+
+def _set_policy(mode: str, threshold_minor: int | None = None) -> None:
+    """Change the policy the test dispatcher enforces (the es customer uses COP)."""
+    dispatcher = routes_tools._dispatcher
+    assert dispatcher is not None
+    thresholds = {"COP": threshold_minor} if threshold_minor is not None else {}
+    config = PolicyConfig(
+        thresholds_minor={"COP": 200000000, **thresholds},
+        currency="COP",
+        amount_mode=mode,  # type: ignore[arg-type]
+    )
+    dispatcher.config_repo.set_policy_config(config)  # type: ignore[attr-defined]
+
+
+def _block(
+    client: TestClient, session_id: str, key: str, **args: object
+) -> dict[str, Any]:
+    call = {"card_ref": "card_demo_es", "reason": "UNRECOGNIZED_CHARGE", **args}
+    return _call_tool(client, session_id, "card.block", call, key)
+
+
+def _remembered(session_id: str) -> dict[str, Any] | None:
+    stored = get_session_store().get(session_id)
+    assert stored is not None
+    if stored.handoff_requirement is None:
+        return None
+    return stored.handoff_requirement.model_dump(mode="json")
+
+
+def test_card_block_reads_the_amount_of_the_linked_transaction(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=1000)
+
+    blocked = _block(
+        client, session_id, "idem_block_amount_01", transaction_id=ES_CHARGE
+    )
+
+    assert blocked["status"] == "ok"
+    assert blocked["data"]["handoff_requirement"] == REQUIRED_URGENT_DISPUTES
+    # banking-core remembers it, so a later handoff cannot be pulled down.
+    assert _remembered(session_id) == REQUIRED_URGENT_DISPUTES
+
+    handoff = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "CUSTOMER_REQUEST",
+            "summary": "Customer wants a person to look at the charge.",
+            "priority": "LOW",
+            "department": "CUSTOMER_SUPPORT",
+            "transaction_id": ES_CHARGE,
+        },
+        "idem_handoff_amount_01",
+    )
+
+    assert handoff["status"] == "ok"
+    assert handoff["data"]["priority"] == "URGENT"
+    assert handoff["data"]["department"] == "DISPUTES"
+    db_session.expire_all()
+    [row] = db_session.scalars(sa.select(Handoff)).all()
+    assert (row.priority, row.department) == ("URGENT", "DISPUTES")
+    facts = row.summary["verified_facts"]["disputed_transaction"]
+    assert facts["transaction_id"] == ES_CHARGE
+    assert (facts["amount_minor"], facts["currency"]) == (35000000, "COP")
+    assert facts["merchant"] == "Global Electronics Megastore"
+    assert facts["card_masked"] == "**** **** **** 1050"
+    assert "posted_at" in facts
+
+
+def test_a_charge_under_the_threshold_leaves_the_case_automated(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, _ = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=40000000)  # the charge is 35,000,000
+
+    blocked = _block(
+        client, session_id, "idem_block_under_01", transaction_id=ES_CHARGE
+    )
+
+    assert blocked["status"] == "ok"
+    assert blocked["data"]["handoff_requirement"] == NO_REQUIREMENT
+    assert _remembered(session_id) is None
+
+
+def test_flag_mode_recommends_and_the_handoff_gets_the_normal_floor(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, _ = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("flag", threshold_minor=1000)
+
+    blocked = _block(client, session_id, "idem_block_flag_01", transaction_id=ES_CHARGE)
+
+    assert blocked["data"]["handoff_requirement"] == {
+        **REQUIRED_URGENT_DISPUTES,
+        "level": "RECOMMENDED",
+        "priority": "NORMAL",
+    }
+    handoff = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "DISPUTE_CLAIM",
+            "summary": "Customer asks for a person.",
+            "priority": "LOW",
+        },
+        "idem_handoff_flag_01",
+    )
+    assert (handoff["data"]["priority"], handoff["data"]["department"]) == (
+        "NORMAL",
+        "DISPUTES",
+    )
+
+
+def test_a_dispute_reason_without_a_linked_charge_fails_safe(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, _ = seeded_api
+    session_id = _verified_session(client)
+
+    blocked = _block(client, session_id, "idem_block_nolink_01")
+
+    assert blocked["data"]["handoff_requirement"] == REQUIRED_URGENT_DISPUTES
+    assert _remembered(session_id) == REQUIRED_URGENT_DISPUTES
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        {"amount_minor": 1},
+        {"disputed_amount_minor": 1, "currency": "COP"},
+        {"transaction_id": 12345678},
+    ],
+    ids=["amount", "amount-and-currency", "non-string-transaction"],
+)
+def test_card_block_accepts_no_amount_and_no_odd_transaction_id(
+    seeded_api: tuple[TestClient, Session], extra_args: dict[str, object]
+) -> None:
+    """There is no amount argument: the contract rejects the call before any policy."""
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=1000)
+
+    response = client.post(
+        "/v1/tools/call",
+        json={
+            "tool": "card.block",
+            "version": "1.0",
+            "args": {"card_ref": "card_demo_es", "reason": "LOST", **extra_args},
+            "idempotency_key": "idem_block_argamount_01",
+        },
+        headers={"X-Session-Id": session_id},
+    )
+
+    assert response.status_code == 422
+    db_session.expire_all()
+    card = db_session.scalar(sa.select(Card).where(Card.card_ref == "card_demo_es"))
+    assert card is not None and card.status == "ACTIVE"
+    assert _remembered(session_id) is None
+
+
+def test_a_weaker_requirement_never_replaces_the_remembered_one(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, _ = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=1000)
+    _block(client, session_id, "idem_block_strong_01", transaction_id=ES_CHARGE)
+
+    # The same card again for a reason with no charge to compare: NONE.
+    again = _block(client, session_id, "idem_block_weak_01", reason="LOST")
+
+    assert again["data"]["handoff_requirement"] == NO_REQUIREMENT
+    assert _remembered(session_id) == REQUIRED_URGENT_DISPUTES
+
+
+def test_a_failed_session_save_is_finished_by_the_replay(
+    seeded_api: tuple[TestClient, Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Commit first, save second: the retry of the same call remembers it."""
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=1000)
+    key = "idem_block_save_fail_01"
+
+    def broken_save(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("redis unavailable")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(RedisSessionStore, "save", broken_save)
+        failed = _block(client, session_id, key, transaction_id=ES_CHARGE)
+
+    assert (failed["status"], failed["reason_code"]) == ("error", "INTERNAL_ERROR")
+    assert _remembered(session_id) is None
+    assert _idempotency_rows(db_session, key) == 1
+
+    replayed = _block(client, session_id, key, transaction_id=ES_CHARGE)
+
+    assert replayed["status"] == "ok"
+    assert replayed["data"]["handoff_requirement"] == REQUIRED_URGENT_DISPUTES
+    assert _remembered(session_id) == REQUIRED_URGENT_DISPUTES
+
+
+@pytest.mark.parametrize(
+    "transaction_id",
+    [
+        PT_CHARGE,  # someone else's
+        str(uuid.uuid4()),  # does not exist
+        "not-a-uuid-at-all",
+        "x" * 64,
+    ],
+    ids=["foreign", "missing", "malformed", "long"],
+)
+def test_a_transaction_that_does_not_resolve_is_refused_the_same_way(
+    seeded_api: tuple[TestClient, Session], transaction_id: object
+) -> None:
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    _set_policy("block", threshold_minor=1000)
+
+    blocked = _block(
+        client, session_id, "idem_block_bad_tx_01", transaction_id=transaction_id
+    )
+    handoff = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "DISPUTE_CLAIM",
+            "summary": "Customer disputes a charge.",
+            "transaction_id": transaction_id,
+        },
+        "idem_handoff_bad_tx_01",
+    )
+
+    for result, tool in ((blocked, "card.block"), (handoff, "handoff.create")):
+        assert result == {
+            "tool": tool,
+            "status": "refused",
+            "reason_code": "INVALID_ARGUMENTS",
+            "data": None,
+        }
+    # Nothing happened, and every refusal is audited with the same reason.
+    db_session.expire_all()
+    card = db_session.scalar(sa.select(Card).where(Card.card_ref == "card_demo_es"))
+    assert card is not None and card.status == "ACTIVE"
+    assert db_session.scalars(sa.select(Handoff)).all() == []
+    assert _idempotency_rows(db_session, "idem_block_bad_tx_01") == 0
+    assert _idempotency_rows(db_session, "idem_handoff_bad_tx_01") == 0
+    refusals = db_session.scalars(
+        sa.select(AuditLog).where(
+            AuditLog.actor_ref == session_id, AuditLog.decision == "refused"
+        )
+    ).all()
+    assert {(row.action, row.reason_code) for row in refusals} == {
+        ("card.block", "INVALID_ARGUMENTS"),
+        ("handoff.create", "INVALID_ARGUMENTS"),
+    }
+    assert {row.payload["reason"] for row in refusals} == {
+        "disputed_transaction_not_resolved"
+    }
+    assert get_session_store().get(session_id).state == VerificationState.VERIFIED  # type: ignore[union-attr]
+
+
+def test_a_foreign_and_a_missing_transaction_cannot_be_told_apart(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    responses = [
+        _block(client, session_id, f"idem_block_probe_{n}", transaction_id=tx)
+        for n, tx in enumerate((PT_CHARGE, str(uuid.uuid4())))
+    ]
+
+    assert responses[0] == responses[1]
+    db_session.expire_all()
+    payloads = [
+        (row.reason_code, row.payload["reason"], row.payload["details"])
+        for row in db_session.scalars(
+            sa.select(AuditLog)
+            .where(AuditLog.actor_ref == session_id, AuditLog.action == "card.block")
+            .order_by(AuditLog.id)
+        )
+    ]
+    assert payloads[0] == payloads[1]
+
+
+def test_a_session_without_a_holder_cannot_name_a_transaction(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id: str = client.post("/v1/sessions").json()["session_id"]
+
+    named = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "CUSTOMER_REQUEST",
+            "summary": "Customer asks for a person.",
+            "transaction_id": ES_CHARGE,
+        },
+        "idem_handoff_anon_tx_01",
+    )
+    plain = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {"reason": "CUSTOMER_REQUEST", "summary": "Customer asks for a person."},
+        "idem_handoff_anon_01",
+    )
+
+    assert (named["status"], named["reason_code"]) == ("refused", "INVALID_ARGUMENTS")
+    assert plain["status"] == "ok"
+    db_session.expire_all()
+    assert len(db_session.scalars(sa.select(Handoff)).all()) == 1
+
+
+def test_card_block_state_is_checked_for_a_transaction_of_the_holder(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    """An identified customer's own charge resolves, then the FSM refuses the block."""
+    client, db_session = seeded_api
+    session_id = _identified_session(client)
+
+    result = _block(client, session_id, "idem_block_state_01", transaction_id=ES_CHARGE)
+
+    assert (result["status"], result["reason_code"]) == ("refused", "STATE_NOT_ALLOWED")
+    db_session.expire_all()
+    card = db_session.scalar(sa.select(Card).where(Card.card_ref == "card_demo_es"))
+    assert card is not None and card.status == "ACTIVE"
