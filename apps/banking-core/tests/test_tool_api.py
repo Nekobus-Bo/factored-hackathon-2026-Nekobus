@@ -42,7 +42,11 @@ from banking_core.control.policy import PolicyConfig
 from banking_core.control.session import RedisSessionStore
 from banking_core.crypto import RecordEncryptor, compute_blind_index
 from banking_core.db import get_db
-from banking_core.identity import OtpChallengeStore, get_dev_sink
+from banking_core.identity import (
+    OtpChallengeStore,
+    SimulatedInbox,
+    set_simulated_inbox,
+)
 from banking_core.main import app, mount_dev_router_if_enabled
 from banking_core.models.core_bank import Customer
 from banking_core.models.ops import AuditLog, IdempotencyKey
@@ -261,22 +265,22 @@ def test_setup(monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides[get_session_store] = lambda: session_store
 
     from banking_core.api.dispatcher import ToolDispatcher
-    from banking_core.identity import OtpChallengeStore, get_dev_sink
 
-    sink = get_dev_sink()
-    sink.clear()
+    inbox = SimulatedInbox(redis_client=fake_redis)
+    set_simulated_inbox(inbox)
     challenge_store = OtpChallengeStore(redis_client=fake_redis)
     dispatcher = ToolDispatcher(
         config_repo=InMemoryControlConfigRepository(),
         session_store=session_store,
-        delivery_port=sink,
+        delivery_port=inbox,
         challenge_store=challenge_store,
     )
     set_dispatcher(dispatcher)
 
     client = TestClient(app)
-    yield client, mock_db, session_store, sink
+    yield client, mock_db, session_store, inbox
     app.dependency_overrides.clear()
+    set_simulated_inbox(None)
 
 
 def test_session_creation(test_setup) -> None:
@@ -330,7 +334,7 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     - receipts generated on mutating steps
     - Model response does NOT leak audit fields
     """
-    client, mock_db, session_store, dev_sink = test_setup
+    client, mock_db, session_store, inbox = test_setup
 
     # 1. Create session -> ANONYMOUS
     sess_resp = client.post("/v1/sessions")
@@ -403,8 +407,11 @@ def test_full_fsm_lifecycle_http(test_setup) -> None:
     assert send_audit.payload["verification_state_before"] == "IDENTIFIED"
     assert send_audit.payload["verification_state_after"] == "OTP_PENDING"
 
-    # 4. Fetch delivered code from dev sink
-    code = dev_sink.get_code(challenge_id, allow_hook=True)
+    # 4. Fetch the delivered code from the session's simulated inbox
+    [message] = inbox.messages(session_id)
+    assert message.challenge_id == challenge_id
+    code = inbox.get_code(challenge_id)
+    assert code == message.code
     assert code is not None
     assert len(code) == 6
 
@@ -511,7 +518,7 @@ def test_tool_outside_allowed_states_is_refused(test_setup) -> None:
 
 def test_idempotency_replay_identical_receipt(test_setup) -> None:
     """Verify replaying idempotency key returns same receipt without re-execution."""
-    client, mock_db, _, dev_sink = test_setup
+    client, mock_db, _, inbox = test_setup
 
     # Setup session in IDENTIFIED state
     sess_resp = client.post("/v1/sessions")
@@ -677,9 +684,16 @@ def test_idor_argument_tampering_rejected(test_setup) -> None:
 def test_dev_otp_router_is_mounted_only_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sink = get_dev_sink()
-    sink.clear()
-    sink.deliver("chal_hook_1", "SMS", "+57 *** *** 1234", "654321")
+    inbox = SimulatedInbox(redis_client=fakeredis.FakeRedis(decode_responses=True))
+    set_simulated_inbox(inbox)
+    inbox.deliver(
+        session_id="sess_hook_1",
+        challenge_id="chal_hook_1",
+        channel="EMAIL",
+        destination_masked="a***@example.com",
+        code="654321",
+        ttl_seconds=300,
+    )
 
     monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "false")
     disabled_app = FastAPI()
@@ -692,8 +706,11 @@ def test_dev_otp_router_is_mounted_only_when_enabled(
     monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "true")
     enabled_app = FastAPI()
     mount_dev_router_if_enabled(enabled_app)
-    with TestClient(enabled_app) as client:
-        response = client.get("/v1/dev/otp/chal_hook_1")
+    try:
+        with TestClient(enabled_app) as client:
+            response = client.get("/v1/dev/otp/chal_hook_1")
+    finally:
+        set_simulated_inbox(None)
 
     assert response.status_code == 200
     assert response.json()["code"] == "654321"
@@ -866,11 +883,12 @@ class Harness:
         self.redis = fakeredis.FakeRedis(decode_responses=True)
         self.session_store = RedisSessionStore(redis_client=self.redis)
         self.challenge_store = OtpChallengeStore(redis_client=self.redis)
+        self.inbox = SimulatedInbox(redis_client=self.redis)
         self.db = MockDbSession(customers=_create_test_customers())
         self.dispatcher = ToolDispatcher(
             config_repo=InMemoryControlConfigRepository(),
             session_store=self.session_store,
-            delivery_port=get_dev_sink(),
+            delivery_port=self.inbox,
             challenge_store=self.challenge_store,
             lock_ttl_ms=10000,
             lock_wait_ms=lock_wait_ms,
@@ -901,11 +919,11 @@ def make_harness(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MASTER_KEY", TEST_MASTER_KEY)
     monkeypatch.setenv("BLIND_INDEX_SALT", TEST_SALT)
     monkeypatch.setenv("OTP_MAX_ATTEMPTS", str(OTP_MAX_ATTEMPTS))
-    get_dev_sink().clear()
 
     def build(lock_wait_ms: int = 5000) -> Harness:
         h = Harness(lock_wait_ms=lock_wait_ms)
         set_session_store(h.session_store)
+        set_simulated_inbox(h.inbox)
         app.dependency_overrides[get_db] = lambda: h.db
         app.dependency_overrides[get_session_store] = lambda: h.session_store
         set_dispatcher(h.dispatcher)
@@ -913,6 +931,7 @@ def make_harness(monkeypatch: pytest.MonkeyPatch):
 
     yield build
     app.dependency_overrides.clear()
+    set_simulated_inbox(None)
 
 
 def _to_otp_pending(h: Harness) -> tuple[str, str]:
@@ -1135,7 +1154,7 @@ def test_locking_resend_delivers_nothing_stores_no_challenge_and_locks(
     challenges_before = _stored_challenges(h)
     audits_before = len(h.db.audit_logs)
 
-    sink = get_dev_sink()
+    sink = h.inbox
     with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
         locking = _otp_send(h, session_id, "idem_resend_locking_01")
 
@@ -1180,7 +1199,7 @@ def test_replayed_resend_is_not_counted_against_the_limit(
     first = _otp_send(h, session_id, "idem_resend_replayed_01")
     assert first["status"] == "ok"
 
-    sink = get_dev_sink()
+    sink = h.inbox
     with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
         replays = [
             _otp_send(h, session_id, "idem_resend_replayed_01") for _ in range(3)
@@ -1203,7 +1222,7 @@ def test_unrecognized_registered_channel_fails_closed_like_none(
     session_id = h.new_session()
     assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
 
-    sink = get_dev_sink()
+    sink = h.inbox
     with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
         result = _otp_send(h, session_id, "idem_unknown_channel_01")
 
@@ -1251,7 +1270,7 @@ def test_every_session_save_uses_the_configured_session_ttl(
     assert 0 < _session_ttl(h, session_id) <= 900
 
     h.redis.expire(f"{h.session_store.key_prefix}{session_id}", 3000)
-    code = get_dev_sink().get_code(sent["data"]["challenge_id"], allow_hook=True)
+    code = h.inbox.get_code(sent["data"]["challenge_id"])
     verified = h.call(
         session_id,
         {
@@ -1448,7 +1467,7 @@ def test_locked_customer_gets_no_code_from_a_new_session(lock_harness) -> None:
     assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
     audits_before = len(h.db.audit_logs)
 
-    sink = get_dev_sink()
+    sink = h.inbox
     with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
         refused = _otp_send(h, session_id, "idem_locked_send")
 
@@ -1487,7 +1506,7 @@ def test_resend_from_a_pending_session_is_refused_while_the_customer_is_locked(
     _lock_customer_through_two_sessions(h)
     challenges_before = _stored_challenges(h)
 
-    sink = get_dev_sink()
+    sink = h.inbox
     with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
         refused = _otp_send(h, pending, "idem_locked_resend")
 
@@ -1501,7 +1520,7 @@ def test_resend_from_a_pending_session_is_refused_while_the_customer_is_locked(
 def test_locked_customer_cannot_verify_even_the_right_code(lock_harness) -> None:
     h = lock_harness()
     pending, challenge_id = _to_otp_pending(h)
-    right_code = get_dev_sink().get_code(challenge_id, allow_hook=True)
+    right_code = h.inbox.get_code(challenge_id)
     _lock_customer_through_two_sessions(h)
     evaluations_before = h.challenge_store.evaluations(challenge_id)
 
@@ -1597,7 +1616,7 @@ def test_customer_lock_ends_after_its_duration(lock_harness) -> None:
 def test_a_correct_code_is_not_counted_as_a_failure(lock_harness) -> None:
     h = lock_harness()
     session_id, challenge_id = _to_otp_pending(h)
-    code = get_dev_sink().get_code(challenge_id, allow_hook=True)
+    code = h.inbox.get_code(challenge_id)
 
     verified = h.call(
         session_id,

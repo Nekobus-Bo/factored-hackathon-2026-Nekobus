@@ -18,7 +18,11 @@ from banking_core.control.config import InMemoryControlConfigRepository
 from banking_core.control.policy import PolicyConfig
 from banking_core.control.session import RedisSessionStore
 from banking_core.db import get_db
-from banking_core.identity import OtpChallengeStore, get_dev_sink
+from banking_core.identity import (
+    OtpChallengeStore,
+    SimulatedInbox,
+    set_simulated_inbox,
+)
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
 from banking_core.main import app, mount_dev_router_if_enabled
 from banking_core.models.core_bank import Card
@@ -78,12 +82,12 @@ def api_client(
     fake_redis = fakeredis.FakeRedis(decode_responses=True)
     session_store = RedisSessionStore(redis_client=fake_redis, default_ttl=3600)
     set_session_store(session_store)
-    dev_sink = get_dev_sink()
-    dev_sink.clear()
+    inbox = SimulatedInbox(redis_client=fake_redis)
+    set_simulated_inbox(inbox)
     dispatcher = ToolDispatcher(
         config_repo=InMemoryControlConfigRepository(),
         session_store=session_store,
-        delivery_port=dev_sink,
+        delivery_port=inbox,
         challenge_store=OtpChallengeStore(redis_client=fake_redis),
     )
     set_dispatcher(dispatcher)
@@ -102,7 +106,7 @@ def api_client(
             yield client
     finally:
         app.dependency_overrides.clear()
-        dev_sink.clear()
+        set_simulated_inbox(None)
         get_kb_searcher.cache_clear()
 
 

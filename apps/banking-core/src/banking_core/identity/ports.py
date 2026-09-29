@@ -1,17 +1,20 @@
-"""Delivery port and dev sink for Outbound One-Time Passcodes (OTP).
+"""Delivery port for outbound One-Time Passcodes (OTP).
 
 Core invariants:
-1. Delivery channel is an open decision (ADR-0004, ADR-0007).
-2. The dev sink stays strictly in the trusted zone.
+1. The delivery mode comes from OTP_CHANNEL_MODE. Only ``simulated`` is implemented
+   (an in-app inbox on redis-core, ADR-0007 amendment 2026-09-29); any other value
+   fails with an explicit message instead of pretending to send.
+2. Delivery stays in the trusted zone: the model never sees the code and never
+   chooses the channel or the destination.
 3. OTP codes are never logged in clear text and never returned in ToolResult data.
-4. Test/dev-only hook to retrieve code is disabled by default.
+4. A real provider plugs in by implementing ``OtpDeliveryPort``; none exists yet.
+5. The test/dev-only hook that reads a code back is disabled by default.
 """
 
-import logging
-from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Protocol
 
-logger = logging.getLogger(__name__)
+from banking_core.identity.config import resolve_otp_channel_mode
+from banking_core.identity.simulated_inbox import get_simulated_inbox
 
 
 class OtpDeliveryPort(Protocol):
@@ -19,68 +22,23 @@ class OtpDeliveryPort(Protocol):
 
     def deliver(
         self,
+        *,
+        session_id: str,
         challenge_id: str,
         channel: str,
         destination_masked: str,
         code: str,
+        ttl_seconds: int,
     ) -> None:
-        """Deliver the generated OTP code to the customer destination."""
+        """Deliver the generated OTP code for the session's customer.
+
+        ``destination_masked`` is the only form of the destination this port
+        receives; ``ttl_seconds`` is how long the code stays valid.
+        """
         ...
 
 
-class DevOtpSink:
-    """In-memory dev sink for OTP delivery within the trusted zone."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, dict[str, Any]] = {}
-
-    def deliver(
-        self,
-        challenge_id: str,
-        channel: str,
-        destination_masked: str,
-        code: str,
-    ) -> None:
-        """Deliver and store OTP in the trusted zone dev sink."""
-        now = datetime.now(UTC)
-        self._store[challenge_id] = {
-            "challenge_id": challenge_id,
-            "channel": channel,
-            "destination_masked": destination_masked,
-            "code": code,
-            "delivered_at": now,
-        }
-        # Log delivery without cleartext code
-        logger.info(
-            "OTP delivered to dev sink: challenge_id=%s channel=%s destination=%s",
-            challenge_id,
-            channel,
-            destination_masked,
-        )
-
-    def get_code(self, challenge_id: str, allow_hook: bool = False) -> str | None:
-        """Retrieve cleartext code for evaluation runner only if hook is enabled."""
-        if not allow_hook:
-            raise PermissionError(
-                "Dev OTP retrieval hook is disabled by default. "
-                "Set ALLOW_DEV_OTP_HOOK=true in evaluation environments."
-            )
-        entry = self._store.get(challenge_id)
-        return entry["code"] if entry else None
-
-    def clear(self) -> None:
-        """Clear sink state (useful between tests)."""
-        self._store.clear()
-
-
-_global_dev_sink = DevOtpSink()
-
-
-def get_dev_sink() -> DevOtpSink:
-    """Get the global dev OTP sink."""
-    return _global_dev_sink
-
-
 def get_delivery_port() -> OtpDeliveryPort:
-    """Get configured OTP delivery port."""
-    return _global_dev_sink
+    """Get the delivery port for the configured OTP_CHANNEL_MODE."""
+    resolve_otp_channel_mode()  # raises for any mode that is not implemented
+    return get_simulated_inbox()
