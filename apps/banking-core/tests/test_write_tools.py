@@ -6,6 +6,7 @@ handoff.create: works in LOCKED without a holder, priority mapping, the four
 structured elements assembled server-side, and the receipt re-read.
 """
 
+import threading
 import uuid
 from collections.abc import Generator
 
@@ -50,7 +51,7 @@ from contracts.tools.handoff_create import (
     HandoffReason,
     HandoffSummary,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 ALLOWED = Decision(allowed=True)
 SCOPE = "sess_write_tools_test"
@@ -500,3 +501,121 @@ def test_handoff_reread_refreshes_server_priority_and_summary(
     assert refreshed.priority is HandoffPriority.HIGH
     assert refreshed.output.summary.model_dump(mode="json") == stored.summary
     assert refreshed.output.summary.open_questions[0].text == args.summary
+
+
+def _handoff_audits(db: Session, session_ref: str) -> list[AuditLog]:
+    db.expire_all()
+    return list(
+        db.scalars(
+            sa.select(AuditLog)
+            .where(AuditLog.action == "handoff.create")
+            .where(AuditLog.actor_ref == session_ref)
+            .order_by(AuditLog.id)
+        )
+    )
+
+
+def test_second_handoff_in_a_session_returns_the_open_one(seeded: Session) -> None:
+    scope = "sess_handoff_twice"
+    first = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        HANDOFF_ARGS,
+        Decision(allowed=True, flags=["HANDOFF_REQUIRED"]),
+        scope,
+        VerificationState.VERIFIED,
+    )
+
+    again = execute_handoff_create(
+        seeded,
+        demo_holder("es"),
+        HandoffCreateInput(
+            reason=HandoffReason.CUSTOMER_REQUEST,
+            summary="Second request, phrased differently.",
+            priority=HandoffPriority.URGENT,
+            department=Department.DISPUTES,
+        ),
+        ALLOWED,
+        scope,
+        VerificationState.HANDED_OFF,
+    )
+
+    seeded.expire_all()
+    [row] = seeded.scalars(sa.select(Handoff)).all()
+    assert again.output.handoff_id == first.output.handoff_id == row.handoff_ref
+    # What was queued is what is returned: the second call changes nothing.
+    assert again.output.priority == first.output.priority == HandoffPriority.HIGH
+    assert again.output.department == first.output.department == row.department
+    assert again.output.summary.model_dump(mode="json") == row.summary
+    assert again.output.queue_position == first.output.queue_position
+    receipt = again.output.receipt
+    assert receipt.target_masked == row.handoff_ref
+    assert (receipt.state_before, receipt.state_after) == (
+        ResourceState.QUEUED,
+        ResourceState.QUEUED,
+    )
+    assert receipt.verified_at == row.created_at
+    # Still audited: one row per call, the second one pointing at the open handoff.
+    first_audit, second_audit = _handoff_audits(seeded, scope)
+    assert first.output.receipt.audit_id == f"aud_{first_audit.id:08d}"
+    assert receipt.audit_id == f"aud_{second_audit.id:08d}"
+    assert second_audit.decision == "allowed"
+    assert second_audit.payload["details"]["already_open"] is True
+    assert second_audit.payload["details"]["handoff_ref"] == row.handoff_ref
+    assert second_audit.payload["handoff_status"] == "QUEUED"
+    assert "already_open" not in first_audit.payload["details"]
+    assert "Second request" not in str(second_audit.payload)
+    # The dispatcher's post-commit re-read agrees with what was returned.
+    reread = reread_handoff_create_result(seeded, again.output)
+    assert reread.output.model_dump(mode="json") == again.output.model_dump(mode="json")
+
+
+def test_open_handoff_of_another_session_is_not_reused(seeded: Session) -> None:
+    mine = execute_handoff_create(
+        seeded, None, HANDOFF_ARGS, ALLOWED, "sess_mine", VerificationState.ANONYMOUS
+    )
+    other = execute_handoff_create(
+        seeded, None, HANDOFF_ARGS, ALLOWED, "sess_other", VerificationState.ANONYMOUS
+    )
+
+    assert mine.output.handoff_id != other.output.handoff_id
+    assert len(seeded.scalars(sa.select(Handoff)).all()) == 2
+
+
+def test_parallel_handoffs_in_one_session_queue_a_single_row(
+    seeded: Session, db_engine: sa.Engine
+) -> None:
+    """The per-session lock holds even without the dispatcher's Redis lock."""
+    scope = "sess_handoff_parallel"
+    session_maker = sessionmaker(bind=db_engine, autoflush=False)
+    barrier = threading.Barrier(6)
+    handoff_ids: list[str] = []
+    failures: list[BaseException] = []
+
+    def create() -> None:
+        try:
+            with session_maker() as db:
+                barrier.wait()
+                result = execute_handoff_create(
+                    db,
+                    None,
+                    HANDOFF_ARGS,
+                    ALLOWED,
+                    scope,
+                    VerificationState.ANONYMOUS,
+                )
+                handoff_ids.append(result.output.handoff_id)
+        except BaseException as exc:  # noqa: BLE001 - surfaced by the assertion
+            failures.append(exc)
+
+    threads = [threading.Thread(target=create) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    assert len(set(handoff_ids)) == 1 and len(handoff_ids) == 6
+    seeded.expire_all()
+    assert len(seeded.scalars(sa.select(Handoff)).all()) == 1
+    assert len(_handoff_audits(seeded, scope)) == 6
