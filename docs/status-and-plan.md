@@ -2,7 +2,7 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29, 06:20 UTC.
+**Last update:** 2026-09-29, 06:45 UTC.
 
 ## 1. Done and merged to `main`
 
@@ -43,10 +43,10 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 | F1 | ADR-0013 and the ADR-0004 amendment. banking-core admin routes: handoff queue, detail, claim (audited as the agent), metrics; migration `0008` | **Done** (on this branch, 66 new tests) | — |
 | F2 | Orchestrator agent API: reverse index from session to conversation, takeover, agent messages. After a takeover the LLM never sees the conversation again | **Done** (on this branch, 130 new tests) | — |
 | F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | **Done** (on this branch; tests against a fake orchestrator; the takeover part needs F2's orchestrator to run for real; Dockerfile built and run once by hand) | F0 (F2 for the takeover part) |
-| F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | In progress | F0, F1, F2 |
+| F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | **Done** (on this branch; 371 tests against fake upstreams; Dockerfile built once in the sandbox with an extra CA mount, not as committed) | F0, F1, F2 |
 | F5 | Integration: compose services and healthchecks, `make smoke`, both apps in the CI `images` matrix, `TRUSTED_PROXY_HOPS` for the web-client BFF, the runbook's "⚠️ pending UI" marks, `limitations.md` | Not started | F3, F4 |
 
-**Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed (`wt/web-backoffice`). Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
+**Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed. Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
 
 **How to continue a work package**, locally or by hand:
 1. Read `AGENTS.md`, then [front-ends.md](front-ends.md) ("Decisions", "HTTP contract" and the package's scope section).
