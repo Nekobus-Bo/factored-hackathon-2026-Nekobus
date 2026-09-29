@@ -25,10 +25,10 @@ __all__ = [
     "NoOtpChannelError",
     "OtpResendLimitError",
     "OtpVerifyResult",
+    "ensure_customer_not_locked",
     "execute_customer_match",
     "execute_identity_verify_document",
     "execute_limited_customer_match",
     "execute_otp_send",
-    "ensure_customer_not_locked",
     "execute_otp_verify",
 ]
