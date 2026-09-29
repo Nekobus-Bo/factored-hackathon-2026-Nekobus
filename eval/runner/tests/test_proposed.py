@@ -270,6 +270,20 @@ def test_other_http_failure_is_a_counted_error(
     assert result.error == "turn failed: HTTP 500"
 
 
+def test_the_orchestrators_address_limit_is_named_when_it_refuses_a_conversation(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    router.post(f"{ORCH}/v1/conversations").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "1800"})
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 429.*RATE_LIMIT_CONVERSATIONS_PER_IP"):
+        run_scenario(
+            make_system(evidence, replay_dir),
+            load("happy_path/happy_path_001_es.yaml"),
+        )
+
+
 def test_unmet_setup_is_not_run_without_touching_the_system(
     evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
 ) -> None:
