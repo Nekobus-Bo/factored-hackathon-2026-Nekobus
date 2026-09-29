@@ -1,0 +1,12 @@
+{
+  "name": "@pattern-blue/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pattern Blue design tokens and pb-* component CSS, synced from the design-system artifact.",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.5"
+  }
+}
