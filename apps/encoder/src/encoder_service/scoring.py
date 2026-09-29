@@ -51,6 +51,9 @@ class BackendScore:
     latency_ms: float = 0.0
     # Exception class name or 'timeout' or 'stale'. Never a message.
     error: str | None = None
+    # The message, only for the startup probe, whose text is a constant and so cannot
+    # echo a customer's. Never set for a request.
+    detail: str | None = None
 
 
 class ScoringBackend:
@@ -96,7 +99,9 @@ class ScoringBackend:
         try:
             prediction = self._predict(text)
         except Exception as exc:
-            return BackendScore(ok=False, error=type(exc).__name__)
+            return BackendScore(
+                ok=False, error=type(exc).__name__, detail=str(exc)[:300]
+            )
         return self._to_score(prediction, (time.perf_counter() - started) * 1000.0)
 
     def _to_score(self, prediction: DecisionPrediction, latency: float) -> BackendScore:

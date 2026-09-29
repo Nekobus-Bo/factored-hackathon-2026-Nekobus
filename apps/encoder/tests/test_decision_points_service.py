@@ -732,3 +732,91 @@ def test_a_shared_backend_runs_once_per_request() -> None:
 def test_compute_artifact_id_is_the_config_version() -> None:
     raw = json.loads(FIXTURE_ARTIFACT.read_text("utf-8"))
     assert raw["artifact_id"] == compute_artifact_id(raw)
+
+
+def test_a_tau_raise_in_seed_mode_must_raise_something_or_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ABSTENTION_THRESHOLD", "0.5")
+    monkeypatch.setenv("DECISION_POINTS_TAU_RAISE", "confirm_gate.es=0.9")
+    with pytest.raises(BackendConfigError, match="unknown decision point"):
+        with TestClient(app):
+            pass
+    monkeypatch.setenv("DECISION_POINTS_TAU_RAISE", "turn_intent.*=0.2")
+    with pytest.raises(BackendConfigError, match="raises no 'turn_intent' threshold"):
+        with TestClient(app):
+            pass
+    monkeypatch.delenv("ABSTENTION_THRESHOLD")
+    monkeypatch.setenv("DECISION_POINTS_TAU_RAISE", "turn_intent.*=0.9")
+    with pytest.raises(BackendConfigError, match="no threshold to raise"):
+        with TestClient(app):
+            pass
+
+
+def test_a_malformed_tau_raise_stops_the_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ABSTENTION_THRESHOLD", "0.5")
+    monkeypatch.setenv("DECISION_POINTS_TAU_RAISE", "turn_intent=high")
+    with pytest.raises(ValueError, match="DECISION_POINTS_TAU_RAISE"):
+        with TestClient(app):
+            pass
+
+
+def test_a_gliner_backend_in_an_artifact_gets_the_legacy_memory_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def mutate(raw: dict[str, Any]) -> None:
+        raw["backends"]["intent_tfidf"].update(
+            kind="gliner",
+            probability_kind="top1_only",
+            labels=raw["decision_points"]["turn_intent"]["view"]["labels"],
+            params={"model": "org/model"},
+        )
+        raw["backends"]["intent_tfidf"].pop("train")
+        raw["decision_points"] = {"turn_intent": raw["decision_points"]["turn_intent"]}
+        raw["decision_points"]["turn_intent"]["calibrator"] = {"kind": "none"}
+        del raw["backends"]["gate_tfidf"]
+
+    path = write_artifact(tmp_path, mutate)
+    limit = tmp_path / "memory.max"
+    limit.write_text(str(3 * 1024 * 1024 * 1024))
+    settings = DecisionPointSettings(
+        file=path,
+        file_explicit=True,
+        allow_stale=False,
+        tau_raise={},
+        max_workers=1,
+        app_env="",
+    )
+    with pytest.raises(BackendConfigError, match="below the 4096 MiB"):
+        load_runtime(settings, memory_max=limit)
+
+
+def test_a_probe_failure_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The probe text is a constant, so its error message is safe to show."""
+    from encoder import registry
+
+    class Refuses(ScriptedAdapter):
+        def predict(self, *a: Any, **k: Any) -> list[DecisionPrediction]:
+            raise RuntimeError("label space mismatch: expected 15 classes")
+
+    monkeypatch.setitem(
+        registry._LOADERS, "tfidf_lr", lambda: lambda spec: Refuses(GOOD)
+    )
+    # 'scripted' declares distribution; the fixture's tfidf backends do too.
+    monkeypatch.setattr(Refuses, "kind", "tfidf_lr")
+    settings = DecisionPointSettings(
+        file=FIXTURE_ARTIFACT,
+        file_explicit=True,
+        allow_stale=False,
+        tau_raise={},
+        max_workers=1,
+        app_env="",
+    )
+    with pytest.raises(
+        BackendConfigError, match="startup probe .*label space mismatch"
+    ):
+        load_runtime(settings)

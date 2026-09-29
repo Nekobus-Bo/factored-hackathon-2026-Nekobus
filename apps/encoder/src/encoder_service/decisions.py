@@ -47,11 +47,12 @@ from encoder.decision_points import (
 )
 from encoder.pinning import PinError, PinMismatchError
 
-from encoder_service.config import DecisionPointSettings
+from encoder_service.config import DecisionPointSettings, get_backend_settings
 from encoder_service.model_backends import (
     CGROUP_MEMORY_MAX,
     BackendConfigError,
     check_memory_budget,
+    check_memory_floor,
 )
 from encoder_service.scoring import (
     BackendScore,
@@ -362,6 +363,10 @@ def _needed_backends(decision_points: Mapping[str, DecisionPointSpec]) -> set[st
 def _check_budget(
     backends: Mapping[str, BackendSpec], needed: set[str], memory_max: Path
 ) -> None:
+    if any(backends[b].kind == "gliner" for b in needed):
+        # The same safety net the legacy gliner backend has: a container below the
+        # measured peak (ENCODER_GLINER_MIN_MEMORY_MB) is refused at startup.
+        check_memory_floor(get_backend_settings().gliner_min_memory_mb, memory_max)
     required = sum(
         backends[b].resources.ram_mb
         for b in needed
@@ -419,8 +424,9 @@ def _probe(
     """Prove at startup that the backend covers the labels its decision points read."""
     score = scoring.warm(_PROBE_TEXT)
     if not score.ok:
+        reason = f"{score.error}: {score.detail}" if score.detail else score.error
         raise BackendConfigError(
-            f"backend '{scoring.backend_id}' failed its startup probe ({score.error})"
+            f"backend '{scoring.backend_id}' failed its startup probe ({reason})"
         )
     for dp_id, dp in decision_points.items():
         if dp.backend != scoring.backend_id or not dp.enabled:
