@@ -392,6 +392,7 @@ services:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
     deploy:
       resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
         limits: { cpus: "0.5", memory: 256m }
 
   web-backoffice:
@@ -426,6 +427,7 @@ services:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5174) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
     deploy:
       resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
         limits: { cpus: "0.5", memory: 256m }
 
 networks:
