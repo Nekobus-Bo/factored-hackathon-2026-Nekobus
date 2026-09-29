@@ -491,10 +491,14 @@ dependencies = [
     { name = "contracts" },
     { name = "encoder" },
     { name = "fastapi" },
+    { name = "retrieval" },
     { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
+embed = [
+    { name = "retrieval", extra = ["vector"] },
+]
 gliner = [
     { name = "encoder", extra = ["gliner"] },
 ]
@@ -505,9 +509,11 @@ requires-dist = [
     { name = "encoder", editable = "packages/encoder" },
     { name = "encoder", extras = ["gliner"], marker = "extra == 'gliner'", editable = "packages/encoder" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "retrieval", editable = "packages/retrieval" },
+    { name = "retrieval", extras = ["vector"], marker = "extra == 'embed'", editable = "packages/retrieval" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
-provides-extras = ["gliner"]
+provides-extras = ["gliner", "embed"]
 
 [[package]]
 name = "evalrunner"

@@ -5,7 +5,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from contracts.encoder import EMBED_MAX_BATCH
 from encoder.decision_points import DEFAULT_ARTIFACT_PATH, parse_tau_raise
+from encoder.pinning import PinError, sha256_hex
 
 DEFAULT_TRAIN_DATA = "data/eval/synthetic/decision.train.jsonl"
 # gliner2.5-multi peaks at ~3.5 GB RSS on CPU (make encoder-bench).
@@ -130,4 +132,54 @@ def get_decision_point_settings(
         tau_raise=parse_tau_raise(env.get("DECISION_POINTS_TAU_RAISE")),
         max_workers=workers,
         app_env=app_env,
+    )
+
+
+DEFAULT_EMBEDDING_MAX_BATCH = 64
+
+
+@dataclass(frozen=True)
+class EmbeddingSettings:
+    """The embedding model served by POST /v1/embed (ADR-0012, Appendix J).
+
+    Pinned like a decision backend: a hub model needs a full 40-hex commit, a local
+    directory needs its weights SHA-256. Unset ``model`` disables /v1/embed.
+    """
+
+    model: str | None
+    revision: str | None
+    weights_sha256: str | None
+    max_batch: int
+    device: str
+
+
+def get_embedding_settings(
+    environ: Mapping[str, str] | None = None,
+) -> EmbeddingSettings:
+    """Read EMBEDDING_* (see .env.example). Invalid values fail loudly."""
+    env = os.environ if environ is None else environ
+    raw_batch = env.get("EMBEDDING_MAX_BATCH", "").strip()
+    try:
+        max_batch = int(raw_batch) if raw_batch else DEFAULT_EMBEDDING_MAX_BATCH
+    except ValueError as err:
+        raise ValueError(
+            f"EMBEDDING_MAX_BATCH must be an integer, got {raw_batch!r}"
+        ) from err
+    if not 1 <= max_batch <= EMBED_MAX_BATCH:
+        raise ValueError(
+            f"EMBEDDING_MAX_BATCH must be between 1 and {EMBED_MAX_BATCH} "
+            "(the contract ceiling)"
+        )
+    try:
+        weights = sha256_hex(
+            env.get("EMBEDDING_WEIGHTS_SHA256"), "EMBEDDING_WEIGHTS_SHA256"
+        )
+    except PinError as err:
+        raise ValueError(str(err)) from err
+    return EmbeddingSettings(
+        model=env.get("EMBEDDING_MODEL", "").strip() or None,
+        revision=env.get("EMBEDDING_REVISION", "").strip() or None,
+        weights_sha256=weights,
+        max_batch=max_batch,
+        device=env.get("ENCODER_DEVICE", "cpu").strip() or "cpu",
     )

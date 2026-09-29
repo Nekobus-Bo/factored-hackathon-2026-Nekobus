@@ -11,6 +11,8 @@ from contracts.encoder import (
     AnalyzeResponse,
     DecisionPointsResponse,
     DecisionResult,
+    EmbedRequest,
+    EmbedResponse,
     PiiSpan,
     Slot,
 )
@@ -28,6 +30,7 @@ from encoder_service.config import (
     get_abstention_threshold,
     get_backend_settings,
     get_decision_point_settings,
+    get_embedding_settings,
 )
 from encoder_service.decisions import (
     TURN_INTENT,
@@ -35,6 +38,12 @@ from encoder_service.decisions import (
     get_runtime,
     load_runtime,
     set_runtime,
+)
+from encoder_service.embedding import (
+    build_embedding_backend,
+    get_embedding,
+    readiness,
+    set_embedding,
 )
 from encoder_service.model_backends import build_backend
 from encoder_service.scoring import RequestScores
@@ -69,12 +78,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "ABSTENTION_THRESHOLD is set but a calibration artifact exists: "
                 "the artifact's thresholds win; the environment value is ignored"
             )
+    # The embedding model of kb.search (POST /v1/embed). Unset = not served. Configured
+    # with a bad pin or weights that do not match it: the service stops here. Pinned
+    # but not cached yet: it starts and /v1/embed says why it cannot answer.
+    embedding = build_embedding_backend(get_embedding_settings())
+    set_embedding(embedding)
     try:
         yield
     finally:
         if runtime is not None:
             runtime.close()
         set_runtime(None)
+        set_embedding(None)
 
 
 app = FastAPI(title="encoder", lifespan=lifespan)
@@ -119,6 +134,7 @@ def ready() -> JSONResponse:
             "backend": getattr(backend, "model_id", "unknown"),
             "service": "encoder",
             "decision_points": _decision_points_readiness(runtime),
+            "embedding": readiness(get_embedding()),
         }
     else:
         payload = {
@@ -126,6 +142,8 @@ def ready() -> JSONResponse:
             "ready": False,
             "reason": "Encoder model backend is not configured or unavailable",
             "service": "encoder",
+            "decision_points": _decision_points_readiness(runtime),
+            "embedding": readiness(get_embedding()),
         }
     return JSONResponse(status_code=status_code, content=payload)
 
@@ -294,3 +312,46 @@ def _legacy_from_turn_intent(result: DecisionResult) -> tuple[str | None, float,
     if result.label is not None:
         return result.label, result.confidence, False
     return None, result.confidence, True
+
+
+@app.post("/v1/embed", response_model=EmbedResponse)
+def embed(request: EmbedRequest) -> EmbedResponse:
+    """Embed texts with the pinned embedding model (ADR-0012, Appendix J).
+
+    The response names the model and revision that produced the vectors; the caller
+    compares them with its own pin on every answer. Nothing is logged about the texts.
+    """
+    backend = get_embedding()
+    if backend is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "embedding is not configured on this model server: set EMBEDDING_MODEL "
+                "and EMBEDDING_REVISION"
+            ),
+        )
+    if not backend.is_ready():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=getattr(backend, "reason", "the embedding model is not ready"),
+        )
+    if len(request.texts) > backend.max_batch:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"a batch of {len(request.texts)} texts exceeds the limit of "
+                f"{backend.max_batch} (EMBEDDING_MAX_BATCH)"
+            ),
+        )
+    try:
+        vectors = backend.embed(request.texts)
+    except ModelUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    return EmbedResponse(
+        model_id=backend.model_id,
+        revision=backend.revision,
+        dim=backend.dim,
+        vectors=vectors,
+    )
