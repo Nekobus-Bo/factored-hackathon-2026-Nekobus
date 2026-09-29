@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 from calibrate.artifact import canonical_json
 from calibrate.dpconfig import RunConfig
-from calibrate.metrics.decision import zero_error_sample_size
 
 if TYPE_CHECKING:
     from calibrate.dp import CandidateResult, DpResult, SplitMetrics
@@ -386,14 +385,22 @@ def _dp_section(r: DpResult, config: RunConfig, embedded: str) -> str:
             needs = (
                 ""
                 if x.certified
-                else f"{zero_error_sample_size(x.p_min)} decided with zero errors "
-                f"(has {x.tp}/{x.accepted})"
+                else f"{x.needs} decided with zero errors (has {x.tp}/{x.accepted})"
             )
             out.append(
                 f"| {x.scope} | `{x.label}` | {x.tp}/{x.accepted} | {num(x.wilson)} | "
                 f"{x.p_min:.2f} | {'yes' if x.certified else 'no'} | {needs} |"
             )
         out.append("")
+
+    if c.uncovered:
+        out += [
+            "Acted labels with no threshold (the DP abstains there and the LLM "
+            "decides; write the gap in `docs/limitations.md`): "
+            + ", ".join(f"`{u}`" for u in c.uncovered)
+            + ".",
+            "",
+        ]
 
     out += [
         "### Reliability on test (after calibration; n, mean confidence, accuracy)",

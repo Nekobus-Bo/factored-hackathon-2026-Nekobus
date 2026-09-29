@@ -181,8 +181,11 @@ class SplitMetrics:
 def macro_f1_over(
     labels: Sequence[str], truth: Sequence[str], pred: Sequence[str]
 ) -> float:
-    """Macro F1 over ``labels`` that occur in ``truth``; an outside truth costs recall
-    of nothing but precision of whatever was predicted."""
+    """Macro F1 over the ``labels`` that occur in ``truth``.
+
+    A row whose truth is outside the view has no recall to lose, but whatever label was
+    predicted for it counts against that label's precision.
+    """
     scores = []
     for label in labels:
         tp = sum(1 for t, p in zip(truth, pred, strict=True) if t == p == label)
@@ -429,6 +432,8 @@ class CandidateResult:
     certifications: list[Certification]
     n_val: dict[str, int]
     n_test: dict[str, int]
+    # "lang/label" of acted labels with no threshold: the DP abstains there.
+    uncovered: list[str] = field(default_factory=list)
 
     @property
     def certified(self) -> bool:
@@ -583,6 +588,7 @@ def evaluate_candidate(
     certifications = certify(dp, test_out, tau_scopes, thresholds)
 
     return CandidateResult(
+        uncovered=uncovered_scopes(dp, config.languages, tau_scopes),
         candidate=candidate,
         backend=built,
         calibrator=calibrator.model_dump(mode="json"),
@@ -715,6 +721,22 @@ def choose_thresholds(
 
 
 # --- Certification ---
+
+
+def uncovered_scopes(
+    dp: DpConfig,
+    languages: Sequence[str],
+    tau_scopes: Mapping[str, Mapping[str, str | None]],
+) -> list[str]:
+    """Acted labels with no threshold in a language, as ``lang/label``. The DP
+    abstains there (the LLM decides), which is safe but not certified, and belongs in
+    ``docs/limitations.md`` (F.5)."""
+    return [
+        f"{lang}/{label}"
+        for lang in languages
+        for label in dp.constraint.p_min
+        if tau_scopes.get(lang, {}).get(label) is None
+    ]
 
 
 def certify(
@@ -869,6 +891,7 @@ def entry_for(
         "split": "test",
         "provenance": provenance,
         "certified": result.certified,
+        "uncovered": result.uncovered,
         "data": {
             split: {"path": getattr(data, split), "sha256": data_hashes[split]}
             for split in ("train", "validation", "test")
