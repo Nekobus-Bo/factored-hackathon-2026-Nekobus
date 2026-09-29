@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [banking-core, orchestrator, encoder]
+        service: [banking-core, orchestrator, encoder, web-client, web-backoffice]
     outputs:
       image_tag: ${{ steps.tag.outputs.tag }}
     steps:
@@ -226,6 +226,9 @@ jobs:
             echo "ADMIN_API_TOKEN=$ADMIN_API_TOKEN"
             echo "AGENT_API_ENABLED=${AGENT_API_ENABLED:-false}"
             echo "AGENT_API_TOKEN=$AGENT_API_TOKEN"
+            echo "BACKOFFICE_SESSION_SECRET=$BACKOFFICE_SESSION_SECRET"
+            echo "DEMO_AGENT_EMAIL=${DEMO_AGENT_EMAIL:-agent@demo.local}"
+            echo "DEMO_AGENT_PASSWORD=$DEMO_AGENT_PASSWORD"
             echo "DEMO_RESET_ENABLED=${DEMO_RESET_ENABLED:-false}"
             echo "OTP_CHANNEL_MODE=${OTP_CHANNEL_MODE:-simulated}"
             echo "LLM_MODE=${LLM_MODE:-replay}"
@@ -235,7 +238,7 @@ jobs:
             echo "ENCODER_BACKEND=${ENCODER_BACKEND:-tfidf_lr}"
             echo "ABSTENTION_THRESHOLD=${ABSTENTION_THRESHOLD:-0.37}"
             echo "RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR=${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}"
-            echo "TRUSTED_PROXY_HOPS=${TRUSTED_PROXY_HOPS:-0}"
+            echo "TRUSTED_PROXY_HOPS=${TRUSTED_PROXY_HOPS:-1}"
             if [ "$DATA_MODE" = "bundled" ]; then
               echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
               echo "REDIS_CORE_PASSWORD=$REDIS_CORE_PASSWORD"
@@ -251,8 +254,15 @@ jobs:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           MASTER_KEY: ${{ secrets.MASTER_KEY }}
           BLIND_INDEX_SALT: ${{ secrets.BLIND_INDEX_SALT }}
+          # The back office (web-backoffice) is part of the stack. docker-compose.prod.yml
+          # requires these two secrets, and ADMIN_API_TOKEN and AGENT_API_TOKEN below, to be
+          # set, and the server refuses the development values. DEMO_AGENT_EMAIL is not a secret.
+          BACKOFFICE_SESSION_SECRET: ${{ secrets.BACKOFFICE_SESSION_SECRET }}
+          DEMO_AGENT_EMAIL: ${{ vars.DEMO_AGENT_EMAIL }}
+          DEMO_AGENT_PASSWORD: ${{ secrets.DEMO_AGENT_PASSWORD }}
           # Optional: only meaningful when the corresponding feature is on.
           ADMIN_API_ENABLED: ${{ vars.ADMIN_API_ENABLED }}
+          # Both tokens are needed whatever the flags say: the back office holds them.
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
           AGENT_API_ENABLED: ${{ vars.AGENT_API_ENABLED }}
           AGENT_API_TOKEN: ${{ secrets.AGENT_API_TOKEN }}
@@ -268,6 +278,7 @@ jobs:
           ABSTENTION_THRESHOLD: ${{ vars.ABSTENTION_THRESHOLD }}
           # Conversation-creation limit per client address, and how many reverse
           # proxies stand in front of the orchestrator (docs/deployment.md, section 1).
+          # The web-client BFF is one hop, so `1` unless told otherwise.
           RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${{ vars.RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR }}
           TRUSTED_PROXY_HOPS: ${{ vars.TRUSTED_PROXY_HOPS }}
           # Only required, and only written, when DATA_MODE=bundled.
@@ -300,10 +311,12 @@ jobs:
             ssh deploy-target "$COMPOSE_CMD run --rm seed python -m banking_core.seed.cli seed --force"
           fi
 
-      - name: Smoke (orchestrator /health on the server, 127.0.0.1-bound)
+      - name: Smoke (orchestrator /health and web-client /healthz on the server, 127.0.0.1-bound)
         run: |
           # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "curl -fsS --max-time 5 http://127.0.0.1:\${PORT_ORCHESTRATOR:-8080}/health"
+          # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
+          ssh deploy-target "curl -fsS --max-time 5 http://127.0.0.1:\${PORT_WEB_CLIENT:-5173}/healthz"
 
       - name: Logs on failure
         if: failure()
