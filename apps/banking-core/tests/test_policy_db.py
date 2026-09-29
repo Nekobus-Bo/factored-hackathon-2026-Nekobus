@@ -145,11 +145,9 @@ def test_tool_policy_loader_and_repository(
 
 
 def test_bad_db_credentials_refuse_closed_and_never_fall_back(
-    postgres_url: str | None,
+    postgres_url: str,
 ) -> None:
     """Unreachable DB config: refusal with a closed code, no env or InMemory config."""
-    if postgres_url is None:
-        pytest.skip("Compose Postgres database is not accessible on 127.0.0.1:38432")
     engine = sa.create_engine(_bad_credentials_url(postgres_url))
     try:
         repo = DatabaseControlConfigRepository(
@@ -174,13 +172,12 @@ def test_bad_db_credentials_refuse_closed_and_never_fall_back(
 
 
 def test_readiness_fails_on_bad_credentials_and_recovers_on_retry(
-    postgres_url: str | None,
+    postgres_url: str,
     db_session: Session,
     fresh_db_singletons: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Not ready while DB config cannot load; ready on the next probe once it can."""
-    assert postgres_url is not None
     client = TestClient(app)
 
     monkeypatch.setenv("DATABASE_URL", _bad_credentials_url(postgres_url))

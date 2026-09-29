@@ -1,23 +1,35 @@
 """Tests for Alembic migrations downgrade and upgrade repeatability."""
 
+from collections.abc import Generator
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.orm import Session
 
 
-def test_alembic_downgrade_and_upgrade(db_session: Session, postgres_url: str) -> None:
-    """Verify clean downgrade to 0001_initial_schema and re-upgrade to head."""
-    import os
+@pytest.fixture
+def alembic_cfg(postgres_url: str) -> Generator[Config, None, None]:
+    """Alembic config for the test database; always leaves it at head.
 
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
+    The tests below downgrade on purpose. Restoring head on teardown, even when an
+    assertion fails half way, keeps the rest of the suite independent of test order.
+    """
     ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", postgres_url)
+    try:
+        yield cfg
+    finally:
+        command.upgrade(cfg, "head")
 
+
+def test_alembic_downgrade_and_upgrade(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """Verify clean downgrade to 0001_initial_schema and re-upgrade to head."""
     # 1. Downgrade to 0001_initial_schema
     command.downgrade(alembic_cfg, "0001_initial_schema")
 
@@ -48,20 +60,12 @@ def test_alembic_downgrade_and_upgrade(db_session: Session, postgres_url: str) -
 
 
 def test_alembic_0003_downgrade_to_0002_and_reupgrade(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """Verify downgrade to 0002_ops_audit_idempotency drops config tables.
 
     Also verifies that re-upgrade to head restores them.
     """
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
-
     # 1. Downgrade to 0002_ops_audit_idempotency
     command.downgrade(alembic_cfg, "0002_ops_audit_idempotency")
 
@@ -100,16 +104,9 @@ def test_alembic_0003_downgrade_to_0002_and_reupgrade(
 
 
 def test_alembic_0004_downgrade_drops_handoff_and_reupgrade(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """Downgrade to 0003_config_policy drops ops.handoff; head restores it."""
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
 
     def ops_tables() -> set[str]:
         rows = db_session.execute(
@@ -139,17 +136,9 @@ def _card_columns(db_session: Session) -> dict[str, str]:
 
 
 def test_alembic_0005_dataset_cards_down_and_up(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """0005 makes pan_enc nullable and adds card_type/expiry; downgrade reverts."""
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
-
     command.downgrade(alembic_cfg, "0004_ops_handoff")
     columns = _card_columns(db_session)
     assert columns["pan_enc"] == "NO"
