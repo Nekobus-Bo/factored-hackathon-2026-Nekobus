@@ -238,9 +238,17 @@ def test_catalog_tools_execute_over_http_with_scoped_audits(
         "idem_otp_send_tool_wiring_01",
     )
     assert sent["status"] == "ok"
+    # The demo customer's registered channel is email, delivered to the inbox.
+    assert sent["data"]["channel"] == "EMAIL"
+    assert sent["data"]["destination_masked"] == "d***@example.com"
     challenge_id = sent["data"]["challenge_id"]
+    inbox = client.get(f"/v1/sessions/{session_id}/simulated-inbox").json()
+    assert [(m["challenge_id"], m["channel"]) for m in inbox["messages"]] == [
+        (challenge_id, "EMAIL")
+    ]
     code_response = client.get(f"/v1/dev/otp/{challenge_id}")
     assert code_response.status_code == 200
+    assert inbox["messages"][0]["code"] == code_response.json()["code"]
     verified = _call_tool(
         client,
         session_id,
