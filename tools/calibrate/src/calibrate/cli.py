@@ -57,6 +57,13 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if (args.dp or args.artifact) and args.task != "decision-points":
+        print(
+            "Error: DP= and ARTIFACT= only apply to TASK=decision-points",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
