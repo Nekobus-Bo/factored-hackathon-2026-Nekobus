@@ -15,7 +15,7 @@ Operational summary of the decisions taken in [ADR-0004](adr/0004-trust-boundary
 
 **Minimization.** Every tool returns only the fields its verification state allows. Before identity is verified, data is used to **match**, never to display: the system asks and compares, it does not read information out loud.
 
-**Mask before leaving.** All text headed for the LLM provider passes through local PII detection and is replaced with markers. Rehydration happens on our side, after the response.
+**Mask before leaving.** All text headed for the LLM provider passes through local PII detection and is replaced with markers. The customer's text is masked with the union of the regex masker and the local encoder's PII spans (the regexes alone if the encoder is down); model output and tool arguments and results are masked by the regexes. Every outbound string is verified and a failure sends nothing. Rehydration happens on our side, after the response. What still gets through, and where the provider processes data, are declared in [limitations](limitations.md) and in the amendment of 2026-09-29 to [ADR-0001](adr/0001-cheap-llm-specialized-encoder.md).
 
 **Evaluation hook.** `EVAL_EXPOSE_TURN` is disabled by default and rejected when
 `APP_ENV=production`. When enabled, chat responses expose only masked outbound
