@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from redis.asyncio import Redis
 
 from orchestrator.agent.auth import validate_agent_api_settings
+from orchestrator.agent.routes import router as agent_router
 from orchestrator.chat.engine_handler import EngineTurnHandler
 from orchestrator.chat.handler import TurnHandler
 from orchestrator.chat.routes import router as chat_router
@@ -88,6 +89,9 @@ def create_app(
         return HealthResponse(status="ok", service="orchestrator")
 
     app.include_router(chat_router)
+    # The agent API exists only when switched on; disabled, its paths are 404.
+    if cfg.agent_api_enabled:
+        app.include_router(agent_router)
     return app
 
 
