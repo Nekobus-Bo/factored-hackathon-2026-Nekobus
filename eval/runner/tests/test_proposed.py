@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -158,6 +159,29 @@ def test_happy_path_runs_on_trusted_evidence(
     assert failed == []
     assert not [u.code for u in result.unsafe_outcomes if u.detected]
     assert result.passed is True
+
+
+def test_every_turn_carries_a_fresh_client_message_id(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    handler, _ = scripted_orchestrator(evidence)
+    ids: list[Any] = []
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        ids.append(json.loads(request.content).get("client_message_id"))
+        return handler(request)
+
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=spy)
+
+    run_scenario(
+        make_system(evidence, replay_dir), load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert len(ids) >= 3
+    assert all(
+        isinstance(i, str) and re.fullmatch(r"[A-Za-z0-9_-]{8,64}", i) for i in ids
+    )
+    assert len(set(ids)) == len(ids)
 
 
 def test_replay_miss_is_not_run_never_pass(

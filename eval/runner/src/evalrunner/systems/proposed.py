@@ -1,6 +1,8 @@
 """ProposedSystem: drives the orchestrator chat API, reads evidence from banking-core.
 
-- Conversation: POST /v1/conversations, then POST .../messages per turn.
+- Conversation: POST /v1/conversations, then POST .../messages per turn, each
+  with a fresh client_message_id (the orchestrator's retry handle; the runner
+  never retries a turn, so it never repeats one).
 - Evidence (trusted side, read-only DSN): ops.audit_log rows of the scenario's
   banking session give tools, verification_state_before/after and outcomes;
   core_bank.card gives own/foreign blocks; handoff.create rows give handoffs.
@@ -24,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from contracts import TOOL_CATALOG, ReasonCode, ToolCall, ToolResult, ToolResultStatus
@@ -228,7 +230,7 @@ class ProposedSystem:
         response = self.http.post(
             f"{self.config.orchestrator_url}/v1/conversations/"
             f"{session.conversation_id}/messages",
-            json={"text": text},
+            json={"text": text, "client_message_id": uuid4().hex},
         )
         body = _json_or_empty(response)
         if response.status_code == 503 and body.get("detail") == "replay_miss":
