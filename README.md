@@ -15,7 +15,7 @@ git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
 make demo               # one command: build, start, migrate, seed, preload models, print URLs and demo customers
 ```
 
-`make demo` needs no `.env` and no API key; it prints where everything is and which customers to use. Running it again is safe. One step at a time: `make up`, `make seed`, `make smoke`.
+`make demo` needs no `.env` and no API key; it prints where everything is and which customers to use. Running it again is safe. One step at a time: `make up`, `make seed`, `make smoke`. Everything runs on your machine: there is no hosted instance to visit (the team's own presentation environment is described in [docs/deployment.md](docs/deployment.md), section 7).
 
 > **Pending, and reported by `make demo` rather than hidden:**
 > - **Replay recordings** (`eval/replay/` is empty): until they exist a chat turn answers 503. To talk to the assistant now, set `LLM_MODE=live` and `LLM_API_KEY` in `.env` (see **[docs/runbook.md](docs/runbook.md)**, section 4).
