@@ -45,6 +45,11 @@ def _otp_ttl_bounds() -> tuple[int, int]:
 
 OTP_TTL_MIN_SECONDS, OTP_TTL_MAX_SECONDS = _otp_ttl_bounds()
 
+# Sanity bounds for the cross-session window and lock durations: a window shorter
+# than a minute barely counts anything, one longer than a week is a permanent ban.
+ATTEMPT_WINDOW_MIN_SECONDS = 60
+ATTEMPT_WINDOW_MAX_SECONDS = 7 * 24 * 3600
+
 DEFAULT_THRESHOLDS_MINOR: dict[str, int] = {
     "USD": 50000,
     "EUR": 50000,
@@ -142,6 +147,50 @@ class PolicyConfig(BaseModel):
         default=3600,
         ge=60,
         description="Time-to-live for customer session in seconds",
+    )
+    customer_otp_max_failures: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Failed otp.verify evaluations per customer, across all sessions, "
+            "within the window before the customer is locked"
+        ),
+    )
+    customer_otp_window_seconds: int = Field(
+        default=3600,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "Fixed window, opened by the first failure, in which the failed "
+            "otp.verify evaluations of one customer are counted"
+        ),
+    )
+    customer_otp_lock_seconds: int = Field(
+        default=1800,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "How long a customer stays locked out of OTP once the failure "
+            "maximum is reached"
+        ),
+    )
+    document_match_max_failures: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Failed customer.match attempts per claimed document, across all "
+            "sessions, within the window before further matches answer "
+            "matched=false without checking"
+        ),
+    )
+    document_match_window_seconds: int = Field(
+        default=3600,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "Fixed window, opened by the first failure, in which the failed "
+            "customer.match attempts on one claimed document are counted"
+        ),
     )
 
     @field_validator("amount_mode", mode="before")
@@ -265,6 +314,21 @@ class PolicyConfig(BaseModel):
             otp_max_resends=int(os.getenv("OTP_MAX_RESENDS", "3")),
             otp_ttl_seconds=int(os.getenv("OTP_TTL_SECONDS", "300")),
             session_ttl_seconds=int(os.getenv("SESSION_TTL_SECONDS", "3600")),
+            customer_otp_max_failures=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", "5")
+            ),
+            customer_otp_window_seconds=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS", "3600")
+            ),
+            customer_otp_lock_seconds=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS", "1800")
+            ),
+            document_match_max_failures=int(
+                os.getenv("RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES", "10")
+            ),
+            document_match_window_seconds=int(
+                os.getenv("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "3600")
+            ),
         )
 
 

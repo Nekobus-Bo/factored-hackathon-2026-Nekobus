@@ -181,6 +181,73 @@ def test_policy_config_seed_defaults() -> None:
         assert cfg.amount_threshold_minor == 200000000
 
 
+ATTEMPT_LIMIT_ENV = {
+    "RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "4",
+    "RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS": "7200",
+    "RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS": "900",
+    "RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES": "12",
+    "RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS": "1800",
+}
+
+
+def test_attempt_limit_seed_defaults() -> None:
+    with patch.dict(os.environ, {}, clear=True):
+        cfg = PolicyConfig.from_env()
+    assert cfg.customer_otp_max_failures == 5
+    assert cfg.customer_otp_window_seconds == 3600
+    assert cfg.customer_otp_lock_seconds == 1800
+    assert cfg.document_match_max_failures == 10
+    assert cfg.document_match_window_seconds == 3600
+    # The model defaults and the env seed defaults are the same numbers.
+    assert cfg == PolicyConfig()
+
+
+def test_attempt_limits_are_seeded_from_env() -> None:
+    with patch.dict(os.environ, ATTEMPT_LIMIT_ENV, clear=False):
+        cfg = PolicyConfig.from_env()
+    assert cfg.customer_otp_max_failures == 4
+    assert cfg.customer_otp_window_seconds == 7200
+    assert cfg.customer_otp_lock_seconds == 900
+    assert cfg.document_match_max_failures == 12
+    assert cfg.document_match_window_seconds == 1800
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("customer_otp_max_failures", 0),
+        ("document_match_max_failures", 0),
+        ("customer_otp_window_seconds", 59),
+        ("customer_otp_window_seconds", 7 * 24 * 3600 + 1),
+        ("customer_otp_lock_seconds", 59),
+        ("customer_otp_lock_seconds", 7 * 24 * 3600 + 1),
+        ("document_match_window_seconds", 59),
+        ("document_match_window_seconds", 7 * 24 * 3600 + 1),
+    ],
+)
+def test_attempt_limits_outside_their_bounds_are_rejected(
+    field: str, value: int
+) -> None:
+    with pytest.raises(ValidationError, match=field):
+        PolicyConfig(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "env_key, value",
+    [
+        ("RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", "0"),
+        ("RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS", "10"),
+        ("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "10"),
+    ],
+)
+def test_seed_env_cannot_configure_a_limit_out_of_bounds(
+    env_key: str, value: str
+) -> None:
+    with patch.dict(os.environ, {env_key: value}, clear=False):
+        with pytest.raises(ValidationError):
+            PolicyConfig.from_env()
+
+
 def test_policy_config_from_env_malformed_json_raises_loudly() -> None:
     """from_env must fail loudly on malformed JSON, never silently fallback."""
     with patch.dict(

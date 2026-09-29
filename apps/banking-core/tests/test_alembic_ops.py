@@ -163,3 +163,47 @@ def test_alembic_0005_dataset_cards_down_and_up(
         "ck_card_card_type",
         "ck_card_expiry",
     } <= constraints
+
+
+ATTEMPT_LIMIT_COLUMNS = {
+    "customer_otp_max_failures": "5",
+    "customer_otp_window_seconds": "3600",
+    "customer_otp_lock_seconds": "1800",
+    "document_match_max_failures": "10",
+    "document_match_window_seconds": "3600",
+}
+
+
+def _policy_columns(db_session: Session) -> set[str]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'config' AND table_name = 'policy_config'"
+        )
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def test_alembic_0006_attempt_limits_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0006 adds the limit columns; rows saved before it take the seed defaults."""
+    command.downgrade(alembic_cfg, "0005_dataset_cards")
+    assert not set(ATTEMPT_LIMIT_COLUMNS) & _policy_columns(db_session)
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.policy_config (version, is_active) VALUES (1, true)"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    assert set(ATTEMPT_LIMIT_COLUMNS) <= _policy_columns(db_session)
+    row = db_session.execute(
+        sa.text(
+            "SELECT "
+            + ", ".join(ATTEMPT_LIMIT_COLUMNS)
+            + " FROM config.policy_config WHERE version = 1"
+        )
+    ).one()
+    assert [str(value) for value in row] == list(ATTEMPT_LIMIT_COLUMNS.values())
