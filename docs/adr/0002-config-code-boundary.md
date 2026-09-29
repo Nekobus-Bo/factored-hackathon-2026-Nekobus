@@ -57,9 +57,9 @@ We pay up-front complexity for two things the rubric rewards: **controlled autom
 ## Action items
 
 1. [x] Configuration tables with versioning and schema validation (policy config and tool policy; see the amendment of 2026-09-29 for what exists)
-2. [ ] Back-office UI for policies, thresholds and templates
+2. [ ] Back-office UI for policies, thresholds and templates (policies and thresholds: done, the Guardrails screen of `apps/web-backoffice`, [ADR-0013](0013-front-ends-bff-takeover.md); templates: pending, they are not a configuration table yet)
 3. [ ] Adversarial scenario: malicious configuration attempting to disable verification
-4. [ ] Demo script for the second workflow via configuration, with the diff on screen (the admin API call is in the [runbook](../runbook.md), demo step 5; the scripted demo is pending)
+4. [ ] Demo script for the second workflow via configuration, with the diff on screen (the back-office Guardrails screen or the admin API call, [runbook](../runbook.md) demo step 5; the scripted demo is pending)
 
 ## Amendment 2026-09-29: what "a workflow by configuration" means
 
@@ -80,4 +80,4 @@ We pay up-front complexity for two things the rubric rewards: **controlled autom
 
 - *Easier:* the second workflow is one audited change, reversible by another, with no deployment; the evaluation runner sets a scenario's tools the same way (`initial_state.tool_policy`), so a scenario states the configuration it needs.
 - *Harder:* the tool policy is now a security-relevant table. Whoever holds the admin token can switch tools off, including `handoff.create`: the floor is a ceiling, not a minimum ([limitations](../limitations.md)).
-- *Still pending:* the back-office UI for it, and the other surfaces the table above lists (intents, message templates, queue priority), which are not configuration tables yet.
+- *Still pending:* the other surfaces the table above lists (intents, message templates, queue priority), which are not configuration tables yet.
