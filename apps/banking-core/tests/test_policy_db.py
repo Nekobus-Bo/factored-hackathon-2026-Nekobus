@@ -33,7 +33,11 @@ VERIFIED_SESSION = SessionState(session_id="s-db", state=VerificationState.VERIF
 
 
 def _bad_credentials_url(postgres_url: str) -> str:
-    url = sa.engine.make_url(postgres_url).set(password="wrong-password")
+    # A role that does not exist is refused under every auth method; a wrong
+    # password alone is accepted by a server that trusts loopback connections.
+    url = sa.engine.make_url(postgres_url).set(
+        username="no_such_role", password="wrong-password"
+    )
     return url.render_as_string(hide_password=False)
 
 
