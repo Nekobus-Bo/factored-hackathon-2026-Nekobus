@@ -23,6 +23,7 @@ class EngineTurnHandler:
             history=conversation.llm_history,
             placeholder_map=conversation.placeholder_map,
             decisions=conversation.decisions,
+            human_takeover=conversation.takeover.active,
         )
         result = await self.engine.run_turn(
             context, user_text, lang=conversation.language, turn_id=turn_id

@@ -17,6 +17,15 @@ from orchestrator.conversation.decisions.state import DecisionState
 Lang = Literal["es", "pt", "en"]
 
 
+class TakeoverActiveError(RuntimeError):
+    """A turn was requested on a conversation a human agent has taken over.
+
+    The engine raises it before it reads, masks, sends or calls anything: once a
+    takeover is active the conversation is closed to the LLM, the encoder and
+    the banking-core tools for good.
+    """
+
+
 class ConversationContext(BaseModel):
     """What the engine needs to run a turn. Persisted by the session store.
 
@@ -37,6 +46,13 @@ class ConversationContext(BaseModel):
     decisions: DecisionState = Field(
         default_factory=DecisionState,
         description="What the decision-point effects remember (ADR-0012); no PII",
+    )
+    human_takeover: bool = Field(
+        default=False,
+        description=(
+            "A human agent holds this conversation. The engine refuses to run a "
+            "turn on it (TakeoverActiveError): the history never reaches the LLM"
+        ),
     )
 
 
