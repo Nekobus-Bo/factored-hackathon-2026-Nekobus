@@ -353,6 +353,8 @@ def test_the_production_overlay_switches_the_agent_api_off_by_default() -> None:
         "false"
     ]
     assert re.findall(r"AGENT_API_TOKEN: \$\{AGENT_API_TOKEN:-([^}]*)\}", prod) == [""]
+    # The back office has no default there: unset is a compose error.
+    assert len(re.findall(r"AGENT_API_TOKEN: \$\{AGENT_API_TOKEN:\?[^}]+\}", prod)) == 1
 
 
 # ---------------------------------------------------------------- reverse index

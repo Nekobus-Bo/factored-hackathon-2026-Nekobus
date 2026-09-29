@@ -330,6 +330,14 @@ def test_compose_default_admin_token_is_the_one_production_refuses() -> None:
     assert defaults == [DEVELOPMENT_ADMIN_TOKEN, DEVELOPMENT_ADMIN_TOKEN]
 
 
+def test_the_production_overlay_gives_the_back_office_no_default_admin_token() -> None:
+    """Unset is a compose error there, never the public development token."""
+    prod = (REPO_ROOT / "infra/compose/docker-compose.prod.yml").read_text()
+
+    assert re.findall(r"ADMIN_API_TOKEN: \$\{ADMIN_API_TOKEN:-([^}]*)\}", prod) == [""]
+    assert len(re.findall(r"ADMIN_API_TOKEN: \$\{ADMIN_API_TOKEN:\?[^}]+\}", prod)) == 1
+
+
 @pytest.mark.usefixtures("db_engine")
 def test_invalid_policy_update_returns_422_without_new_version(
     admin_client: TestClient,
