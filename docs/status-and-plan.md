@@ -2,7 +2,9 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29, 07:40 UTC.
+**Last update:** 2026-09-29, 11:40 UTC.
+
+> **History rewritten on 2026-09-29.** The commits made from the cloud session were authored as "Claude"; `main` and `claude/optimistic-feynman-tj7ew9` were rewritten so that they carry Marcelo Mendez as author and no `Co-Authored-By: Claude` line (contents unchanged; Daniela's commit `fea5e9b` and the #1 merge keep their hashes). **If you cloned before that, re-sync:** `git fetch origin && git checkout main && git reset --hard origin/main` (and the same for any branch taken from the rewritten commits). Branches cut from `main` before 2026-09-29, such as `feat/disputes-table-fit`, are not affected.
 
 ## 1. Done and merged to `main`
 
@@ -28,7 +30,7 @@
     - back office: QueueRow, HandoffCard, PolicyControl, SyncGauge;
     - shared: Button, StatusChip, AlertBanner, Cover.
 
-Tests at the last merge of #3 (the branch now has 1866 passed, 5 skipped in Python, and 112 + 179 + 371 TypeScript tests in `make web-check`):
+Tests at the last merge of #3 (the branch now has 1906 passed, 5 skipped in Python, and 112 + 179 + 371 TypeScript tests in `make web-check`):
 - `uv run pytest -q`: 1668 passed, 5 skipped.
 - evalrunner: 141 passed.
 - `make design-tokens-check`: 38 passed.
