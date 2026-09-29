@@ -48,7 +48,8 @@ These come from the ADRs. A change that violates one is rejected no matter how w
 
 ```bash
 make help     # list available commands
-make demo     # full startup in replay mode, no API key
+make demo     # one-command local startup: build, warmup, up, seed, smoke
+              # (replay recordings are pending: talking to the assistant needs an LLM key in .env)
 make up       # services
 make seed     # seed from data/raw
 make smoke    # installation check
