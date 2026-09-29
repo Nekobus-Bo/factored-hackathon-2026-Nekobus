@@ -15,6 +15,11 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 # UV_RUN_FLAGS=--no-sync (tools/calibrate/README.md, "Without PyTorch").
 UV_RUN_FLAGS ?=
 
+# The TypeScript side is a Bun workspace at the root (ADR-0009). The stack and `make demo` do not need it:
+# the front ends are built in containers. Bun is needed to regenerate or check packages/design-tokens.
+BUN ?= bun
+NO_BUN = { echo "bun is not installed (BUN=$(BUN)). Install it from https://bun.sh, 1.3 or later, or pass BUN=/path/to/bun." >&2; exit 1; }
+
 # How infra/compose/demo.sh calls back into make. Not spelled $(MAKE) in the
 # recipe on purpose: make runs any recipe line containing that string even under
 # `make -n`, and a dry run of `make demo` must not start a stack.
@@ -23,14 +28,14 @@ SUBMAKE := $(MAKE) --no-print-directory
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data generate-labels migrate \
-	profile-factored ingest
+	profile-factored ingest design-tokens design-tokens-check
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*## "} {printf "  %-18s %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*## "} {printf "  %-20s %s\n", $$1, $$2}'
 
 migrate: ## apply database migrations (alembic upgrade head)
 	$(COMPOSE) run --rm migrate
@@ -115,3 +120,15 @@ synth-data: ## Generate reproducible synthetic train and validation datasets
 
 profile-factored: ## Profile the Factored dataset and print aggregate statistics
 	uv run --package profile-factored python -m profile_factored.cli $(if $(DATA_DIR),--data-dir $(DATA_DIR)) $(if $(OUT),--markdown-out $(OUT))
+
+design-tokens: ## Generate packages/design-tokens/dist (tokens.css, tokens.ts, fonts.html) from src/tokens.json; needs Bun
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'design-tokens: ' >&2; $(NO_BUN); }
+	$(BUN) install --frozen-lockfile
+	$(BUN) run --cwd packages/design-tokens build
+
+design-tokens-check: ## Design tokens gate, as CI runs it: dist/ matches src/, typecheck, bun test; needs Bun
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'design-tokens-check: ' >&2; $(NO_BUN); }
+	$(BUN) install --frozen-lockfile
+	$(BUN) run --cwd packages/design-tokens check
+	$(BUN) run --cwd packages/design-tokens typecheck
+	$(BUN) run --cwd packages/design-tokens test
