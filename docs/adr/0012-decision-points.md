@@ -90,11 +90,11 @@ Everything named here and in the appendices is **pending** until its work packag
 1. [x] WP1 contracts: `DecisionResult`, request and response fields, `ReasonCode.CONFIRMATION_REQUIRED` (0.5 d)
 2. [x] WP2 encoder decision layer, registry, `/v1/decision-points` (1.5 d)
 3. [ ] WP3 harness: `TASK=decision-points`, temperature calibrator, Wilson bound, artifact writer, `make calibration-verify` (1.5 d)
-4. [ ] WP4 orchestrator: effects loader, `DecisionState`, `gate` and `select`, metadata, prompt line (2 d)
-5. [ ] WP5 seed artifact and effects file, every DP in `shadow`, first reports (0.5 d)
-6. [ ] WP6 scenarios, evalrunner DP section, re-record (1 d), below the approved minimum
+4. [x] WP4 orchestrator: effects loader, `DecisionState`, `gate` and `select`, metadata, prompt line (2 d); the concurrent analysis of E.1 was not built (see the note under the status table)
+5. [ ] WP5 seed artifact and effects file, every DP in `shadow`, first reports (0.5 d); the effects file landed with WP4, the artifact and reports are pending
+6. [ ] WP6 scenarios, evalrunner DP section, re-record (1 d), below the approved minimum; the evalrunner section landed, the scenarios and the re-record are pending
 7. [x] WP7 adapter conformance test, `llm_sidecar` stub that fails as "pending" (0.5 d), below the approved minimum; the `encoder-bench` extension stays pending
-8. [ ] WP8 docs: cross-links in ADR-0003/0010, `limitations.md`, `evaluation.md`, `AGENTS.md`, runbook kill switch (0.5 d)
+8. [x] WP8 docs: cross-links in ADR-0003/0010, `limitations.md`, `evaluation.md`, `AGENTS.md`, runbook kill switch (0.5 d)
 9. [x] WP12 model server: `POST /v1/embed`, remote embedding adapter, `kb.search` remote backend, compose and docs (1.5 d)
 10. [ ] Teammate: candidates, DP datasets, calibration runs, embedding-model pin, sign-off and `shadow` to `enforce` flips (Appendix H)
 
@@ -110,8 +110,12 @@ Everything named here and in the appendices is **pending** until its work packag
 | `packages/encoder/tests/test_adapter_conformance.py`; the `llm_sidecar` stub | WP7 | landed (`llm_sidecar` fails with `pending: llm_sidecar is not implemented (ADR-0012)`) |
 | `encoder-bench` for artifact backends; `make warmup-encoder` fetching pinned decision weights and verifying SHA-256 | WP7 / WP10 | pending |
 | `make calibrate TASK=decision-points`, `make calibration-verify`, `tools/calibrate/configs/decision_points.yaml`, `tools/calibrate/src/calibrate/{calibrators,dp,artifact}.py`, `metrics/decision.py`, `reports/calibration-dp-*.md` | WP3, WP5 | pending |
-| `apps/orchestrator/config/decision_effects.yaml`, `decisions/{config,state,effects}.py`, `DECISION_EFFECTS_FILE`, `DECISION_POINTS_MODES`, the prompt line and `PROMPT_VERSION` bump | WP4 | pending |
-| The 9 new scenarios, the evalrunner "Decision points" section, `eval/replay/DECISION_CONFIG` | WP6 | pending |
+| `apps/orchestrator/config/decision_effects.yaml` (all five decision points in `shadow`), `DECISION_EFFECTS_FILE`, `DECISION_POINTS_MODES` (compose, `.env.example`, Dockerfile) | WP4, WP5 | landed |
+| `apps/orchestrator/src/orchestrator/conversation/decisions/{config,state,records,catalog,effects}.py`: the fail-loud loader, `DecisionState` persisted in `ConversationState`, `record` / `select` / `gate`, the cached listing of served ids | WP4 | landed |
+| Engine: the gate and select hooks in `run_turn` / `_execute`, the local `CONFIRMATION_REQUIRED` refusal, `TurnMetadata.{decisions,effects,decisions_config_version,dp_config_mismatch}`, `eval.decisions` and `eval.effects` in the eval hook, the prompt line and `PROMPT_VERSION` `turn-engine/2` | WP4 | landed |
+| Concurrent analysis (E.1: analyze while the first LLM call runs) | WP4 | not built, on purpose: see the note below |
+| The evalrunner "Decision Points by Language" section (decided / abstained / unavailable per decision point, gate would-withhold, select agreement) | WP6 | landed |
+| The 9 new scenarios, `gate_breach` / `gate_false_consent` / `gate_extra_turns`, `eval/replay/DECISION_CONFIG` | WP6 | pending: the scenario schema cannot switch orchestrator modes per scenario, so there are no `enforce` scenarios yet |
 | `data/eval/synthetic/dp/`, the "gate labels" section of `docs/labeling-rubric.md`, calibration runs, `shadow` to `enforce` flips | WP9 | pending (teammate) |
 | Candidate adapters (`embedding_lr`, `hf_seqcls`), the `llm-local` compose profile, `packages/encoder/prompts/`, `DECISION_BACKEND_HOSTS`, cascading (`escalate_to`) | WP10 | pending (teammate, post-freeze) |
 | `EmbedRequest` and `EmbedResponse` in `packages/contracts/src/contracts/encoder.py`, with exported schemas | WP12 | landed |
@@ -119,8 +123,16 @@ Everything named here and in the appendices is **pending** until its work packag
 | `POST /v1/embed`, `EMBEDDING_MODEL`, `EMBEDDING_REVISION`, `EMBEDDING_WEIGHTS_SHA256`, `EMBEDDING_MAX_BATCH`, the `embed` extra and the embedding part of `warmup` in `apps/encoder` | WP12 | landed |
 | banking-core `kb.search` remote backend: `EMBEDDING_BACKEND`, `MODEL_SERVER_URL`, `MODEL_SERVER_TIMEOUT_SECONDS`, `EMBEDDING_REVISION` | WP12 | landed |
 | Compose wiring, `make warmup-retrieval` on the model server, `.env.example`, `docs/deployment.md`, `docs/limitations.md`, `docs/runbook.md` | WP12 | landed |
-| The AGENTS.md line, `limitations.md` rows for the gate and the effects, the ADR-0003 row and ADR-0010 §1 text (Appendix I) | WP8 | pending |
+| The AGENTS.md line, `limitations.md` rows for the gate and the effects, the ADR-0003 row and ADR-0010 amendment (Appendix I), `evaluation.md` section, the runbook's mode kill switch | WP8 | landed |
 
+**Where the orchestrator differs from the text above (WP4).** These are choices the text left open or that the code forced; none changes an invariant.
+
+- *Analysis is not concurrent with the LLM.* E.1 draws the analyze call as a task that overlaps the first completion. The encoder's PII spans widen the masking of the customer text and the masking precedes the first LLM call, so the call stays where it was and the decision points ride on it (no extra request, no extra latency beyond the listing fetch below). Overlapping would need masking to stop depending on the spans.
+- *Only listed ids are requested.* The orchestrator caches `GET /v1/decision-points` (5 minutes, kept when a refresh fails, retried every 15 s) and names in `decision_points` only the active decision points it lists with the labels the effects file needs. A decision point the encoder does not serve (no artifact: only `turn_intent`) is recorded `unavailable` / `not_served`; one whose labels do not cover the file is `unavailable` / `config_mismatch`, listed in `TurnMetadata.dp_config_mismatch`, and a gate on it keeps withholding. A 422 from a stale listing is asked again for the service's default set, so the PII spans survive. If the listing cannot be read at all the call names nothing.
+- *The gate.* A pending question expires after `max_age_turns` like consent (E.2 gave only consent an age). A decided `deny` beats an explicit request of the same turn. A successful block spends the consent, so a second block in the conversation needs a second one. The state machine runs identically in `shadow`, where the block goes through and spends it, so the records of a shadow run say what `enforce` would have done. The explicit request may read a decision point that is `shadow` (its mode governs its own effect, not its use as an input); the file check for it uses the file's modes, so `DECISION_POINTS_MODES=turn_intent=off` still starts and simply leaves the explicit request unable to grant anything.
+- *Select.* The ledger is per decision point, sticky across turns and spent by a successful write of its tool; `on_abstain` and `on_unavailable` therefore leave an earlier decided value in force. The engine-forced REQUIRED handoff bypasses `select` (it copies banking-core's requirement). With `select` in `enforce` the result of `handoff.create` that the LLM sees shows the effective department, a category and not a number; the history still holds the LLM's own arguments.
+- *Recording.* `DecisionRecord` and `EffectRecord` follow E.3 with two additions: `tau_source` and `unavailable_reason` on the first; on a gate record `detail.event` (`withheld`, `released`, `consent_granted`, `consent_revoked`, `consent_expired`, `question_expired`) and `dp_outcome`. A defect inside the effects costs the turn its decision records, not the turn.
+- *Limits.* At most 16 decision points in the file (one request may name 16); one gate per tool; no two selects on one argument.
 ---
 
 # Appendices
@@ -595,7 +607,7 @@ Ours totals about 8 person-days; with two people in parallel (WP2/WP3 and WP4) i
 
 ## Appendix I — Text to add elsewhere
 
-Status at acceptance: the ADR-0008 amendment (the model server and the post-freeze sidecar) and the ADR-0006 amendment (the embedding model moves) are applied. The `limitations.md` rows for the model server (kb.search footprint, trust note, encoder-side decision points) are applied with WP12 and WP2. The rest below is WP8 and pending.
+Status at acceptance: the ADR-0008 amendment (the model server and the post-freeze sidecar) and the ADR-0006 amendment (the embedding model moves) are applied. The `limitations.md` rows for the model server (kb.search footprint, trust note, encoder-side decision points) are applied with WP12 and WP2. The rest below was WP8 and is applied (AGENTS.md carries the line with the harness target marked pending; the ADR-0010 text is an amendment at the end of that ADR).
 
 - **AGENTS.md, "When making changes":** *"**When adding a decision point:** artifact entry through `make calibrate TASK=decision-points` → effects entry in `apps/orchestrator/config/decision_effects.yaml` (start in `shadow`) → a scenario covering it, including the case where it must abstain → flip to `enforce` in its own PR with the report attached."*
 - **docs/limitations.md, "What works with caveats":** the gate is a control in the untrusted zone, not an authorization; consent is per tool, not per card; consent provenance is not in the audit chain; calibration evidence is provisional (counts and certification status per DP); `out_of_scope` is not used to act; effects editing is by file, not back office; a ~4B sidecar is designed but not built; a fail-closed gate lowers automatic completion when the encoder is down or abstains.
