@@ -69,6 +69,7 @@ flowchart TD
 3. **Application Stack:**
    - Containers run with dropped capabilities (`cap_drop: [ALL]`), `no-new-privileges:true`, and read-only root filesystems (`read_only: true` with temporary `/tmp` tmpfs mounts).
    - In production compose, `banking-core` and `encoder` expose no host ports. Only the `orchestrator` port (`8080`) is exposed (or placed behind an ingress reverse proxy).
+   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, default 30 per hour). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. Behind an ingress proxy that appends the address it saw (nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`), set `TRUSTED_PROXY_HOPS=1` (one more per extra proxy). **Left at `0` behind a proxy, every customer shares the proxy's address and its budget, and once it is spent nobody can open a conversation until the hour ends.** Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. The orchestrator stores only a keyed hash of the address.
 
 ---
 
@@ -81,7 +82,7 @@ The required command sets derived from the codebase:
 | Service | User | Key Patterns | Code References | Required Redis Commands |
 |---|---|---|---|---|
 | `banking-core` | `core-svc` | `~session:* ~otp:* ~limit:*` | `control/session.py`<br/>`identity/challenge_store.py`<br/>`control/attempt_limits.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
-| `orchestrator` | `edge-svc` | `~orch:*` | `session/store.py` | `PING`, `GET`, `SET`, `DEL`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
+| `orchestrator` | `edge-svc` | `~orch:*` | `session/store.py`<br/>`session/rate_limit.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
 
 ### Why Transaction Commands Are Mandatory
 
@@ -89,6 +90,7 @@ The required command sets derived from the codebase:
 2. **`banking-core` challenge store:** Uses `INCR` and `EXPIRE` on `otp:challenge:<id>:evaluations` to atomically count attempts before verifying HMAC hashes, and `DEL` to invalidate challenges. redis-py sends `INCR` as `INCRBY key 1`, so `+incrby` is required: an ACL with `+incr` alone fails every `otp.verify` with `NOPERM`.
 3. **`banking-core` attempt limits:** `control/attempt_limits.py` creates a fixed-window counter with `SET key 0 NX EX <window>` and `INCR` in one `MULTI`, reads locks with `GET`, sets them with `SET NX EX`, and gives a successful match's count back with `WATCH` / `GET` / `MULTI` / `SET XX KEEPTTL` / `EXEC`. It needs no command beyond the set above; only the key pattern `~limit:*` is new.
 4. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
+5. **`orchestrator` conversation rate limit:** `session/rate_limit.py` counts `POST /v1/conversations` per client address with `INCR` (sent as `INCRBY`) and `EXPIRE` in one `MULTI`, under `orch:ratelimit:conversations:<keyed hash>:<window>`. An `edge-svc` ACL written before this limit lacks `+incrby +expire`: the limiter then fails closed and every `POST /v1/conversations` answers 503.
 
 If `WATCH`, `MULTI`, `EXEC`, or `UNWATCH` are omitted from the ACL, Redis returns `NOPERM` and operations fail.
 
@@ -98,7 +100,7 @@ Execute these commands in `redis-cli` on the host Redis instance:
 
 ```text
 ACL SETUSER core-svc reset on >REPLACE_WITH_CORE_REDIS_PASSWORD ~session:* ~otp:* ~limit:* -@all +ping +get +set +del +incr +incrby +expire +watch +multi +exec +unwatch
-ACL SETUSER edge-svc reset on >REPLACE_WITH_EDGE_REDIS_PASSWORD ~orch:* -@all +ping +get +set +del +watch +multi +exec +unwatch
+ACL SETUSER edge-svc reset on >REPLACE_WITH_EDGE_REDIS_PASSWORD ~orch:* -@all +ping +get +set +del +incr +incrby +expire +watch +multi +exec +unwatch
 ```
 
 Ensure the key prefix variables in `.env` match these patterns:
@@ -106,6 +108,7 @@ Ensure the key prefix variables in `.env` match these patterns:
 - `REDIS_OTP_CHALLENGE_KEY_PREFIX=otp:challenge:` (covered by `~otp:*`)
 - `REDIS_ATTEMPT_LIMIT_KEY_PREFIX=limit:` (covered by `~limit:*`)
 - `REDIS_EDGE_KEY_PREFIX=orch:conv:` (covered by `~orch:*`)
+- `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX=orch:ratelimit:` (covered by `~orch:*`)
 
 ---
 
@@ -194,7 +197,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 
 1. **Pure Environment (`.env`):**
    - **Data connectivity:** Plugging your own external PostgreSQL (`DATABASE_URL`, pgvector extension required) or Redis instances (`REDIS_CORE_URL`, `REDIS_EDGE_URL` supporting `redis://` or `rediss://` with username, password, port and TLS; use database 0, or add `+select` to both ACL users if you pick another DB number).
-   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, and `REDIS_EDGE_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
+   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
    - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), embedding models (`EMBEDDING_MODEL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
    - **LLM engine:** Switching between deterministic `replay` and live provider (`live`), model names (`LLM_MODEL`), base URLs, and timeouts.
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
@@ -326,6 +329,7 @@ to the same environment from overlapping.
 | `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API |
 | `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
 | `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
+| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (default `30`), and how many reverse proxies stand in front of the orchestrator (default `0`: `X-Forwarded-For` is ignored). Set `TRUSTED_PROXY_HOPS` to the real number when an ingress proxy fronts the stack, see §1 |
 | `ENCODER_BACKEND`, `ABSTENTION_THRESHOLD` | variable | optional | Default to the calibrated seed in `.env.example` (`tfidf_lr`, `0.37`). `ENCODER_BACKEND=gliner` also needs the `ENCODER_EXTRAS` build variable and about 4 GB of memory |
 | `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
 | `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |

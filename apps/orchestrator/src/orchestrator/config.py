@@ -52,6 +52,19 @@ class Settings(BaseSettings):
         default="orch:conv:",
         validation_alias=AliasChoices("REDIS_EDGE_KEY_PREFIX"),
     )
+    # Rate limit on POST /v1/conversations, per client address (see
+    # session/rate_limit.py). Counters live on redis-edge under this prefix, which
+    # the edge ACL (~orch:*) must cover.
+    redis_edge_rate_limit_key_prefix: str = Field(
+        default="orch:ratelimit:",
+        validation_alias=AliasChoices("REDIS_EDGE_RATE_LIMIT_KEY_PREFIX"),
+    )
+    rate_limit_conversations_per_ip_hour: int = Field(
+        default=30, ge=1, alias="RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR"
+    )
+    # How many reverse proxies stand in front of the orchestrator. 0 (default)
+    # ignores X-Forwarded-For entirely; N strips N entries from its right.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=8, alias="TRUSTED_PROXY_HOPS")
     # No default on purpose: startup fails without it (see require_session_secret).
     session_secret: str | None = Field(
         default=None,
