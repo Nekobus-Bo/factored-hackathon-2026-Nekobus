@@ -157,6 +157,8 @@ jobs:
       IMAGE_TAG: ${{ inputs.image_tag || needs.build.outputs.image_tag }}
       DATA_MODE: ${{ vars.DATA_MODE || 'host' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      # "true" seeds the synthetic demo customers after `up`. See docs/deployment.md, section 7.
+      DEMO_SEED: ${{ vars.DEMO_SEED }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -285,6 +287,14 @@ jobs:
           ssh deploy-target "$COMPOSE_CMD run --rm migrate"
           # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
           ssh deploy-target "$COMPOSE_CMD up -d --wait"
+          if [ "$DEMO_SEED" = "true" ]; then
+            # Opt-in (repository or environment variable DEMO_SEED=true). The seed refuses
+            # APP_ENV=production, so this passes --force on purpose. It TRUNCATES and reloads
+            # the banking tables with the synthetic demo customers on every deploy that has
+            # the variable set; docs/deployment.md, section 7, says when to leave it on.
+            # shellcheck disable=SC2029 # expands on the runner on purpose (non-secret).
+            ssh deploy-target "$COMPOSE_CMD run --rm seed python -m banking_core.seed.cli seed --force"
+          fi
 
       - name: Smoke (orchestrator /health on the server, 127.0.0.1-bound)
         run: |
