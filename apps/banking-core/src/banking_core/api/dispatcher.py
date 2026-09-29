@@ -4,13 +4,14 @@ Coordinates the end-to-end tool execution pipeline:
 0. Per-session lock: the whole dispatch (read session, execute, save) is serialized
 1. Input validation & IDOR check (validate_no_holder_tampering)
 2. Records verification_state_before for audit trail
-3. card.block and handoff.create that name a transaction_id: the transaction is
-   loaded from the database for the pinned holder (and the card), before the
-   authorizer runs. The policy reads its amount from that row and from nothing
-   the model or the customer says; a transaction that cannot be resolved is
-   refused INVALID_ARGUMENTS, the same for every reason (ADR-0003 amendment
-   2026-09-29)
-3b. Authorizer evaluation (FSM + Matrix + Policy + per-session rate limits)
+3. Authorizer evaluation (FSM + Matrix + Policy + per-session rate limits)
+3b. card.block and handoff.create that name a transaction_id, once the authorizer
+   lets them through: the transaction is loaded from the database for the pinned
+   holder (and the card). card.block is authorized again with its amount and
+   currency as the policy's trusted context, so the threshold reads that row and
+   nothing the model or the customer says; a transaction that cannot be resolved
+   is refused INVALID_ARGUMENTS, the same for every reason. handoff.create
+   attaches a charge only in a VERIFIED session (ADR-0003 amendment 2026-09-29)
 4. Idempotency store deduplication for state-mutating tools (scope strictly required)
 5. Tool execution & FSM state mutation, computed on a copy of the session
    (customer.match, otp.send and otp.verify also apply the cross-session attempt
@@ -322,6 +323,63 @@ class ToolDispatcher:
         """
         self.session_store.save(session, ttl_seconds=ttl_seconds)
 
+    @staticmethod
+    def _names_a_transaction(tool_call: ToolCall) -> bool:
+        """True for a write tool call that points at a disputed transaction."""
+        return (
+            tool_call.tool in TRANSACTION_LINKED_TOOLS
+            and tool_call.args.get("transaction_id") is not None
+        )
+
+    def _resolve_transaction_link(
+        self,
+        tool_call: ToolCall,
+        session: SessionState,
+        db_session: Session,
+        verification_state_before: VerificationState,
+    ) -> DisputedTransaction | ToolResult:
+        """Load the transaction a call names, or the result that ends the call.
+
+        A transaction that does not exist, is someone else's, is on another card
+        or is not even an id gets one answer and one audit reason: the tool must
+        not confirm which (ADR-0004, IDOR).
+        """
+        try:
+            return self._load_disputed_transaction(tool_call, session, db_session)
+        except (TransactionNotFoundError, ValueError):
+            db_session.rollback()
+            return self._refuse(
+                tool_call,
+                session.session_id,
+                ReasonCode.INVALID_ARGUMENTS,
+                db_session,
+                verification_state_before=verification_state_before,
+                verification_state_after=session.state,
+                reason="disputed_transaction_not_resolved",
+                details={"flags": ["TRANSACTION_NOT_RESOLVED"]},
+            )
+        except Exception as exc:
+            db_session.rollback()
+            logger.error(
+                "Error loading the disputed transaction for '%s': %s",
+                tool_call.tool,
+                type(exc).__name__,
+            )
+            self._audit_error(
+                tool_call.tool,
+                session.session_id,
+                verification_state_before,
+                session.state,
+                db_session,
+                exc,
+            )
+            return ToolResult(
+                tool=tool_call.tool,
+                status=ToolResultStatus.ERROR,
+                reason_code=ReasonCode.INTERNAL_ERROR,
+                data=None,
+            )
+
     def _load_disputed_transaction(
         self, tool_call: ToolCall, session: SessionState, db_session: Session
     ) -> DisputedTransaction:
@@ -426,64 +484,40 @@ class ToolDispatcher:
         # 2. Capture session verification state BEFORE execution (required for U1 check)
         verification_state_before = session.state
 
-        # 3. The disputed transaction, from the database, BEFORE authorization: the
-        #    risk threshold compares the amount of that row (ADR-0003 amendment
-        #    2026-09-29), never a figure from the model or the customer.
-        policy_context: dict[str, Any] = {}
-        if (
-            tool_call.tool in TRANSACTION_LINKED_TOOLS
-            and tool_call.args.get("transaction_id") is not None
-        ):
-            try:
-                disputed = self._load_disputed_transaction(
-                    tool_call, session, db_session
-                )
-            except (TransactionNotFoundError, ValueError):
-                # One answer and one audit reason for a transaction that does
-                # not exist, is someone else's, is on another card or is not
-                # even an id: the tool must not confirm which (ADR-0004, IDOR).
-                db_session.rollback()
-                return self._refuse(
-                    tool_call,
-                    session.session_id,
-                    ReasonCode.INVALID_ARGUMENTS,
-                    db_session,
-                    verification_state_before=verification_state_before,
-                    verification_state_after=session.state,
-                    reason="disputed_transaction_not_resolved",
-                    details={"flags": ["TRANSACTION_NOT_RESOLVED"]},
-                )
-            except Exception as exc:
-                db_session.rollback()
-                logger.error(
-                    "Error loading the disputed transaction for '%s': %s",
-                    tool_call.tool,
-                    type(exc).__name__,
-                )
-                self._audit_error(
-                    tool_call.tool,
-                    session.session_id,
-                    verification_state_before,
-                    session.state,
-                    db_session,
-                    exc,
-                )
-                return ToolResult(
-                    tool=tool_call.tool,
-                    status=ToolResultStatus.ERROR,
-                    reason_code=ReasonCode.INTERNAL_ERROR,
-                    data=None,
-                )
-            if tool_call.tool == "card.block":
-                policy_context = {
-                    AMOUNT_CONTEXT_KEY: disputed.amount_minor,
-                    CURRENCY_CONTEXT_KEY: disputed.currency,
-                }
+        # 3. Deterministic authorization (FSM + Matrix + Policy + per-session limits)
+        decision = self.authorizer.authorize(tool_call=tool_call, session=session)
 
-        # 3b. Deterministic authorization (FSM + Matrix + Policy + per-session limits)
-        decision = self.authorizer.authorize(
-            tool_call=tool_call, session=session, context=policy_context
-        )
+        # 3b. The disputed transaction, from the database, for a call the authorizer
+        #     let through: a session the FSM refuses learns nothing from a lookup.
+        #     card.block is then authorized again with the amount of that row as
+        #     trusted context, so the risk threshold compares what the bank holds,
+        #     never a figure from the model or the customer (ADR-0003 amendment
+        #     2026-09-29).
+        tool_args = tool_call.args
+        if decision.allowed and self._names_a_transaction(tool_call):
+            if (
+                tool_call.tool == "handoff.create"
+                and session.state != VerificationState.VERIFIED
+            ):
+                # handoff.create works in every state, but attaching a charge is
+                # a read of customer data: only a verified session gets one. The
+                # id is dropped, not refused, so an escalation is never held up.
+                tool_args = {**tool_call.args, "transaction_id": None}
+            else:
+                linked = self._resolve_transaction_link(
+                    tool_call, session, db_session, verification_state_before
+                )
+                if isinstance(linked, ToolResult):
+                    return linked
+                if tool_call.tool == "card.block":
+                    decision = self.authorizer.authorize(
+                        tool_call=tool_call,
+                        session=session,
+                        context={
+                            AMOUNT_CONTEXT_KEY: linked.amount_minor,
+                            CURRENCY_CONTEXT_KEY: linked.currency,
+                        },
+                    )
 
         if not decision.allowed:
             return self._refuse(
@@ -546,7 +580,7 @@ class ToolDispatcher:
                 nonlocal advanced_session
                 data, advanced_session = self._execute_mutating_tool(
                     tool_name=tool_call.tool,
-                    tool_args=tool_call.args,
+                    tool_args=tool_args,
                     session=session,
                     fsm=fsm,
                     policy_config=policy_config,
