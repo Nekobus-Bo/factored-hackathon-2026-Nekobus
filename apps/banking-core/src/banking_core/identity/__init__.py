@@ -13,17 +13,20 @@ from banking_core.identity.ports import (
 )
 from banking_core.identity.tools import (
     CustomerLockedError,
+    CustomerMatchResult,
     NoOtpChannelError,
     OtpResendLimitError,
     OtpVerifyResult,
     execute_customer_match,
     execute_identity_verify_document,
+    execute_limited_customer_match,
     execute_otp_send,
     execute_otp_verify,
 )
 
 __all__ = [
     "CustomerLockedError",
+    "CustomerMatchResult",
     "DevOtpSink",
     "IdentityConfig",
     "NoOtpChannelError",
@@ -33,6 +36,7 @@ __all__ = [
     "OtpVerifyResult",
     "execute_customer_match",
     "execute_identity_verify_document",
+    "execute_limited_customer_match",
     "execute_otp_send",
     "execute_otp_verify",
     "get_challenge_store",

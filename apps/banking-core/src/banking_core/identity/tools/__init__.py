@@ -4,7 +4,11 @@ from banking_core.identity.tools.customer_lock import (
     CustomerLockedError,
     ensure_customer_not_locked,
 )
-from banking_core.identity.tools.customer_match import execute_customer_match
+from banking_core.identity.tools.customer_match import (
+    CustomerMatchResult,
+    execute_customer_match,
+    execute_limited_customer_match,
+)
 from banking_core.identity.tools.identity_verify_document import (
     execute_identity_verify_document,
 )
@@ -17,11 +21,13 @@ from banking_core.identity.tools.otp_verify import OtpVerifyResult, execute_otp_
 
 __all__ = [
     "CustomerLockedError",
+    "CustomerMatchResult",
     "NoOtpChannelError",
     "OtpResendLimitError",
     "OtpVerifyResult",
     "execute_customer_match",
     "execute_identity_verify_document",
+    "execute_limited_customer_match",
     "execute_otp_send",
     "ensure_customer_not_locked",
     "execute_otp_verify",

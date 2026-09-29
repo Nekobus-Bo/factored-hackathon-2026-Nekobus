@@ -19,6 +19,7 @@ Covers:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -1608,14 +1609,14 @@ def test_a_correct_code_is_not_counted_as_a_failure(lock_harness) -> None:
     )
 
     assert verified["data"]["verified"] is True
-    assert h.redis.keys("limit:*") == []
+    assert h.redis.keys("limit:customer:*") == []
 
 
 def test_customer_limit_keys_hold_only_the_customer_uuid(lock_harness) -> None:
     h = lock_harness()
     _lock_customer_through_two_sessions(h)
 
-    keys = sorted(h.redis.keys("limit:*"))
+    keys = sorted(h.redis.keys("limit:customer:*"))
 
     assert keys == [
         f"limit:customer:{_customer_id(h)}:otp_failures",
@@ -1636,3 +1637,278 @@ def test_customer_limit_thresholds_come_from_the_policy_config(
     assert tripping["data"]["state"] == "LOCKED"
     lock_key = f"limit:customer:{_customer_id(h)}:otp_lock"
     assert 0 < h.redis.ttl(lock_key) <= 120
+
+
+# --- Cross-session match limit per claimed document (attempt limits) ----------
+
+DOCUMENT_MATCH_MAX_FAILURES = 4
+ES_DOCUMENT = "1020304050"
+UNKNOWN_DOCUMENT = "5550001112"
+RIGHT_BIRTH_DATE = "1985-05-15"
+WRONG_BIRTH_DATE = "1970-01-01"
+
+
+def _match(
+    h: Harness,
+    session_id: str,
+    number: str = ES_DOCUMENT,
+    birth_date: str | None = WRONG_BIRTH_DATE,
+    document_type: str = "NATIONAL_ID",
+) -> dict[str, Any]:
+    args: dict[str, Any] = {
+        "document_type": document_type,
+        "document_number": number,
+    }
+    if birth_date is not None:
+        args["birth_date"] = birth_date
+    return h.call(session_id, {"tool": "customer.match", "args": args})
+
+
+def _match_in_new_session(h: Harness, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _match(h, h.new_session(), *args, **kwargs)
+
+
+def _match_audits(h: Harness) -> list[Any]:
+    return [a for a in h.db.audit_logs if a.action == "customer.match"]
+
+
+@pytest.fixture
+def match_harness(make_harness, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(
+        "RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES", str(DOCUMENT_MATCH_MAX_FAILURES)
+    )
+    return make_harness
+
+
+def test_failed_matches_on_one_document_are_limited_across_sessions(
+    match_harness,
+) -> None:
+    h = match_harness()
+    for _ in range(DOCUMENT_MATCH_MAX_FAILURES):
+        result = _match_in_new_session(h, birth_date=WRONG_BIRTH_DATE)
+        assert result["data"] == {"matched": False}
+
+    # Past the maximum even the RIGHT data answers matched=false, from any session.
+    session_id = h.new_session()
+    limited = _match(h, session_id, birth_date=RIGHT_BIRTH_DATE)
+
+    assert limited == {
+        "tool": "customer.match",
+        "status": "ok",
+        "reason_code": None,
+        "data": {"matched": False},
+    }
+    assert _match_in_new_session(h, birth_date=RIGHT_BIRTH_DATE)["data"] == {
+        "matched": False
+    }
+    # It still counts against the session that asked, like any failed match.
+    session = h.session_store.get(session_id)
+    assert session is not None
+    assert (session.attempts, session.failed_matches) == (1, 1)
+    assert session.state == VerificationState.ANONYMOUS
+    # Another document is untouched.
+    assert _match_in_new_session(h, "12345678900", birth_date="1990-10-20")["data"] == {
+        "matched": True
+    }
+
+
+def test_a_limited_match_looks_nothing_up(match_harness) -> None:
+    h = match_harness()
+    for _ in range(DOCUMENT_MATCH_MAX_FAILURES):
+        _match_in_new_session(h)
+    session_id = h.new_session()
+
+    with (
+        patch.object(h.db, "scalars", wraps=h.db.scalars) as probes,
+        patch.object(
+            RecordEncryptor,
+            "decrypt",
+            autospec=True,
+            side_effect=RecordEncryptor.decrypt,
+        ) as decrypt,
+    ):
+        result = _match(h, session_id, birth_date=RIGHT_BIRTH_DATE)
+
+    assert result["data"] == {"matched": False}
+    probes.assert_not_called()
+    decrypt.assert_not_called()
+
+
+def _observable(h: Harness, results: list[dict[str, Any]], audits_from: int) -> Any:
+    """What a caller sees of each call, and the audit fields of each, sans refs."""
+    rows = []
+    for row in h.db.audit_logs[audits_from:]:
+        payload = json.loads(json.dumps(row.payload))
+        payload.get("details", {}).pop("document_ref", None)
+        rows.append(
+            (row.actor_type, row.action, row.decision, row.reason_code, payload)
+        )
+    return results, rows
+
+
+def test_existing_and_unknown_documents_are_indistinguishable_through_the_limit(
+    match_harness,
+) -> None:
+    h = match_harness()
+    calls = DOCUMENT_MATCH_MAX_FAILURES + 3
+
+    def run(number: str) -> Any:
+        start = len(h.db.audit_logs)
+        results = [
+            _match_in_new_session(h, number, birth_date=WRONG_BIRTH_DATE)
+            for _ in range(calls)
+        ]
+        return _observable(h, results, start)
+
+    existing = run(ES_DOCUMENT)
+    unknown = run(UNKNOWN_DOCUMENT)
+
+    # Same responses, same audit rows (actor, action, decision, reason, payload,
+    # including which calls were limited and the lock event): only the opaque
+    # document reference differs.
+    assert existing == unknown
+    assert [r["data"] for r in existing[0]] == [{"matched": False}] * calls
+
+
+def test_a_successful_match_is_not_a_failure(match_harness) -> None:
+    h = match_harness()
+
+    results = [
+        _match_in_new_session(h, birth_date=RIGHT_BIRTH_DATE)
+        for _ in range(DOCUMENT_MATCH_MAX_FAILURES * 3)
+    ]
+
+    assert all(r["data"] == {"matched": True} for r in results)
+    # The counter went back to zero after each match: the failures still fit.
+    for _ in range(DOCUMENT_MATCH_MAX_FAILURES):
+        assert _match_in_new_session(h, birth_date=WRONG_BIRTH_DATE)["data"] == {
+            "matched": False
+        }
+    assert (
+        _match_in_new_session(h, birth_date=RIGHT_BIRTH_DATE)["data"]["matched"]
+        is False
+    )
+
+
+def test_equivalent_document_types_share_one_limit(match_harness) -> None:
+    h = match_harness()
+    half = DOCUMENT_MATCH_MAX_FAILURES // 2
+    pt_number = "12345678900"
+    for _ in range(half):
+        _match_in_new_session(
+            h, pt_number, birth_date=WRONG_BIRTH_DATE, document_type="TAX_ID"
+        )
+    for _ in range(DOCUMENT_MATCH_MAX_FAILURES - half):
+        _match_in_new_session(
+            h, pt_number, birth_date=WRONG_BIRTH_DATE, document_type="NATIONAL_ID"
+        )
+
+    for document_type in ("TAX_ID", "NATIONAL_ID"):
+        result = _match_in_new_session(
+            h, pt_number, birth_date="1990-10-20", document_type=document_type
+        )
+        assert result["data"] == {"matched": False}
+
+
+def test_document_limit_is_audited_once_without_pii(match_harness) -> None:
+    h = match_harness()
+    calls = DOCUMENT_MATCH_MAX_FAILURES + 3
+    for _ in range(calls):
+        _match_in_new_session(h)
+
+    events = [
+        a for a in h.db.audit_logs if a.action == "security.document_match_limited"
+    ]
+
+    assert len(events) == 1
+    event = events[0]
+    assert (event.actor_type, event.decision, event.reason_code) == (
+        "system",
+        "refused",
+        "RATE_LIMITED",
+    )
+    assert event.payload["reason"] == "document_match_failure_limit_reached"
+    bidx = compute_blind_index(
+        ES_DOCUMENT, "document_number", TEST_SALT, document_type="NATIONAL_ID"
+    )
+    assert event.payload["details"] == {
+        "document_ref": bidx[:32],
+        "max_failures": DOCUMENT_MATCH_MAX_FAILURES,
+        "window_seconds": 3600,
+    }
+    rendered = json.dumps(event.payload)
+    for pii in (ES_DOCUMENT, "Carlos", "1985-05-15", WRONG_BIRTH_DATE):
+        assert pii not in rendered
+    # Each call the limit answered says so; the ones before it do not.
+    flags = [a.payload["details"].get("limited", False) for a in _match_audits(h)]
+    assert flags == [False] * DOCUMENT_MATCH_MAX_FAILURES + [True] * 3
+
+
+def test_document_limit_keys_hold_only_blind_indexes(match_harness) -> None:
+    h = match_harness()
+    for number in (ES_DOCUMENT, UNKNOWN_DOCUMENT):
+        _match_in_new_session(h, number)
+
+    keys = h.redis.keys("limit:document:*")
+
+    # One key per claimed document and equivalent type (NATIONAL_ID == TAX_ID).
+    assert len(keys) == 4
+    for key in keys:
+        assert re.fullmatch(r"limit:document:[0-9a-f]{64}:match_failures", key)
+        assert ES_DOCUMENT not in key and UNKNOWN_DOCUMENT not in key
+
+
+def test_limited_matches_still_lock_the_session_at_its_own_limit(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES", "1")
+    monkeypatch.setenv("RATE_LIMIT_ATTEMPTS_PER_SESSION", "3")
+    h = make_harness()
+    session_id = h.new_session()
+
+    for _ in range(3):
+        assert _match(h, session_id)["data"] == {"matched": False}
+
+    session = h.session_store.get(session_id)
+    assert session is not None
+    assert session.state == VerificationState.LOCKED
+    assert session.attempts == 3
+
+
+def test_document_limit_window_comes_from_the_policy_config(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "120")
+    h = make_harness()
+
+    _match_in_new_session(h)
+
+    keys = h.redis.keys("limit:document:*")
+    assert keys
+    for key in keys:
+        assert 0 < h.redis.ttl(key) <= 120
+
+
+def test_parallel_sessions_never_evaluate_past_the_document_maximum(
+    match_harness,
+) -> None:
+    h = match_harness()
+    session_ids = [h.new_session() for _ in range(24)]
+    results: list[dict[str, Any]] = []
+    barrier = threading.Barrier(len(session_ids))
+
+    def guess(session_id: str) -> None:
+        barrier.wait()
+        results.append(_match(h, session_id, UNKNOWN_DOCUMENT))
+
+    threads = [threading.Thread(target=guess, args=(s,)) for s in session_ids]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert all(r["data"] == {"matched": False} for r in results)
+    audits = _match_audits(h)
+    assert len(audits) == len(session_ids)
+    evaluated = [a for a in audits if not a.payload["details"].get("limited")]
+    assert len(evaluated) == DOCUMENT_MATCH_MAX_FAILURES

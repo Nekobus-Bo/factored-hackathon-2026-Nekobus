@@ -73,8 +73,8 @@ from banking_core.identity.tools import (
     CustomerLockedError,
     NoOtpChannelError,
     OtpResendLimitError,
-    execute_customer_match,
     execute_identity_verify_document,
+    execute_limited_customer_match,
     execute_otp_send,
     execute_otp_verify,
 )
@@ -774,11 +774,13 @@ class ToolDispatcher:
         """
         if tool_name == "customer.match":
             input_args = CustomerMatchInput.model_validate(tool_args)
-            output, matched_customer_id = execute_customer_match(
+            match = execute_limited_customer_match(
                 db_session=db_session,
                 args=input_args,
+                limits=self._attempt_limits(policy_config),
                 identity_config=self.identity_config,
             )
+            output, matched_customer_id = match.output, match.customer_id
             if output.matched and matched_customer_id:
                 updated_session = fsm.on_customer_match(
                     session=session.model_copy(),
@@ -801,9 +803,30 @@ class ToolDispatcher:
                     verification_state_after=updated_session.state,
                     status=ToolResultStatus.OK,
                     reason=None,
-                    details={"matched": output.matched},
+                    # A call the per-document limit answered without looking is
+                    # flagged for forensics; it is the same for a document that
+                    # exists and one that does not.
+                    details=(
+                        {"matched": output.matched, "limited": True}
+                        if match.limited
+                        else {"matched": output.matched}
+                    ),
                 ),
             )
+            if match.limit_reached_ref:
+                self._audit_limit_event(
+                    db_session,
+                    session.session_id,
+                    action="security.document_match_limited",
+                    state_before=verification_state_before,
+                    state_after=updated_session.state,
+                    reason="document_match_failure_limit_reached",
+                    details={
+                        "document_ref": match.limit_reached_ref,
+                        "max_failures": policy_config.document_match_max_failures,
+                        "window_seconds": policy_config.document_match_window_seconds,
+                    },
+                )
             return output.model_dump(mode="json"), updated_session
 
         if tool_name == "identity.verify_document":
