@@ -3,10 +3,15 @@
 # Build from the repository root, because the app imports two workspace packages:
 #   docker build -f apps/web-backoffice/Dockerfile -t pattern-blue/web-backoffice .
 # The build context is cut down by Dockerfile.dockerignore next to this file: only the manifests of the
-# JS workspace members, the two packages this app imports and the app itself reach the build.
+# JS workspace members, the two packages this app imports and the app itself reach the build. The root
+# lockfile lists every workspace of the repository (the customer app included) and `bun install
+# --frozen-lockfile` refuses one whose package.json is missing, which is why all the manifests are let in.
 
 # --- Build: install with the lockfile as it is, then bundle the server and the page ------------------------
-FROM oven/bun:1.3 AS build
+# Pinned to the platform that runs the build, not the one it targets: the bundle is JavaScript, so a
+# linux/arm64 image built on an amd64 runner never has to run Bun under emulation. Only the runtime stage
+# below takes the target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.3 AS build
 WORKDIR /repo
 
 # The workspace: the root manifest and bun.lock, then the members. `apps/*` and `packages/*` bring the
