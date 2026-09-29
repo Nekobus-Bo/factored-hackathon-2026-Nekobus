@@ -12,21 +12,19 @@ Not a chatbot with database access. An engine where the model proposes and a det
 
 ```bash
 git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
-make up                 # starts banking-core, orchestrator, encoder, postgres, redis
-make seed               # seeds synthetic demo data and staging datasets
-make smoke              # verifies service health and connectivity
+make demo               # one command: build, start, migrate, seed, preload models, print URLs and demo customers
 ```
 
-> **Note on user interfaces:** The simulated frontends (`apps/web-client` and `apps/web-backoffice`) are pending and not built yet. The system is operated via HTTP APIs:
-> - **orchestrator** (`http://localhost:8080`): chat API (`/v1/conversations`), turn engine, PII masking, local encoder integration
-> - **banking-core** (`http://localhost:8081`): tool API (`/v1/tools/call`), Admin API (`/v1/admin/...`, disabled by default), policy engine
-> - **encoder** (`http://localhost:8090`): local CPU inference server (`/v1/analyze`)
+`make demo` needs no `.env` and no API key; it prints where everything is and which customers to use. Running it again is safe. One step at a time: `make up`, `make seed`, `make smoke`.
 
-To run in automated replay mode:
-```bash
-make demo               # ⚠️ pending: full startup in replay mode
-```
-For manual testing and live LLM credentials, see **[docs/runbook.md](docs/runbook.md)**.
+> **Pending, and reported by `make demo` rather than hidden:**
+> - **Replay recordings** (`eval/replay/` is empty): until they exist a chat turn answers 503. To talk to the assistant now, set `LLM_MODE=live` and `LLM_API_KEY` in `.env` (see **[docs/runbook.md](docs/runbook.md)**, section 4).
+> - **User interfaces:** the simulated frontends (`apps/web-client` and `apps/web-backoffice`) are not built yet. The system is operated via HTTP APIs:
+>   - **orchestrator** (`http://localhost:8080/docs`): chat API (`/v1/conversations`), turn engine, PII masking, local encoder integration
+>   - **banking-core** (`http://localhost:8081/docs`): tool API (`/v1/tools/call`), Admin API (`/v1/admin/...`; in development it is on with the public token `dev-only-admin-token`, in production off unless enabled and it refuses that token), policy engine
+>   - **encoder** (`http://localhost:8090`): local CPU inference server (`/v1/analyze`)
+
+Full run guide, troubleshooting and demo walkthrough: **[docs/runbook.md](docs/runbook.md)**.
 
 ---
 
@@ -72,7 +70,7 @@ flowchart LR
     ORC --> RE[(Redis Edge<br/>chat cache)]
 ```
 
-**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies and risk thresholds can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config`, bearer token, off unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
+**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies and risk thresholds can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config`, bearer token; on in the development compose with a development-only token, off in production unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
 
 ---
 
@@ -107,6 +105,7 @@ All project operations are exposed through `make`:
 
 | Target | Description | Status |
 |---|---|---|
+| `make demo` | One command from a clone: build, start, migrate, seed, preload models, print URLs and demo customers | Working |
 | `make up` | Build and start services (`banking-core`, `orchestrator`, `encoder`, `postgres`, `redis`) | Working |
 | `make down` | Stop all services, keeping volumes | Working |
 | `make logs` | Stream logs from all services (or `make logs s=banking-core`) | Working |
@@ -124,7 +123,6 @@ All project operations are exposed through `make`:
 | `make calibrate` | Run unified calibration pipeline (`TASK=decision\|embedding`) | Working |
 | `make synth-data` | Generate deterministic synthetic decision datasets | Working |
 | `make profile-factored` | Profile Factored dataset and output aggregate statistics | Working |
-| `make demo` | Full startup in prerecorded replay mode | ⚠️ pending |
 | `make eval` | Scenario evaluation suite execution | ⚠️ pending |
 | `make eval-baseline` | Baseline system evaluation execution | ⚠️ pending |
 | `make eval-adversarial` | Adversarial injection scenario suite execution | ⚠️ pending |

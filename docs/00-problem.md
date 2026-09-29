@@ -76,7 +76,7 @@ The system's internal instructions (skills, schemas, policies) are in English, f
 
 | Pillar | Where it lives in this submission |
 |---|---|
-| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` (⚠️ pending) |
+| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` |
 | Documented rationale | This document and the 10 ADRs |
 | AI engineering | `orchestrator`, policy engine in `banking-core`, frontends, deployment |
 | Data engineering | Ingestion, contracts, quality, lineage — [data.md](data.md) |
