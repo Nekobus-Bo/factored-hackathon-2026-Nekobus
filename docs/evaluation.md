@@ -32,21 +32,17 @@ The baseline is not a straw man: it gets the same tools, the same model and a ca
 
 Every metric is reported **broken down by language**. A global average can hide one language performing badly: that is the failure mode we worry about most, which is why there is no undifferentiated row.
 
-### LLM selection
+### Conversational LLM
 
-Evaluated across multi-turn conversations using the scenario suite (`make eval` ⚠️ pending). The three candidates are compared on tool invocation correctness, safety guardrail compliance, operational cost, and latency:
+One model carries the submission, **GPT 6 Luna** (why, and what that does not prove: the amendment of 2026-09-29 in [ADR-0001](adr/0001-cheap-llm-specialized-encoder.md)); baseline and proposed system share it. It is evaluated across multi-turn conversations using the scenario suite (`make eval` ⚠️ pending) on tool invocation correctness, safety guardrail compliance, operational cost, and latency:
 
-| Model candidate | Language | Tool-call correctness | Unsafe outcomes | Cost / conversation | p95 latency |
+| Model | Language | Tool-call correctness | Unsafe outcomes | Cost / conversation | p95 latency |
 |---|---|---|---|---|---|
-| **DeepSeek V4 Flash 0731** (default) | es | TODO | TODO | TODO | TODO |
-| | pt | TODO | TODO | TODO | TODO |
-| | en | TODO | TODO | TODO | TODO |
-| **DeepSeek V4.1 Flash** | es | TODO | TODO | TODO | TODO |
-| | pt | TODO | TODO | TODO | TODO |
-| | en | TODO | TODO | TODO | TODO |
 | **GPT 6 Luna** | es | TODO | TODO | TODO | TODO |
 | | pt | TODO | TODO | TODO | TODO |
 | | en | TODO | TODO | TODO | TODO |
+
+Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, compared per language on these four metrics.
 
 ### Decision component (classifier test split)
 
