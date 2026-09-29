@@ -223,6 +223,8 @@ jobs:
             echo "LLM_API_KEY=$LLM_API_KEY"
             echo "LLM_BASE_URL=$LLM_BASE_URL"
             echo "LLM_MODEL=$LLM_MODEL"
+            echo "ENCODER_BACKEND=${ENCODER_BACKEND:-tfidf_lr}"
+            echo "ABSTENTION_THRESHOLD=${ABSTENTION_THRESHOLD:-0.37}"
             if [ "$DATA_MODE" = "bundled" ]; then
               echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
               echo "REDIS_CORE_PASSWORD=$REDIS_CORE_PASSWORD"
@@ -245,6 +247,10 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          # Default to the calibrated seed in .env.example (tfidf_lr, tau 0.37): without
+          # a threshold the encoder starts uncalibrated and answers 503.
+          ENCODER_BACKEND: ${{ vars.ENCODER_BACKEND }}
+          ABSTENTION_THRESHOLD: ${{ vars.ABSTENTION_THRESHOLD }}
           # Only required, and only written, when DATA_MODE=bundled.
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_CORE_PASSWORD: ${{ secrets.REDIS_CORE_PASSWORD }}
