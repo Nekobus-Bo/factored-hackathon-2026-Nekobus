@@ -146,7 +146,7 @@ packages/
   contracts/            tool schemas, message blocks, policy enums (Pydantic models)
   encoder/              intent classification, slot extraction, PII detector logic
   retrieval/            knowledge base (40 topics × es/pt/en) and hybrid index
-  design-tokens/        (pending) shared design tokens and primitives
+  design-tokens/        design tokens and pb-* component CSS from the design-system artifact (Bun package)
 data/                   raw/ staging/ curated/ eval/
 eval/
   scenarios/            56 executable test scenarios across 10 categories

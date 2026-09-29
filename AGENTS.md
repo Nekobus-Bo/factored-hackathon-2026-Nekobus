@@ -22,7 +22,7 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 | `packages/contracts` | Tools, message blocks and policies. Source of truth for types |
 | `packages/encoder` | Intent, slots, PII model logic. Runs on CPU |
 | `packages/retrieval` | Knowledge base and hybrid index |
-| `packages/design-tokens` | Shared design tokens and visual primitives for frontends |
+| `packages/design-tokens` | Design tokens and `pb-*` component CSS, synced from the design-system artifact. Bun workspace package; generated `dist/` is committed |
 | `data/` | `raw → staging → curated`, plus `eval` |
 | `eval/` | Scenarios, replay recordings, runner |
 | `infra/` | Compose, database init, deployment |
@@ -54,6 +54,7 @@ make up       # services
 make seed     # seed from data/raw
 make smoke    # installation check
 make eval     # baseline vs proposed system
+make design-tokens-check   # TypeScript side: design tokens vs their source, typecheck, tests (needs Bun)
 ```
 
 Not every target is implemented yet; `make help` lists what exists and pending targets fail with an explicit message.
