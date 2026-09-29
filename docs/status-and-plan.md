@@ -2,7 +2,7 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29 (F5, the integration, added).
+**Last update:** 2026-09-29, 07:40 UTC.
 
 ## 1. Done and merged to `main`
 
@@ -28,12 +28,12 @@
     - back office: QueueRow, HandoffCard, PolicyControl, SyncGauge;
     - shared: Button, StatusChip, AlertBanner, Cover.
 
-Tests at the last merge of #3 (the branch now adds F0–F2: 1864 passed, 5 skipped, plus 112 TypeScript contract tests):
+Tests at the last merge of #3 (the branch now has 1866 passed, 5 skipped in Python, and 112 + 179 + 371 TypeScript tests in `make web-check`):
 - `uv run pytest -q`: 1668 passed, 5 skipped.
 - evalrunner: 141 passed.
 - `make design-tokens-check`: 38 passed.
 
-## 2. In progress: the front ends
+## 2. The front ends: built, on `claude/optimistic-feynman-tj7ew9`, not merged yet
 
 The specification and the HTTP contract between the pieces are in [front-ends.md](front-ends.md). The decisions are in [ADR-0013](adr/0013-front-ends-bff-takeover.md). Each work package below is one branch off `main` and ships with tests.
 
@@ -50,7 +50,14 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 - Verified: both front-end images build through `docker compose build` exactly as committed (the install step served from the BuildKit cache; a cold-cache install fails with `SELF_SIGNED_CERT_IN_CHAIN` unless the CA is mounted, so it was checked once with a temporary Dockerfile copy that does, nothing committed); the whole stack came up healthy with no `.env`; `make smoke` printed all eight services and the migration; the two `make` dev-server targets served `/healthz` and the page; the demo summary ran against the live stack. A takeover ran end to end through both BFFs with the compose defaults (claim, agent reply masked, the customer reading it, the queue showing `ASSIGNED`), and a Guardrails save went through the BFF to the admin API. The production images start under the overlay's constraints (read-only root, no capabilities) and the back office refuses the development values.
 - Not verified: `make up` itself (its `--build` needs the Python images to build from the committed Dockerfiles, which the sandbox blocks; they were built from temporary copies and the stack was started without `--build`, with the embedding model off); `make demo` from start to finish (it downloads the embedding model); the CI and deploy workflows (only YAML-parsed, never run on GitHub); the images pulled from a registry, and the `linux/arm64` builds; the UI in a browser (no browser here). Do these on the clean-machine check.
 
-**Where the in-progress work lives.** Work in progress is written in a cloud session, on local branches that are not pushed. Finished packages are integrated into `claude/optimistic-feynman-tj7ew9` and pushed. If the session ends first, a package that was not pushed restarts from its section in [front-ends.md](front-ends.md); nothing else depends on the lost work.
+**Nothing is in progress in the cloud session.** Every package above is committed and pushed on `claude/optimistic-feynman-tj7ew9`; no work lives only in a local worktree.
+
+**What is left for the front ends:**
+1. Merge the branch into `main` (it is 70+ commits ahead, CI green on every push so far).
+2. On a real machine, with an LLM key in `.env`: `make demo`, then walk through [runbook.md](runbook.md) section 7 in a browser, in es, pt and en, in light and dark. No browser run against the real stack exists yet; the screens were checked against fake upstreams and the BFFs against the live stack.
+3. The clean-machine check of the runbook's cross-check checklist, including the arm64 images (built in CI, never run).
+4. A decision: agent messages are masked like the rest of the transcript, so the customer reads "soy [NAME_1]" if an agent writes their own name. Keep it (safest, the composer tells agents not to write personal data) or show agent text unmasked on the customer side (a small change that gives up the "transcript never holds PII" property).
+5. Nice to have, not started: an unread signal on the chat launcher, keeping the conversation across a reload, the "In design" chat content types (quick replies for the ADR-0012 confirm gate, pickers), and the other items in [limitations.md](limitations.md) "Customer app" and "Back-office UI".
 
 **How to continue a work package**, locally or by hand:
 1. Read `AGENTS.md`, then [front-ends.md](front-ends.md) ("Decisions", "HTTP contract" and the package's scope section).
