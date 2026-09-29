@@ -118,6 +118,42 @@ class ToolCallReport(BaseModel):
     status: ToolResultStatus | str = ToolResultStatus.OK
 
 
+class DecisionEvidence(BaseModel):
+    """One decision point on one turn, as the orchestrator's eval hook reports it.
+
+    ADR-0012: identifiers, enum values and numbers, never text. Read tolerantly
+    (unknown fields ignored) so the runner does not break when the orchestrator
+    records more.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    dp_id: str
+    effect: str = ""
+    mode: str = ""
+    outcome: str  # decided / abstained / unavailable / infeasible / off
+    label: str | None = None
+    confidence: float = 0.0
+    tau: float | None = None
+    model_id: str | None = None
+    config_version: str | None = None
+    unavailable_reason: str | None = None
+
+
+class EffectEvidence(BaseModel):
+    """What a gate or a select did to one call, or in shadow would have done."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    dp_id: str
+    effect: str  # gate / select
+    mode: str = ""
+    tool: str = ""
+    applied: bool = False
+    would_apply: bool = False
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
 class TurnResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -134,6 +170,12 @@ class TurnResult(BaseModel):
     cost_usd: float = 0.0
     tokens_used: int = 0
     asked_clarification: bool = False
+    # Decision points (ADR-0012), from the orchestrator's eval hook. Untrusted-side
+    # evidence like the masked outbound messages: a report input, never a check.
+    decisions: list[DecisionEvidence] = Field(default_factory=list)
+    effects: list[EffectEvidence] = Field(default_factory=list)
+    # Records the hook sent that did not parse; counted so a gap is visible.
+    decisions_unreadable: int = 0
 
 
 class CheckDetail(BaseModel):

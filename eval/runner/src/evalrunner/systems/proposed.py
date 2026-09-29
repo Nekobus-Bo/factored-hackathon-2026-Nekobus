@@ -32,8 +32,11 @@ from uuid import UUID, uuid4
 import httpx
 from contracts import TOOL_CATALOG, ReasonCode, ToolCall, ToolResult, ToolResultStatus
 from contracts.envelope import VerificationState
+from pydantic import ValidationError
 
 from evalrunner.models import (
+    DecisionEvidence,
+    EffectEvidence,
     HandoffResult,
     Scenario,
     ToolCallReport,
@@ -388,6 +391,8 @@ class ProposedSystem:
             outbound.extend(recorded)
             provenance.append(PROVENANCE_REPLAY)
 
+        decisions, effects, unreadable = _decision_evidence(eval_info)
+
         tool_rows = [r for r in rows if r.action in TOOL_CATALOG]
         handoffs = [
             r
@@ -427,6 +432,9 @@ class ProposedSystem:
             latency_ms=latency_ms,
             cost_usd=float(eval_info.get("cost_usd") or 0.0),
             tokens_used=int(eval_info.get("tokens") or 0),
+            decisions=decisions,
+            effects=effects,
+            decisions_unreadable=unreadable,
         )
 
 
@@ -456,6 +464,31 @@ def _current_state(rows: list[AuditRow]) -> str:
             state = row.payload.get(VERIFICATION_AFTER)
             return str(state) if state else NO_EVIDENCE_STATE
     return VerificationState.ANONYMOUS.value
+
+
+def _decision_evidence(
+    eval_info: dict[str, Any],
+) -> tuple[list[DecisionEvidence], list[EffectEvidence], int]:
+    """Decision and effect records of the eval hook; what does not parse is counted."""
+    unreadable = 0
+    decisions: list[DecisionEvidence] = []
+    effects: list[EffectEvidence] = []
+    for key, model, out in (
+        ("decisions", DecisionEvidence, decisions),
+        ("effects", EffectEvidence, effects),
+    ):
+        raw = eval_info.get(key)
+        if raw is None:
+            continue
+        if not isinstance(raw, list):
+            unreadable += 1
+            continue
+        for item in raw:
+            try:
+                out.append(model.model_validate(item))  # type: ignore[arg-type]
+            except ValidationError:
+                unreadable += 1
+    return decisions, effects, unreadable
 
 
 def _strings(value: Any) -> list[str]:
