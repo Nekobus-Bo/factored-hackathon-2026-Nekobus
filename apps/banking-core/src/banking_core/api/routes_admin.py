@@ -10,6 +10,8 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 import sqlalchemy as sa
+from contracts.envelope import VerificationState
+from contracts.tools import CODE_FLOOR
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from sqlalchemy.orm import Session
@@ -23,6 +25,13 @@ from banking_core.control.loader import (
     save_policy_config,
 )
 from banking_core.control.policy import PolicyConfig
+from banking_core.control.tool_policy import (
+    ToolPolicyRejected,
+    active_tool_policy,
+    effective_matrix,
+    reset_tool_policy_to_seed,
+    save_tool_policy,
+)
 from banking_core.crypto import compute_blind_index
 from banking_core.db.session import get_session_maker
 from banking_core.identity.config import IdentityConfig
@@ -80,6 +89,29 @@ class PolicyConfigResponse(BaseModel):
     version: int
 
 
+class AdminToolPolicyRequest(BaseModel):
+    """Tools to change, each with the verification states that enable it.
+
+    `[]` disables a tool. Tools not listed keep their current states. A state
+    outside the tool's code floor is refused, never dropped.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tools: dict[str, list[VerificationState]] = Field(min_length=1)
+
+
+class ToolPolicyResponse(BaseModel):
+    """The tool policy in force: what each tool is enabled in, and the ceiling."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    tools: dict[str, list[str]]
+    disabled: list[str]
+    code_floor: dict[str, list[str]]
+
+
 class DemoResetResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -87,6 +119,8 @@ class DemoResetResponse(BaseModel):
     cards_changed: int
     cards_missing: int
     attempt_limits_cleared: int
+    tool_policy_version: int
+    tool_policy_changed: bool
 
 
 def _environment_flag(name: str) -> bool:
@@ -218,6 +252,74 @@ def put_policy_config(request: AdminPolicyConfigRequest) -> PolicyConfigResponse
         return _response(saved_record)
 
 
+def _tool_policy_response(
+    version: int, matrix: dict[str, list[str]]
+) -> ToolPolicyResponse:
+    return ToolPolicyResponse(
+        version=version,
+        tools=matrix,
+        disabled=sorted(name for name, states in matrix.items() if not states),
+        code_floor={
+            name: sorted(state.value for state in states)
+            for name, states in CODE_FLOOR.items()
+        },
+    )
+
+
+@router.get(
+    "/tool-policy",
+    response_model=ToolPolicyResponse,
+    dependencies=[Depends(require_admin)],
+)
+def get_tool_policy() -> ToolPolicyResponse:
+    with get_session_maker()() as session:
+        record = active_tool_policy(session)
+        try:
+            matrix = effective_matrix(record)
+        except ValueError as exc:
+            # A stored version beyond the floor is refused by the authorizer too.
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Active tool policy v{record.version} is invalid: {exc}",
+            ) from exc
+        return _tool_policy_response(
+            record.version,
+            {
+                name: sorted(state.value for state in states)
+                for name, states in matrix.items()
+            },
+        )
+
+
+@router.put(
+    "/tool-policy",
+    response_model=ToolPolicyResponse,
+    dependencies=[Depends(require_admin)],
+)
+def put_tool_policy(request: AdminToolPolicyRequest) -> ToolPolicyResponse:
+    """Save the tools named as a new active version, audited; refuse any widening."""
+    with get_session_maker()() as session:
+        try:
+            change = save_tool_policy(
+                session, request.tools, actor_ref="admin", source="admin_api"
+            )
+        except ToolPolicyRejected as exc:
+            # Same shape as FastAPI's own 422 body, so a client parses one format.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[
+                    {
+                        "loc": ["body", "tools", problem["tool"]],
+                        "msg": problem["message"],
+                        "type": problem["type"],
+                    }
+                    for problem in exc.problems
+                ],
+            ) from exc
+        session.commit()
+        return _tool_policy_response(change.version, change.matrix)
+
+
 def get_attempt_limit_store() -> AttemptLimitStore:
     """The cross-session attempt-limit counters, on the same redis-core."""
     return AttemptLimitStore(redis_client=get_session_store().client)
@@ -306,11 +408,17 @@ def reset_demo_fixtures(
                 card.blocked_at = seed_blocked_at
                 card.blocked_reason = seed_blocked_reason
 
+        # After the card updates, so this transaction takes the card row locks
+        # before the audit lock, the order card.block takes them in.
+        session.flush()
+        tool_policy = reset_tool_policy_to_seed(session)
         result = DemoResetResponse(
             cards_reset=len(cards),
             cards_changed=changed,
             cards_missing=len(seed_states) - len(cards),
             attempt_limits_cleared=attempt_limits_cleared,
+            tool_policy_version=tool_policy.version,
+            tool_policy_changed=tool_policy.changed,
         )
         append(
             session,
