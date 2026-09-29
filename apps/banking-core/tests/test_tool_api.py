@@ -18,6 +18,9 @@ Covers:
 """
 
 import json
+import os
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -691,6 +694,57 @@ def test_dev_otp_router_is_mounted_only_when_enabled(
 
     assert response.status_code == 200
     assert response.json()["code"] == "654321"
+
+
+@pytest.mark.parametrize("app_env", ["production", "Production", "  PRODUCTION "])
+def test_dev_otp_hook_is_refused_in_production(
+    monkeypatch: pytest.MonkeyPatch, app_env: str
+) -> None:
+    monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "true")
+    monkeypatch.setenv("APP_ENV", app_env)
+    application = FastAPI()
+
+    with pytest.raises(RuntimeError, match="ALLOW_DEV_OTP_HOOK"):
+        mount_dev_router_if_enabled(application)
+
+    assert not any(
+        getattr(route, "path", None) == "/v1/dev/otp/{challenge_id}"
+        for route in application.routes
+    )
+
+
+def test_dev_otp_hook_off_in_production_starts_and_stays_unmounted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALLOW_DEV_OTP_HOOK", "false")
+    monkeypatch.setenv("APP_ENV", "production")
+    application = FastAPI()
+
+    mount_dev_router_if_enabled(application)
+
+    assert not any(
+        getattr(route, "path", None) == "/v1/dev/otp/{challenge_id}"
+        for route in application.routes
+    )
+
+
+def test_service_import_aborts_when_dev_otp_hook_is_on_in_production() -> None:
+    """The real entrypoint refuses to start, not only the helper."""
+    env = {
+        **os.environ,
+        "ALLOW_DEV_OTP_HOOK": "true",
+        "APP_ENV": "production",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import banking_core.main"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode != 0
+    assert "ALLOW_DEV_OTP_HOOK cannot be enabled" in result.stderr
 
 
 def test_identity_verify_document_in_identified_state(test_setup) -> None:

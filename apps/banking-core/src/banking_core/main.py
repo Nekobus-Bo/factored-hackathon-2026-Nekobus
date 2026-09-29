@@ -1,6 +1,7 @@
 """Banking Core service entrypoint."""
 
 import logging
+import os
 
 from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
@@ -34,9 +35,17 @@ mount_admin_router_if_enabled(app)
 
 
 def mount_dev_router_if_enabled(application: FastAPI) -> None:
-    """Mount the OTP retrieval endpoint only in explicitly enabled environments."""
+    """Mount the OTP retrieval endpoint only in explicitly enabled environments.
+
+    The endpoint returns cleartext OTP codes, so enabling it under
+    APP_ENV=production aborts startup instead of serving it.
+    """
     if not IdentityConfig.from_env().allow_dev_otp_hook:
         return
+    if os.getenv("APP_ENV", "development").strip().lower() == "production":
+        raise RuntimeError(
+            "ALLOW_DEV_OTP_HOOK cannot be enabled when APP_ENV=production"
+        )
     otp_path = "/v1/dev/otp/{challenge_id}"
     if any(getattr(route, "path", None) == otp_path for route in application.routes):
         return
