@@ -212,16 +212,41 @@ def _active_statement() -> sa.Select[tuple[ToolPolicyRecord]]:
 def _seed_if_empty(session: Session) -> None:
     """Insert version 1 from the environment when the table has no versions.
 
-    Concurrent first seeds race on the unique version; the loser inserts nothing.
-    Flushes only: the caller owns the transaction.
+    Concurrent first seeds race on the unique version; the loser inserts nothing
+    and audits nothing. The winner audits the seed, as the change from the catalog
+    defaults it is, in the same transaction. Flushes only: the caller owns the
+    transaction.
     """
     exists = session.execute(sa.select(ToolPolicyRecord.id).limit(1)).first()
     if exists is not None:
         return
-    session.execute(
+    seeded = seed_matrix()
+    inserted = session.execute(
         pg_insert(ToolPolicyRecord)
-        .values(version=1, is_active=True, matrix=seed_matrix())
+        .values(version=1, is_active=True, matrix=seeded)
         .on_conflict_do_nothing(index_elements=["version"])
+        .returning(ToolPolicyRecord.id)
+    ).first()
+    if inserted is None:
+        return
+    baseline = {name: _sorted_states(s) for name, s in baseline_matrix().items()}
+    append(
+        session,
+        actor_type="system",
+        actor_ref="seed",
+        action=TOOL_POLICY_AUDIT_ACTION,
+        decision="allowed",
+        reason_code=None,
+        payload={
+            "version": 1,
+            "previous_version": None,
+            "source": "seed",
+            "changes": [
+                {"tool": name, "before": baseline[name], "after": seeded[name]}
+                for name in seeded
+                if baseline[name] != seeded[name]
+            ],
+        },
     )
     logger.info("Seeded initial tool policy (v1) in database from environment")
 

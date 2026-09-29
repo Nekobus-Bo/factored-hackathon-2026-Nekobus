@@ -104,12 +104,14 @@ def _put(client: TestClient, tools: dict[str, Any]) -> Any:
 
 
 def _audit(action: str = AUDIT_ACTION) -> list[sa.Row]:  # type: ignore[type-arg]
+    """Audit rows of an action; for the tool policy, its changes but not the seeding."""
     with get_session_maker()() as session:
         return list(
             session.execute(
                 sa.text(
                     "SELECT actor_type, actor_ref, decision, payload "
-                    "FROM ops.audit_log WHERE action = :action ORDER BY id"
+                    "FROM ops.audit_log WHERE action = :action "
+                    "AND COALESCE(payload->>'source', '') <> 'seed' ORDER BY id"
                 ),
                 {"action": action},
             )

@@ -82,6 +82,9 @@ def ready(response: Response) -> ReadinessResponse:
     try:
         repo = get_control_config_repository()
         repo.get_policy_config()
+        # Loads (the first time, seeds) the tool policy: a bad seed shows here,
+        # not on a customer's first tool call.
+        repo.get_tool_permitted_states("kb.search")
     except Exception as exc:
         logger.error(
             "Readiness check failed: policy config unavailable: %s: %s",
