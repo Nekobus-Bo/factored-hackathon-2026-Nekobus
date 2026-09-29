@@ -42,7 +42,7 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 | F0 | `@pattern-blue/contracts`: Zod schemas for the message blocks and every HTTP surface, a drift test against the exported JSON Schemas, and `make web-check` in CI | **Done** (on this branch, 112 tests) | — |
 | F1 | ADR-0013 and the ADR-0004 amendment. banking-core admin routes: handoff queue, detail, claim (audited as the agent), metrics; migration `0008` | **Done** (on this branch, 66 new tests) | — |
 | F2 | Orchestrator agent API: reverse index from session to conversation, takeover, agent messages. After a takeover the LLM never sees the conversation again | **Done** (on this branch, 130 new tests) | — |
-| F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | In progress | F0 (F2 for the takeover part) |
+| F3 | `apps/web-client`: landing plus the chat dock (every content type that exists, the OTP inbox notice, retry, rate limit, the agent after takeover), and its BFF | **Done** (on this branch; tests against a fake orchestrator; the takeover part needs F2's orchestrator to run for real; Dockerfile built and run once by hand) | F0 (F2 for the takeover part) |
 | F4 | `apps/web-backoffice`: login, queue, handoff detail with "take the case" and reply, guardrails (thresholds, amount mode, tool matrix, demo reset), metrics, and its BFF | In progress | F0, F1, F2 |
 | F5 | Integration: compose services and healthchecks, `make smoke`, both apps in the CI `images` matrix, `TRUSTED_PROXY_HOPS` for the web-client BFF, the runbook's "⚠️ pending UI" marks, `limitations.md` | Not started | F3, F4 |
 
