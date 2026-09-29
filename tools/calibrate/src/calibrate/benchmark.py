@@ -15,6 +15,7 @@ class BenchmarkResult(BaseModel):
     p95_latency_ms: float
     peak_ram_mb: float
     avg_latency_ms: float = 0.0
+    p50_latency_ms: float = 0.0
 
 
 def benchmark_cpu_inference(
@@ -49,6 +50,7 @@ def benchmark_cpu_inference(
             peak_ram = current_ram
 
     p95 = float(np.percentile(latencies_ms, 95)) if latencies_ms else 0.0
+    p50 = float(np.percentile(latencies_ms, 50)) if latencies_ms else 0.0
     avg = float(np.mean(latencies_ms)) if latencies_ms else 0.0
 
     ram_delta = max(0.0, peak_ram - initial_ram)
@@ -57,4 +59,5 @@ def benchmark_cpu_inference(
         p95_latency_ms=round(p95, 2),
         peak_ram_mb=round(ram_delta, 1),
         avg_latency_ms=round(avg, 2),
+        p50_latency_ms=round(p50, 2),
     )
