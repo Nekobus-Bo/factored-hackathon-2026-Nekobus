@@ -1,4 +1,4 @@
-"""Configuration for identity tools and document-type equivalences."""
+"""Configuration for identity tools, OTP delivery and document-type equivalences."""
 
 import json
 import os
@@ -6,6 +6,45 @@ import os
 from pydantic import BaseModel, Field
 
 from banking_core.models.enums import DocumentType
+
+OTP_CHANNEL_MODE_SIMULATED = "simulated"
+SUPPORTED_OTP_CHANNEL_MODES = (OTP_CHANNEL_MODE_SIMULATED,)
+
+
+class UnsupportedOtpChannelModeError(ValueError):
+    """OTP_CHANNEL_MODE names a delivery mode that is not implemented."""
+
+
+def resolve_otp_channel_mode(value: str | None = None) -> str:
+    """Return the configured OTP delivery mode, failing on any unknown one.
+
+    Unset or blank means ``simulated``, the seed in ``.env.example`` and compose.
+    Only ``simulated`` is implemented: there is no real delivery provider to fall
+    back to (ADR-0007, amendment 2026-09-29), so any other value is an error
+    instead of a silent downgrade.
+    """
+    raw = value if value is not None else os.getenv("OTP_CHANNEL_MODE", "")
+    mode = raw.strip().lower() or OTP_CHANNEL_MODE_SIMULATED
+    if mode not in SUPPORTED_OTP_CHANNEL_MODES:
+        raise UnsupportedOtpChannelModeError(
+            f"OTP_CHANNEL_MODE={raw.strip()!r} is not supported: no real OTP "
+            f"delivery provider is implemented; set "
+            f"OTP_CHANNEL_MODE={OTP_CHANNEL_MODE_SIMULATED}"
+        )
+    return mode
+
+
+def validate_otp_channel_mode() -> None:
+    """Startup check: refuse to run with an OTP delivery mode that does not exist."""
+    resolve_otp_channel_mode()
+
+
+def simulated_inbox_enabled() -> bool:
+    """True when OTP delivery goes to the simulated inbox (never raises)."""
+    try:
+        return resolve_otp_channel_mode() == OTP_CHANNEL_MODE_SIMULATED
+    except UnsupportedOtpChannelModeError:
+        return False
 
 
 def _default_document_type_equivalences() -> dict[str, list[str]]:

@@ -31,6 +31,11 @@ def record_to_policy_config(record: PolicyConfigRecord) -> PolicyConfig:
         otp_max_resends=record.otp_max_resends,
         otp_ttl_seconds=record.otp_ttl_seconds,
         session_ttl_seconds=record.session_ttl_seconds,
+        customer_otp_max_failures=record.customer_otp_max_failures,
+        customer_otp_window_seconds=record.customer_otp_window_seconds,
+        customer_otp_lock_seconds=record.customer_otp_lock_seconds,
+        document_match_max_failures=record.document_match_max_failures,
+        document_match_window_seconds=record.document_match_window_seconds,
     )
 
 
@@ -85,6 +90,11 @@ def _load_or_seed(session: Session) -> PolicyConfig:
             otp_max_resends=seed_config.otp_max_resends,
             otp_ttl_seconds=seed_config.otp_ttl_seconds,
             session_ttl_seconds=seed_config.session_ttl_seconds,
+            customer_otp_max_failures=seed_config.customer_otp_max_failures,
+            customer_otp_window_seconds=seed_config.customer_otp_window_seconds,
+            customer_otp_lock_seconds=seed_config.customer_otp_lock_seconds,
+            document_match_max_failures=seed_config.document_match_max_failures,
+            document_match_window_seconds=seed_config.document_match_window_seconds,
         )
         .on_conflict_do_nothing(index_elements=["version"])
     )
@@ -127,6 +137,11 @@ def save_policy_config(config: PolicyConfig, session: Session) -> PolicyConfigRe
         otp_max_resends=config.otp_max_resends,
         otp_ttl_seconds=config.otp_ttl_seconds,
         session_ttl_seconds=config.session_ttl_seconds,
+        customer_otp_max_failures=config.customer_otp_max_failures,
+        customer_otp_window_seconds=config.customer_otp_window_seconds,
+        customer_otp_lock_seconds=config.customer_otp_lock_seconds,
+        document_match_max_failures=config.document_match_max_failures,
+        document_match_window_seconds=config.document_match_window_seconds,
     )
     session.add(new_record)
     session.commit()

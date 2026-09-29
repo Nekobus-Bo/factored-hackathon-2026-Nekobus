@@ -1,6 +1,9 @@
 .env
 .DS_Store
 
+# Agent worktrees
+.claude/worktrees/
+
 # Python
 __pycache__/
 *.pyc
@@ -12,6 +15,9 @@ __pycache__/
 node_modules/
 dist/
 .turbo/
+# Generated, but committed on purpose: apps and CI need no build step.
+# `make design-tokens-check` fails when it drifts from src/.
+!packages/design-tokens/dist/
 
 # The organization's dataset is not versioned
 data/raw/*

@@ -1,5 +1,146 @@
 {
   "$defs": {
+    "DecisionOutcome": {
+      "description": "What a decision point did with one utterance.",
+      "enum": [
+        "decided",
+        "abstained",
+        "unavailable",
+        "infeasible",
+        "off"
+      ],
+      "title": "DecisionOutcome",
+      "type": "string"
+    },
+    "DecisionResult": {
+      "additionalProperties": false,
+      "description": "Outcome of one decision point (DP) for one utterance (ADR-0012, Appendix D).\n\nCarries no text and no spans: the orchestrator stores it as is. Only a\n`decided` result carries a label; every other outcome falls back to the\nLLM's own argument or a withheld write (invariant I2).",
+      "properties": {
+        "confidence": {
+          "description": "Calibrated confidence of the top view label; 0.0 when nothing was computed",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "config_version": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Calibration artifact id; null in legacy seed mode",
+          "title": "Config Version"
+        },
+        "dp_id": {
+          "description": "Decision point id",
+          "pattern": "^[a-z][a-z0-9_]{2,40}$",
+          "title": "Dp Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Top view label; set if and only if outcome is decided",
+          "title": "Label"
+        },
+        "latency_ms": {
+          "description": "Time in this decision point's backend (a shared backend reports once)",
+          "minimum": 0.0,
+          "title": "Latency Ms",
+          "type": "number"
+        },
+        "model_id": {
+          "description": "Backend model id, including revision or hash",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Model Id",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/DecisionOutcome",
+          "description": "decided: top label has calibrated confidence >= its tau; abstained: below tau or no tau for the language; unavailable: backend timeout, error or not ready; infeasible: artifact status, never decides; off: disabled in the artifact"
+        },
+        "raw_confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Confidence before calibration, for drift debugging",
+          "title": "Raw Confidence"
+        },
+        "runner_up": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunnerUp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Second label, if known"
+        },
+        "tau": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Threshold applied; null when none applies",
+          "title": "Tau"
+        },
+        "tau_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TauSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where tau came from; set if and only if tau is"
+        }
+      },
+      "required": [
+        "dp_id",
+        "outcome",
+        "confidence",
+        "model_id",
+        "latency_ms"
+      ],
+      "title": "DecisionResult",
+      "type": "object"
+    },
     "PiiSpan": {
       "additionalProperties": false,
       "description": "Detected PII span.",
@@ -42,6 +183,30 @@
       ],
       "title": "PiiType",
       "type": "string"
+    },
+    "RunnerUp": {
+      "additionalProperties": false,
+      "description": "The second label of a decision, for a targeted clarification later.",
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "confidence"
+      ],
+      "title": "RunnerUp",
+      "type": "object"
     },
     "Slot": {
       "additionalProperties": false,
@@ -112,6 +277,16 @@
       ],
       "title": "SlotType",
       "type": "string"
+    },
+    "TauSource": {
+      "description": "Where the threshold applied to a decision came from.",
+      "enum": [
+        "artifact",
+        "override",
+        "seed"
+      ],
+      "title": "TauSource",
+      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -128,6 +303,29 @@
       "minimum": 0.0,
       "title": "Confidence",
       "type": "number"
+    },
+    "config_version": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Calibration artifact id; null in legacy seed mode",
+      "title": "Config Version"
+    },
+    "decisions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DecisionResult"
+      },
+      "description": "One entry per evaluated decision point, keyed by its id",
+      "title": "Decisions",
+      "type": "object"
     },
     "intent": {
       "anyOf": [

@@ -17,6 +17,8 @@ COPY packages/contracts ./packages/contracts
 RUN uv sync --frozen --no-install-project --no-dev --package orchestrator
 
 COPY apps/orchestrator/src ./apps/orchestrator/src
+# The effects file (ADR-0012): behavior as data, read at startup.
+COPY apps/orchestrator/config ./apps/orchestrator/config
 
 RUN uv sync --frozen --no-dev --package orchestrator && uv cache clean
 

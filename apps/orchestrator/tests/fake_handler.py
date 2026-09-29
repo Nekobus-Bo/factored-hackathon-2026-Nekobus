@@ -36,12 +36,17 @@ class FakeTurnHandler:
         self.fail = fail
         self.started = asyncio.Event()
         self.calls: list[tuple[str, str]] = []
+        self.turn_ids: list[str | None] = []
         self.masker = RegexMasker()
 
     async def handle_turn(
-        self, conversation: ConversationState, user_text: str
+        self,
+        conversation: ConversationState,
+        user_text: str,
+        turn_id: str | None = None,
     ) -> TurnOutcome:
         self.calls.append((conversation.banking_session_id, user_text))
+        self.turn_ids.append(turn_id)
         self.started.set()
         if self.gate is not None:
             await self.gate.wait()

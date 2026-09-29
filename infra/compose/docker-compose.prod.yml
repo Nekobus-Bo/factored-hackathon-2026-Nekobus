@@ -53,6 +53,13 @@ services:
       MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY}
       BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:?set BLIND_INDEX_SALT}
     extra_hosts: ["host.docker.internal:host-gateway"]
+    # The base file bind-mounts the repo's data/ and reports/ for the local seed.
+    # A server has no source tree: docker would create those paths root-owned and
+    # the image's user could not write the synthetic dataset the seed generates
+    # (deterministically) on each run. Scratch space instead.
+    volumes: !override []
+    tmpfs:
+      - /app/data
     depends_on: !override
       migrate:
         condition: service_completed_successfully
@@ -71,6 +78,12 @@ services:
       MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY}
       BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:?set BLIND_INDEX_SALT}
       OTP_CHANNEL_MODE: ${OTP_CHANNEL_MODE:-simulated}
+      # The base file defaults the admin API to on with a public development
+      # token. Production never inherits that: each feature is switched on
+      # explicitly (docs/deployment.md, "Presentation environment").
+      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-false}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       migrate:
@@ -85,6 +98,10 @@ services:
       REDIS_URL: ${REDIS_EDGE_URL:?set REDIS_EDGE_URL}
       REDIS_PASSWORD: ""
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      # Conversations one client address may open per hour. The base file's default
+      # is generous, for local development and evaluation runs from one address;
+      # a public environment keeps 30, whatever the base file says.
+      RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       banking-core:

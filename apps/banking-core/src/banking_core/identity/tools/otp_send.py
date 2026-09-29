@@ -3,6 +3,10 @@
 Dispatches a one-time passcode to the pinned customer's registered channel.
 Generates an opaque challenge ID and database-verified receipt.
 Mutates FSM state to OTP_PENDING.
+
+Everything that can refuse the call (customer lock, resend limit, channel,
+contract output) is decided before the challenge is stored or the code is
+delivered: a refused call delivers nothing.
 """
 
 import secrets
@@ -21,18 +25,40 @@ from contracts.tools.otp_send import (
 )
 from sqlalchemy.orm import Session
 
+from banking_core.control.attempt_limits import AttemptLimits
 from banking_core.control.fsm import VerificationFSM
 from banking_core.control.session import SessionState
 from banking_core.crypto import RecordEncryptor, get_master_key
 from banking_core.identity.challenge_store import OtpChallengeStore, get_challenge_store
 from banking_core.identity.ports import OtpDeliveryPort, get_delivery_port
+from banking_core.identity.tools.customer_lock import ensure_customer_not_locked
 from banking_core.models.core_bank import Customer
 
 
 class NoOtpChannelError(ValueError):
-    """Raised when customer has no registered OTP channel on file (NONE)."""
+    """Raised when there is no usable OTP channel on file.
 
-    pass
+    Either the NONE sentinel or a value this service does not recognize: in both
+    cases nothing is delivered and the customer goes to a human.
+    """
+
+    def __init__(
+        self, message: str, audit_reason: str = "no_registered_otp_channel"
+    ) -> None:
+        super().__init__(message)
+        self.audit_reason = audit_reason
+
+
+class OtpResendLimitError(Exception):
+    """Raised when a resend would exceed the configured limit.
+
+    Nothing was delivered or stored. Carries the LOCKED session for the caller to
+    persist once the refusal is audited.
+    """
+
+    def __init__(self, locked_session: SessionState) -> None:
+        super().__init__("OTP resend limit exceeded; session locked")
+        self.locked_session = locked_session
 
 
 def _mask_phone(phone: str) -> str:
@@ -57,6 +83,7 @@ def execute_otp_send(
     args: OtpSendInput,
     session: SessionState,
     fsm: VerificationFSM,
+    limits: AttemptLimits,
     delivery_port: OtpDeliveryPort | None = None,
     challenge_store: OtpChallengeStore | None = None,
     master_key: str | bytes | None = None,
@@ -73,31 +100,42 @@ def execute_otp_send(
             "Session has no pinned customer; customer.match is required before otp.send"
         )
 
+    # 1. Decide the limits BEFORE generating or delivering anything: a customer
+    # locked across sessions, or a resend that locks the session, must not get a
+    # working code.
+    ensure_customer_not_locked(session, fsm, limits)
+    if fsm.otp_send_would_lock(session):
+        raise OtpResendLimitError(fsm.on_otp_send_limit_exceeded(session.model_copy()))
+
     resolved_port = delivery_port or get_delivery_port()
     resolved_store = challenge_store or get_challenge_store()
     resolved_key = get_master_key(master_key)
 
-    # 1. Fetch customer from DB
+    # 2. Fetch customer from DB
     cust_uuid = uuid.UUID(session.pinned_holder_id)
     customer = db_session.get(Customer, cust_uuid)
     if customer is None:
         raise ValueError(f"Pinned customer '{session.pinned_holder_id}' not found")
 
-    # 2. Check registered channel
+    # 3. Resolve the registered channel; anything but a known channel fails closed
     channel_str = customer.registered_otp_channel.strip().upper()
     if channel_str == "NONE":
         raise NoOtpChannelError(
             "Customer has no registered OTP channel on file (sentinel NONE). "
             "Cannot send OTP; handoff required."
         )
-
-    # Map to OtpChannel enum
     try:
         otp_channel = OtpChannel(channel_str)
     except ValueError:
-        otp_channel = OtpChannel.SMS
+        # Never guess a channel: sending to the wrong one would deliver the code
+        # somewhere the customer did not register.
+        raise NoOtpChannelError(
+            "Customer's registered OTP channel is not recognized. "
+            "Cannot send OTP; handoff required.",
+            audit_reason="unrecognized_otp_channel",
+        ) from None
 
-    # 3. Decrypt contact details and produce masked destination
+    # 4. Decrypt contact details and produce masked destination
     encryptor = RecordEncryptor(
         schema="core_bank",
         table="customer",
@@ -112,37 +150,18 @@ def execute_otp_send(
         raw_contact = encryptor.decrypt("phone_enc", customer.phone_enc)
         destination_masked = _mask_phone(raw_contact)
 
-    # 4. Generate random 6-digit code and unique challenge ID
+    # 5. Generate random 6-digit code and unique challenge ID
     code = f"{secrets.randbelow(900000) + 100000:06d}"
     challenge_suffix = "".join(
         secrets.choice(string.ascii_lowercase) for _ in range(16)
     )
     challenge_id = f"chal_{challenge_suffix}"
 
-    # 5. Deliver through port (trusted zone dev sink or external gateway)
-    resolved_port.deliver(
-        challenge_id=challenge_id,
-        channel=otp_channel.value,
-        destination_masked=destination_masked,
-        code=code,
-    )
-
-    # 6. Store active challenge in challenge store
-    resolved_store.create_challenge(
-        challenge_id=challenge_id,
-        customer_id=str(customer.id),
-        code=code,
-        channel=otp_channel.value,
-        destination_masked=destination_masked,
-        ttl_seconds=ttl_seconds,
-        max_attempts=fsm.max_failed_verifies,
-    )
-
-    # 7. Update FSM state (transitions to OTP_PENDING)
+    # 6. Compute the transition on a copy and build the contract output, so any
+    # invalid state or output fails here, before the challenge exists or a code
+    # leaves. The caller's session is left untouched.
     state_before = session.state
-    updated_session = fsm.on_otp_send(session, challenge_id=challenge_id)
-
-    # 8. Create verified receipt
+    updated_session = fsm.on_otp_send(session.model_copy(), challenge_id=challenge_id)
     now = datetime.now(UTC)
     receipt_audit_id = audit_id or f"aud_{uuid.uuid4().hex[:16]}"
     receipt = Receipt(
@@ -153,7 +172,6 @@ def execute_otp_send(
         verified_at=now,
         audit_id=receipt_audit_id,
     )
-
     output = OtpSendOutput(
         sent=True,
         challenge_id=challenge_id,
@@ -161,5 +179,25 @@ def execute_otp_send(
         destination_masked=destination_masked,
         expires_in_seconds=ttl_seconds,
         receipt=receipt,
+    )
+
+    # 7. Store the challenge, then deliver: a code is never sent without a
+    # challenge that can verify it.
+    resolved_store.create_challenge(
+        challenge_id=challenge_id,
+        customer_id=str(customer.id),
+        code=code,
+        channel=otp_channel.value,
+        destination_masked=destination_masked,
+        ttl_seconds=ttl_seconds,
+        max_attempts=fsm.max_failed_verifies,
+    )
+    resolved_port.deliver(
+        session_id=session.session_id,
+        challenge_id=challenge_id,
+        channel=otp_channel.value,
+        destination_masked=destination_masked,
+        code=code,
+        ttl_seconds=ttl_seconds,
     )
     return output, updated_session

@@ -16,7 +16,13 @@ from abc import ABC, abstractmethod
 from contracts import PiiType
 from pydantic import BaseModel, ConfigDict, Field
 
+from orchestrator.privacy.written_dates import find_written_dates
+
 logger = logging.getLogger(__name__)
+
+# Placeholder format for rehydration, derived from contracts PiiType.
+_CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
+PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
 
 
 class MaskingError(Exception):
@@ -105,7 +111,7 @@ class RegexMasker(Masker):
     - Payment Card Numbers / PAN (13-19 digits, separators allowed) ([CARD_n])
     - Emails ([EMAIL_n])
     - Document numbers (CPF, SSN, DNI dots, Passports, Labeled docs) ([DOC_n])
-    - Birth dates / Dates ([DATE_n])
+    - Birth dates / Dates, numeric or written out in es/pt/en ([DATE_n])
     - One-time passcodes / OTP codes after cue ([OTP_n]), including a bare
       "code"/"otp" key in JSON tool-call arguments
     - Runs of >= 7 digits not associated with a currency amount ([DOC_n])
@@ -269,9 +275,7 @@ class RegexMasker(Masker):
         re.IGNORECASE,
     )
 
-    # Placeholder format pattern for rehydration, derived from contracts PiiType
-    _CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
-    PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
+    PLACEHOLDER_RE = PLACEHOLDER_RE
 
     def _init_counters(
         self,
@@ -377,6 +381,24 @@ class RegexMasker(Masker):
                 if not date_val.startswith("["):
                     placeholder = get_or_create_placeholder("DATE", date_val)
                     masked = masked.replace(date_val, placeholder)
+
+            # 5b. Written-out dates ("4 de marzo de 1988", "March 4, 1988"),
+            # replaced by position so a longer date never loses its head to a
+            # shorter one that happens to be its suffix ("4 ..." inside "14 ...").
+            written_dates = find_written_dates(masked)
+            if written_dates:
+                pieces: list[str] = []
+                cursor = 0
+                for found in written_dates:
+                    pieces.append(masked[cursor : found.start])
+                    pieces.append(
+                        get_or_create_placeholder(
+                            "DATE", masked[found.start : found.end]
+                        )
+                    )
+                    cursor = found.end
+                pieces.append(masked[cursor:])
+                masked = "".join(pieces)
 
             # 6. One-time passcodes / OTP codes after cue (4-8 digits)
             for m in list(self.OTP_RE.finditer(masked)):
@@ -511,6 +533,10 @@ class RegexMasker(Masker):
             val = m.group(1)
             if not (val.startswith("[") and val.endswith("]")):
                 return False
+
+        # 5b. Written-out dates
+        if find_written_dates(text):
+            return False
 
         # 6. One-time passcodes / OTP codes after cue (4-8 digits)
         for m in self.OTP_RE.finditer(text):

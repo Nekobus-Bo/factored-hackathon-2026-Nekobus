@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Output contract for POST /v1/embed.\n\n`model_id` and `revision` say which pinned model produced the vectors; the caller\ncompares them with what it expects on every response and refuses a mismatch.\nCarries no text.",
+  "properties": {
+    "dim": {
+      "description": "Length of every vector",
+      "maximum": 4096,
+      "minimum": 1,
+      "title": "Dim",
+      "type": "integer"
+    },
+    "model_id": {
+      "description": "Configured model id",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Model Id",
+      "type": "string"
+    },
+    "revision": {
+      "description": "Pinned revision: a full commit for a hub model, a label for a directory",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Revision",
+      "type": "string"
+    },
+    "vectors": {
+      "description": "One unit-length vector per text, in order",
+      "items": {
+        "items": {
+          "type": "number"
+        },
+        "type": "array"
+      },
+      "title": "Vectors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "model_id",
+    "revision",
+    "dim",
+    "vectors"
+  ],
+  "title": "EmbedResponse",
+  "type": "object"
+}

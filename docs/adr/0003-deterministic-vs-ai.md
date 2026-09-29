@@ -1,6 +1,6 @@
 # ADR-0003: What AI decides and what deterministic logic decides
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · **Date:** 2026-09-26 · **Amended:** 2026-09-29 (the risk amount comes from the database, see the last section) · **Deciders:** TODO (team)
 
 ## Context
 
@@ -23,10 +23,13 @@ The LLM emits intents and tool calls; `banking-core` decides whether the call pr
 | Identity verification sequence | State machine | A protocol, not a conversation; must be identical every time |
 | Authorizing an action | Policy engine | An auditable business rule, not an inference |
 | Risk thresholds (amount, attempts, ownership) | Configuration + engine | They change for business reasons, not model reasons |
+| The amount compared against the risk threshold | The database row of the disputed transaction | It is a fact the bank holds, not something the customer or the model states (amendment 2026-09-29) |
+| Creating a handoff the policy requires | The turn engine, deterministically | A required escalation cannot depend on the model remembering to ask for it (amendment 2026-09-29) |
 | Assigning a case to an agent | Queue with deterministic priority | Ticket assignment is not a language problem |
 | Writing the customer-facing reply | LLM | It is a language problem |
 | Handoff summary | LLM, over already-verified facts | It generates text, not facts: the data comes from the system |
 | Confirming the action happened | Re-read from the database | What the model says is not evidence |
+| Choosing an enum argument or releasing a write on the customer's confirmation | Calibrated decision model, applied by the engine through a closed set of restrict-only effects | Evidence-backed and recorded; banking-core still authorizes (amendment 2026-09-29 (2), [ADR-0012](0012-decision-points.md)) |
 
 ### Derived behaviors
 
@@ -101,15 +104,15 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 | Tool | Type | Permitted States | Description & Constraints |
 |---|---|---|---|
 | `customer.match` | Read / Match | `ANONYMOUS`, `IDENTIFIED` | Matches claimed holder data against records. Returns only a boolean match status (`matched: true/false`). Responses are strictly indistinguishable for non-existent records to prevent customer enumeration (ADR-0004). Calling in `IDENTIFIED` matching a different holder replaces the pinned holder, discards any issued OTP challenge, and counts as an attempt. |
-| `otp.send` | state-changing: requires idempotency key, returns a receipt | `IDENTIFIED`, `OTP_PENDING` | Dispatches an OTP challenge. Delivery channel (email, Telegram, WhatsApp, SMS; delivery simulated pending feasibility decision) and destination are resolved strictly server-side from registered customer profile and deployment configuration; the model never chooses or provides the channel or destination. Transitions state to `OTP_PENDING`. Allowed in `OTP_PENDING` to permit code resend within rate limits. |
+| `otp.send` | state-changing: requires idempotency key, returns a receipt | `IDENTIFIED`, `OTP_PENDING` | Dispatches an OTP challenge. Delivery channel (the customer's registered email or SMS; delivery is simulated through an in-app inbox, [ADR-0007](0007-no-llm-biometrics.md)) and destination are resolved strictly server-side from registered customer profile and deployment configuration; the model never chooses or provides the channel or destination. Transitions state to `OTP_PENDING`. Allowed in `OTP_PENDING` to permit code resend within rate limits. |
 | `otp.verify` | state-changing: requires idempotency key, returns a receipt | `OTP_PENDING` | Verifies the customer-supplied OTP code against the active challenge. Valid code transitions session to `VERIFIED`. Exceeding maximum allowed attempts transitions session to `LOCKED`. |
 | `identity.verify_document` | Verification | `IDENTIFIED` | Interacts with a simulated document verification provider (ADR-0007). Returns score, decision, and reasons. Never sufficient alone to grant `VERIFIED` status without registered channel authentication. |
 | `card.list` | Read | `VERIFIED` | Lists payment cards belonging to the pinned session customer. PANs are always masked (e.g. `**** **** **** 1234`). Returns opaque card references (`card_ref`) used for subsequent operations. |
 | `transaction.list_recent` | Read | `VERIFIED` | Retrieves recent transaction history for the pinned customer or a specific card referenced by `card_ref`. Contains amounts, timestamps, merchants, and dispute eligibility indicators. |
 | `account.get_summary` | Read | `VERIFIED` | Returns balance and status summaries for accounts belonging to the pinned customer. Read-only; enables the secondary workflow (inquiries) via configuration alone without code changes (ADR-0002). |
-| `card.block` | state-changing: requires idempotency key, returns a receipt | `VERIFIED` | Blocks a payment card identified by its opaque `card_ref`. Requires an idempotency key and policy engine authorization. Permitted strictly in `VERIFIED` only (owner confirmed). Returns a verified `Receipt` re-read from the database. |
-| `handoff.create` | state-changing: requires idempotency key, returns a receipt | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Escalates the session to a human representative in the back-office queue with reason, priority, and department routing. Available in every state, including `LOCKED`. |
-| `kb.search` | Read / Public | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Lexical search, with a dense component only if it beats BM25 (ADR-0006). Never handles or returns customer PII. Available in all states. |
+| `card.block` | state-changing: requires idempotency key, returns a receipt | `VERIFIED` | Blocks a payment card identified by its opaque `card_ref`. Requires an idempotency key and policy engine authorization. Permitted strictly in `VERIFIED` only (owner confirmed). Takes an optional opaque `transaction_id` (from `transaction.list_recent`): the charge the customer disputes, which must belong to the pinned holder and to that card. The risk threshold reads that charge's amount and currency from the database, never from the customer's words or the model's arguments. Returns a verified `Receipt` re-read from the database and the `handoff_requirement` (`NONE`, `RECOMMENDED` or `REQUIRED`, with priority, department and reason) the policy decided. |
+| `handoff.create` | state-changing: requires idempotency key, returns a receipt | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Escalates the session to a human representative in the back-office queue with reason, priority, and department routing. Available in every state, including `LOCKED`. Takes the same optional `transaction_id` with the same ownership check, honored only in a `VERIFIED` session (dropped otherwise); the charge's amount, currency, merchant, date and masked card go into the server-built `verified_facts` from the database. A session that remembers a `handoff_requirement` gets at least that priority and always that department: banking-core raises, the model cannot lower. |
+| `kb.search` | Read / Public | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Vector search over the public knowledge base; BM25 or hybrid only when configured (ADR-0006). Never handles or returns customer PII. Available in all states. |
 
 ### State × Tool Authorization Matrix
 
@@ -148,10 +151,87 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 1. **`ANONYMOUS` → `IDENTIFIED`**: Customer provides claimed identification data; `customer.match` returns `matched: true`. Holder identity is pinned in server session.
 2. **`ANONYMOUS` → `LOCKED`**: Repeated failed `customer.match` attempts trigger session lock to mitigate customer enumeration attacks starting anonymously.
 3. **`IDENTIFIED` (re-match)**: `customer.match` called in `IDENTIFIED` matching a different holder replaces the pinned holder, discards any previously issued OTP challenge, and counts as one verification attempt.
-4. **`IDENTIFIED` → `OTP_PENDING`**: `otp.send` generates an OTP and dispatches it. The delivery channel (email, Telegram, WhatsApp, SMS; delivery simulated pending feasibility decision) is resolved server-side from registered customer data and deployment configuration—the model never selects or provides the channel or destination.
+4. **`IDENTIFIED` → `OTP_PENDING`**: `otp.send` generates an OTP and dispatches it. The delivery channel (the customer's registered email or SMS; delivery is simulated through an in-app inbox, [ADR-0007](0007-no-llm-biometrics.md)) is resolved server-side from registered customer data and deployment configuration—the model never selects or provides the channel or destination.
 5. **`OTP_PENDING` → `VERIFIED`**: `otp.verify` confirms the customer submitted the correct OTP within expiry.
 6. **`OTP_PENDING` → `LOCKED`**: Repeated failed OTP verification attempts exceed the configured threshold.
 7. **`IDENTIFIED` → `LOCKED`**: Repeated failed match attempts or rate limit violations trigger lock to prevent enumeration.
 8. **Any state → `HANDED_OFF`**: `handoff.create` is invoked (either requested by customer, recommended by policy, or automatically following `LOCKED` state).
 
+---
 
+## Amendment 2026-09-29 — The risk amount comes from the database
+
+This amendment adds to the decisions above; it does not replace them. It closes a gap found while reviewing the amount guardrail against the code.
+
+### Context
+
+The amount guardrail never fired. `card.block` took only a `card_ref` and a `reason`, so no amount ever reached the policy engine, which looked for amount keys in the tool arguments or the call context. The policy also produced advisory flags (`POLICY_FLAGGED`, `HANDOFF_RECOMMENDED`, `HANDOFF_REQUIRED`, `PRIORITY`) that were written to the audit log only: `ToolResult` carries no flags, so the orchestrator never saw them and nothing acted on them.
+
+### Options considered
+
+**Option 1: let the model pass the amount.** The number that drives a control would come from the component this ADR says must never be the authority. It is also derived from customer text, which the customer controls: an inflated or understated figure changes the outcome.
+
+**Option 2: take the amount from the customer's message** (for instance the encoder's amount slot). Same flaw: the customer's words are not evidence of what the bank charged.
+
+**Option 3 (chosen): read the amount from the disputed transaction in the database.** The bank already holds the fact; the model only points at it.
+
+### Decision
+
+1. `card.block` and `handoff.create` accept an optional opaque `transaction_id`: the id `transaction.list_recent` returned for the charge the customer disputes. It follows the same constraints as `TransactionItem.transaction_id`.
+2. banking-core loads that transaction. It must belong to the pinned holder, and for `card.block` also to the card being blocked. Otherwise the call is `REFUSED` with `INVALID_ARGUMENTS`, and the response is identical whether the transaction does not exist or belongs to someone else (ADR-0004, IDOR). The lookup runs after the state check, so a call the FSM refuses is answered as it always was and never resolves a transaction. `handoff.create` works in every state, so it attaches the charge only in a `VERIFIED` session: in any other state the id is dropped (no lookup, no facts), which keeps the tool from being a way to read a charge before OTP and never holds up an escalation.
+3. The amount and currency of that row are the only amount input of the policy. The customer's stated amount and any number the model produces never feed it: the tools have no amount argument, and the policy ignores amount keys in arguments.
+4. The policy outcome is returned to the caller and enforced, not just audited:
+   - `CardBlockOutput.handoff_requirement` carries the level (`NONE`, `RECOMMENDED`, `REQUIRED`) and, unless `NONE`, a priority, department and reason. It is also returned when an idempotent replay answers the call.
+   - banking-core remembers the requirement in the session. A later `handoff.create` in that session gets at least that priority and that department: banking-core may raise a priority, never lower it, and the model's lower request is overridden.
+   - For `REQUIRED`, the orchestrator's turn engine creates the handoff itself, in the same turn, when the model has not: same reason, department and priority, the same `transaction_id`, and a fixed summary string built by the engine, with no model text. Its result enters the history and produces the normal handoff block, so the model's final reply can tell the customer. The engine uses the same idempotency-key scheme as any other write, so a retried turn cannot create a second handoff.
+   - `RECOMMENDED` stays advisory: the model sees it in the tool result and may offer the customer a human.
+
+### Outcome table
+
+The threshold is the one configured for the transaction's currency (ADR-0002); the mode is the stored `amount_mode`. The card block itself is never refused because of an amount.
+
+| Situation | Level | Priority | Notes |
+|---|---|---|---|
+| Transaction amount at or below its currency threshold | `NONE` | none | Automated resolution: the card is blocked, no handoff |
+| Above the threshold, mode `flag` | `RECOMMENDED` | `NORMAL` | The handoff is advisory |
+| Above the threshold, mode `block` | `REQUIRED` | `URGENT` | The engine creates it if the model did not |
+| Transaction currency without a threshold, or a malformed amount | `REQUIRED` | `URGENT` | Unknown amount: fail safe |
+| Reason `UNRECOGNIZED_CHARGE` or `SUSPICIOUS_ACTIVITY` and no `transaction_id` | `REQUIRED` | `URGENT` | Unknown amount: fail safe |
+| Reason `LOST`, `STOLEN` or `CUSTOMER_REQUEST` and no `transaction_id` | `NONE` | none | There is no charge to compare |
+
+With a `transaction_id` the amount rule applies whatever the block reason is (unsafe outcome U8). `URGENT` for `REQUIRED` is what `handoff.create` already maps the `PRIORITY` flag to; `NORMAL` is the contract default priority.
+
+Reason and department follow the block reason:
+
+| Block reason | Handoff reason | Department |
+|---|---|---|
+| `UNRECOGNIZED_CHARGE` | `UNRECOGNIZED_TRANSACTION` | `DISPUTES` |
+| `SUSPICIOUS_ACTIVITY`, `LOST`, `STOLEN` | `SUSPECTED_FRAUD` | `FRAUD_OPERATIONS` |
+| `CUSTOMER_REQUEST` | `DISPUTE_CLAIM` | `DISPUTES` |
+
+### Naming of the two amount modes
+
+The stored values stay `flag` and `block` (database, admin API, environment seeds, evaluation scenarios). Documentation calls them by what they do:
+
+| Stored value | Documented as | Effect above the threshold |
+|---|---|---|
+| `flag` | handoff recommended | `RECOMMENDED` |
+| `block` | handoff required | `REQUIRED` |
+
+`block` never blocked anything: `card.block` is not refused for amount, the mode decides whether a handoff is required. Renaming the stored values to `recommend` and `require` is pending (AGENTS.md).
+
+### Consequences
+
+**Becomes easier:** the guardrail can be demonstrated live (lower the threshold, repeat the operation, the outcome flips) and evaluated without depending on what the customer types.
+
+**Becomes harder:** the model must link the disputed charge (list the transactions, pass the id). A model that omits the link for `UNRECOGNIZED_CHARGE` or `SUSPICIOUS_ACTIVITY` fails safe into a required handoff. One that picks `LOST`, `STOLEN` or `CUSTOMER_REQUEST` and omits the link gets no amount check; that gap is declared in `docs/limitations.md`.
+
+**To revisit:** if the residual gap matters, banking-core can evaluate the card's recent disputable charges itself instead of relying on the model's link.
+
+## Amendment 2026-09-29 (2): decision points may choose an argument or hold a write
+
+**Context.** The rule above kept every choice between "the model proposes" and "banking-core disposes" out of the encoder's hands: it was advisory. [ADR-0012](0012-decision-points.md) lets a calibrated local decision (a *decision point*) do two narrow things the LLM did unaided: pick the enum argument of a call the LLM proposed (the block reason, a handoff's department), and hold a write until the customer has consented (the gate on `card.block`).
+
+**Decision.** This adds a row to the split above and changes none of the others. The engine applies a decision point only through a closed set of effects that can record, choose among values banking-core already accepts, or withhold a write. None can authorize, create a call, or make one succeed that the state machine and the policy engine refuse; and when a decision point abstains or is unavailable the outcome is the LLM's own argument or a withheld write, never an action. The gate is a control in the untrusted zone and not an authorization: banking-core still requires `VERIFIED`, ownership and an idempotency key for every block. "The engine never alters model arguments" becomes "except the `select` allowlist of the effects file, which cannot touch `priority`, `card_ref`, an identity or a secret".
+
+**Consequences.** Every decision point ships in `shadow` (computed and recorded, nothing changes) and flips to `enforce` only by its own reviewed diff. A fail-closed gate adds a turn when the model abstains on a colloquial "yes": the same trade this ADR already accepts for unnecessary escalation, measured instead of assumed. What is not built and why is in [limitations.md](../limitations.md).

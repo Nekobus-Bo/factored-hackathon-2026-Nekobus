@@ -514,6 +514,7 @@ class LLMProvider:
                     model=recording.model_id,
                     recording_key=key,
                     cached=True,
+                    masked_messages=recording.masked_messages,
                 )
 
             if self.replay_on_miss == "fail":
@@ -610,4 +611,5 @@ class LLMProvider:
             model=self.model,
             recording_key=key,
             cached=False,
+            masked_messages=masked_messages,
         )

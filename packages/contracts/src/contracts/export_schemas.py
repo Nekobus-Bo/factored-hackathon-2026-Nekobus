@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from contracts.blocks import MESSAGE_BLOCK_ADAPTER
-from contracts.encoder import AnalyzeRequest, AnalyzeResponse
+from contracts.encoder import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    DecisionPointsResponse,
+    EmbedRequest,
+    EmbedResponse,
+)
 from contracts.envelope import Receipt, ToolCall, ToolResult
 from contracts.tools import TOOL_CATALOG
 
@@ -87,6 +93,9 @@ def export_schemas(output_dir: Path | str | None = None) -> dict[str, Path]:
     encoder_models = {
         "analyze_request": AnalyzeRequest,
         "analyze_response": AnalyzeResponse,
+        "decision_points_response": DecisionPointsResponse,
+        "embed_request": EmbedRequest,
+        "embed_response": EmbedResponse,
     }
 
     for name, model_cls in sorted(encoder_models.items()):

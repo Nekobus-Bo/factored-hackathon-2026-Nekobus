@@ -34,6 +34,7 @@ from banking_core.control.session import SessionState
 logger = logging.getLogger(__name__)
 
 CONFIG_UNAVAILABLE_FLAG = "POLICY_CONFIG_UNAVAILABLE"
+TOOL_DISABLED_FLAG = "TOOL_DISABLED"
 
 
 def _config_unavailable(tool_name: str, exc: Exception) -> Decision:
@@ -102,12 +103,17 @@ class Authorizer:
         except Exception as exc:
             return _config_unavailable(tool_name, exc)
 
-        # 3. FSM state check
+        # 3. FSM state check. A tool no state enables was disabled by configuration:
+        # the refusal is the same STATE_NOT_ALLOWED, the audit flag says why.
         if session.state not in effective_states:
             return Decision(
                 allowed=False,
                 reason_code=ReasonCode.STATE_NOT_ALLOWED,
-                flags=[f"STATE_{session.state.value}_NOT_PERMITTED"],
+                flags=[
+                    TOOL_DISABLED_FLAG
+                    if not effective_states
+                    else f"STATE_{session.state.value}_NOT_PERMITTED"
+                ],
             )
 
         # 4. Policy engine check (rate limits, thresholds)

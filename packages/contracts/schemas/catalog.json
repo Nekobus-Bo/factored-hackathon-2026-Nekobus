@@ -13,7 +13,7 @@
       "requires_idempotency": false
     },
     "card.block": {
-      "description": "Blocks a payment card by opaque card_ref. Requires idempotency key.",
+      "description": "Blocks a payment card by opaque card_ref. Pass the transaction_id (from transaction.list_recent) of the charge the customer disputes; the policy reads its amount from the database. Returns the handoff_requirement the policy decided. Requires idempotency key.",
       "input_schema_file": "tools/card_block.input.json",
       "is_write": true,
       "mutates_state": true,
@@ -79,7 +79,7 @@
       "requires_idempotency": false
     },
     "kb.search": {
-      "description": "Lexical search, with a dense component only if it beats BM25 (ADR-0006).",
+      "description": "Vector search over the public knowledge base; BM25 or hybrid only when configured (ADR-0006).",
       "input_schema_file": "tools/kb_search.input.json",
       "is_write": false,
       "mutates_state": false,

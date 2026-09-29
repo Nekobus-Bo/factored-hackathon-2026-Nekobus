@@ -32,7 +32,7 @@ That lets a single demo session show what we consider the heart of the challenge
 The system is built as a **configurable generic engine**: intents, knowledge, message templates and policies live in the database and are edited from the back office (see [ADR-0002](adr/0002-config-code-boundary.md)). Rather than leave that as a claim, we demonstrate it:
 
 - The compromised-card workflow is **evaluated in depth**, with real data from the dataset and the full suite.
-- A **second workflow** (account and payment inquiries, read-only) is added **live during the demo, without touching code** — configuration and rules only. It is covered by a 5-case smoke test, not the full suite.
+- A **second workflow** (account and payment inquiries, read-only) is added **live during the demo, without touching code**. Concretely: `account.get_summary`, a tool that already exists in the catalog, starts disabled in the versioned tool policy, and an operator enables it live with an audited change that can never go beyond the code floor. No deployment, no restart ([ADR-0002](adr/0002-config-code-boundary.md), amendment of 2026-09-29). Until the back office exists this is one admin API call ([runbook](runbook.md), demo step 5). It is covered by the `account_inquiry` scenarios (8 of the suite's 56, three of them with the tool disabled), not by the full suite.
 
 Generality is a property of the system; depth is a property of our submission. We would rather both be verifiable in 3 minutes.
 
@@ -41,7 +41,7 @@ Generality is a property of the system; depth is a property of our submission. W
 | Out of scope | Reason |
 |---|---|
 | Real biometric verification (selfie against ID document) | Requires a certified provider with liveness detection; a vision LLM gives neither a calibrated score nor spoof detection. See [ADR-0007](adr/0007-no-llm-biometrics.md). We leave the interface defined and a simulated provider behind it. |
-| Real outbound OTP delivery | Delivery channel is an open decision (email, Telegram, WhatsApp or SMS; chosen by feasibility / free tier); delivery is currently simulated in a panel. The model never chooses the channel. |
+| Real outbound OTP delivery | The OTP is not sent by email, SMS or any other external channel: the web client simulates a "you got an email with the code" notice from an in-app inbox, behind the delivery port a real provider would implement ([ADR-0007](adr/0007-no-llm-biometrics.md)). The model never chooses the channel. |
 | End-to-end dispute resolution | A judgment call with monetary impact. It is our test case for "AI should not be autonomous just because it can be". |
 | Customer onboarding / credit origination | A different workflow; adds nothing to the depth of the chosen one. |
 | Real multi-tenancy | Anticipated in the data model (schema separation), not implemented. |
@@ -70,13 +70,13 @@ The system's internal instructions (skills, schemas, policies) are in English, f
 
 1. The dataset provided by Factored is the source of truth for the simulated banking core. **TODO: confirm entity coverage after day-1 exploration.**
 2. There are no ready-to-use intent labels. If there are, the labeling plan in [data.md](data.md) reduces to validation.
-3. Judges test the system within an agreed window, not in continuous operation.
+3. Judges run the system on their own machine with `make demo`. There is no hosted instance for them and nothing depends on a server of ours being up; the team's presentation environment is for its own live presentation ([deployment.md](deployment.md), section 7).
 
 ## 8. Map against the evaluation criteria
 
 | Pillar | Where it lives in this submission |
 |---|---|
-| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` (⚠️ pending) |
+| Works and is runnable | [runbook.md](runbook.md), `make demo` (one command, on the judge's machine) |
 | Documented rationale | This document and the 10 ADRs |
 | AI engineering | `orchestrator`, policy engine in `banking-core`, frontends, deployment |
 | Data engineering | Ingestion, contracts, quality, lineage — [data.md](data.md) |

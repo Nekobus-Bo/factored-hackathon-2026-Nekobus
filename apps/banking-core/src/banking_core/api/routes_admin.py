@@ -6,28 +6,46 @@ import hmac
 import os
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 import sqlalchemy as sa
+from contracts.envelope import VerificationState
+from contracts.tools import CODE_FLOOR
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from sqlalchemy.orm import Session
 
+from banking_core.api.routes_sessions import get_session_store
 from banking_core.audit.service import append
+from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import (
     load_policy_config,
     record_to_policy_config,
     save_policy_config,
 )
 from banking_core.control.policy import PolicyConfig
+from banking_core.control.tool_policy import (
+    ToolPolicyRejected,
+    active_tool_policy,
+    effective_matrix,
+    reset_tool_policy_to_seed,
+    save_tool_policy,
+)
+from banking_core.crypto import compute_blind_index
 from banking_core.db.session import get_session_maker
+from banking_core.identity.config import IdentityConfig
 from banking_core.models.config import PolicyConfigRecord
 from banking_core.models.core_bank import Card
 from banking_core.seed.fixtures import create_scenario_fixtures
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 _CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
+
+# What infra/compose/docker-compose.yml defaults ADMIN_API_TOKEN to, so the back
+# office demo steps work with no .env. Public by construction: startup refuses
+# it under APP_ENV=production. A test keeps the two spellings in step.
+DEVELOPMENT_ADMIN_TOKEN = "dev-only-admin-token"
 
 
 class AdminPolicyConfigRequest(BaseModel):
@@ -71,16 +89,46 @@ class PolicyConfigResponse(BaseModel):
     version: int
 
 
+class AdminToolPolicyRequest(BaseModel):
+    """Tools to change, each with the verification states that enable it.
+
+    `[]` disables a tool. Tools not listed keep their current states. A state
+    outside the tool's code floor is refused, never dropped.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tools: dict[str, list[VerificationState]] = Field(min_length=1)
+
+
+class ToolPolicyResponse(BaseModel):
+    """The tool policy in force: what each tool is enabled in, and the ceiling."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    tools: dict[str, list[str]]
+    disabled: list[str]
+    code_floor: dict[str, list[str]]
+
+
 class DemoResetResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cards_reset: int
     cards_changed: int
     cards_missing: int
+    attempt_limits_cleared: int
+    tool_policy_version: int
+    tool_policy_changed: bool
 
 
 def _environment_flag(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _running_in_production() -> bool:
+    return os.getenv("APP_ENV", "development").strip().lower() == "production"
 
 
 def admin_api_enabled() -> bool:
@@ -88,9 +136,22 @@ def admin_api_enabled() -> bool:
 
 
 def validate_admin_api_settings() -> None:
-    """Fail startup rather than expose an enabled API without a token."""
-    if admin_api_enabled() and not os.getenv("ADMIN_API_TOKEN", "").strip():
+    """Fail startup rather than expose an enabled API without a real token.
+
+    A missing token is refused everywhere. The development token is accepted
+    outside production only: it is published in this repository, so under
+    APP_ENV=production it would be a known password.
+    """
+    if not admin_api_enabled():
+        return
+    token = os.getenv("ADMIN_API_TOKEN", "").strip()
+    if not token:
         raise RuntimeError("ADMIN_API_TOKEN is required when ADMIN_API_ENABLED=true")
+    if token == DEVELOPMENT_ADMIN_TOKEN and _running_in_production():
+        raise RuntimeError(
+            "ADMIN_API_TOKEN is the public development token; set a secret of "
+            "your own when APP_ENV=production"
+        )
 
 
 def require_admin(authorization: str | None = Header(default=None)) -> None:
@@ -159,6 +220,9 @@ def put_policy_config(request: AdminPolicyConfigRequest) -> PolicyConfigResponse
                 **current_config.model_dump(),
                 "amount_mode": request.amount_mode,
                 "thresholds_minor": request.thresholds_minor,
+                # The current single-currency copy would overwrite the requested
+                # threshold of the default currency; it is derived from the map.
+                "amount_threshold_minor": None,
             }
         )
         next_version = (
@@ -188,6 +252,106 @@ def put_policy_config(request: AdminPolicyConfigRequest) -> PolicyConfigResponse
         return _response(saved_record)
 
 
+def _tool_policy_response(
+    version: int, matrix: dict[str, list[str]]
+) -> ToolPolicyResponse:
+    return ToolPolicyResponse(
+        version=version,
+        tools=matrix,
+        disabled=sorted(name for name, states in matrix.items() if not states),
+        code_floor={
+            name: sorted(state.value for state in states)
+            for name, states in CODE_FLOOR.items()
+        },
+    )
+
+
+@router.get(
+    "/tool-policy",
+    response_model=ToolPolicyResponse,
+    dependencies=[Depends(require_admin)],
+)
+def get_tool_policy() -> ToolPolicyResponse:
+    with get_session_maker()() as session:
+        record = active_tool_policy(session)
+        try:
+            matrix = effective_matrix(record)
+        except ValueError as exc:
+            # A stored version beyond the floor is refused by the authorizer too.
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Active tool policy v{record.version} is invalid: {exc}",
+            ) from exc
+        return _tool_policy_response(
+            record.version,
+            {
+                name: sorted(state.value for state in states)
+                for name, states in matrix.items()
+            },
+        )
+
+
+@router.put(
+    "/tool-policy",
+    response_model=ToolPolicyResponse,
+    dependencies=[Depends(require_admin)],
+)
+def put_tool_policy(request: AdminToolPolicyRequest) -> ToolPolicyResponse:
+    """Save the tools named as a new active version, audited; refuse any widening."""
+    with get_session_maker()() as session:
+        try:
+            change = save_tool_policy(
+                session, request.tools, actor_ref="admin", source="admin_api"
+            )
+        except ToolPolicyRejected as exc:
+            # Same shape as FastAPI's own 422 body, so a client parses one format.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[
+                    {
+                        "loc": ["body", "tools", problem["tool"]],
+                        "msg": problem["message"],
+                        "type": problem["type"],
+                    }
+                    for problem in exc.problems
+                ],
+            ) from exc
+        session.commit()
+        return _tool_policy_response(change.version, change.matrix)
+
+
+def get_attempt_limit_store() -> AttemptLimitStore:
+    """The cross-session attempt-limit counters, on the same redis-core."""
+    return AttemptLimitStore(redis_client=get_session_store().client)
+
+
+def _clear_fixture_attempt_limits(store: AttemptLimitStore) -> int:
+    """Forget the failures and locks of the scenario fixture customers.
+
+    They are the customers an evaluation run signs in as, over and over from one
+    address: without this a run would inherit the last one's failed verifies and
+    matches, and its outcome would depend on what ran before. Documents of
+    people who are not fixtures are not touched.
+    """
+    identity = IdentityConfig.from_env()
+    cleared = 0
+    for customer in create_scenario_fixtures().customers:
+        cleared += store.clear_customer(str(customer["id"]))
+        cleared += store.clear_documents(
+            [
+                compute_blind_index(
+                    value=str(customer["document_number"]),
+                    field_name="document_number",
+                    document_type=document_type,
+                )
+                for document_type in identity.resolve_equivalent_document_types(
+                    str(customer["document_type"])
+                )
+            ]
+        )
+    return cleared
+
+
 def _demo_card_states() -> dict[UUID, tuple[str, datetime | None, str | None]]:
     states: dict[UUID, tuple[str, datetime | None, str | None]] = {}
     for fixture_card in create_scenario_fixtures().cards:
@@ -214,7 +378,9 @@ def _demo_card_states() -> dict[UUID, tuple[str, datetime | None, str | None]]:
     response_model=DemoResetResponse,
     dependencies=[Depends(require_admin)],
 )
-def reset_demo_fixtures() -> DemoResetResponse:
+def reset_demo_fixtures(
+    limits: Annotated[AttemptLimitStore, Depends(get_attempt_limit_store)],
+) -> DemoResetResponse:
     if os.getenv(
         "APP_ENV", "development"
     ).strip().lower() == "production" and not _environment_flag("DEMO_RESET_ENABLED"):
@@ -224,6 +390,7 @@ def reset_demo_fixtures() -> DemoResetResponse:
         )
 
     seed_states = _demo_card_states()
+    attempt_limits_cleared = _clear_fixture_attempt_limits(limits)
     with get_session_maker()() as session:
         cards = session.scalars(
             sa.select(Card).where(Card.id.in_(tuple(seed_states)))
@@ -241,10 +408,17 @@ def reset_demo_fixtures() -> DemoResetResponse:
                 card.blocked_at = seed_blocked_at
                 card.blocked_reason = seed_blocked_reason
 
+        # After the card updates, so this transaction takes the card row locks
+        # before the audit lock, the order card.block takes them in.
+        session.flush()
+        tool_policy = reset_tool_policy_to_seed(session)
         result = DemoResetResponse(
             cards_reset=len(cards),
             cards_changed=changed,
             cards_missing=len(seed_states) - len(cards),
+            attempt_limits_cleared=attempt_limits_cleared,
+            tool_policy_version=tool_policy.version,
+            tool_policy_changed=tool_policy.changed,
         )
         append(
             session,

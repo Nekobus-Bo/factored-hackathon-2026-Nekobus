@@ -13,6 +13,7 @@ import re
 from typing import Any, Literal
 
 from contracts.envelope import ReasonCode
+from contracts.tools.otp_send import OtpSendOutput
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from banking_core.control.session import SessionState
@@ -27,6 +28,38 @@ RATE_LIMITED_TOOLS: frozenset[str] = frozenset(
         "otp.verify",
         "identity.verify_document",
     }
+)
+
+
+def _otp_ttl_bounds() -> tuple[int, int]:
+    """Bounds of OtpSendOutput.expires_in_seconds: the contract is the source of truth.
+
+    A configured TTL outside them would let otp.send deliver a code and then fail
+    validating its own output, so the policy config accepts exactly this range.
+    """
+    metadata = OtpSendOutput.model_fields["expires_in_seconds"].metadata
+    lower = next(m.ge for m in metadata if hasattr(m, "ge"))
+    upper = next(m.le for m in metadata if hasattr(m, "le"))
+    return int(lower), int(upper)
+
+
+OTP_TTL_MIN_SECONDS, OTP_TTL_MAX_SECONDS = _otp_ttl_bounds()
+
+# Sanity bounds for the cross-session window and lock durations: a window shorter
+# than a minute barely counts anything, one longer than a week is a permanent ban.
+ATTEMPT_WINDOW_MIN_SECONDS = 60
+ATTEMPT_WINDOW_MAX_SECONDS = 7 * 24 * 3600
+
+# Keys of the trusted context the dispatcher builds for card.block from the
+# database row of the disputed transaction (ADR-0003 amendment 2026-09-29).
+# They are never read from tool arguments.
+AMOUNT_CONTEXT_KEY = "disputed_amount_minor"
+CURRENCY_CONTEXT_KEY = "currency"
+
+# Block reasons that assert a disputed charge: with no amount to compare, the
+# outcome fails safe into a required handoff.
+DISPUTE_REASONS: frozenset[str] = frozenset(
+    {"UNRECOGNIZED_CHARGE", "SUSPICIOUS_ACTIVITY"}
 )
 
 DEFAULT_THRESHOLDS_MINOR: dict[str, int] = {
@@ -75,6 +108,15 @@ class Decision(BaseModel):
         return "PRIORITY" in self.flags
 
 
+def _handoff_required() -> Decision:
+    """Above the threshold in block semantics, or an amount that cannot be trusted."""
+    return Decision(
+        allowed=True,
+        reason_code=ReasonCode.POLICY_FLAGGED,
+        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
+    )
+
+
 class PolicyConfig(BaseModel):
     """Validated policy configuration for banking-core guardrails."""
 
@@ -115,13 +157,61 @@ class PolicyConfig(BaseModel):
     )
     otp_ttl_seconds: int = Field(
         default=300,
-        ge=10,
-        description="Time-to-live for OTP challenges in seconds",
+        ge=OTP_TTL_MIN_SECONDS,
+        le=OTP_TTL_MAX_SECONDS,
+        description=(
+            "Time-to-live for OTP challenges in seconds; bounded by the otp.send "
+            "contract"
+        ),
     )
     session_ttl_seconds: int = Field(
         default=3600,
         ge=60,
         description="Time-to-live for customer session in seconds",
+    )
+    customer_otp_max_failures: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Failed otp.verify evaluations per customer, across all sessions, "
+            "within the window before the customer is locked"
+        ),
+    )
+    customer_otp_window_seconds: int = Field(
+        default=3600,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "Fixed window, opened by the first failure, in which the failed "
+            "otp.verify evaluations of one customer are counted"
+        ),
+    )
+    customer_otp_lock_seconds: int = Field(
+        default=1800,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "How long a customer stays locked out of OTP once the failure "
+            "maximum is reached"
+        ),
+    )
+    document_match_max_failures: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Failed customer.match attempts per claimed document, across all "
+            "sessions, within the window before further matches answer "
+            "matched=false without checking"
+        ),
+    )
+    document_match_window_seconds: int = Field(
+        default=3600,
+        ge=ATTEMPT_WINDOW_MIN_SECONDS,
+        le=ATTEMPT_WINDOW_MAX_SECONDS,
+        description=(
+            "Fixed window, opened by the first failure, in which the failed "
+            "customer.match attempts on one claimed document are counted"
+        ),
     )
 
     @field_validator("amount_mode", mode="before")
@@ -245,6 +335,21 @@ class PolicyConfig(BaseModel):
             otp_max_resends=int(os.getenv("OTP_MAX_RESENDS", "3")),
             otp_ttl_seconds=int(os.getenv("OTP_TTL_SECONDS", "300")),
             session_ttl_seconds=int(os.getenv("SESSION_TTL_SECONDS", "3600")),
+            customer_otp_max_failures=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", "5")
+            ),
+            customer_otp_window_seconds=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS", "3600")
+            ),
+            customer_otp_lock_seconds=int(
+                os.getenv("RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS", "1800")
+            ),
+            document_match_max_failures=int(
+                os.getenv("RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES", "10")
+            ),
+            document_match_window_seconds=int(
+                os.getenv("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "3600")
+            ),
         )
 
 
@@ -263,10 +368,15 @@ class PolicyEngine:
     ) -> Decision:
         """Evaluate policy rules for a tool call.
 
+        `context` is trusted: banking-core builds it, never the model. `args` is
+        the model's tool arguments and never feeds an amount.
+
         Evaluates:
         1. Rate limits per session: applies ONLY to verification tools.
            handoff.create and kb.search are never rate limited.
-        2. Amount threshold rule for card.block:
+        2. Amount threshold rule for card.block, from the trusted context
+           (`disputed_amount_minor` and `currency`, the disputed transaction's
+           row in the database):
            - ALWAYS returns allowed=True (other rules: FSM state, code floor apply).
            - amount <= threshold(currency) -> allowed, no flags.
            - above threshold, mode flag -> allowed +
@@ -276,6 +386,9 @@ class PolicyEngine:
            - unknown currency, or malformed/missing/negative amount ->
              treated as above threshold in block semantics: allowed +
              [POLICY_FLAGGED, HANDOFF_REQUIRED, PRIORITY].
+           - no amount context: a dispute reason (UNRECOGNIZED_CHARGE,
+             SUSPICIOUS_ACTIVITY) fails safe the same way; any other reason has
+             no charge to compare and carries no flags.
         """
         args = args or {}
         context = context or {}
@@ -293,93 +406,58 @@ class PolicyEngine:
 
         # 2. Risk threshold rule for card.block
         if tool == "card.block":
-            merged = {**args, **context}
-
-            matched_key = None
-            for key in (
-                "disputed_amount_minor",
-                "amount_minor",
-                "disputed_amount",
-                "amount",
-            ):
-                if key in merged:
-                    matched_key = key
-                    break
-
-            reason = merged.get("reason")
-            is_dispute_reason = reason in (
-                "UNRECOGNIZED_CHARGE",
-                "SUSPICIOUS_ACTIVITY",
-            )
-            has_amount_context = (
-                matched_key is not None and merged.get(matched_key) is not None
-            )
-
-            # Currency check
-            raw_currency = merged.get("currency")
-            if raw_currency is None:
-                currency = self.config.currency.upper()
-            else:
-                currency = str(raw_currency).strip().upper()
-
-            # Whenever amount context is present, threshold rule applies
-            # regardless of model-chosen reason (ADR-0002 / safe outcome U8).
-            if has_amount_context:
-                # Unknown currency with amount -> block semantics
-                if not currency or currency not in self.config.thresholds_minor:
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                    )
-
-                raw_amount = merged.get(matched_key)
-                try:
-                    if "minor" in matched_key:
-                        amount_minor = int(raw_amount)
-                    else:
-                        amount_minor = int(float(raw_amount) * 100)
-                except (ValueError, TypeError):
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                    )
-
-                if amount_minor < 0:
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                    )
-
-                threshold = self.config.thresholds_minor[currency]
-                if amount_minor <= threshold:
-                    return Decision(allowed=True, reason_code=None, flags=[])
-
-                if self.config.amount_mode == "flag":
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_RECOMMENDED"],
-                    )
-                else:  # mode "block"
-                    return Decision(
-                        allowed=True,
-                        reason_code=ReasonCode.POLICY_FLAGGED,
-                        flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                    )
-
-            # Missing amount context: keep current semantics.
-            # If dispute reason or explicit currency specified without amount,
-            # treated as above threshold in block semantics.
-            has_currency = "currency" in merged
-            if is_dispute_reason or has_currency:
-                return Decision(
-                    allowed=True,
-                    reason_code=ReasonCode.POLICY_FLAGGED,
-                    flags=["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"],
-                )
+            return self._card_block_decision(args, context)
 
         # Default: allowed, no flags
         return Decision(allowed=True, reason_code=None, flags=[])
+
+    def _card_block_decision(
+        self, args: dict[str, Any], context: dict[str, Any]
+    ) -> Decision:
+        """Risk threshold rule for card.block; the card block itself is never refused.
+
+        The amount and currency come ONLY from `context`, which banking-core
+        builds from the database row of the disputed transaction (ADR-0003
+        amendment 2026-09-29). Amount keys in `args` are model output derived
+        from customer text and are ignored: they can neither raise nor lower
+        the outcome.
+
+        Amount context present (the key is there even when its value is not
+        usable): compared to the threshold of its currency, whatever the block
+        reason is (safe outcome U8). Absent: a dispute reason has no known
+        amount and fails safe; any other reason has no charge to compare.
+        """
+        if AMOUNT_CONTEXT_KEY in context:
+            return self._amount_decision(
+                context[AMOUNT_CONTEXT_KEY], context.get(CURRENCY_CONTEXT_KEY)
+            )
+
+        reason = context.get("reason", args.get("reason"))
+        if reason in DISPUTE_REASONS:
+            return _handoff_required()
+        return Decision(allowed=True, reason_code=None, flags=[])
+
+    def _amount_decision(self, raw_amount: Any, raw_currency: Any) -> Decision:
+        """Compare a trusted amount to the threshold of its currency, failing safe.
+
+        Unknown or missing currency, a non-integer or negative amount: treated
+        as above the threshold in block semantics.
+        """
+        currency = str(raw_currency).strip().upper() if raw_currency else ""
+        if currency not in self.config.thresholds_minor:
+            return _handoff_required()
+        # bool is an int subclass: True must not read as an amount of 1.
+        if not isinstance(raw_amount, int) or isinstance(raw_amount, bool):
+            return _handoff_required()
+        if raw_amount < 0:
+            return _handoff_required()
+
+        if raw_amount <= self.config.thresholds_minor[currency]:
+            return Decision(allowed=True, reason_code=None, flags=[])
+        if self.config.amount_mode == "flag":
+            return Decision(
+                allowed=True,
+                reason_code=ReasonCode.POLICY_FLAGGED,
+                flags=["POLICY_FLAGGED", "HANDOFF_RECOMMENDED"],
+            )
+        return _handoff_required()

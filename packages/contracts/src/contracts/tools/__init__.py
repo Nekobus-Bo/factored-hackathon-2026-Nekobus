@@ -33,6 +33,8 @@ from contracts.tools.handoff_create import (
     HandoffOpenQuestion,
     HandoffPriority,
     HandoffReason,
+    HandoffRequirement,
+    HandoffRequirementLevel,
     HandoffStatus,
     HandoffSummary,
 )
@@ -177,7 +179,12 @@ TOOL_CATALOG: dict[str, ToolDefinition] = {
     ),
     "card.block": ToolDefinition(
         name="card.block",
-        description="Blocks a payment card by opaque card_ref. Requires idempotency key.",
+        description=(
+            "Blocks a payment card by opaque card_ref. Pass the transaction_id "
+            "(from transaction.list_recent) of the charge the customer disputes; "
+            "the policy reads its amount from the database. Returns the "
+            "handoff_requirement the policy decided. Requires idempotency key."
+        ),
         input_model=CardBlockInput,
         output_model=CardBlockOutput,
         mutates_state=True,
@@ -195,7 +202,10 @@ TOOL_CATALOG: dict[str, ToolDefinition] = {
     ),
     "kb.search": ToolDefinition(
         name="kb.search",
-        description="Lexical search, with a dense component only if it beats BM25 (ADR-0006).",
+        description=(
+            "Vector search over the public knowledge base; "
+            "BM25 or hybrid only when configured (ADR-0006)."
+        ),
         input_model=KbSearchInput,
         output_model=KbSearchOutput,
         mutates_state=False,
@@ -268,6 +278,8 @@ __all__ = [
     "HandoffSummary",
     "HandoffPriority",
     "HandoffReason",
+    "HandoffRequirement",
+    "HandoffRequirementLevel",
     "HandoffStatus",
     "IdentityVerifyDocumentInput",
     "IdentityVerifyDocumentOutput",

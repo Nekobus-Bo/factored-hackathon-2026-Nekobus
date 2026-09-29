@@ -15,7 +15,7 @@ flowchart TD
     subgraph HostData ["Host Data Layer (Internal Network Only)"]
         PG[("PostgreSQL 17 + pgvector<br/>DB: bank · Role: app<br/>pg_hba: Docker subnet only")]
         subgraph RedisInstance ["Host Redis Instance (Redis 6+ ACL)"]
-            RC["ACL: core-svc<br/>~session:* ~otp:*"]
+            RC["ACL: core-svc<br/>~session:* ~otp:* ~limit:*"]
             RE["ACL: edge-svc<br/>~orch:*"]
         end
     end
@@ -28,12 +28,13 @@ flowchart TD
 
         subgraph UntrustedZone ["Untrusted Zone"]
             ORC["orchestrator<br/>(chat API, turn engine, PII masking)"]
-            ENC["encoder<br/>(local CPU inference)"]
+            ENC["encoder = model server<br/>(decision model + embedding model, local CPU)"]
         end
     end
 
     EXT[External Traffic] -->|HTTP :8080| ORC
     ORC -->|HTTP /v1/analyze| ENC
+    CORE -->|HTTP /v1/embed (kb.search)| ENC
     ORC -->|HTTP /v1/tools/call| CORE
     CORE -->|DATABASE_URL| PG
     MIG -->|DATABASE_URL| PG
@@ -62,13 +63,15 @@ flowchart TD
    - A single Redis instance partitioned using Redis 6+ Access Control Lists (ACLs).
    - Reachable **only internally** (no public/external port binding).
    - Two distinct ACL accounts with minimal command sets and strictly segmented key patterns:
-     - **`core-svc`:** restricted to keys matching `~session:*` and `~otp:*`. Used only by `banking-core` for distributed session locking, FSM state, and OTP challenge verification.
+     - **`core-svc`:** restricted to keys matching `~session:*`, `~otp:*` and `~limit:*`. Used only by `banking-core` for distributed session locking, FSM state, OTP challenge verification, the simulated OTP inbox (`otp:inbox:*`, [ADR-0007](adr/0007-no-llm-biometrics.md)), and the cross-session attempt limits (per-customer OTP lock, per-document match counters).
      - **`edge-svc`:** restricted to keys matching `~orch:*`. Used only by `orchestrator` for encrypted conversation state caching and turn locks.
    - The orchestrator never receives `REDIS_CORE_URL` or credentials for the `core-svc` account.
 
 3. **Application Stack:**
    - Containers run with dropped capabilities (`cap_drop: [ALL]`), `no-new-privileges:true`, and read-only root filesystems (`read_only: true` with temporary `/tmp` tmpfs mounts).
    - In production compose, `banking-core` and `encoder` expose no host ports. Only the `orchestrator` port (`8080`) is exposed (or placed behind an ingress reverse proxy).
+   - **Model server (`encoder`):** it serves the decision model (`POST /v1/analyze`, `GET /v1/decision-points`) and the embedding model of `kb.search` (`POST /v1/embed`) ([ADR-0012](adr/0012-decision-points.md), Appendix J). It receives **raw customer text**, so it must run inside your private network and never be a third-party or public service. It can share the host with the rest of the stack or run on its own host: set `ENCODER_URL` (orchestrator) and `MODEL_SERVER_URL` (banking-core) to its address, publish its port only to those two services (firewall or security group), and fill its `hf-cache` volume there (`make warmup-retrieval`, with network once). **There is no authentication or TLS between the services and the model server yet**: the network is the control (declared in [limitations.md](limitations.md)). banking-core depends on it only for `kb.search`; if it is down or serves another model than `EMBEDDING_MODEL`/`EMBEDDING_REVISION`, `kb.search` is unavailable and every other tool is unaffected.
+   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. Behind an ingress proxy that appends the address it saw (nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`), set `TRUSTED_PROXY_HOPS=1` (one more per extra proxy). **Left at `0` behind a proxy, every customer shares the proxy's address and its budget, and once it is spent nobody can open a conversation until the hour ends.** Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. The orchestrator stores only a keyed hash of the address.
 
 ---
 
@@ -80,14 +83,17 @@ The required command sets derived from the codebase:
 
 | Service | User | Key Patterns | Code References | Required Redis Commands |
 |---|---|---|---|---|
-| `banking-core` | `core-svc` | `~session:* ~otp:*` | `control/session.py`<br/>`identity/challenge_store.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
-| `orchestrator` | `edge-svc` | `~orch:*` | `session/store.py` | `PING`, `GET`, `SET`, `DEL`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
+| `banking-core` | `core-svc` | `~session:* ~otp:* ~limit:*` | `control/session.py`<br/>`identity/challenge_store.py`<br/>`identity/simulated_inbox.py`<br/>`control/attempt_limits.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
+| `orchestrator` | `edge-svc` | `~orch:*` | `session/store.py`<br/>`session/rate_limit.py` | `PING`, `GET`, `SET`, `DEL`, `INCR`, `INCRBY`, `EXPIRE`, `WATCH`, `MULTI`, `EXEC`, `UNWATCH` |
 
 ### Why Transaction Commands Are Mandatory
 
 1. **`banking-core` session store:** Uses `WATCH` / `MULTI` / `EXEC` for optimistic concurrency during state transitions (`atomic_update`), and `SET ... NX PX` plus a `WATCH`/`GET`/`DEL` pipeline to safely release per-session locks without clearing locks acquired by succeeding callers.
-2. **`banking-core` challenge store:** Uses `INCR` and `EXPIRE` on `otp:challenge:<id>:evaluations` to atomically count attempts before verifying HMAC hashes, and `DEL` to invalidate challenges.
-3. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
+2. **`banking-core` challenge store:** Uses `INCR` and `EXPIRE` on `otp:challenge:<id>:evaluations` to atomically count attempts before verifying HMAC hashes, and `DEL` to invalidate challenges. redis-py sends `INCR` as `INCRBY key 1`, so `+incrby` is required: an ACL with `+incr` alone fails every `otp.verify` with `NOPERM`.
+3. **`banking-core` attempt limits:** `control/attempt_limits.py` creates a fixed-window counter with `SET key 0 NX EX <window>` and `INCR` in one `MULTI`, reads locks with `GET`, sets them with `SET NX EX`, and gives a successful match's count back with `WATCH` / `GET` / `MULTI` / `SET XX KEEPTTL` / `EXEC`. It needs no command beyond the set above; only the key pattern `~limit:*` is new.
+4. **`banking-core` simulated OTP inbox:** `identity/simulated_inbox.py` keeps one entry per challenge (`otp:inbox:challenge:<challenge_id>`, `SET ... EX <challenge TTL>`) and a small index of a session's challenge ids (`otp:inbox:session:<session_id>`, at most 10) so an inbox can be listed. The index is rewritten with `WATCH` / `GET` / `MULTI` / `SET EX` / `DEL` / `EXEC`. It never uses `SCAN`, `KEYS`, `MGET` or sorted sets, which the `core-svc` ACL does not grant. **The entry holds the clear OTP code** (the challenge store keeps only an HMAC): that is the simulated delivery, and it lives for the challenge TTL (`OTP_TTL_SECONDS`) and nowhere else. Keep `redis-core` internal, and keep the inbox prefix under `~otp:*`.
+5. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
+6. **`orchestrator` conversation rate limit:** `session/rate_limit.py` counts `POST /v1/conversations` per client address with `INCR` (sent as `INCRBY`) and `EXPIRE` in one `MULTI`, under `orch:ratelimit:conversations:<keyed hash>:<window>`. An `edge-svc` ACL written before this limit lacks `+incrby +expire`: the limiter then fails closed and every `POST /v1/conversations` answers 503.
 
 If `WATCH`, `MULTI`, `EXEC`, or `UNWATCH` are omitted from the ACL, Redis returns `NOPERM` and operations fail.
 
@@ -96,14 +102,17 @@ If `WATCH`, `MULTI`, `EXEC`, or `UNWATCH` are omitted from the ACL, Redis return
 Execute these commands in `redis-cli` on the host Redis instance:
 
 ```text
-ACL SETUSER core-svc reset on >REPLACE_WITH_CORE_REDIS_PASSWORD ~session:* ~otp:* -@all +ping +get +set +del +incr +expire +watch +multi +exec +unwatch
-ACL SETUSER edge-svc reset on >REPLACE_WITH_EDGE_REDIS_PASSWORD ~orch:* -@all +ping +get +set +del +watch +multi +exec +unwatch
+ACL SETUSER core-svc reset on >REPLACE_WITH_CORE_REDIS_PASSWORD ~session:* ~otp:* ~limit:* -@all +ping +get +set +del +incr +incrby +expire +watch +multi +exec +unwatch
+ACL SETUSER edge-svc reset on >REPLACE_WITH_EDGE_REDIS_PASSWORD ~orch:* -@all +ping +get +set +del +incr +incrby +expire +watch +multi +exec +unwatch
 ```
 
 Ensure the key prefix variables in `.env` match these patterns:
 - `REDIS_SESSION_KEY_PREFIX=session:` (covered by `~session:*`)
 - `REDIS_OTP_CHALLENGE_KEY_PREFIX=otp:challenge:` (covered by `~otp:*`)
+- `REDIS_OTP_INBOX_KEY_PREFIX=otp:inbox:` (covered by `~otp:*`; the simulated OTP inbox)
+- `REDIS_ATTEMPT_LIMIT_KEY_PREFIX=limit:` (covered by `~limit:*`)
 - `REDIS_EDGE_KEY_PREFIX=orch:conv:` (covered by `~orch:*`)
+- `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX=orch:ratelimit:` (covered by `~orch:*`)
 
 ---
 
@@ -149,8 +158,14 @@ The production compose override enforces explicit configuration without developm
 | `MASTER_KEY` | Master key for application-level encryption | `seed`, `banking-core` | 32-byte base64/hex secret |
 | `BLIND_INDEX_SALT` | Salt for deterministic blind indexing | `seed`, `banking-core` | 32-byte secret |
 | `SESSION_SECRET` | Secret key for conversation placeholder encryption | `orchestrator` | 32-byte secret |
-| `BANKING_CORE_MEMORY_LIMIT` | Container memory limit for banking-core | `banking-core` | `2g` |
-| `ENCODER_MEMORY_LIMIT` | Container memory limit for encoder | `encoder` | `3g` (default) or `4g` (`gliner`) |
+| `BANKING_CORE_MEMORY_LIMIT` | Container memory limit for banking-core. The embedding model no longer loads there by default, so it can be lowered once measured on Linux | `banking-core` | `2g` |
+| `ENCODER_MEMORY_LIMIT` | Container memory limit for the model server | `encoder` | `3g` (default; should fit `tfidf_lr` plus the embedding model, estimate) or `5g` (`gliner` plus the embedding model, estimate) |
+| `MODEL_SERVER_URL` | Base URL of the model server for `kb.search` | `banking-core` | `http://encoder:8090` (default) or `http://models.internal:8090` |
+| `EMBEDDING_MODEL` | Embedding model the model server serves and banking-core expects | `encoder`, `banking-core` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `EMBEDDING_REVISION` | Pin: a full 40-hex commit of that model. banking-core rejects any answer from another revision | `encoder`, `banking-core` | a 40-hex commit |
+| `EMBEDDING_WEIGHTS_SHA256` | Optional pin: SHA-256 of the weights file, verified when the model server starts. `make warmup-retrieval` prints it | `encoder` | 64 hex characters |
+| `EMBEDDING_BACKEND` | `remote` (the model server, default) or `local` (in process, tests and local development only; needs the `vector` extra in the image) | `banking-core` | `remote` |
+| `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | Decision-point artifact path, downgrade of a pin mismatch (refused under `APP_ENV=production`), raise-only tau override. The committed seed artifact is used (provisional evidence, [ADR-0012](adr/0012-decision-points.md)); the model server runs in legacy seed mode only when no artifact file exists | `encoder` | empty, `false`, empty |
 
 ### Trust Boundary Verification
 
@@ -180,27 +195,28 @@ Infrastructure Plumbing (.env / Container Environment)
   ├── DATABASE_URL, REDIS_CORE_URL, REDIS_EDGE_URL
   ├── MASTER_KEY, BLIND_INDEX_SALT, SESSION_SECRET
   ├── ENCODER_BACKEND, ENCODER_MODEL, ABSTENTION_THRESHOLD
-  ├── EMBEDDING_MODEL, RETRIEVAL_MODE
+  ├── EMBEDDING_MODEL, EMBEDDING_REVISION, MODEL_SERVER_URL, RETRIEVAL_MODE
   └── LLM_MODE, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY
         │
         ▼ (Seed only on initial boot)
 Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
   ├── Risk thresholds per currency (minor units)
-  ├── Policy evaluation mode (flag vs block)
+  ├── Policy amount mode (`flag` = handoff recommended, `block` = handoff required)
   └── Allowed tool dispatch matrices per FSM state
 ```
 
 1. **Pure Environment (`.env`):**
    - **Data connectivity:** Plugging your own external PostgreSQL (`DATABASE_URL`, pgvector extension required) or Redis instances (`REDIS_CORE_URL`, `REDIS_EDGE_URL` supporting `redis://` or `rediss://` with username, password, port and TLS; use database 0, or add `+select` to both ACL users if you pick another DB number).
-   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, and `REDIS_EDGE_KEY_PREFIX`.
-   - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), embedding models (`EMBEDDING_MODEL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
+   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_OTP_INBOX_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
+   - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), the pinned embedding model (`EMBEDDING_MODEL`, `EMBEDDING_REVISION`) and where it runs (`MODEL_SERVER_URL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
    - **LLM engine:** Switching between deterministic `replay` and live provider (`live`), model names (`LLM_MODEL`), base URLs, and timeouts.
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
 
 2. **Database Runtime Configuration:**
-   - Policy thresholds (`POLICY_SEED_THRESHOLDS_MINOR`), action modes (`POLICY_SEED_AMOUNT_MODE`), and verification policies are **not constants in code**.
+   - Policy thresholds (`POLICY_SEED_THRESHOLDS_MINOR`), the amount mode (`POLICY_SEED_AMOUNT_MODE`: `flag` recommends a handoff above the threshold, `block` requires one), and verification policies are **not constants in code**.
    - The environment variables only seed initial values into PostgreSQL tables on first boot.
    - Active policies reside in the database and can be queried and modified at runtime via the banking-core Admin API (`GET` / `PUT /v1/admin/policy-config`, authenticated via bearer token when `ADMIN_API_ENABLED=true`), with zero service restart or redeployment.
+   - The same goes for which tools are enabled (the state × tool matrix, only ever narrower than the code floor): `POLICY_SEED_DISABLED_TOOLS` (default `account.get_summary`) seeds the first version, and `GET` / `PUT /v1/admin/tool-policy` read and change it. Each change is a new audited version that applies to the next tool call. Migration `0007` makes `config.tool_policy` versioned.
 
 3. **Managed Cloud Services Note (⚠️ Pending Validation):**
    - Any PostgreSQL instance with `pgvector` via `DATABASE_URL` and any Redis instance with ACL/TLS via `REDIS_CORE_URL` / `REDIS_EDGE_URL` (`rediss://`) are supported purely by configuration.
@@ -210,7 +226,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 
 The application services are architecturally stateless:
 - **`orchestrator`:** Holds no local state. Conversation transcripts and masked placeholder maps are stored in Redis (`edge-svc`). Turn execution is serialized via Redis turn locks (`acquire_turn_lock`), and writes are fenced against token expiration (`save_fenced`).
-- **`banking-core`:** Holds no local state. FSM verification states, attempt counters, and OTP challenge hashes reside in Redis (`core-svc`). Domain entities and append-only audit chains reside in PostgreSQL. Tool invocations acquire an exclusive per-session distributed lock (`lock` with `nx=True, px=...`).
+- **`banking-core`:** Holds no local state. FSM verification states, attempt counters, cross-session attempt limits (per-customer OTP failures and lock, per-document match failures), OTP challenge hashes and the simulated OTP inbox entries (with the clear code, for the challenge TTL) reside in Redis (`core-svc`). Domain entities and append-only audit chains reside in PostgreSQL. Tool invocations acquire an exclusive per-session distributed lock (`lock` with `nx=True, px=...`).
 - **Idempotency:** Tool invocations accept an `idempotency_key`, preventing duplicate card blocks or dispute actions across retries.
 
 > [!WARNING]
@@ -220,9 +236,9 @@ The application services are architecturally stateless:
 
 | Component | Operational Ceiling / Limit | Notes |
 |---|---|---|
-| `banking-core` per-replica RAM | ~1.3 GB RSS added at startup (`BANKING_CORE_MEMORY_LIMIT=2g`) | Loads `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` and indexes the 120-snippet Knowledge Base in RAM on boot. Database `pgvector` table ingestion is pending. |
-| `encoder` (`tfidf_lr`) | ~43 MB model footprint, < 500 MB total container RSS | Default fast lexical classifier on CPU. Runs easily within `ENCODER_MEMORY_LIMIT=3g`. |
-| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not the default**: `.env.example` seeds `ENCODER_BACKEND=tfidf_lr` because of this memory footprint. |
+| `banking-core` per-replica RAM | Small: the embedding model no longer loads here (it added ~1.3 GB RSS with the KB index, measured on macOS, when it did). The 120-snippet KB index is still built in RAM from vectors the model server returns. The Linux figure is pending; the `2g` limit is unchanged until it is measured | The image still installs the `vector` extra ([ADR-0012](adr/0012-decision-points.md), J.6). Database `pgvector` table ingestion is pending. |
+| Model server (`encoder`) with `tfidf_lr` and the embedding model | ~43 MB for `tfidf_lr`, plus the embedding model (PyTorch and MiniLM; the Linux figure is pending) | Should fit `ENCODER_MEMORY_LIMIT=3g` (estimate). Loaded once, shared by every banking-core replica. Without `EMBEDDING_MODEL` it is < 500 MB. |
+| Model server (`encoder`) with `gliner` | ~3.45 GB peak RSS alone (`ENCODER_MEMORY_LIMIT=5g` with the embedding model, estimate) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not the default**: `.env.example` seeds `ENCODER_BACKEND=tfidf_lr` because of this memory footprint. |
 | One-off tasks (`migrate`, `seed`) | Run once per deployment | Database migrations and initial seed run as separate execution tasks, never concurrently per replica. |
 | Audit log verification | Linear verification over hash chain | Hash chain integrity is verified via `make verify-audit`. Tail truncation checkpointing to an external store remains pending. |
 
@@ -301,7 +317,7 @@ to the same environment from overlapping.
 |---|---|---|---|
 | `DEPLOY_PLATFORMS` | variable | Build target(s): `linux/amd64`, `linux/arm64`, or both comma-separated | `linux/amd64` |
 | `BANKING_CORE_SYNC_ARGS` | variable | Build arg forwarded to `apps/banking-core/Dockerfile` | `--extra vector` |
-| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile` (`gliner` to include it; empty for `tfidf_lr` only) | empty |
+| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile`: `embed` (PyTorch and sentence-transformers for `/v1/embed`, needed by `kb.search`), `gliner`, or several separated by a space; empty builds the decision baseline only, and then `EMBEDDING_MODEL` must be empty or the model server refuses to start | `embed` |
 | `DEPLOY_ENABLED` | variable | Must be `"true"` or the `deploy` job no-ops cleanly (this is what lets a fork exist without a working deploy). **Must be set at the repository level, not inside a GitHub Environment**: the `deploy` job's `if:` is evaluated before the job's `environment:` binds, so an environment-scoped variable of the same name would never be visible there and the job would silently skip forever | unset |
 
 ### Per-environment configuration
@@ -321,9 +337,14 @@ to the same environment from overlapping.
 | `MASTER_KEY` | secret | always | See §3 table above |
 | `BLIND_INDEX_SALT` | secret | always | See §3 table above |
 | `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` |
-| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API |
+| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API. A real random secret: `banking-core` refuses to start under `APP_ENV=production` with an empty token or the public development token |
+| `DEMO_RESET_ENABLED` | variable | optional | `true` to allow `POST /v1/admin/demo/reset-fixtures` under `APP_ENV=production` (it also needs the admin API). See §7 |
+| `OTP_CHANNEL_MODE` | variable | optional | `simulated`, the default and the only delivery that exists. See §7 |
+| `DEMO_SEED` | variable | optional | `true` to load the synthetic demo customers after `up`, with the seed's `--force`. It **deletes the banking tables' contents**: set it on the presentation Environment only. See §7 |
 | `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
 | `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
+| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (`30` unless set; the development compose defaults to `1000`), and how many reverse proxies stand in front of the orchestrator (default `0`: `X-Forwarded-For` is ignored). Set `TRUSTED_PROXY_HOPS` to the real number when an ingress proxy fronts the stack, see §1 |
+| `ENCODER_BACKEND`, `ABSTENTION_THRESHOLD` | variable | optional | Default to the calibrated seed in `.env.example` (`tfidf_lr`, `0.37`). `ENCODER_BACKEND=gliner` also needs the `ENCODER_EXTRAS` build variable and about 4 GB of memory |
 | `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
 | `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |
 | `REDIS_EDGE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-edge` container |
@@ -333,6 +354,14 @@ database, `pgvector`, `pg_hba.conf`) and §2 (Redis ACL users) above, done once 
 whoever administers that host. `DATA_MODE=bundled` needs none of that: the compose
 `bundled-data` profile starts `postgres`, `redis-core`, and `redis-edge` as containers
 on the target itself.
+
+### What a deploy runs
+
+In order, over SSH on the target: create `$DEPLOY_PATH/infra/compose` and `$DEPLOY_PATH/eval/replay`
+(the orchestrator's read-only recordings mount) and copy the compose files; write
+`$DEPLOY_PATH/.env` (mode 600); `pull`; `run --rm migrate`; `up -d --wait`; when
+`DEMO_SEED=true`, `run --rm seed ... seed --force`; then a `/health` smoke check on the
+orchestrator. The images already contain the code; nothing is built on the server.
 
 ### Forking this repository
 
@@ -380,3 +409,45 @@ both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy
 actually run** against any target — no Environment has been created yet, and no
 `DEPLOY_*` secret exists anywhere. Treat this section as a design, not a proven
 procedure, until a first real run against the platform is logged here.
+
+---
+
+## 7. Presentation environment
+
+The team's own environment for presentations. There is **no separate environment for
+judges**: they clone the repository and run `make demo` on their machine
+([runbook](runbook.md)), with at most an LLM API key in `.env`.
+
+The presentation environment is an ordinary deployment (§6, same images, same
+`deploy.yml`) that stays `APP_ENV=production`, with **production-hardened defaults and
+each demo feature switched on explicitly**. The development defaults of
+`docker-compose.yml` (admin API on with a public token) never reach it:
+`docker-compose.prod.yml` pins them back to off, and `banking-core` refuses to start
+with the development token when `APP_ENV=production`.
+
+**The hosting platform is still to be decided** (AWS, Google Cloud Platform or Microsoft
+Azure, §6). Nothing below depends on which one it is.
+
+### The switches
+
+| Switch | Set it to | What it turns on | Notes |
+|---|---|---|---|
+| `ADMIN_API_ENABLED` + `ADMIN_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | Back-office actions over HTTP: `GET`/`PUT /v1/admin/policy-config` | Startup fails on an empty token or the development token. Keep the token out of the repository: it is a GitHub secret |
+| `DEMO_RESET_ENABLED` | `true` | `POST /v1/admin/demo/reset-fixtures`: puts the fixture customers' cards back to their seed state between demo runs | Without it the endpoint answers 403 in production. It also needs the admin API |
+| `OTP_CHANNEL_MODE` | `simulated` (the default) | The simulated OTP delivery: no code leaves the system | Today this is the only delivery that exists; `banking-core` does not read the variable yet, and the real channel is an open decision ([limitations](limitations.md)). The panel that shows simulated codes belongs to the customer web client, which is pending, and the dev OTP endpoint stays off (`deploy.yml` never sets `ALLOW_DEV_OTP_HOOK`) |
+| `DEMO_SEED` | `true` | After `up`, `deploy.yml` runs `python -m banking_core.seed.cli seed --force` in the `seed` service | The seed refuses to run under `APP_ENV=production` without `--force`. It **truncates and reloads** the banking tables with the synthetic demo customers (es/pt/en), so every deploy with the variable set resets the demo data and empties the handoff queue: leave it on only for a deploy that should do that. Set it on the presentation GitHub Environment, never at repository level and never on an environment that holds real customer data: it would wipe it |
+| `TRUSTED_PROXY_HOPS` | the number of reverse proxies the platform puts in front of the orchestrator | Which client address the per-address limit counts | `0` (default) ignores `X-Forwarded-For` and counts the connection peer, so behind a proxy every customer shares the proxy's address and budget. Never set more than the real number: the extra entries come from the client |
+| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` | leave at `30` | Conversations one client address may open per hour | `deploy.yml` writes `30` unless the variable is set, and `docker-compose.prod.yml` pins the same default; the development compose defaults to `1000` so local runs and evaluation runs from one address are not limited. It must be at least `1`: `0` is not "unlimited", the orchestrator refuses to start |
+| `LLM_MODE` + `LLM_API_KEY` | `live` + the key (secret) | Real model calls | With `replay` the orchestrator answers 503 on a message that has no recording, and `deploy.yml` does not ship `eval/replay` yet |
+
+Everything else keeps its production default: `APP_ENV=production`, only the orchestrator
+publishes a port, the dev OTP endpoint is off, `EVAL_EXPOSE_TURN` is refused, and the
+secrets (`MASTER_KEY`, `BLIND_INDEX_SALT`, `SESSION_SECRET`, database and Redis URLs) come
+from the GitHub Environment.
+
+### Not yet exercised
+
+The seed service runs from the registry image with `/app/data` as scratch space (the base
+file's bind mounts of `data/` and `reports/` would be root-owned empty directories on a
+server). Like the rest of §6, this has been render-validated but never run against a real
+target.

@@ -129,3 +129,13 @@ def test_hybrid_fit_fits_both_backends(kb: KnowledgeBase) -> None:
     lexical, dense = FixedRankingAdapter(RANKING), FixedRankingAdapter(RANKING)
     HybridAdapter(lexical, dense).fit([], list(kb.snippets))
     assert lexical.fitted and dense.fitted
+
+
+def test_cap_above_the_knowledge_base_returns_what_exists(kb: KnowledgeBase) -> None:
+    retriever = Retriever(kb, FixedRankingAdapter(RANKING), max_k=len(kb) + 4)
+    results = retriever.search("q", k=len(kb) + 4, mode=SearchMode.ANY)
+    assert _ids(results) == RANKING
+    same = retriever.search("q", lang="es", k=len(kb) + 4)
+    assert _ids(same) == ["block.01.es", "dispute.01.es"]
+    with pytest.raises(ValueError, match="configured max_k"):
+        retriever.search("q", k=len(kb) + 5, mode=SearchMode.ANY)

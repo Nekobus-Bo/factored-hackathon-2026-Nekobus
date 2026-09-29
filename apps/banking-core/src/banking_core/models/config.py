@@ -49,6 +49,21 @@ class PolicyConfigRecord(Base):
     session_ttl_seconds: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=3600
     )
+    customer_otp_max_failures: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=5
+    )
+    customer_otp_window_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=3600
+    )
+    customer_otp_lock_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=1800
+    )
+    document_match_max_failures: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=10
+    )
+    document_match_window_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=3600
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),
@@ -62,17 +77,34 @@ class PolicyConfigRecord(Base):
 
 
 class ToolPolicyRecord(Base):
-    """Persistent storage for tool state authorization matrix overrides."""
+    """One version of the tool authorization matrix (ADR-0002).
+
+    Same shape as PolicyConfigRecord: the active row is the policy in force and
+    every change is a new row. ``matrix`` maps a tool name to the verification
+    states that enable it; ``[]`` disables the tool and a tool missing from it
+    takes its catalog default. It can only restrict contracts.tools.CODE_FLOOR.
+    """
 
     __tablename__ = "tool_policy"
-    __table_args__ = {"schema": "config"}
-
-    tool_name: Mapped[str] = mapped_column(sa.String(128), primary_key=True)
-    permitted_states: Mapped[list[str]] = mapped_column(
-        postgresql.JSONB(astext_type=sa.Text()),
-        nullable=False,
+    __table_args__ = (
+        sa.Index(
+            "ux_config_tool_policy_one_active",
+            "is_active",
+            unique=True,
+            postgresql_where=sa.text("is_active"),
+        ),
+        {"schema": "config"},
     )
-    updated_at: Mapped[datetime] = mapped_column(
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True, autoincrement=True)
+    version: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, unique=True, default=1
+    )
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    matrix: Mapped[dict[str, list[str]]] = mapped_column(
+        postgresql.JSONB(astext_type=sa.Text()), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),
         nullable=False,

@@ -16,13 +16,13 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 |---|---|
 | `apps/banking-core` | Trusted zone. Data, tools, policies, FSM, audit. The only service with database credentials |
 | `apps/orchestrator` | Untrusted zone. Chat, session, LLM, PII masking |
-| `apps/encoder` | Serving layer for local decision and extraction model. Runs on CPU |
+| `apps/encoder` | Model server: serves the local decision, extraction and embedding models. Runs on CPU, inside the private network |
 | `apps/web-client` | Simulated fintech and chat bubble |
 | `apps/web-backoffice` | Queue, handoff, guardrails, metrics |
 | `packages/contracts` | Tools, message blocks and policies. Source of truth for types |
 | `packages/encoder` | Intent, slots, PII model logic. Runs on CPU |
 | `packages/retrieval` | Knowledge base and hybrid index |
-| `packages/design-tokens` | Shared design tokens and visual primitives for frontends |
+| `packages/design-tokens` | Design tokens and `pb-*` component CSS, synced from the design-system artifact. Bun workspace package; generated `dist/` is committed |
 | `data/` | `raw → staging → curated`, plus `eval` |
 | `eval/` | Scenarios, replay recordings, runner |
 | `infra/` | Compose, database init, deployment |
@@ -48,11 +48,13 @@ These come from the ADRs. A change that violates one is rejected no matter how w
 
 ```bash
 make help     # list available commands
-make demo     # full startup in replay mode, no API key
+make demo     # one-command local startup: build, warmup, up, seed, smoke
+              # (replay recordings are pending: talking to the assistant needs an LLM key in .env)
 make up       # services
 make seed     # seed from data/raw
 make smoke    # installation check
 make eval     # baseline vs proposed system
+make design-tokens-check   # TypeScript side: design tokens vs their source, typecheck, tests (needs Bun)
 ```
 
 Not every target is implemented yet; `make help` lists what exists and pending targets fail with an explicit message.
@@ -66,6 +68,8 @@ Not every target is implemented yet; `make help` lists what exists and pending t
 **When adding a tool:** schema in `packages/contracts/src/contracts/tools/` → implementation in `apps/banking-core/src/*/tools/` → entry in the policy engine → FSM state that enables it → scenario in `eval/scenarios/` covering it, including the case where it must **not** run.
 
 **When adding a workflow:** first check whether it is configuration only. If it needs code, that means a new banking operation is required, and that ships with a contract and tests.
+
+**When adding a decision point:** artifact entry through `make calibrate TASK=decision-points` (then `make calibration-verify`; guide in `tools/calibrate/README.md`, [ADR-0012](docs/adr/0012-decision-points.md) Appendix F) → effects entry in `apps/orchestrator/config/decision_effects.yaml` (start in `shadow`) → a scenario covering it, including the case where it must abstain → flip to `enforce` in its own PR with the report attached and `docs/limitations.md` updated.
 
 **When touching prompts or the model:** run `make eval` before and after. A prompt change without evaluation is not an improvement, it is a bet.
 
@@ -95,6 +99,10 @@ The organization's dataset is **not versioned**. It goes in `data/raw/` locally 
 ## Things we do not do, on purpose
 
 LLM-based biometric verification ([ADR-0007](docs/adr/0007-no-llm-biometrics.md)), autonomous dispute resolution, and any shortcut that gives the model authority. If a task seems to ask for one of these, stop and ask.
+
+## Pending: rename the amount modes
+
+**PENDING, not done.** If time allows before the freeze, rename the stored policy amount modes `flag` and `block` to `recommend` and `require`: the DB values (with a migration), the admin API, the env seeds (`POLICY_SEED_AMOUNT_MODE`), the eval scenarios and the docs. Today the docs only relabel them ("handoff recommended" for `flag`, "handoff required" for `block`, see [ADR-0003](docs/adr/0003-deterministic-vs-ai.md)), because `block` does not block anything: `card.block` is never refused for amount, the mode decides whether a handoff is required. Until the rename lands, keep writing `flag` and `block` in code and data.
 
 ## Project close
 

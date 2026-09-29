@@ -41,9 +41,12 @@ def call_tool(
 ) -> ToolResult:
     """Execute a tool call within an established customer verification session.
 
-    Rate limits are per session (policy engine). Per-IP limiting belongs at the
-    edge: the only client here is the orchestrator, and client-supplied
-    forwarding headers are never trusted.
+    Rate limits are per session (policy engine) and, across sessions, per
+    customer (failed OTP verifications) and per claimed document (failed
+    matches): see control/attempt_limits.py. Per-IP limiting belongs at the
+    edge (the orchestrator limits conversation creation): the only client here
+    is the orchestrator, and client-supplied forwarding headers are never
+    trusted.
     """
     if not x_session_id or not x_session_id.strip():
         raise HTTPException(

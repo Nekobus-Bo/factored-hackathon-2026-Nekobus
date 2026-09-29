@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     encoder_url: str = Field(default="http://encoder:8090", alias="ENCODER_URL")
     encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
 
+    # Decision points (ADR-0012): the effects file binds each decision point to an
+    # engine effect; blank = the file shipped with the service. The mode override
+    # is the kill switch: 'confirm_gate=shadow,block_reason=off' needs no redeploy.
+    decision_effects_file: str | None = Field(
+        default=None, alias="DECISION_EFFECTS_FILE"
+    )
+    decision_points_modes: str = Field(default="", alias="DECISION_POINTS_MODES")
+
     # Redis Edge (Edge trust zone session store & distributed locking)
     redis_edge_url: SecretStr | None = Field(
         default=None,
@@ -52,6 +60,19 @@ class Settings(BaseSettings):
         default="orch:conv:",
         validation_alias=AliasChoices("REDIS_EDGE_KEY_PREFIX"),
     )
+    # Rate limit on POST /v1/conversations, per client address (see
+    # session/rate_limit.py). Counters live on redis-edge under this prefix, which
+    # the edge ACL (~orch:*) must cover.
+    redis_edge_rate_limit_key_prefix: str = Field(
+        default="orch:ratelimit:",
+        validation_alias=AliasChoices("REDIS_EDGE_RATE_LIMIT_KEY_PREFIX"),
+    )
+    rate_limit_conversations_per_ip_hour: int = Field(
+        default=30, ge=1, alias="RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR"
+    )
+    # How many reverse proxies stand in front of the orchestrator. 0 (default)
+    # ignores X-Forwarded-For entirely; N strips N entries from its right.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=8, alias="TRUSTED_PROXY_HOPS")
     # No default on purpose: startup fails without it (see require_session_secret).
     session_secret: str | None = Field(
         default=None,

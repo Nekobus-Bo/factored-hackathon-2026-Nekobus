@@ -1,6 +1,7 @@
 """Banking Core service entrypoint."""
 
 import logging
+import os
 
 from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
@@ -14,15 +15,19 @@ from banking_core.api import (
     validate_admin_api_settings,
 )
 from banking_core.control.config import get_control_config_repository
-from banking_core.identity.config import IdentityConfig
+from banking_core.identity.config import IdentityConfig, validate_otp_channel_mode
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
+from banking_core.log_redaction import install_redaction
 
 logger = logging.getLogger(__name__)
+
+install_redaction()
 
 app = FastAPI(title="banking-core")
 app.include_router(sessions_router)
 app.include_router(tools_router)
 app.router.add_event_handler("startup", validate_admin_api_settings)
+app.router.add_event_handler("startup", validate_otp_channel_mode)
 
 
 def mount_admin_router_if_enabled(application: FastAPI) -> None:
@@ -34,9 +39,17 @@ mount_admin_router_if_enabled(app)
 
 
 def mount_dev_router_if_enabled(application: FastAPI) -> None:
-    """Mount the OTP retrieval endpoint only in explicitly enabled environments."""
+    """Mount the OTP retrieval endpoint only in explicitly enabled environments.
+
+    The endpoint returns cleartext OTP codes, so enabling it under
+    APP_ENV=production aborts startup instead of serving it.
+    """
     if not IdentityConfig.from_env().allow_dev_otp_hook:
         return
+    if os.getenv("APP_ENV", "development").strip().lower() == "production":
+        raise RuntimeError(
+            "ALLOW_DEV_OTP_HOOK cannot be enabled when APP_ENV=production"
+        )
     otp_path = "/v1/dev/otp/{challenge_id}"
     if any(getattr(route, "path", None) == otp_path for route in application.routes):
         return
@@ -69,6 +82,9 @@ def ready(response: Response) -> ReadinessResponse:
     try:
         repo = get_control_config_repository()
         repo.get_policy_config()
+        # Loads (the first time, seeds) the tool policy: a bad seed shows here,
+        # not on a customer's first tool call.
+        repo.get_tool_permitted_states("kb.search")
     except Exception as exc:
         logger.error(
             "Readiness check failed: policy config unavailable: %s: %s",

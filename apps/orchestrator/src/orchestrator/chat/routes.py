@@ -1,8 +1,21 @@
 """Customer-facing chat API.
 
-POST /v1/conversations                 open a conversation (and a banking-core session)
+POST /v1/conversations                 open a conversation (and a banking-core session);
+                                       limited per client address (429 + Retry-After)
 POST /v1/conversations/{id}/messages   run one turn, return the blocks
 GET  /v1/conversations/{id}            masked transcript only
+GET  /v1/conversations/{id}/inbox      the simulated OTP messages of this conversation
+                                       (ADR-0007): the code shown to the browser
+                                       that types it, never stored or sent to the LLM
+
+A message may carry a `client_message_id`. It makes the request safe to retry:
+the writes of a re-run turn reuse their idempotency keys, and a retry of the
+last completed turn gets its stored outcome back without running again. A
+message without one is not deduplicated.
+
+The inbox is a pass-through to banking-core for the conversation's own banking
+session. It reads the conversation only for that id and saves nothing: the code
+never enters the LLM history, the transcript, the turn metadata or the logs.
 """
 
 import logging
@@ -10,22 +23,30 @@ from datetime import UTC, datetime
 from typing import Any
 
 from contracts import MESSAGE_BLOCK_ADAPTER
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from redis.exceptions import RedisError
 
-from orchestrator.chat.handler import TurnHandler
+from orchestrator.chat.client_ip import client_ip
+from orchestrator.chat.handler import TurnHandler, derive_turn_id
 from orchestrator.chat.transcript import mask_for_transcript
 from orchestrator.conversation.models import TurnEvalData
 from orchestrator.llm.replay import ReplayMissError
 from orchestrator.privacy.masking import Masker, RegexMasker
 from orchestrator.session.models import (
+    CompletedTurn,
     ConversationState,
     Lang,
     Message,
     MessageRole,
 )
+from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
-from orchestrator.tools_client import BankingCoreClient, SessionCreationError
+from orchestrator.tools_client import (
+    BankingCoreClient,
+    InboxUnavailableError,
+    SessionCreationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +71,16 @@ class SendMessageRequest(BaseModel):
 
     text: str = Field(..., min_length=1, max_length=2000)
     lang: Lang | None = None
+    client_message_id: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description=(
+            "Unique per message, repeated unchanged when the same message is "
+            "sent again. Without it a retry is treated as a new message"
+        ),
+    )
 
 
 class SendMessageResponse(BaseModel):
@@ -71,6 +102,20 @@ class TranscriptResponse(BaseModel):
     messages: list[TranscriptMessage]
 
 
+class InboxMessageResponse(BaseModel):
+    """One simulated OTP delivery. It carries the clear code by design (ADR-0007)."""
+
+    channel: str
+    destination_masked: str
+    code: str = Field(repr=False)
+    received_at: datetime
+    expires_at: datetime
+
+
+class InboxResponse(BaseModel):
+    messages: list[InboxMessageResponse]
+
+
 def _store(request: Request) -> SessionStore:
     store: SessionStore = request.app.state.session_store
     return store
@@ -79,6 +124,30 @@ def _store(request: Request) -> SessionStore:
 def _banking(request: Request) -> BankingCoreClient:
     banking: BankingCoreClient = request.app.state.banking_client
     return banking
+
+
+async def _enforce_conversation_limit(request: Request) -> None:
+    """429 before any banking-core session exists; 503 if the limit cannot be read.
+
+    Fails closed: without redis-edge the limit cannot be enforced, and the
+    conversation itself could not be stored anyway.
+    """
+    limiter: ConversationRateLimiter = request.app.state.conversation_limiter
+    address = client_ip(request, request.app.state.trusted_proxy_hops)
+    try:
+        decision = await limiter.hit(address)
+    except RedisError as exc:
+        logger.error("Conversation rate limiter unavailable (%s)", type(exc).__name__)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversations are temporarily unavailable",
+        ) from exc
+    if not decision.allowed:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many conversations opened from this address; try again later",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
 
 
 def _handler(request: Request) -> TurnHandler:
@@ -118,6 +187,7 @@ async def _load(store: SessionStore, conversation_id: str) -> ConversationState:
 async def create_conversation(
     request: Request, body: CreateConversationRequest | None = None
 ) -> CreateConversationResponse:
+    await _enforce_conversation_limit(request)
     try:
         banking_session_id = await _banking(request).create_session()
     except SessionCreationError as exc:
@@ -152,10 +222,33 @@ async def send_message(
         )
     try:
         state = await _load(store, conversation_id)
+        completed = state.last_turn
+        if (
+            body.client_message_id is not None
+            and completed is not None
+            and completed.client_message_id == body.client_message_id
+        ):
+            # The client is retrying the turn that just completed: answer from
+            # the stored outcome. No LLM call, no tool call, nothing appended.
+            logger.info("Retried message answered from the stored outcome")
+            return SendMessageResponse(
+                conversation_id=conversation_id,
+                blocks=_validate_blocks(
+                    [
+                        _unmask_block_values(block, state.placeholder_map)
+                        for block in completed.blocks
+                    ]
+                ),
+            )
         if body.lang:
             state.language = body.lang
+        turn_id = (
+            derive_turn_id(conversation_id, body.client_message_id)
+            if body.client_message_id is not None
+            else None
+        )
         try:
-            outcome = await handler.handle_turn(state, body.text)
+            outcome = await handler.handle_turn(state, body.text, turn_id=turn_id)
         except ReplayMissError as exc:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, detail="replay_miss"
@@ -169,6 +262,7 @@ async def send_message(
 
         blocks = _validate_blocks(outcome.blocks)
         _append_transcript(state, body.text, blocks, outcome.metadata)
+        state.last_turn = _completed_turn(state, body.client_message_id, blocks)
         state.updated_at = datetime.now(UTC)
         if not await store.save_fenced(state, token):
             logger.error("Turn lost its lock before saving; state not saved")
@@ -202,6 +296,40 @@ async def get_transcript(request: Request, conversation_id: str) -> TranscriptRe
     )
 
 
+@router.get("/{conversation_id}/inbox", response_model=InboxResponse)
+async def get_inbox(
+    request: Request, response: Response, conversation_id: str
+) -> InboxResponse:
+    """Simulated OTP messages of this conversation's banking session, newest first.
+
+    The web client shows them as "you got an email with the code". The
+    conversation is loaded only to find its own banking session, so no other
+    session's code can be asked for. Nothing is saved or logged from the answer.
+    """
+    state = await _load(_store(request), conversation_id)
+    try:
+        messages = await _banking(request).simulated_inbox(state.banking_session_id)
+    except InboxUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The inbox is temporarily unavailable",
+        ) from exc
+    # The body holds a live code: no cache, in the browser or on the way.
+    response.headers["Cache-Control"] = "no-store"
+    return InboxResponse(
+        messages=[
+            InboxMessageResponse(
+                channel=message.channel,
+                destination_masked=message.destination_masked,
+                code=message.code,
+                received_at=message.received_at,
+                expires_at=message.expires_at,
+            )
+            for message in messages
+        ]
+    )
+
+
 def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
     """Mask recursive JSON values; Any represents nested MessageBlock payloads."""
     if isinstance(value, str):
@@ -214,6 +342,39 @@ def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
             for key, item in value.items()
         }
     return value
+
+
+def _unmask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
+    """Inverse of _mask_block_values: put the customer's own values back."""
+    if isinstance(value, str):
+        return _masker.unmask(value, placeholder_map)
+    if isinstance(value, list):
+        return [_unmask_block_values(item, placeholder_map) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _unmask_block_values(item, placeholder_map)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _completed_turn(
+    state: ConversationState,
+    client_message_id: str | None,
+    blocks: list[dict[str, Any]],
+) -> CompletedTurn | None:
+    """What a retry of this turn gets back; None if the client did not tag it.
+
+    The blocks reach the customer with their own values in the text, so they are
+    stored masked like the transcript and unmasked again on replay: Redis never
+    holds them in clear.
+    """
+    if client_message_id is None:
+        return None
+    return CompletedTurn(
+        client_message_id=client_message_id,
+        blocks=[_mask_block_values(block, state.placeholder_map) for block in blocks],
+    )
 
 
 def _append_transcript(

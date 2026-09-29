@@ -3,14 +3,29 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
+from typing import ClassVar, Literal
 
 from encoder.models import DecisionExample, DecisionPrediction
 
+# distribution: `predict` fills `probabilities` for every label of the backend's
+# label space, summing to 1 (+/- 1e-3). Calibrators and group views need it.
+# top1_only: only the top label and its confidence mean anything (GLiNER today);
+# the rest of `probabilities` is filler. Such a backend supports a plain threshold.
+ProbabilityKind = Literal["distribution", "top1_only"]
+
 
 class DecisionAdapter(ABC):
-    """Abstract adapter interface for decision (intent + slots) models."""
+    """Abstract adapter interface for decision (intent + slots) models.
+
+    A subclass declares ``kind`` (its key in ``encoder.registry``) and
+    ``probability_kind``. The conformance test
+    (``packages/encoder/tests/test_adapter_conformance.py``) is the checklist for a
+    new adapter (ADR-0012, Appendix C).
+    """
 
     name: str
+    kind: ClassVar[str]
+    probability_kind: ClassVar[ProbabilityKind]
 
     @abstractmethod
     def fit(
