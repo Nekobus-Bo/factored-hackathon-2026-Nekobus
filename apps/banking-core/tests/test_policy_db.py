@@ -89,6 +89,46 @@ def test_policy_loader_seeds_from_env_on_empty_db(db_session: Session) -> None:
     assert records[0].currency == "USD"
 
 
+def test_attempt_limits_are_seeded_persisted_and_versioned(
+    db_session: Session,
+) -> None:
+    """The cross-session limits ride the same seed, load and save path as the rest."""
+    env_vars = {
+        "RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "4",
+        "RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS": "7200",
+        "RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS": "900",
+        "RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES": "12",
+        "RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS": "1800",
+    }
+    with patch.dict(os.environ, env_vars, clear=False):
+        seeded = load_policy_config(db_session)
+        db_session.commit()
+
+    record = db_session.query(PolicyConfigRecord).filter_by(is_active=True).one()
+    assert (
+        record.customer_otp_max_failures,
+        record.customer_otp_window_seconds,
+        record.customer_otp_lock_seconds,
+        record.document_match_max_failures,
+        record.document_match_window_seconds,
+    ) == (4, 7200, 900, 12, 1800)
+    assert seeded.customer_otp_max_failures == 4
+    assert seeded.document_match_window_seconds == 1800
+
+    # Env changes afterwards do not matter: the database is the source of truth.
+    with patch.dict(
+        os.environ, {"RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "9"}, clear=False
+    ):
+        assert load_policy_config(db_session).customer_otp_max_failures == 4
+
+    updated = seeded.model_copy(update={"document_match_max_failures": 3})
+    save_policy_config(updated, db_session)
+    db_session.commit()
+    reloaded = load_policy_config(db_session)
+    assert reloaded.document_match_max_failures == 3
+    assert reloaded.customer_otp_lock_seconds == 900
+
+
 def test_policy_loader_returns_persisted_db_config_on_subsequent_runs(
     db_session: Session,
 ) -> None:

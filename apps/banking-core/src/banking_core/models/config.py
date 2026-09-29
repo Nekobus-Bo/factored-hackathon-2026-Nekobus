@@ -49,6 +49,21 @@ class PolicyConfigRecord(Base):
     session_ttl_seconds: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=3600
     )
+    customer_otp_max_failures: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=5
+    )
+    customer_otp_window_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=3600
+    )
+    customer_otp_lock_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=1800
+    )
+    document_match_max_failures: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=10
+    )
+    document_match_window_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=3600
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),

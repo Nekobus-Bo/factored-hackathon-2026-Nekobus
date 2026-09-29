@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 import sqlalchemy as sa
 from banking_core.api import admin_router
-from banking_core.control.loader import load_policy_config
+from banking_core.control.loader import load_policy_config, save_policy_config
 from banking_core.crypto import RecordEncryptor, compute_blind_index, get_master_key
 from banking_core.db.session import get_session_maker
 from banking_core.main import app, mount_admin_router_if_enabled
@@ -323,6 +323,41 @@ def test_policy_update_is_versioned_live_and_audited(
             },
         )
         assert restored.status_code == 200
+
+
+@pytest.mark.usefixtures("db_engine")
+def test_policy_update_keeps_the_attempt_limits(admin_client: TestClient) -> None:
+    """The admin PUT edits the amount policy only: other saved fields carry over."""
+    current = load_policy_config()
+    custom = current.model_copy(
+        update={
+            "customer_otp_max_failures": 4,
+            "customer_otp_lock_seconds": 900,
+            "document_match_max_failures": 7,
+        }
+    )
+    try:
+        with get_session_maker()() as session:
+            save_policy_config(custom, session=session)
+
+        response = admin_client.put(
+            "/v1/admin/policy-config",
+            headers=ADMIN_HEADERS,
+            json={
+                "amount_mode": "block",
+                "thresholds_minor": current.thresholds_minor,
+            },
+        )
+
+        assert response.status_code == 200
+        saved = load_policy_config()
+        assert saved.amount_mode == "block"
+        assert saved.customer_otp_max_failures == 4
+        assert saved.customer_otp_lock_seconds == 900
+        assert saved.document_match_max_failures == 7
+    finally:
+        with get_session_maker()() as session:
+            save_policy_config(current, session=session)
 
 
 @pytest.mark.usefixtures("db_engine")
