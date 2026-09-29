@@ -1,5 +1,5 @@
 {
-  "artifact_id": "c805801cea92",
+  "artifact_id": "0535e172ffa8",
   "backends": {
     "gate_tfidf": {
       "cost_class": "low",
@@ -55,7 +55,7 @@
       }
     }
   },
-  "created_at": "2026-09-29T03:43:05Z",
+  "created_at": "2026-09-29T03:49:59Z",
   "data": {
     "test_provenance": "synthetic-provisional",
     "test_sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7",
@@ -284,8 +284,9 @@
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -474,8 +475,9 @@
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -700,8 +702,9 @@
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -881,8 +884,9 @@
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -1144,8 +1148,9 @@
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -1178,7 +1183,7 @@
   "harness": {
     "config_path": "tools/calibrate/configs/decision_points.yaml",
     "config_sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87",
-    "git_sha": "6eb6a187a03394aa02ca3f2e95a27a063b88c5e5"
+    "git_sha": "e5f98ab44c5cb28f9160f5d3afcde8fd4b626262"
   },
   "schema_version": 1
 }
