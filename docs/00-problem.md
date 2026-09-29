@@ -70,13 +70,13 @@ The system's internal instructions (skills, schemas, policies) are in English, f
 
 1. The dataset provided by Factored is the source of truth for the simulated banking core. **TODO: confirm entity coverage after day-1 exploration.**
 2. There are no ready-to-use intent labels. If there are, the labeling plan in [data.md](data.md) reduces to validation.
-3. Judges test the system within an agreed window, not in continuous operation.
+3. Judges run the system on their own machine with `make demo`. There is no hosted instance for them and nothing depends on a server of ours being up; the team's presentation environment is for its own live presentation ([deployment.md](deployment.md), section 7).
 
 ## 8. Map against the evaluation criteria
 
 | Pillar | Where it lives in this submission |
 |---|---|
-| Works and is runnable | [runbook.md](runbook.md), test environment, `make demo` |
+| Works and is runnable | [runbook.md](runbook.md), `make demo` (one command, on the judge's machine) |
 | Documented rationale | This document and the 10 ADRs |
 | AI engineering | `orchestrator`, policy engine in `banking-core`, frontends, deployment |
 | Data engineering | Ingestion, contracts, quality, lineage — [data.md](data.md) |

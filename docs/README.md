@@ -2,7 +2,7 @@
 
 AI-first customer service system for banking — Factored AI & Data Hackathon 2026.
 
-> **TODO (phase 0):** simulated fintech name, team members, repository and test environment links.
+> **TODO (phase 0):** simulated fintech name, team members and repository link.
 
 ## How to read this if you are a judge
 
