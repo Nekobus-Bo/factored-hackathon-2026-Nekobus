@@ -2,8 +2,9 @@
 
 These fixtures provide predefined customers per language (es, pt, en) with known
 credentials and states:
-1. Demo Walkthrough: Known document number and a recent unrecognized charge.
-2. Blocked Card: Customer with an already BLOCKED card.
+1. Demo Walkthrough: Known document number and a recent unrecognized charge. Its
+   registered OTP channel is email (delivery is simulated in an in-app inbox).
+2. Blocked Card: Customer with an already BLOCKED card (registered channel sms).
 3. No OTP Channel: Customer with no registered OTP channel (must escalate to
    human backoffice).
 """
@@ -172,7 +173,9 @@ def create_scenario_fixtures(base_time: datetime | None = None) -> FixtureBundle
                 "phone": demo_phone,
                 "birth_date": date(1988, 5, 20).isoformat(),
                 "preferred_locale": locale,
-                "registered_otp_channel": "sms",
+                # The demo simulates delivery as a "you got an email with the code"
+                # notice in the web client (ADR-0007, amendment 2026-09-29).
+                "registered_otp_channel": "email",
                 "created_at": (now - timedelta(days=150)).isoformat(),
             }
         )

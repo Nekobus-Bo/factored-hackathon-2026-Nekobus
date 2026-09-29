@@ -30,7 +30,7 @@ class FakeEvidence:
     @classmethod
     def seeded(cls) -> FakeEvidence:
         evidence = cls(
-            customers={DEMO_ES: "sms"},
+            customers={DEMO_ES: "email"},
             policy=PolicySnapshot(amount_mode="flag", thresholds_minor=SEED_THRESHOLDS),
         )
         evidence.card_rows = [
