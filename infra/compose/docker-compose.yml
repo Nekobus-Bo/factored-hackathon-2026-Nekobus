@@ -328,7 +328,8 @@ services:
       EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
       EMBEDDING_WEIGHTS_SHA256: ${EMBEDDING_WEIGHTS_SHA256:-}
       EMBEDDING_MAX_BATCH: ${EMBEDDING_MAX_BATCH:-64}
-      # Decision points (ADR-0012). No artifact ships yet: legacy seed mode.
+      # Decision points (ADR-0012). The committed seed artifact is used; legacy seed mode
+      # (ABSTENTION_THRESHOLD) only if no artifact file exists.
       DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-}
       DECISION_POINTS_ALLOW_STALE: ${DECISION_POINTS_ALLOW_STALE:-false}
       DECISION_POINTS_TAU_RAISE: ${DECISION_POINTS_TAU_RAISE:-}

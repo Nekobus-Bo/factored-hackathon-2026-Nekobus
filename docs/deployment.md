@@ -165,7 +165,7 @@ The production compose override enforces explicit configuration without developm
 | `EMBEDDING_REVISION` | Pin: a full 40-hex commit of that model. banking-core rejects any answer from another revision | `encoder`, `banking-core` | a 40-hex commit |
 | `EMBEDDING_WEIGHTS_SHA256` | Optional pin: SHA-256 of the weights file, verified when the model server starts. `make warmup-retrieval` prints it | `encoder` | 64 hex characters |
 | `EMBEDDING_BACKEND` | `remote` (the model server, default) or `local` (in process, tests and local development only; needs the `vector` extra in the image) | `banking-core` | `remote` |
-| `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | Decision-point artifact path, downgrade of a pin mismatch (refused under `APP_ENV=production`), raise-only tau override. No artifact ships yet: the model server runs in legacy seed mode ([ADR-0012](adr/0012-decision-points.md)) | `encoder` | empty, `false`, empty |
+| `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | Decision-point artifact path, downgrade of a pin mismatch (refused under `APP_ENV=production`), raise-only tau override. The committed seed artifact is used (provisional evidence, [ADR-0012](adr/0012-decision-points.md)); the model server runs in legacy seed mode only when no artifact file exists | `encoder` | empty, `false`, empty |
 
 ### Trust Boundary Verification
 
