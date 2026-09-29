@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
     llm_timeout_seconds: float = Field(default=30.0, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=2, alias="LLM_MAX_RETRIES")
+    # Reasoning models reject temperature 0 unless reasoning is off ("none").
+    # Blank = the parameter is not sent (non-reasoning models).
+    llm_reasoning_effort: str | None = Field(default=None, alias="LLM_REASONING_EFFORT")
     llm_replay_on_miss: Literal["fail", "passthrough"] = Field(
         default="fail", alias="LLM_REPLAY_ON_MISS"
     )
@@ -142,6 +145,12 @@ class Settings(BaseSettings):
         if not self.llm_base_url or self.llm_base_url.strip() in ("", "TODO"):
             return None
         return self.llm_base_url.strip()
+
+    @property
+    def effective_reasoning_effort(self) -> str | None:
+        if not self.llm_reasoning_effort or not self.llm_reasoning_effort.strip():
+            return None
+        return self.llm_reasoning_effort.strip().lower()
 
     @property
     def effective_api_key(self) -> str | None:
