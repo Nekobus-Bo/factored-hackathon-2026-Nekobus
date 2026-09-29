@@ -4,9 +4,9 @@ Dispatches a one-time passcode to the pinned customer's registered channel.
 Generates an opaque challenge ID and database-verified receipt.
 Mutates FSM state to OTP_PENDING.
 
-Everything that can refuse the call (resend limit, channel, contract output)
-is decided before the challenge is stored or the code is delivered: a refused
-call delivers nothing.
+Everything that can refuse the call (customer lock, resend limit, channel,
+contract output) is decided before the challenge is stored or the code is
+delivered: a refused call delivers nothing.
 """
 
 import secrets
@@ -25,11 +25,13 @@ from contracts.tools.otp_send import (
 )
 from sqlalchemy.orm import Session
 
+from banking_core.control.attempt_limits import AttemptLimits
 from banking_core.control.fsm import VerificationFSM
 from banking_core.control.session import SessionState
 from banking_core.crypto import RecordEncryptor, get_master_key
 from banking_core.identity.challenge_store import OtpChallengeStore, get_challenge_store
 from banking_core.identity.ports import OtpDeliveryPort, get_delivery_port
+from banking_core.identity.tools.customer_lock import ensure_customer_not_locked
 from banking_core.models.core_bank import Customer
 
 
@@ -81,6 +83,7 @@ def execute_otp_send(
     args: OtpSendInput,
     session: SessionState,
     fsm: VerificationFSM,
+    limits: AttemptLimits,
     delivery_port: OtpDeliveryPort | None = None,
     challenge_store: OtpChallengeStore | None = None,
     master_key: str | bytes | None = None,
@@ -97,8 +100,10 @@ def execute_otp_send(
             "Session has no pinned customer; customer.match is required before otp.send"
         )
 
-    # 1. Decide the resend limit BEFORE generating or delivering anything: a
-    # resend that locks the session must not deliver a working code.
+    # 1. Decide the limits BEFORE generating or delivering anything: a customer
+    # locked across sessions, or a resend that locks the session, must not get a
+    # working code.
+    ensure_customer_not_locked(session, fsm, limits)
     if fsm.otp_send_would_lock(session):
         raise OtpResendLimitError(fsm.on_otp_send_limit_exceeded(session.model_copy()))
 

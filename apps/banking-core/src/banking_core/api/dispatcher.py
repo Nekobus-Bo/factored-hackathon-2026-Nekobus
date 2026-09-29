@@ -44,6 +44,7 @@ from banking_core.cards.tools import (
     execute_card_list,
     reread_card_block_output,
 )
+from banking_core.control.attempt_limits import AttemptLimits, AttemptLimitStore
 from banking_core.control.authorize import Authorizer
 from banking_core.control.config import (
     ControlConfigRepository,
@@ -69,6 +70,7 @@ from banking_core.identity.challenge_store import (
 from banking_core.identity.config import IdentityConfig
 from banking_core.identity.ports import OtpDeliveryPort, get_delivery_port
 from banking_core.identity.tools import (
+    CustomerLockedError,
     NoOtpChannelError,
     OtpResendLimitError,
     execute_customer_match,
@@ -108,6 +110,7 @@ class ToolDispatcher:
         identity_config: IdentityConfig | None = None,
         delivery_port: OtpDeliveryPort | None = None,
         challenge_store: OtpChallengeStore | None = None,
+        attempt_limit_store: AttemptLimitStore | None = None,
         lock_ttl_ms: int | None = None,
         lock_wait_ms: int | None = None,
     ) -> None:
@@ -118,6 +121,10 @@ class ToolDispatcher:
         self.identity_config = identity_config or IdentityConfig.from_env()
         self.delivery_port = delivery_port or get_delivery_port()
         self.challenge_store = challenge_store or get_challenge_store()
+        # Cross-session limits live on redis-core, like the session itself.
+        self.attempt_limit_store = attempt_limit_store or AttemptLimitStore(
+            redis_client=session_store.client
+        )
         self.lock_ttl_ms = (
             lock_ttl_ms
             if lock_ttl_ms is not None
@@ -132,6 +139,42 @@ class ToolDispatcher:
     def _resolve_policy_config(self) -> PolicyConfig:
         """Single entry point for policy configuration used during execution."""
         return self.config_repo.get_policy_config()
+
+    def _attempt_limits(self, policy_config: PolicyConfig) -> AttemptLimits:
+        """The cross-session limits bound to the policy config in force."""
+        return AttemptLimits.from_config(self.attempt_limit_store, policy_config)
+
+    def _audit_limit_event(
+        self,
+        db_session: Session,
+        session_id: str,
+        action: str,
+        state_before: VerificationState,
+        state_after: VerificationState,
+        reason: str,
+        details: dict[str, AuditDetail],
+    ) -> None:
+        """Audit the moment a cross-session limit starts to act, without PII.
+
+        Written in the transaction of the call that tripped it. Details carry an
+        internal customer UUID or a blind-index reference plus the thresholds in
+        force, never a document, a name or a contact.
+        """
+        append_audit(
+            session=db_session,
+            actor_type="system",
+            actor_ref=session_id,
+            action=action,
+            decision="refused",
+            reason_code=ReasonCode.RATE_LIMITED.value,
+            payload=AuditPayload(
+                verification_state_before=state_before,
+                verification_state_after=state_after,
+                status=ToolResultStatus.REFUSED,
+                reason=reason,
+                details=details,
+            ),
+        )
 
     def _refuse(
         self,
@@ -474,6 +517,25 @@ class ToolDispatcher:
                     verification_state_after=session.state,
                     reason=exc.audit_reason,
                 )
+            except CustomerLockedError as exc:
+                # The customer is locked across sessions: nothing was delivered,
+                # stored or compared, and this session goes to a human.
+                db_session.rollback()
+                return self._refuse(
+                    tool_call,
+                    session.session_id,
+                    ReasonCode.RATE_LIMITED,
+                    db_session,
+                    verification_state_before=verification_state_before,
+                    verification_state_after=exc.locked_session.state,
+                    reason="customer_otp_locked",
+                    details={
+                        "flags": ["CUSTOMER_OTP_LOCKED"],
+                        "customer_id": exc.customer_id,
+                    },
+                    session_after=exc.locked_session,
+                    session_ttl_seconds=policy_config.session_ttl_seconds,
+                )
             except OtpResendLimitError as exc:
                 # Nothing was delivered or stored: the resend that would have
                 # tripped the limit is refused and locks the session instead.
@@ -581,6 +643,7 @@ class ToolDispatcher:
                 args=input_args,
                 session=session,
                 fsm=fsm,
+                limits=self._attempt_limits(policy_config),
                 delivery_port=self.delivery_port,
                 challenge_store=self.challenge_store,
                 ttl_seconds=policy_config.otp_ttl_seconds,
@@ -611,12 +674,14 @@ class ToolDispatcher:
 
         if tool_name == "otp.verify":
             input_args = OtpVerifyInput.model_validate(tool_args)
-            output, updated_session = execute_otp_verify(
+            verify = execute_otp_verify(
                 args=input_args,
                 session=session,
                 fsm=fsm,
+                limits=self._attempt_limits(policy_config),
                 challenge_store=self.challenge_store,
             )
+            output, updated_session = verify.output, verify.session
             audit_entry = append_audit(
                 session=db_session,
                 actor_type="customer_session",
@@ -636,6 +701,21 @@ class ToolDispatcher:
                     },
                 ),
             )
+            if verify.customer_locked and session.pinned_holder_id:
+                self._audit_limit_event(
+                    db_session,
+                    session.session_id,
+                    action="security.customer_otp_locked",
+                    state_before=verification_state_before,
+                    state_after=updated_session.state,
+                    reason="customer_otp_failure_limit_reached",
+                    details={
+                        "customer_id": session.pinned_holder_id,
+                        "max_failures": policy_config.customer_otp_max_failures,
+                        "window_seconds": policy_config.customer_otp_window_seconds,
+                        "lock_seconds": policy_config.customer_otp_lock_seconds,
+                    },
+                )
             data = output.model_dump(mode="json")
             data["receipt"]["audit_id"] = _format_audit_id(audit_entry)
             return data, updated_session
