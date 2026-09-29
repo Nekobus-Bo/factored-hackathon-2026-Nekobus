@@ -5,8 +5,10 @@ when ADMIN_API_ENABLED=true there:
   GET  /v1/admin/policy-config        -> {"amount_mode": str, "thresholds_minor": {...},
                                           "version": int}
   PUT  /v1/admin/policy-config        <- {"amount_mode": str, "thresholds_minor": {...}}
-  POST /v1/admin/demo/reset-fixtures  -> 200 (demo cards back to seed state); 403 when
-                                         APP_ENV=production without DEMO_RESET_ENABLED
+  POST /v1/admin/demo/reset-fixtures  -> 200 (demo cards back to seed state, and the
+                                         fixture customers' cross-session attempt limits
+                                         forgotten); 403 when APP_ENV=production
+                                         without DEMO_RESET_ENABLED
   Auth: "Authorization: Bearer <EVAL_ADMIN_TOKEN>" (banking-core's ADMIN_API_TOKEN).
   Every write is audited there.
 When it is not mounted or unreachable, availability is False and setup-dependent
