@@ -326,7 +326,10 @@ to the same environment from overlapping.
 | `MASTER_KEY` | secret | always | See §3 table above |
 | `BLIND_INDEX_SALT` | secret | always | See §3 table above |
 | `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` |
-| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API |
+| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API. A real random secret: `banking-core` refuses to start under `APP_ENV=production` with an empty token or the public development token |
+| `DEMO_RESET_ENABLED` | variable | optional | `true` to allow `POST /v1/admin/demo/reset-fixtures` under `APP_ENV=production` (it also needs the admin API). See §7 |
+| `OTP_CHANNEL_MODE` | variable | optional | `simulated`, the default and the only delivery that exists. See §7 |
+| `DEMO_SEED` | variable | optional | `true` to load the synthetic demo customers after `up`, with the seed's `--force`. See §7 |
 | `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
 | `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
 | `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (default `30`), and how many reverse proxies stand in front of the orchestrator (default `0`: `X-Forwarded-For` is ignored). Set `TRUSTED_PROXY_HOPS` to the real number when an ingress proxy fronts the stack, see §1 |
@@ -340,6 +343,14 @@ database, `pgvector`, `pg_hba.conf`) and §2 (Redis ACL users) above, done once 
 whoever administers that host. `DATA_MODE=bundled` needs none of that: the compose
 `bundled-data` profile starts `postgres`, `redis-core`, and `redis-edge` as containers
 on the target itself.
+
+### What a deploy runs
+
+In order, over SSH on the target: create `$DEPLOY_PATH/infra/compose` and `$DEPLOY_PATH/eval/replay`
+(the orchestrator's read-only recordings mount) and copy the compose files; write
+`$DEPLOY_PATH/.env` (mode 600); `pull`; `run --rm migrate`; `up -d --wait`; when
+`DEMO_SEED=true`, `run --rm seed ... seed --force`; then a `/health` smoke check on the
+orchestrator. The images already contain the code; nothing is built on the server.
 
 ### Forking this repository
 
@@ -387,3 +398,45 @@ both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy
 actually run** against any target — no Environment has been created yet, and no
 `DEPLOY_*` secret exists anywhere. Treat this section as a design, not a proven
 procedure, until a first real run against the platform is logged here.
+
+---
+
+## 7. Presentation environment
+
+The team's own environment for presentations. There is **no separate environment for
+judges**: they clone the repository and run `make demo` on their machine
+([runbook](runbook.md)), with at most an LLM API key in `.env`.
+
+The presentation environment is an ordinary deployment (§6, same images, same
+`deploy.yml`) that stays `APP_ENV=production`, with **production-hardened defaults and
+each demo feature switched on explicitly**. The development defaults of
+`docker-compose.yml` (admin API on with a public token) never reach it:
+`docker-compose.prod.yml` pins them back to off, and `banking-core` refuses to start
+with the development token when `APP_ENV=production`.
+
+**The hosting platform is still to be decided** (AWS, Google Cloud Platform or Microsoft
+Azure, §6). Nothing below depends on which one it is.
+
+### The switches
+
+| Switch | Set it to | What it turns on | Notes |
+|---|---|---|---|
+| `ADMIN_API_ENABLED` + `ADMIN_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | Back-office actions over HTTP: `GET`/`PUT /v1/admin/policy-config` | Startup fails on an empty token or the development token. Keep the token out of the repository: it is a GitHub secret |
+| `DEMO_RESET_ENABLED` | `true` | `POST /v1/admin/demo/reset-fixtures`: puts the fixture customers' cards back to their seed state between demo runs | Without it the endpoint answers 403 in production. It also needs the admin API |
+| `OTP_CHANNEL_MODE` | `simulated` (the default) | The simulated OTP delivery: no code leaves the system | Today this is the only delivery that exists; `banking-core` does not read the variable yet, and the real channel is an open decision ([limitations](limitations.md)). The panel that shows simulated codes belongs to the customer web client, which is pending, and the dev OTP endpoint stays off (`deploy.yml` never sets `ALLOW_DEV_OTP_HOOK`) |
+| `DEMO_SEED` | `true` | After `up`, `deploy.yml` runs `python -m banking_core.seed.cli seed --force` in the `seed` service | The seed refuses to run under `APP_ENV=production` without `--force`. It **truncates and reloads** the banking tables with the synthetic demo customers (es/pt/en), so every deploy with the variable set resets the demo data and empties the handoff queue: leave it on only for a deploy that should do that |
+| `TRUSTED_PROXY_HOPS` | the number of reverse proxies the platform puts in front of the orchestrator | Which client address the per-address limit counts | `0` (default) ignores `X-Forwarded-For` and counts the connection peer, so behind a proxy every customer shares the proxy's address and budget. Never set more than the real number: the extra entries come from the client |
+| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` | leave at `30` | Conversations one client address may open per hour | `deploy.yml` writes `30` unless the variable is set, and `docker-compose.prod.yml` pins the same default. It must be at least `1`: `0` is not "unlimited", the orchestrator refuses to start |
+| `LLM_MODE` + `LLM_API_KEY` | `live` + the key (secret) | Real model calls | With `replay` the orchestrator answers 503 on a message that has no recording, and `deploy.yml` does not ship `eval/replay` yet |
+
+Everything else keeps its production default: `APP_ENV=production`, only the orchestrator
+publishes a port, the dev OTP endpoint is off, `EVAL_EXPOSE_TURN` is refused, and the
+secrets (`MASTER_KEY`, `BLIND_INDEX_SALT`, `SESSION_SECRET`, database and Redis URLs) come
+from the GitHub Environment.
+
+### Not yet exercised
+
+The seed service runs from the registry image with `/app/data` as scratch space (the base
+file's bind mounts of `data/` and `reports/` would be root-owned empty directories on a
+server). Like the rest of §6, this has been render-validated but never run against a real
+target.
