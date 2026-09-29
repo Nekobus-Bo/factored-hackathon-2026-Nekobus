@@ -91,6 +91,41 @@ def _certification_summary(result: DpResult) -> str:
     return f"{chosen.certified_scopes} of {total} scopes clear the Wilson bound"
 
 
+def _findings(results: Sequence[DpResult]) -> list[str]:
+    """What the reader should know before the tables: where the validation tau did
+    not hold on test, and where the constraint never bound."""
+    lines: list[str] = []
+    for r in results:
+        for c in r.chosen.certifications:
+            if c.below_floor:
+                lines.append(
+                    f"- `{r.dp.dp_id}`, {c.scope}, `{c.label}`: {c.tp} of {c.accepted} "
+                    f"decisions correct on test ({c.tp / c.accepted:.2f}) against a "
+                    f"floor of {c.p_min:.2f}. The threshold chosen on validation did "
+                    "not hold on the held-out split."
+                )
+        unbound = [
+            lang
+            for lang, fit in r.chosen.scalar_fits.items()
+            if fit.feasible and not fit.binding
+        ]
+        unbound += [
+            f"{lang}/{label}"
+            for lang, fits in r.chosen.label_fits.items()
+            for label, fit in fits.items()
+            if fit.feasible and not fit.binding
+        ]
+        if unbound:
+            lines.append(
+                f"- `{r.dp.dp_id}`: the constraint rejected nothing on validation in "
+                f"{', '.join(unbound)}, so those thresholds are only the lowest "
+                "confidence seen (see each Thresholds table)."
+            )
+    if not lines:
+        lines.append("- Nothing to flag: every acted label held its floor on test.")
+    return lines
+
+
 def _summary_rows(results: Sequence[DpResult], config: RunConfig) -> list[str]:
     rows = [
         "| Decision point | Language | Status | tau | T | Coverage val | Coverage test "
@@ -477,6 +512,8 @@ def render_report(
             f"| `{r.dp.dp_id}` | {r.chosen.status} "
             f"| {'yes' if r.chosen.certified else 'no'} | {_certification_summary(r)} |"
         )
+    lines += ["", "## Findings", ""]
+    lines += _findings(results)
     lines += ["", "## Summary", ""]
     lines += _summary_rows(results, config)
     lines.append("")
@@ -491,8 +528,10 @@ def render_report(
         "per label and language: it is a starting point for shadow traffic, not a "
         "guarantee. Switch `constraint.ci` to `wilson95_lower` when validation is "
         "large enough to satisfy it.",
-        "- The `other` and `out_of_scope` sinks are unconstrained by design; the "
-        "engine never acts on them (ADR-0012, Appendix A).",
+        "- Labels outside a DP's constraint (for example `other`) are decided whenever "
+        "they are on top; the engine does not act on them. `out_of_scope` is a sink "
+        "(short replies, bare OTP digits): where it is constrained (`smalltalk_route`) "
+        "read its precision above before trusting it (ADR-0012, context item 2).",
         "- No hard-negative set exists; the gate's worst failure (a false `confirm`) "
         "is measured on ordinary utterances only.",
         "- Latency and RAM are host measurements of one process, not the container "
