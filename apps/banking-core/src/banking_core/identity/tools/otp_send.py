@@ -193,9 +193,11 @@ def execute_otp_send(
         max_attempts=fsm.max_failed_verifies,
     )
     resolved_port.deliver(
+        session_id=session.session_id,
         challenge_id=challenge_id,
         channel=otp_channel.value,
         destination_masked=destination_masked,
         code=code,
+        ttl_seconds=ttl_seconds,
     )
     return output, updated_session
