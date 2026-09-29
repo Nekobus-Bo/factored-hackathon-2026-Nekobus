@@ -6,6 +6,12 @@ which is otherwise done by the regexes alone.
 The model proposes tool calls; banking-core decides (AGENTS rules 1 and 2).
 The engine never retries a refused call and never alters model arguments
 beyond rehydrating placeholders for the banking-core request.
+
+One thing the engine does on its own, because the model cannot be trusted to
+remember it (ADR-0003 amendment 2026-09-29): when a card.block comes back with
+a REQUIRED handoff requirement and no handoff.create has succeeded yet, the
+engine creates that handoff itself, with the requirement's reason, department
+and priority, the same transaction_id and a fixed summary, no model text.
 """
 
 import copy
@@ -32,7 +38,12 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
-from contracts.tools.handoff_create import HandoffCreateOutput
+from contracts.tools.handoff_create import (
+    HandoffCreateOutput,
+    HandoffPriority,
+    HandoffRequirement,
+    HandoffRequirementLevel,
+)
 from pydantic import ValidationError
 
 from orchestrator.config import Settings
@@ -103,6 +114,21 @@ LLM_HIDDEN_FIELDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# The summary of a handoff the engine creates itself: fixed text, so it says
+# nothing the customer or the model could have steered and a retried turn asks
+# banking-core for exactly the same write. The case facts (the disputed charge)
+# are added server-side from the database.
+ENGINE_HANDOFF_SUMMARY = (
+    "Automatic escalation: policy requires a human to review this card block. "
+    "The disputed charge, when one is linked, is in the verified facts."
+)
+_PRIORITY_ORDER = [
+    HandoffPriority.LOW,
+    HandoffPriority.NORMAL,
+    HandoffPriority.HIGH,
+    HandoffPriority.URGENT,
+]
+
 _OTP_PLACEHOLDER_RE = re.compile(r"^\[OTP_(\d+)\]$")
 # A standalone 4-8 digit OTP, optionally with one internal space or dash.
 _BARE_OTP_RE = re.compile(r"(?<![\w\[\]])\d+(?:[ -]\d+)?(?![\w\]])(?![ -]\d)")
@@ -117,6 +143,17 @@ class _TurnGuard:
     # Writes banking-core acknowledged (status ok), per tool: the ordinal the
     # next write of that tool takes in its idempotency key.
     written: dict[str, int] = field(default_factory=dict)
+    # The engine tries a required handoff at most once per turn; a failure is
+    # retried on the next turn, not in a loop.
+    required_handoff_tried: bool = False
+
+
+@dataclass(frozen=True)
+class _RequiredHandoff:
+    """A REQUIRED handoff a card.block decided and no handoff.create has answered."""
+
+    requirement: HandoffRequirement
+    transaction_id: str | None
 
 
 class CompletionProvider(Protocol):
@@ -239,6 +276,11 @@ class TurnEngine:
         guard = _TurnGuard()
         final: LLMResponse | None = None
         while True:
+            # Before every completion: a card.block of the last round, or of an
+            # earlier turn whose handoff failed, may have left one required.
+            await self._enforce_required_handoff(
+                context.session_id, history, mapping, metadata, handoffs, guard
+            )
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
             response = await self.llm.complete(
                 messages=messages,
@@ -467,6 +509,174 @@ class TurnEngine:
             )
         )
         return result
+
+    async def _enforce_required_handoff(
+        self,
+        session_id: str,
+        history: list[dict[str, Any]],
+        mapping: dict[str, str],
+        metadata: TurnMetadata,
+        handoffs: list[HandoffBlock],
+        guard: _TurnGuard,
+    ) -> None:
+        """Create the handoff a card.block required, if the model has not.
+
+        Nothing here comes from the model's words: the reason, department and
+        priority are the requirement banking-core returned, the transaction id
+        is the one banking-core already accepted on the card.block, and the
+        summary is fixed. The write takes the ordinal-based idempotency key of
+        any other write, so a retried turn replays it instead of queueing twice.
+
+        The call and its result go into the history like any tool round, success
+        or failure, so the model's reply can only claim what happened. A failure
+        is recorded (outcome and log) and, since the history still holds a
+        required card.block and no successful handoff, tried again on the next
+        turn.
+        """
+        if guard.required_handoff_tried:
+            return
+        pending = self._pending_required_handoff(history, mapping)
+        if pending is None:
+            return
+        guard.required_handoff_tried = True
+
+        tool = "handoff.create"
+        requirement = pending.requirement
+        # A REQUIRED requirement always carries all three (contract validator).
+        if not (requirement.reason and requirement.priority and requirement.department):
+            raise ValueError("a REQUIRED handoff requirement is missing its details")
+        args: dict[str, Any] = {
+            "reason": requirement.reason.value,
+            "summary": ENGINE_HANDOFF_SUMMARY,
+            "priority": requirement.priority.value,
+            "department": requirement.department.value,
+        }
+        key = self._idempotency_key(
+            session_id, metadata.turn_id, tool, guard.written.get(tool, 0)
+        )
+        try:
+            call = ToolCall(
+                tool=tool,
+                args={**args, "transaction_id": pending.transaction_id}
+                if pending.transaction_id
+                else args,
+                idempotency_key=key,
+            )
+        except ValidationError:
+            # A transaction id that no longer fits the contract must not stop a
+            # required escalation: banking-core still routes and prioritizes it.
+            call = ToolCall(tool=tool, args=args, idempotency_key=key)
+
+        result = await self.banking.call_tool(session_id, call)
+        guard.executed.add(tool)
+        if result.status is ToolResultStatus.OK:
+            guard.written[tool] = guard.written.get(tool, 0) + 1
+        else:
+            logger.warning(
+                "Turn %s: required handoff failed (%s %s); retried next turn",
+                metadata.turn_id,
+                result.status.value,
+                result.reason_code.value if result.reason_code else None,
+            )
+        metadata.tool_outcomes.append(
+            ToolOutcome(
+                tool=tool,
+                status=result.status,
+                reason_code=result.reason_code,
+                executed=True,
+            )
+        )
+
+        llm_name = next(n for n, t in self._tool_names.items() if t == tool)
+        call_id = f"call_engine_{key[3:15]}"
+        history.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": llm_name,
+                            "arguments": self._mask_args(call.args, mapping),
+                        },
+                    }
+                ],
+            }
+        )
+        history.append(
+            {
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": self._tool_feedback(llm_name, result, mapping),
+            }
+        )
+        block = self._handoff_block_of(result)
+        if block is not None:
+            handoffs.append(block)
+
+    def _pending_required_handoff(
+        self, history: list[dict[str, Any]], mapping: dict[str, str]
+    ) -> _RequiredHandoff | None:
+        """The strongest REQUIRED card.block in the history, if no handoff succeeded.
+
+        Read from the history so a retried turn and the next turn after a
+        failed attempt see the same thing the first attempt did.
+        """
+        if any(
+            result.get("tool") == "handoff.create" and result.get("status") == "ok"
+            for _, result in _tool_results(history)
+        ):
+            return None
+
+        calls: dict[str, dict[str, Any]] = {}
+        best: tuple[int, _RequiredHandoff] | None = None
+        for message in history:
+            if message.get("role") == "assistant":
+                for tool_call in message.get("tool_calls") or []:
+                    calls[str(tool_call.get("id"))] = tool_call
+                continue
+            if message.get("role") != "tool":
+                continue
+            try:
+                result = json.loads(message.get("content") or "")
+            except ValueError:
+                continue
+            if (
+                not isinstance(result, dict)
+                or result.get("tool") != "card.block"
+                or result.get("status") != "ok"
+            ):
+                continue
+            requirement = _requirement_of(result)
+            if requirement is None or requirement.level is not (
+                HandoffRequirementLevel.REQUIRED
+            ):
+                continue
+            rank = _PRIORITY_ORDER.index(requirement.priority or HandoffPriority.LOW)
+            if best is None or rank > best[0]:
+                transaction_id = self._transaction_id_of(
+                    calls.get(str(message.get("tool_call_id"))), mapping
+                )
+                best = (rank, _RequiredHandoff(requirement, transaction_id))
+        return best[1] if best is not None else None
+
+    def _transaction_id_of(
+        self, tool_call: dict[str, Any] | None, mapping: dict[str, str]
+    ) -> str | None:
+        """The transaction_id of a recorded tool call, placeholders restored."""
+        function = (tool_call or {}).get("function")
+        if not isinstance(function, dict):
+            return None
+        try:
+            args = json.loads(function.get("arguments") or "")
+        except ValueError:
+            return None
+        value = args.get("transaction_id") if isinstance(args, dict) else None
+        if not isinstance(value, str):
+            return None
+        return self._rehydrate(value, mapping) or None
 
     def _final_blocks(
         self,
@@ -741,6 +951,19 @@ class TurnEngine:
 def _is_placeholder(value: str, kind: PiiType) -> bool:
     """True if `value` is exactly one placeholder of `kind`, e.g. `[OTP_3]`."""
     return re.fullmatch(rf"\[{kind.value}_\d+\]", value) is not None
+
+
+def _requirement_of(result: dict[str, Any]) -> HandoffRequirement | None:
+    """The handoff_requirement of a card.block result; none if it has none."""
+    data = result.get("data")
+    raw = data.get("handoff_requirement") if isinstance(data, dict) else None
+    if raw is None:
+        return None
+    try:
+        return HandoffRequirement.model_validate(raw)
+    except ValidationError:
+        logger.warning("card.block returned a handoff_requirement that does not parse")
+        return None
 
 
 def _drop_field(data: Any, path: str) -> None:
