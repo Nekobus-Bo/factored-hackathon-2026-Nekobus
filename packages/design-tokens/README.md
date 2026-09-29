@@ -7,7 +7,7 @@ The look of Pattern Blue for both front ends (`apps/web-client`, `apps/web-backo
 | | |
 |---|---|
 | Source of truth | [Pattern Blue design system](https://claude.ai/artifact/SCciz5Vfoa9s7sSY4KT2NV) (Artifact type "Design System") |
-| Synced version | `1790651752-efe8`, 2026-09-29 |
+| Synced version | `1790655197-4dbb`, 2026-09-29 |
 | Copied files | `project/tokens.json` to `src/tokens.json`, `project/components/bundle.css` to `src/components.css` |
 | Not copied | The artifact's `README.md` (brand book, voice, accessibility rules): read it in the artifact. Its Google Fonts link is the one constant kept by hand, in `scripts/generate.ts` |
 
