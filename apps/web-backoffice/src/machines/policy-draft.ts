@@ -80,3 +80,24 @@ export function toggleState(states: readonly VerificationState[], state: Verific
 export function toggleAll(states: readonly VerificationState[], floor: readonly VerificationState[]): VerificationState[] {
   return states.length > 0 ? [] : inFsmOrder(floor);
 }
+
+// --- What a save would change -----------------------------------------------------------------------------
+
+export type Change =
+  | { kind: "mode"; from: AmountMode; to: AmountMode }
+  | { kind: "threshold"; currency: string; from: number | undefined; to: number }
+  | { kind: "tool"; tool: string; from: VerificationState[]; to: VerificationState[] };
+
+/** The differences between the draft and what is in force, in the order they are saved: policy, then tools. */
+export function describeChanges(draft: Draft, policy: PolicyConfigResponse, tools: ToolPolicyResponse): Change[] {
+  const changes: Change[] = [];
+  if (draft.mode !== policy.amount_mode) changes.push({ kind: "mode", from: policy.amount_mode, to: draft.mode });
+  for (const currency of editedCurrencies(draft, policy)) {
+    const to = parseMajor(draft.thresholds[currency] ?? "");
+    if (to !== null) changes.push({ kind: "threshold", currency, from: policy.thresholds_minor[currency], to });
+  }
+  for (const [tool, to] of Object.entries(changedTools(draft, tools))) {
+    changes.push({ kind: "tool", tool, from: inFsmOrder(tools.tools[tool] ?? []), to });
+  }
+  return changes;
+}
