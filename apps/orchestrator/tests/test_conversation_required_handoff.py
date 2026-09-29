@@ -507,10 +507,14 @@ async def test_the_requirement_survives_a_result_withheld_by_masking(
 
 
 def test_engine_handoff_context_is_a_plain_conversation_context() -> None:
-    """The retry lives in the history: no new persisted field is needed."""
+    """The retry lives in the history: no field is needed for it.
+
+    The one other persisted field is the decision-point state (ADR-0012).
+    """
     assert set(ConversationContext.model_fields) == {
         "session_id",
         "language",
         "history",
         "placeholder_map",
+        "decisions",
     }

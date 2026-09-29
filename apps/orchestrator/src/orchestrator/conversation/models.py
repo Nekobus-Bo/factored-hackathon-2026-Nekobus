@@ -11,6 +11,9 @@ from contracts import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from orchestrator.conversation.decisions.records import DecisionRecord, EffectRecord
+from orchestrator.conversation.decisions.state import DecisionState
+
 Lang = Literal["es", "pt", "en"]
 
 
@@ -30,6 +33,10 @@ class ConversationContext(BaseModel):
     placeholder_map: dict[str, str] = Field(
         default_factory=dict,
         description="Placeholder -> raw value. Server-side only, never sent out",
+    )
+    decisions: DecisionState = Field(
+        default_factory=DecisionState,
+        description="What the decision-point effects remember (ADR-0012); no PII",
     )
 
 
@@ -78,6 +85,14 @@ class TurnMetadata(BaseModel):
     tool_outcomes: list[ToolOutcome] = Field(default_factory=list)
     dropped_block_types: list[str] = Field(default_factory=list)
     llm_recording_keys: list[str] = Field(default_factory=list)
+    # Decision points (ADR-0012, I5): what each one decided and what its effect did
+    # or, in shadow, would have done. Identifiers, enum values and numbers; never text.
+    decisions: list[DecisionRecord] = Field(default_factory=list)
+    effects: list[EffectRecord] = Field(default_factory=list)
+    decisions_config_version: str | None = None
+    # Decision points whose effects file labels the encoder does not serve: their
+    # effects are off for the turn (a gate keeps withholding).
+    dp_config_mismatch: list[str] = Field(default_factory=list)
 
 
 class TurnEvalData(BaseModel):
@@ -89,6 +104,9 @@ class TurnEvalData(BaseModel):
     recording_keys: list[str] = Field(default_factory=list)
     tokens: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    # The turn's decision records (no text), so the runner can report on them.
+    decisions: list[DecisionRecord] = Field(default_factory=list)
+    effects: list[EffectRecord] = Field(default_factory=list)
 
 
 class TurnResult(BaseModel):
