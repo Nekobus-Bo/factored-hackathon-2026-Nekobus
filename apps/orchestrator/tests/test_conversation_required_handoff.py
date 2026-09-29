@@ -509,7 +509,9 @@ async def test_the_requirement_survives_a_result_withheld_by_masking(
 def test_engine_handoff_context_is_a_plain_conversation_context() -> None:
     """The retry lives in the history: no field is needed for it.
 
-    The one other persisted field is the decision-point state (ADR-0012).
+    The one other persisted field is the decision-point state (ADR-0012). The
+    takeover flag is not persisted from here: it is a view of the conversation's
+    takeover, so the engine can refuse a turn on a conversation an agent holds.
     """
     assert set(ConversationContext.model_fields) == {
         "session_id",
@@ -517,4 +519,5 @@ def test_engine_handoff_context_is_a_plain_conversation_context() -> None:
         "history",
         "placeholder_map",
         "decisions",
+        "human_takeover",
     }

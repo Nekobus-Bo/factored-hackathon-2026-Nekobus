@@ -1,0 +1,5 @@
+/* One entry for the styles, so the order is fixed: the design system first (tokens, then the pb-*
+   components), then the layout glue that places them. Two separate imports in main.tsx do not keep
+   their order in Bun's bundle. */
+@import "@pattern-blue/design-tokens/index.css";
+@import "./app.css";

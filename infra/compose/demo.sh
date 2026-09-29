@@ -20,7 +20,6 @@ RECORDINGS_DIR=eval/replay # what the orchestrator container mounts as its REPLA
 
 STEP="starting"
 WARNINGS=()
-SERVICES=""
 
 say() { printf '\n==> %s\n' "$*"; }
 warn() { WARNINGS+=("$*"); printf 'warning: %s\n' "$*" >&2; }
@@ -37,14 +36,6 @@ cfg() {
       sed -e 's/[[:space:]]\{1,\}#.*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')
   fi
   printf '%s' "${value:-$default}"
-}
-
-# defined_service NAME: true when the compose file declares that service.
-defined_service() {
-  case $'\n'"$SERVICES"$'\n' in
-    *$'\n'"$1"$'\n'*) return 0 ;;
-  esac
-  return 1
 }
 
 # Asks banking-core whether its policy config and kb.search are usable. /ready
@@ -96,7 +87,6 @@ STEP="checking Docker"
 say "1/6 Checking Docker"
 $COMPOSE config -q 2>/dev/null || die "docker compose (v2) is not available, or the compose file does not parse"
 $COMPOSE ps -q >/dev/null 2>&1 || die "the Docker daemon is not reachable: start Docker and run 'make demo' again"
-SERVICES=$($COMPOSE config --services 2>/dev/null || true)
 
 STEP="building images"
 say "2/6 Building images (the first build takes several minutes; later runs reuse the cache)"
@@ -140,21 +130,27 @@ fi
 # --- Report -------------------------------------------------------------------
 orchestrator_url="http://localhost:$(cfg PORT_ORCHESTRATOR 8080)"
 core_url="http://localhost:$(cfg PORT_BANKING_CORE 8081)"
+client_url="http://localhost:$(cfg PORT_WEB_CLIENT 5173)"
+backoffice_url="http://localhost:$(cfg PORT_WEB_BACKOFFICE 5174)"
 
 say "Pattern Blue is up"
+echo
+echo "Open these"
+printf '  %-15s %s\n' "customer chat" "$client_url  (the simulated fintech; the chat opens from the bubble)"
+printf '  %-15s %s\n' "back office" "$backoffice_url  (queue, cases, guardrails, metrics)"
 echo
 echo "Services"
 printf '  %-15s %s\n' "orchestrator" "$orchestrator_url  (chat API: POST /v1/conversations; docs: $orchestrator_url/docs)"
 printf '  %-15s %s\n' "banking-core" "$core_url/docs  (tool API and admin API)"
-if defined_service web-client; then
-  printf '  %-15s %s\n' "customer chat" "http://localhost:$(cfg PORT_CLIENT 5173)"
+
+echo
+echo "Back office login (the one demo agent; the email is recorded on every claim and takeover)"
+agent_email=$(cfg DEMO_AGENT_EMAIL agent@demo.local)
+agent_password=$(cfg DEMO_AGENT_PASSWORD demo-only-change-me)
+if [ "$agent_password" = "demo-only-change-me" ]; then
+  echo "  $agent_email / demo-only-change-me   (development-only credentials, public in this repository)"
 else
-  printf '  %-15s %s\n' "customer chat" "pending (apps/web-client is not built yet)"
-fi
-if defined_service web-backoffice; then
-  printf '  %-15s %s\n' "back office" "http://localhost:$(cfg PORT_BACKOFFICE 5174)"
-else
-  printf '  %-15s %s\n' "back office" "pending (apps/web-backoffice is not built yet)"
+  echo "  $agent_email / <your DEMO_AGENT_PASSWORD from .env>"
 fi
 
 echo
@@ -195,9 +191,8 @@ case "$(cfg ALLOW_DEV_OTP_HOOK false | tr '[:upper:]' '[:lower:]')" in
     echo "  OTP codes: GET $core_url/v1/dev/otp/<challenge_id> (dev hook enabled)"
     ;;
   *)
-    echo "  OTP codes go to a simulated channel that the customer web client will show (pending). Until then,"
-    echo "  for local use only: set ALLOW_DEV_OTP_HOOK=true in .env, run 'make up', and read a code at"
-    echo "  GET $core_url/v1/dev/otp/<challenge_id>"
+    echo "  OTP codes go to a simulated channel and nothing is sent anywhere: the customer chat shows a notice"
+    echo "  (\"You got an email with the code\"); \"Open inbox\" and then \"Show code\" reveal it. Demo only."
     ;;
 esac
 
@@ -206,7 +201,7 @@ case "$admin_enabled" in
   true | 1 | yes | on)
     admin_token=$(cfg ADMIN_API_TOKEN dev-only-admin-token)
     echo
-    echo "Back office actions over HTTP, until the back office exists"
+    echo "Back office actions over HTTP (the Guardrails screen of the back office does the same)"
     if [ "$admin_token" = "dev-only-admin-token" ]; then
       echo "  $core_url/v1/admin/policy-config   Authorization: Bearer dev-only-admin-token (development token)"
     else

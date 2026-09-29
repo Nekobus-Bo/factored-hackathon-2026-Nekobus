@@ -1,0 +1,100 @@
+<!-- @dsCard group="Landing" height=520 subtitle="Links, demo note, legal, compact language and theme" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footer — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+
+</style>
+</head>
+<body>
+<footer class="pb-footer">
+  <div class="pb-footer__inner">
+    <div class="pb-footer__brand">
+      <span class="pb-footer__wordmark">Pattern Blue</span>
+      <p class="pb-footer__tag">Atención bancaria con IA: nada se da por hecho hasta que se verifica.</p>
+    </div>
+    <div class="pb-footer__cols">
+      <nav class="pb-footer__group" aria-label="Producto">
+        <h3>Producto</h3>
+        <ul><li><a class="pb-footer__link" href="#funciones">Funciones</a></li><li><a class="pb-footer__link" href="#como-funciona">Cómo funciona</a></li><li><a class="pb-footer__link" href="#s2">S²</a></li><li><a class="pb-footer__link" href="#ayuda">Ayuda</a></li></ul>
+      </nav>
+      <nav class="pb-footer__group" aria-label="Seguridad">
+        <h3>Seguridad</h3>
+        <ul><li><a class="pb-footer__link" href="#como-funciona">Cómo verificamos</a></li><li><a class="pb-footer__link" href="#ayuda">Preguntas frecuentes</a></li></ul>
+      </nav>
+      <nav class="pb-footer__group" aria-label="Legal">
+        <h3>Legal</h3>
+        <ul><li><a class="pb-footer__link" href="#legal">Términos de la demo</a></li><li><a class="pb-footer__link" href="#legal">Privacidad</a></li></ul>
+      </nav>
+    </div>
+    <p class="pb-footer__demo"><i class="pb-ico pb-ico--info" aria-hidden="true"></i><span>Demo · Factored AI &amp; Data Hackathon 2026 · datos sintéticos</span></p>
+    <div class="pb-footer__bottom">
+      <p class="pb-footer__legal" id="legal">Pattern Blue es un proyecto de demostración. No es un banco ni una entidad financiera, y no hay cuentas, tarjetas ni dinero reales. S² es un activo ficticio de demostración. © 2026 Pattern Blue (demo).</p>
+      <div class="pb-footer__controls"><div class="pb-lang" role="radiogroup" aria-label="Idioma"><button class="pb-lang__btn" type="button" role="radio" aria-checked="true" data-lang="es" lang="es" aria-label="Español">ES</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="pt" lang="pt" aria-label="Português">PT</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="en" lang="en" aria-label="English">EN</button></div><div class="pb-theme" role="radiogroup" aria-label="Tema"><button class="pb-theme__btn" type="button" role="radio" aria-checked="true" data-theme-set="light" aria-label="Tema claro"><i class="pb-ico pb-ico--sun" aria-hidden="true"></i></button><button class="pb-theme__btn" type="button" role="radio" aria-checked="false" data-theme-set="dark" aria-label="Tema oscuro"><i class="pb-ico pb-ico--moon" aria-hidden="true"></i></button></div></div>
+    </div>
+  </div>
+</footer>
+<script>
+  (function () {
+    var root = document.documentElement;
+    // theme toggle: sets data-theme on <html> and keeps every toggle in sync
+    function syncTheme() {
+      var cur = root.getAttribute('data-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.querySelectorAll('.pb-theme__btn').forEach(function (b) { b.setAttribute('aria-checked', b.getAttribute('data-theme-set') === cur ? 'true' : 'false'); });
+    }
+    document.querySelectorAll('.pb-theme__btn').forEach(function (b) {
+      b.addEventListener('click', function () { root.setAttribute('data-theme', b.getAttribute('data-theme-set')); syncTheme(); });
+    });
+    syncTheme();
+    // language switch (decorative here): keeps every switch in sync
+    document.querySelectorAll('.pb-lang__btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-lang');
+        document.querySelectorAll('.pb-lang__btn').forEach(function (o) { o.setAttribute('aria-checked', o.getAttribute('data-lang') === code ? 'true' : 'false'); });
+      });
+    });
+    // collapsed menu
+    document.querySelectorAll('.pb-nav__menu').forEach(function (m) {
+      m.addEventListener('click', function () {
+        var nav = m.closest('.pb-nav'), open = nav.getAttribute('data-open') !== 'true';
+        nav.setAttribute('data-open', open ? 'true' : 'false');
+        m.setAttribute('aria-expanded', open ? 'true' : 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--' + (open ? 'x' : 'menu');
+      });
+    });
+    // a tap on a menu link closes the collapsed menu
+    document.querySelectorAll('.pb-nav__link').forEach(function (l) {
+      l.addEventListener('click', function () {
+        var nav = l.closest('.pb-nav'), m = nav.querySelector('.pb-nav__menu');
+        nav.setAttribute('data-open', 'false'); m.setAttribute('aria-expanded', 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--menu';
+      });
+    });
+    // accordion (single open, collapsible)
+    document.querySelectorAll('.pb-faq').forEach(function (faq) {
+      var triggers = faq.querySelectorAll('.pb-faq__trigger');
+      function set(t, on) {
+        t.setAttribute('aria-expanded', on ? 'true' : 'false');
+        t.setAttribute('data-state', on ? 'open' : 'closed');
+        var c = document.getElementById(t.getAttribute('aria-controls'));
+        c.hidden = !on; c.setAttribute('data-state', on ? 'open' : 'closed');
+        t.closest('.pb-faq__item').setAttribute('data-state', on ? 'open' : 'closed');
+      }
+      triggers.forEach(function (t) {
+        t.addEventListener('click', function () {
+          var wasOpen = t.getAttribute('aria-expanded') === 'true';
+          triggers.forEach(function (o) { set(o, false); });
+          if (!wasOpen) set(t, true);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

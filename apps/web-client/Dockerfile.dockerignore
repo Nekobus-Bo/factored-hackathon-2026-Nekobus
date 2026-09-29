@@ -1,0 +1,22 @@
+# The build context of apps/web-client/Dockerfile (BuildKit reads this file next to the Dockerfile
+# instead of a root .dockerignore). Everything is excluded, then what the build needs is let back in.
+*
+
+# The workspace root.
+!package.json
+!bun.lock
+
+# Every JS workspace member's manifest (the lockfile lists them, a frozen install needs them all).
+!apps/*/package.json
+!packages/*/package.json
+
+# What this app imports: the contracts (TypeScript entry) and the design tokens (CSS and generated dist).
+!packages/contracts/ts
+packages/contracts/ts/tests
+!packages/design-tokens/index.css
+!packages/design-tokens/dist
+!packages/design-tokens/src
+
+# The app itself: its sources, not its tests, build output or node_modules.
+!apps/web-client/tsconfig.json
+!apps/web-client/src

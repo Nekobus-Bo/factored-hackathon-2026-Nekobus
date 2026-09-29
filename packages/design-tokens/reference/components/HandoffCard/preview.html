@@ -1,0 +1,97 @@
+<!-- @dsCard group="Back office" height=760 subtitle="Verified facts, actions taken, open questions" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HandoffCard — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; padding: 16px; }
+  .stage > article { flex: 1 1 340px; }
+  .main { max-width: 560px; }
+  .compact { max-width: 400px; }
+  .head-id { margin: 0; }
+  .note { margin: var(--space-4) 0 0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <article class="pb-card pb-handoff main" aria-labelledby="c1">
+    <span class="pb-hazard" aria-hidden="true"></span>
+    <header>
+      <div class="pb-handoff__head">
+        <h2 class="head-id" id="c1"><a class="pb-caseid" href="#caso-0427">CASE-0427</a></h2>
+        <span class="pb-chip" data-tone="danger"><i class="pb-ico pb-ico--chev2" aria-hidden="true"></i>URGENT</span>
+        <span class="pb-chip" data-state="handed-off"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>HANDED_OFF</span>
+      </div>
+      <div class="pb-handoff__meta">
+        <span class="pb-tag">FRAUD_OPERATIONS</span>
+        <span class="pb-tag" title="Idioma del cliente">ES</span>
+        <span class="pb-t-small">Cliente D*** M*** · en espera 07:42</span>
+      </div>
+    </header>
+
+    <section class="pb-handoff__sec" aria-labelledby="c1-facts">
+      <h3 id="c1-facts">Hechos verificados</h3>
+      <dl class="pb-kv">
+        <dt>Verificación</dt><dd>OTP (email) · 2026-09-29 10:42:18 COT</dd>
+        <dt>Tarjeta</dt><dd><span class="pb-transition">•••• 4821 <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>BLOCKED</span></span></dd>
+        <dt>Cargo disputado</dt><dd>Global Electronics Megastore · USD 139.99 · 2026-09-27</dd>
+        <dt>Comprobante</dt><dd>AUD-20481</dd>
+      </dl>
+    </section>
+
+    <section class="pb-handoff__sec" aria-labelledby="c1-acts">
+      <h3 id="c1-acts">Acciones tomadas</h3>
+      <ul class="pb-steps">
+        <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>otp.verify<small>Identidad verificada con OTP (email).</small></span></li>
+        <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>card.block<small>ACTIVE → BLOCKED · comprobante AUD-20481.</small></span></li>
+        <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>handoff.create<small>URGENT · FRAUD_OPERATIONS.</small></span></li>
+      </ul>
+    </section>
+
+    <section class="pb-handoff__sec" aria-labelledby="c1-open">
+      <h3 id="c1-open">Preguntas abiertas</h3>
+      <ol class="pb-questions">
+        <li>¿El cliente reconoce otros cargos de las últimas 48 horas?</li>
+        <li>¿Solicita reposición de la tarjeta física?</li>
+      </ol>
+    </section>
+
+    <div class="pb-handoff__actions">
+      <button class="pb-btn pb-btn--primary pb-btn--sm" type="button">Tomar caso</button>
+      <button class="pb-btn pb-btn--secondary pb-btn--sm" type="button">Reasignar</button>
+    </div>
+    <p class="pb-t-small note">Los hechos vienen de banking-core con comprobante. El asistente no resuelve disputas.</p>
+  </article>
+
+  <article class="pb-card pb-handoff compact" aria-labelledby="c2" style="padding-top: var(--space-4)">
+    <header>
+      <div class="pb-handoff__head">
+        <h2 class="head-id" id="c2"><a class="pb-caseid" href="#caso-0425">CASE-0425</a></h2>
+        <span class="pb-chip" data-tone="neutral"><i class="pb-ico pb-ico--minus" aria-hidden="true"></i>NORMAL</span>
+        <span class="pb-chip" data-state="handed-off"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>HANDED_OFF</span>
+      </div>
+      <div class="pb-handoff__meta">
+        <span class="pb-tag">CUSTOMER_SUPPORT</span>
+        <span class="pb-tag">EN</span>
+        <span class="pb-t-small">Customer A*** P*** · waiting 03:18</span>
+      </div>
+    </header>
+    <section class="pb-handoff__sec" aria-labelledby="c2-facts">
+      <h3 id="c2-facts">Verified facts</h3>
+      <dl class="pb-kv">
+        <dt>Verification</dt><dd>OTP (email) · 2026-09-29 09:58:02 COT</dd>
+        <dt>Request</dt><dd class="pb-kv__text">Customer asks to update the contact email on file.</dd>
+      </dl>
+    </section>
+    <div class="pb-handoff__actions">
+      <button class="pb-btn pb-btn--primary pb-btn--sm" type="button">Take case</button>
+    </div>
+  </article>
+</div>
+</body>
+</html>

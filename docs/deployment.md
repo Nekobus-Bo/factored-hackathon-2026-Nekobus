@@ -30,9 +30,18 @@ flowchart TD
             ORC["orchestrator<br/>(chat API, turn engine, PII masking)"]
             ENC["encoder = model server<br/>(decision model + embedding model, local CPU)"]
         end
+
+        subgraph FrontEnds ["Front ends (edge network, same-origin BFFs)"]
+            WC["web-client<br/>(customer chat, published on 127.0.0.1:5173)"]
+            WB["web-backoffice<br/>(agent back office, not published in production)"]
+        end
     end
 
-    EXT[External Traffic] -->|HTTP :8080| ORC
+    EXT[Customers] -->|HTTP :5173, through the platform ingress| WC
+    OPS[Operator] -.->|its own login behind a proxy, or an SSH tunnel| WB
+    WC -->|the four chat routes| ORC
+    WB -->|/v1/agent, agent token| ORC
+    WB -->|/v1/admin, admin token| CORE
     ORC -->|HTTP /v1/analyze| ENC
     CORE -->|HTTP /v1/embed (kb.search)| ENC
     ORC -->|HTTP /v1/tools/call| CORE
@@ -46,7 +55,7 @@ flowchart TD
     classDef data fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
 
     class CORE,MIG trusted;
-    class ORC,ENC untrusted;
+    class ORC,ENC,WC,WB untrusted;
     class PG,RedisInstance,RC,RE data;
 ```
 
@@ -69,9 +78,10 @@ flowchart TD
 
 3. **Application Stack:**
    - Containers run with dropped capabilities (`cap_drop: [ALL]`), `no-new-privileges:true`, and read-only root filesystems (`read_only: true` with temporary `/tmp` tmpfs mounts).
-   - In production compose, `banking-core` and `encoder` expose no host ports. Only the `orchestrator` port (`8080`) is exposed (or placed behind an ingress reverse proxy).
+   - In production compose, `banking-core`, `encoder` and `web-backoffice` expose no host ports. Two are published, both bound to `127.0.0.1` for an ingress reverse proxy on the same host: the `web-client` (`5173`, the customers' door) and the `orchestrator` (`8080`, which the web client calls and the deploy smoke checks). Nothing outside the compose networks reaches the back office (see "The front ends" in section 3).
    - **Model server (`encoder`):** it serves the decision model (`POST /v1/analyze`, `GET /v1/decision-points`) and the embedding model of `kb.search` (`POST /v1/embed`) ([ADR-0012](adr/0012-decision-points.md), Appendix J). It receives **raw customer text**, so it must run inside your private network and never be a third-party or public service. It can share the host with the rest of the stack or run on its own host: set `ENCODER_URL` (orchestrator) and `MODEL_SERVER_URL` (banking-core) to its address, publish its port only to those two services (firewall or security group), and fill its `hf-cache` volume there (`make warmup-retrieval`, with network once). **There is no authentication or TLS between the services and the model server yet**: the network is the control (declared in [limitations.md](limitations.md)). banking-core depends on it only for `kb.search`; if it is down or serves another model than `EMBEDDING_MODEL`/`EMBEDDING_REVISION`, `kb.search` is unavailable and every other tool is unaffected.
-   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. Behind an ingress proxy that appends the address it saw (nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`), set `TRUSTED_PROXY_HOPS=1` (one more per extra proxy). **Left at `0` behind a proxy, every customer shares the proxy's address and its budget, and once it is spent nobody can open a conversation until the hour ends.** Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. The orchestrator stores only a keyed hash of the address.
+   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the orchestrator's own default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. **The compose files and `deploy.yml` set `1`**, because the customer path is now the web-client BFF: it puts the address of its own connection in `X-Forwarded-For`, and with `0` every customer would share the BFF's address and budget, and once it is spent nobody can open a conversation until the hour ends. Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. With `1` a request that reaches the orchestrator directly could carry a forged header and pick its own bucket, which is why the orchestrator's port is published on `127.0.0.1` only: that can happen only from the host itself, so an ingress must send customers to the web client (`5173`), never to the orchestrator. **Known limit:** the BFF sees only the address of the connection to it, so behind an ingress proxy in front of the web client every customer still shares that proxy's address and budget, until the BFF is taught to trust that proxy ([limitations.md](limitations.md), the customer app row). The orchestrator stores only a keyed hash of the address.
+   - **Agent API (human takeover):** the orchestrator serves `/v1/agent` on its own port (`8080`), next to the customer chat, so a back-office server can read a conversation's transcript, take it over and write to the customer. It is **off unless `AGENT_API_ENABLED=true`** (the router is then not mounted: its paths answer 404) and every route needs `Authorization: Bearer <AGENT_API_TOKEN>`, compared in constant time. The development compose turns it on with the public token `dev-only-agent-token`; **the orchestrator refuses to start under `APP_ENV=production` with that token or an empty one**, and `docker-compose.prod.yml` pins the API back to off and the token to empty, so production enables it only with a secret of its own (`openssl rand -hex 32`). The token is its only protection: **no ingress should forward `/v1/agent`** (customers go to the web client, not to the orchestrator), and only the back-office server should hold the token. Design: [ADR-0013](adr/0013-front-ends-bff-takeover.md). `AGENT_LOCK_WAIT_SECONDS` (default `10`) is how long a takeover or an agent message waits for a customer turn in flight before answering `503 turn_in_progress`.
 
 ---
 
@@ -92,7 +102,7 @@ The required command sets derived from the codebase:
 2. **`banking-core` challenge store:** Uses `INCR` and `EXPIRE` on `otp:challenge:<id>:evaluations` to atomically count attempts before verifying HMAC hashes, and `DEL` to invalidate challenges. redis-py sends `INCR` as `INCRBY key 1`, so `+incrby` is required: an ACL with `+incr` alone fails every `otp.verify` with `NOPERM`.
 3. **`banking-core` attempt limits:** `control/attempt_limits.py` creates a fixed-window counter with `SET key 0 NX EX <window>` and `INCR` in one `MULTI`, reads locks with `GET`, sets them with `SET NX EX`, and gives a successful match's count back with `WATCH` / `GET` / `MULTI` / `SET XX KEEPTTL` / `EXEC`. It needs no command beyond the set above; only the key pattern `~limit:*` is new.
 4. **`banking-core` simulated OTP inbox:** `identity/simulated_inbox.py` keeps one entry per challenge (`otp:inbox:challenge:<challenge_id>`, `SET ... EX <challenge TTL>`) and a small index of a session's challenge ids (`otp:inbox:session:<session_id>`, at most 10) so an inbox can be listed. The index is rewritten with `WATCH` / `GET` / `MULTI` / `SET EX` / `DEL` / `EXEC`. It never uses `SCAN`, `KEYS`, `MGET` or sorted sets, which the `core-svc` ACL does not grant. **The entry holds the clear OTP code** (the challenge store keeps only an HMAC): that is the simulated delivery, and it lives for the challenge TTL (`OTP_TTL_SECONDS`) and nowhere else. Keep `redis-core` internal, and keep the inbox prefix under `~otp:*`.
-5. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`.
+5. **`orchestrator` session store:** Uses `save_fenced` which wraps `WATCH` on the turn lock key, checks ownership, and writes state atomically with `MULTI` / `SET ... EX` / `EXEC`. Lock release similarly depends on `WATCH` / `MULTI` / `DEL` / `EXEC`. The same `MULTI` also sets the reverse index the agent API reads, `orch:session:<banking session id>` holding the conversation id (`SET ... EX`, the conversation's TTL, refreshed by every save); it needs no command beyond the set above and no `EXISTS`, `SCAN` or `KEYS`.
 6. **`orchestrator` conversation rate limit:** `session/rate_limit.py` counts `POST /v1/conversations` per client address with `INCR` (sent as `INCRBY`) and `EXPIRE` in one `MULTI`, under `orch:ratelimit:conversations:<keyed hash>:<window>`. An `edge-svc` ACL written before this limit lacks `+incrby +expire`: the limiter then fails closed and every `POST /v1/conversations` answers 503.
 
 If `WATCH`, `MULTI`, `EXEC`, or `UNWATCH` are omitted from the ACL, Redis returns `NOPERM` and operations fail.
@@ -113,6 +123,7 @@ Ensure the key prefix variables in `.env` match these patterns:
 - `REDIS_ATTEMPT_LIMIT_KEY_PREFIX=limit:` (covered by `~limit:*`)
 - `REDIS_EDGE_KEY_PREFIX=orch:conv:` (covered by `~orch:*`)
 - `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX=orch:ratelimit:` (covered by `~orch:*`)
+- `REDIS_EDGE_SESSION_INDEX_KEY_PREFIX=orch:session:` (covered by `~orch:*`)
 
 ---
 
@@ -144,20 +155,72 @@ docker compose --profile bundled-data \
                up -d --wait
 ```
 
+### The front ends (`web-client` and `web-backoffice`)
+
+Two Bun servers, each serving its page and a same-origin BFF: the browser talks only to its own server, which forwards a closed list of routes to the orchestrator and, for the back office, to the `banking-core` admin API ([ADR-0013](adr/0013-front-ends-bff-takeover.md)). Neither has a database or Redis. Both are built from the repository root (`Dockerfile.dockerignore` next to each Dockerfile keeps the context to about 0.5 MB, against the whole repository), run as the non-root `bun` user, sit on the `edge` network only and answer `GET /healthz`, which is what their compose healthcheck calls.
+
+| | `web-client` | `web-backoffice` |
+|---|---|---|
+| In-container port | `5173` | `5174` |
+| Development compose | `127.0.0.1:${PORT_WEB_CLIENT:-5173}` | `127.0.0.1:${PORT_WEB_BACKOFFICE:-5174}` |
+| Production overlay | Published the same way (`127.0.0.1`); `APP_ENV=production`, read-only root | **Not published** (`ports: !reset []`); `APP_ENV=production`, read-only root |
+| Calls | The orchestrator, `ORCHESTRATOR_URL=http://orchestrator:8080` | The orchestrator (`/v1/agent`) and `banking-core` (`/v1/admin`), `http://orchestrator:8080` and `http://banking-core:8081` |
+| Secrets | None | `ADMIN_API_TOKEN`, `AGENT_API_TOKEN`, `DEMO_AGENT_PASSWORD` and `BACKOFFICE_SESSION_SECRET`: `${VAR:?}` in the production overlay, so a deploy that lacks one fails at `compose config` naming it; the server also refuses the development values under `APP_ENV=production` |
+| Also read | | `DEMO_AGENT_EMAIL` (the one login and the `agent_ref` of every claim; default `agent@demo.local`) |
+| Memory | About 20 MiB at rest (limit `256m`) | About 20 MiB at rest (limit `256m`) |
+
+In development the tokens have the same variables and public defaults as on `banking-core` and the orchestrator, so the three sides agree with no `.env`. In production the back office needs both APIs on: `ADMIN_API_ENABLED=true` and `AGENT_API_ENABLED=true`, both off in the production overlay by default. Without them it starts and logs in, but its screens fail: `404` when the API is off, `502 upstream_unauthorized` when the token is not the one the API expects.
+
+**Reaching the back office in production.** There is no host port on purpose: the admin and agent tokens live in that server, and its one login is a demo credential. Two ways in, neither of which ships as a file:
+
+- a reverse proxy on the same Docker network (`<project>_edge`) that adds its own authentication in front of `web-backoffice:5174`, or
+- a loopback port that the operator publishes with an override file written on the server (not in the repository), and an SSH tunnel to it:
+
+  ```yaml
+  # /opt/pattern-blue/infra/compose/docker-compose.backoffice-tunnel.yml
+  services:
+    web-backoffice:
+      ports:
+        - "127.0.0.1:5174:5174"
+  ```
+
+  Add `-f` for it after the two files in the compose command, run `up -d web-backoffice`, and `ssh -L 5174:127.0.0.1:5174 <user>@<host>`; then open `http://localhost:5174`.
+
+The check that the overlay publishes what it says (run it with the variables of section 3 set, as for the trust-boundary check below):
+
+```bash
+docker compose -f infra/compose/docker-compose.yml \
+               -f infra/compose/docker-compose.prod.yml \
+               config --format json | python3 -c '
+import json, sys
+services = json.load(sys.stdin)["services"]
+assert "ports" not in services["web-backoffice"], "the back office must not be published in production"
+assert "ports" not in services["banking-core"] and "ports" not in services["encoder"]
+print("Published in production:", sorted(n for n, s in services.items() if s.get("ports")))
+'
+```
+
+It prints `Published in production: ['orchestrator', 'web-client']`.
+
 ### Environment Variables Matrix
 
 The production compose override enforces explicit configuration without development defaults:
 
 | Variable | Description | Services Consuming | Example Value |
 |---|---|---|---|
-| `REGISTRY` | Container registry prefix | `migrate`, `seed`, `banking-core`, `orchestrator`, `encoder` | `ghcr.io/org` |
-| `IMAGE_TAG` | Image release version / commit SHA | `migrate`, `seed`, `banking-core`, `orchestrator`, `encoder` | `v1.0.0` or git SHA |
+| `REGISTRY` | Container registry prefix | `migrate`, `seed`, `banking-core`, `orchestrator`, `encoder`, `web-client`, `web-backoffice` | `ghcr.io/org` |
+| `IMAGE_TAG` | Image release version / commit SHA | `migrate`, `seed`, `banking-core`, `orchestrator`, `encoder`, `web-client`, `web-backoffice` | `v1.0.0` or git SHA |
 | `DATABASE_URL` | PostgreSQL connection URL (psycopg format) | `migrate`, `seed`, `banking-core` | `postgresql+psycopg://app:pass@host.docker.internal:5432/bank` |
 | `REDIS_CORE_URL` | Redis URL for banking-core (`core-svc`) | `banking-core` | `redis://core-svc:pass@host.docker.internal:6379/0` |
 | `REDIS_EDGE_URL` | Redis URL for orchestrator (`edge-svc`) | `orchestrator` | `redis://edge-svc:pass@host.docker.internal:6379/0` |
 | `MASTER_KEY` | Master key for application-level encryption | `seed`, `banking-core` | 32-byte base64/hex secret |
 | `BLIND_INDEX_SALT` | Salt for deterministic blind indexing | `seed`, `banking-core` | 32-byte secret |
 | `SESSION_SECRET` | Secret key for conversation placeholder encryption | `orchestrator` | 32-byte secret |
+| `ADMIN_API_ENABLED`, `ADMIN_API_TOKEN` | Switch on the admin API (`/v1/admin`) and its bearer token. The production override pins the switch to `false` and the token to empty for `banking-core`; the back office needs the switch on and the token **set** (`${ADMIN_API_TOKEN:?}` on `web-backoffice`). `banking-core` refuses an empty or the public development token under `APP_ENV=production` | `banking-core`, `web-backoffice` | `true` + `openssl rand -hex 32` |
+| `AGENT_API_ENABLED`, `AGENT_API_TOKEN` | Switch on the agent API (`/v1/agent`, the human takeover) and its bearer token. The production override pins the switch to `false` and the token to empty for the orchestrator, which refuses to start under `APP_ENV=production` with an empty token or the public development token; the back office needs the switch on and the token **set** (`${AGENT_API_TOKEN:?}`) | `orchestrator`, `web-backoffice` | `true` + `openssl rand -hex 32` |
+| `BACKOFFICE_SESSION_SECRET` | HMAC key of the back office's session cookie. Required in production; the server refuses the development default | `web-backoffice` | `openssl rand -hex 32` |
+| `DEMO_AGENT_EMAIL`, `DEMO_AGENT_PASSWORD` | The back office's one demo login. The password is required in production and the server refuses the development one; the email defaults to `agent@demo.local` and is recorded as the agent on every claim | `web-backoffice` | an address, and a random password |
+| `PORT_WEB_CLIENT`, `PORT_WEB_BACKOFFICE` | Host side of the front ends' loopback ports (development compose; the web client's also applies in production). Inside the containers the ports are fixed, `5173` and `5174` | `web-client`, `web-backoffice` | `5173`, `5174` |
 | `BANKING_CORE_MEMORY_LIMIT` | Container memory limit for banking-core. The embedding model no longer loads there by default, so it can be lowered once measured on Linux | `banking-core` | `2g` |
 | `ENCODER_MEMORY_LIMIT` | Container memory limit for the model server | `encoder` | `3g` (default; should fit `tfidf_lr` plus the embedding model, estimate) or `5g` (`gliner` plus the embedding model, estimate) |
 | `MODEL_SERVER_URL` | Base URL of the model server for `kb.search` | `banking-core` | `http://encoder:8090` (default) or `http://models.internal:8090` |
@@ -207,7 +270,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 
 1. **Pure Environment (`.env`):**
    - **Data connectivity:** Plugging your own external PostgreSQL (`DATABASE_URL`, pgvector extension required) or Redis instances (`REDIS_CORE_URL`, `REDIS_EDGE_URL` supporting `redis://` or `rediss://` with username, password, port and TLS; use database 0, or add `+select` to both ACL users if you pick another DB number).
-   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_OTP_INBOX_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
+   - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_OTP_INBOX_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`, and `REDIS_EDGE_SESSION_INDEX_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
    - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), the pinned embedding model (`EMBEDDING_MODEL`, `EMBEDDING_REVISION`) and where it runs (`MODEL_SERVER_URL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
    - **LLM engine:** Switching between deterministic `replay` and live provider (`live`), model names (`LLM_MODEL`), base URLs, and timeouts.
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
@@ -273,7 +336,8 @@ Automated production deployment automation via `make deploy` is currently `⚠�
 
 ## 6. Continuous Deployment
 
-`.github/workflows/deploy.yml` builds the three application images, pushes them to
+`.github/workflows/deploy.yml` builds the five application images (`banking-core`,
+`orchestrator`, `encoder`, `web-client`, `web-backoffice`), pushes them to
 GHCR, and deploys to a target host over SSH. The target is a Docker host (VM) on the
 chosen cloud platform (AWS, Google Cloud Platform or Microsoft Azure; decision pending),
 reached over SSH. It runs on GitHub-hosted `ubuntu-latest` runners only — no
@@ -336,14 +400,19 @@ to the same environment from overlapping.
 | `SESSION_SECRET` | secret | always | See §3 table above |
 | `MASTER_KEY` | secret | always | See §3 table above |
 | `BLIND_INDEX_SALT` | secret | always | See §3 table above |
-| `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` |
-| `ADMIN_API_TOKEN` | secret | when `ADMIN_API_ENABLED=true` | Bearer token for the admin API. A real random secret: `banking-core` refuses to start under `APP_ENV=production` with an empty token or the public development token |
+| `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` (the back office needs it) |
+| `ADMIN_API_TOKEN` | secret | always (the back office holds it) | Bearer token for the admin API. A real random secret: `banking-core` refuses to start under `APP_ENV=production` with an empty token or the public development token, and the production overlay does not let `web-backoffice` start without it |
+| `AGENT_API_ENABLED` | variable | optional | `true` to enable the agent API (`/v1/agent`, the human takeover) on the `orchestrator` (the back office needs it). `deploy.yml` writes `false` unless it is set |
+| `AGENT_API_TOKEN` | secret | always (the back office holds it) | Bearer token for the agent API. A real random secret: the `orchestrator` refuses to start under `APP_ENV=production` with an empty token or the public development token, and the production overlay does not let `web-backoffice` start without it |
+| `BACKOFFICE_SESSION_SECRET` | secret | always | HMAC key of the back office's session cookie. The server refuses the development default under `APP_ENV=production` |
+| `DEMO_AGENT_PASSWORD` | secret | always | The back office's one demo login. The server refuses the development password under `APP_ENV=production` |
+| `DEMO_AGENT_EMAIL` | variable | optional | The back office's login and the `agent_ref` of every claim; `deploy.yml` writes `agent@demo.local` unless it is set |
 | `DEMO_RESET_ENABLED` | variable | optional | `true` to allow `POST /v1/admin/demo/reset-fixtures` under `APP_ENV=production` (it also needs the admin API). See §7 |
 | `OTP_CHANNEL_MODE` | variable | optional | `simulated`, the default and the only delivery that exists. See §7 |
 | `DEMO_SEED` | variable | optional | `true` to load the synthetic demo customers after `up`, with the seed's `--force`. It **deletes the banking tables' contents**: set it on the presentation Environment only. See §7 |
 | `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
 | `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
-| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (`30` unless set; the development compose defaults to `1000`), and how many reverse proxies stand in front of the orchestrator (default `0`: `X-Forwarded-For` is ignored). Set `TRUSTED_PROXY_HOPS` to the real number when an ingress proxy fronts the stack, see §1 |
+| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (`30` unless set; the development compose defaults to `1000`), and how many reverse proxies stand in front of the orchestrator (`deploy.yml` writes `1` unless set: the web-client BFF is that hop; the orchestrator's own default is `0`, `X-Forwarded-For` ignored). Set it to the real number if a proxy also stands directly in front of the orchestrator, see §1 |
 | `ENCODER_BACKEND`, `ABSTENTION_THRESHOLD` | variable | optional | Default to the calibrated seed in `.env.example` (`tfidf_lr`, `0.37`). `ENCODER_BACKEND=gliner` also needs the `ENCODER_EXTRAS` build variable and about 4 GB of memory |
 | `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
 | `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |
@@ -361,7 +430,8 @@ In order, over SSH on the target: create `$DEPLOY_PATH/infra/compose` and `$DEPL
 (the orchestrator's read-only recordings mount) and copy the compose files; write
 `$DEPLOY_PATH/.env` (mode 600); `pull`; `run --rm migrate`; `up -d --wait`; when
 `DEMO_SEED=true`, `run --rm seed ... seed --force`; then a `/health` smoke check on the
-orchestrator. The images already contain the code; nothing is built on the server.
+orchestrator and a `/healthz` one on the web client, both on their `127.0.0.1` ports. The
+images already contain the code; nothing is built on the server.
 
 ### Forking this repository
 
@@ -385,12 +455,13 @@ deploy time is the equivalent.
 
 ### Where images live
 
-The three images (`ghcr.io/<owner>/pattern_blue-banking-core`,
-`pattern_blue-orchestrator`, `pattern_blue-encoder`) are **GHCR public packages** by
+The five images (`ghcr.io/<owner>/pattern_blue-banking-core`,
+`pattern_blue-orchestrator`, `pattern_blue-encoder`, `pattern_blue-web-client`,
+`pattern_blue-web-backoffice`) are **GHCR public packages** by
 intent. GHCR packages are **private by default on first push** regardless of the
 repository's own visibility, so after the first successful `build` job, go to
 `https://github.com/users/<owner>/packages/container/<package>/settings` (or the org
-equivalent) for each of the three and set visibility to Public once. Public packages
+equivalent) for each of the five and set visibility to Public once. Public packages
 need no authentication to `docker pull`, which is why the `deploy` job does not log in
 to GHCR before pulling — if a package is kept private instead, add a `docker login`
 step there with a token that has at least `read:packages`.
@@ -407,7 +478,10 @@ nothing is rebuilt — and `deploy` runs the SSH steps against the given tag.
 `deploy.yml` has been designed and syntax/render-validated locally (`config` against
 both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy has
 actually run** against any target — no Environment has been created yet, and no
-`DEPLOY_*` secret exists anywhere. Treat this section as a design, not a proven
+`DEPLOY_*` secret exists anywhere. The two front-end services in the production overlay
+are render-validated (`config`, the published-ports check of §3) and their images were
+built and started with the overlay's hardening (read-only root, no capabilities) on a
+development machine, but they have never run from a registry image in production. Treat this section as a design, not a proven
 procedure, until a first real run against the platform is logged here.
 
 ---
@@ -421,9 +495,10 @@ judges**: they clone the repository and run `make demo` on their machine
 The presentation environment is an ordinary deployment (§6, same images, same
 `deploy.yml`) that stays `APP_ENV=production`, with **production-hardened defaults and
 each demo feature switched on explicitly**. The development defaults of
-`docker-compose.yml` (admin API on with a public token) never reach it:
-`docker-compose.prod.yml` pins them back to off, and `banking-core` refuses to start
-with the development token when `APP_ENV=production`.
+`docker-compose.yml` (admin API and agent API on, each with a public token) never reach
+it: `docker-compose.prod.yml` pins them back to off, and `banking-core`, the
+`orchestrator` and the back office refuse to start with their development token when
+`APP_ENV=production`.
 
 **The hosting platform is still to be decided** (AWS, Google Cloud Platform or Microsoft
 Azure, §6). Nothing below depends on which one it is.
@@ -432,16 +507,19 @@ Azure, §6). Nothing below depends on which one it is.
 
 | Switch | Set it to | What it turns on | Notes |
 |---|---|---|---|
-| `ADMIN_API_ENABLED` + `ADMIN_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | Back-office actions over HTTP: `GET`/`PUT /v1/admin/policy-config` | Startup fails on an empty token or the development token. Keep the token out of the repository: it is a GitHub secret |
+| `ADMIN_API_ENABLED` + `ADMIN_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | What the back office calls, and back-office actions over HTTP: `GET`/`PUT /v1/admin/policy-config` and `/v1/admin/tool-policy`; `GET /v1/admin/handoffs` (the queue, `?status=` to filter) and `/v1/admin/handoffs/{handoff_ref}` (with the stored summary); `POST /v1/admin/handoffs/{handoff_ref}/claim` (an agent takes a case: audited as `admin.handoff.claimed`, needs migration `0008`); `GET /v1/admin/metrics?hours=` (counts from the audit log and the queue) | Startup fails on an empty token or the development token. Keep the token out of the repository: it is a GitHub secret. The back office holds the same token, and the production overlay needs it set whatever the switch says |
+| `AGENT_API_ENABLED` + `AGENT_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | The human takeover in the orchestrator: `GET /v1/agent/sessions/{session_ref}/conversation`, `GET /v1/agent/conversations/{id}`, `POST .../takeover` and `POST .../messages` | Startup fails on an empty token or the development token. It is a GitHub secret. It shares the orchestrator's port, so keep `/v1/agent` off any ingress. The back office holds the same token, and the production overlay needs it set whatever the switch says. While a conversation is taken over the LLM never sees it again and there is no hand-back to the assistant ([limitations](limitations.md)) |
+| `BACKOFFICE_SESSION_SECRET`, `DEMO_AGENT_PASSWORD` (secrets), `DEMO_AGENT_EMAIL` (variable) | Random values, and the agent's address | The back office (`web-backoffice`): the agent's login, the queue, taking a case and replying, guardrails, metrics | It is part of the production stack but **not published** (section 3, "The front ends", says how to reach it). It needs the two APIs above switched on. One demo credential, no user directory ([limitations](limitations.md)). The server refuses the development password and secret |
 | `DEMO_RESET_ENABLED` | `true` | `POST /v1/admin/demo/reset-fixtures`: puts the fixture customers' cards back to their seed state between demo runs | Without it the endpoint answers 403 in production. It also needs the admin API |
-| `OTP_CHANNEL_MODE` | `simulated` (the default) | The simulated OTP delivery: no code leaves the system | Today this is the only delivery that exists; `banking-core` does not read the variable yet, and the real channel is an open decision ([limitations](limitations.md)). The panel that shows simulated codes belongs to the customer web client, which is pending, and the dev OTP endpoint stays off (`deploy.yml` never sets `ALLOW_DEV_OTP_HOOK`) |
+| `OTP_CHANNEL_MODE` | `simulated` (the default) | The simulated OTP delivery: no code leaves the system | Today this is the only delivery that exists; `banking-core` does not read the variable yet, and the real channel is an open decision ([limitations](limitations.md)). The customer web client shows the simulated code in its inbox notice, and the dev OTP endpoint stays off (`deploy.yml` never sets `ALLOW_DEV_OTP_HOOK`) |
 | `DEMO_SEED` | `true` | After `up`, `deploy.yml` runs `python -m banking_core.seed.cli seed --force` in the `seed` service | The seed refuses to run under `APP_ENV=production` without `--force`. It **truncates and reloads** the banking tables with the synthetic demo customers (es/pt/en), so every deploy with the variable set resets the demo data and empties the handoff queue: leave it on only for a deploy that should do that. Set it on the presentation GitHub Environment, never at repository level and never on an environment that holds real customer data: it would wipe it |
-| `TRUSTED_PROXY_HOPS` | the number of reverse proxies the platform puts in front of the orchestrator | Which client address the per-address limit counts | `0` (default) ignores `X-Forwarded-For` and counts the connection peer, so behind a proxy every customer shares the proxy's address and budget. Never set more than the real number: the extra entries come from the client |
+| `TRUSTED_PROXY_HOPS` | leave at `1` | Which client address the per-address limit counts | `deploy.yml` writes `1` unless the variable is set: the web-client BFF is that hop. `0` ignores `X-Forwarded-For` and counts the connection peer, which would be the BFF for every customer. Never set more than the real number: the extra entries come from the client. The orchestrator's port stays on `127.0.0.1`, so a forged header can come only from the host; behind an ingress in front of the web client all customers still share the ingress's address ([limitations](limitations.md)) |
 | `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` | leave at `30` | Conversations one client address may open per hour | `deploy.yml` writes `30` unless the variable is set, and `docker-compose.prod.yml` pins the same default; the development compose defaults to `1000` so local runs and evaluation runs from one address are not limited. It must be at least `1`: `0` is not "unlimited", the orchestrator refuses to start |
 | `LLM_MODE` + `LLM_API_KEY` | `live` + the key (secret) | Real model calls | With `replay` the orchestrator answers 503 on a message that has no recording, and `deploy.yml` does not ship `eval/replay` yet |
 
 Everything else keeps its production default: `APP_ENV=production`, only the orchestrator
-publishes a port, the dev OTP endpoint is off, `EVAL_EXPOSE_TURN` is refused, and the
+and the customer web client publish a port (on `127.0.0.1`), the back office publishes none,
+the dev OTP endpoint is off, `EVAL_EXPOSE_TURN` is refused, and the
 secrets (`MASTER_KEY`, `BLIND_INDEX_SALT`, `SESSION_SECRET`, database and Redis URLs) come
 from the GitHub Environment.
 

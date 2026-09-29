@@ -1,0 +1,29 @@
+{
+  "name": "@pattern-blue/web-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The simulated Pattern Blue fintech (landing plus the customer chat dock) and its same-origin BFF.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "build": "bun build --target=bun --production --outdir=dist ./src/server.ts",
+    "start": "bun --cwd dist server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@ark-ui/react": "^5.0.0",
+    "@pattern-blue/contracts": "workspace:*",
+    "@pattern-blue/design-tokens": "workspace:*",
+    "@xstate/react": "^6.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "xstate": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^7.0.2"
+  }
+}

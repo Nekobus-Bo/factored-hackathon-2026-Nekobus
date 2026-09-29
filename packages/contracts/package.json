@@ -1,0 +1,21 @@
+{
+  "name": "@pattern-blue/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zod schemas of the Pattern Blue message blocks and HTTP shapes, for the TypeScript front ends. The Python package next to it stays the source of truth.",
+  "type": "module",
+  "exports": {
+    ".": "./ts/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}

@@ -22,8 +22,11 @@ packages/design-tokens/
   dist/tokens.css        GENERATED, committed: every token as a custom property, both themes, type-style classes
   dist/tokens.ts         GENERATED, committed: typed token names and values per theme
   dist/fonts.html        GENERATED, committed: the Google Fonts <link>
+  reference/             copied verbatim from the artifact: its README.md (the rules) and components/<Name>/{README.md,preview.html}
   tests/                 bun test
 ```
+
+`src/` and `reference/` are copied by hand and never edited here. `reference/` is the design system's documentation, the markup and rules of every component, kept in the repository so the front ends can be built without access to the artifact (which is private to its owner until shared). Its previews expect the artifact viewer to inject the tokens and `components.css`; to open one locally, add `<link rel="stylesheet" href="../../../index.css">` to its `<head>`. It is not imported by any app and no check reads it.
 
 `src/` is copied by hand and never edited here. `dist/` is written by `make design-tokens` and never edited by hand. It is committed so apps and CI need no build step; `make design-tokens-check` fails when it drifts from `src/`.
 
@@ -123,6 +126,7 @@ When the design system changes:
 1. Read the artifact's current `project/tokens.json` and `project/components/bundle.css` (in Claude Code: the Artifact tool, `action: "read"`, with the file as `path`; or download them from claude.ai).
 2. Replace `src/tokens.json` with `tokens.json`, byte for byte.
 3. Replace `src/components.css` with the header comment (update the version and date, they come from the read's "version" line) followed by `bundle.css`, byte for byte.
+   Replace `reference/` with the artifact's `project/README.md` and `project/components/` (every `README.md` and `preview.html`, not `bundle.css`).
 4. Run `make design-tokens`, then `make design-tokens-check`.
 5. Commit `src/` and `dist/` together: `feat(design-tokens): sync from the design-system artifact <version>`. Update the version in the table at the top of this file.
 

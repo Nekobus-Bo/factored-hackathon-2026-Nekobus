@@ -1,0 +1,68 @@
+<!-- @dsCard group="Status & feedback" height=560 subtitle="Hazard stripe only on caution and critical" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlertBanner — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 20px; max-width: 680px; padding: 16px; }
+  .pb-alert .pb-btn, .pb-alert .pb-action { align-self: start; }
+  @media (max-width: 480px) { .pb-alert { grid-template-columns: 24px minmax(0, 1fr); } .pb-alert > .pb-btn, .pb-alert > .pb-action { grid-column: 2; justify-self: start; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="pb-alert pb-alert--stripe" data-tone="caution" role="status">
+    <span class="pb-hazard" aria-hidden="true"></span>
+    <i class="pb-ico pb-ico--warning" aria-hidden="true"></i>
+    <div>
+      <span class="pb-alert__eyebrow">Política</span>
+      <p class="pb-alert__text">El monto supera el umbral: se requiere handoff prioritario.<small>USD 139.99 supera el umbral de USD 100.00 configurado para esta moneda.</small></p>
+    </div>
+    <button class="pb-btn pb-btn--secondary pb-btn--sm" type="button">Ver política</button>
+  </div>
+
+  <div class="pb-alert pb-alert--stripe" data-tone="caution" role="status" lang="en">
+    <span class="pb-hazard" aria-hidden="true"></span>
+    <i class="pb-ico pb-ico--warning" aria-hidden="true"></i>
+    <div>
+      <span class="pb-alert__eyebrow">Policy</span>
+      <p class="pb-alert__text">Amount above threshold — priority handoff required.</p>
+    </div>
+    <span></span>
+  </div>
+
+  <div class="pb-alert pb-alert--stripe" data-tone="critical" role="alert">
+    <span class="pb-hazard" aria-hidden="true"></span>
+    <i class="pb-ico pb-ico--critical" aria-hidden="true"></i>
+    <div>
+      <span class="pb-alert__eyebrow">Crítico</span>
+      <p class="pb-alert__text">No se pudo confirmar el bloqueo: la tarjeta •••• 4821 sigue ACTIVE.<small>No informes al cliente hasta tener un comprobante. Reintenta con la misma idempotency key.</small></p>
+    </div>
+    <button class="pb-btn pb-btn--danger pb-btn--sm" type="button">Reintentar</button>
+  </div>
+
+  <div class="pb-alert" data-tone="info" role="status" lang="pt">
+    <i class="pb-ico pb-ico--info" aria-hidden="true"></i>
+    <div>
+      <span class="pb-alert__eyebrow">Idioma</span>
+      <p class="pb-alert__text">O cliente escreve em português. As respostas do assistente saem em PT.</p>
+    </div>
+    <button class="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label="Cerrar aviso"><i class="pb-ico pb-ico--x" aria-hidden="true"></i></button>
+  </div>
+
+  <div class="pb-alert" data-tone="success" role="status">
+    <i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>
+    <div>
+      <span class="pb-alert__eyebrow">Verificado</span>
+      <p class="pb-alert__text">Comprobante AUD-20481 releído de la base de datos.</p>
+    </div>
+    <a class="pb-action" href="#comprobante-aud-20481">Ver comprobante<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a>
+  </div>
+</div>
+</body>
+</html>

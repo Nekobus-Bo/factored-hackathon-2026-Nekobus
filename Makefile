@@ -16,9 +16,24 @@ COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .en
 UV_RUN_FLAGS ?=
 
 # The TypeScript side is a Bun workspace at the root (ADR-0009). The stack and `make demo` do not need it:
-# the front ends are built in containers. Bun is needed to regenerate or check packages/design-tokens.
+# the front ends are built in containers. Bun is needed to regenerate or check packages/design-tokens, and to
+# run a front end's dev server on the host (`make web-client`, `make web-backoffice`).
 BUN ?= bun
 NO_BUN = { echo "bun is not installed (BUN=$(BUN)). Install it from https://bun.sh, 1.3 or later, or pass BUN=/path/to/bun." >&2; exit 1; }
+
+# What `make web-check` covers: the shared contracts, then every web app (apps/web-client,
+# apps/web-backoffice) as soon as it has a package.json. Each needs `typecheck` and `test` scripts;
+# one without them fails the gate instead of being skipped. packages/design-tokens keeps its own gate
+# (design-tokens-check), which also checks that dist/ matches src/.
+WEB_PACKAGES = packages/contracts $(sort $(patsubst %/package.json,%,$(wildcard apps/web-*/package.json)))
+
+# Where the host dev servers (`make web-client`, `make web-backoffice`) find the stack that `make up` started:
+# the ports compose publishes on 127.0.0.1. The Makefile does not read .env, so a PORT_* changed there is
+# repeated here: `make web-client PORT_ORCHESTRATOR=58180`.
+PORT_ORCHESTRATOR ?= 8080
+PORT_BANKING_CORE ?= 8081
+PORT_WEB_CLIENT ?= 5173
+PORT_WEB_BACKOFFICE ?= 5174
 
 # How infra/compose/demo.sh calls back into make. Not spelled $(MAKE) in the
 # recipe on purpose: make runs any recipe line containing that string even under
@@ -28,7 +43,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data generate-labels migrate \
-	profile-factored ingest design-tokens design-tokens-check
+	profile-factored ingest design-tokens design-tokens-check web-check web-client web-backoffice
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -53,7 +68,7 @@ clean: ## Stop and delete volumes (DESTROYS seeded data)
 	@echo "WARNING: deleting volumes. Seeded data will be lost." >&2
 	$(COMPOSE) down -v
 
-smoke: ## Check all six components are healthy
+smoke: ## Check every service is healthy: databases, backends and both front ends
 	@COMPOSE="$(COMPOSE)" bash infra/compose/smoke.sh
 
 build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (uses a pb-multiarch buildx builder if the default cannot; slow under emulation)
@@ -62,7 +77,7 @@ build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (u
 		docker buildx inspect pb-multiarch >/dev/null 2>&1 || docker buildx create --name pb-multiarch --driver docker-container >/dev/null || exit 1; \
 		B="--builder pb-multiarch"; \
 	fi; \
-	for s in banking-core orchestrator encoder; do \
+	for s in banking-core orchestrator encoder web-client web-backoffice; do \
 		docker buildx build $$B --platform linux/amd64,linux/arm64 -f apps/$$s/Dockerfile . || exit 1; \
 	done
 
@@ -132,3 +147,25 @@ design-tokens-check: ## Design tokens gate, as CI runs it: dist/ matches src/, t
 	$(BUN) run --cwd packages/design-tokens check
 	$(BUN) run --cwd packages/design-tokens typecheck
 	$(BUN) run --cwd packages/design-tokens test
+
+web-check: ## Front-end gate, as CI runs it: typecheck and bun test for @pattern-blue/contracts and each web app; needs Bun
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'web-check: ' >&2; $(NO_BUN); }
+	$(BUN) install --frozen-lockfile
+	@for pkg in $(WEB_PACKAGES); do \
+		for script in typecheck test; do \
+			echo "==> $$pkg: $$script"; \
+			$(BUN) run --cwd $$pkg $$script || exit 1; \
+		done; \
+	done
+
+web-client: ## Dev server of the customer app on the host (hot reload; needs Bun), against the stack from `make up`
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'web-client: ' >&2; $(NO_BUN); }
+	@echo "web-client on http://localhost:$(PORT_WEB_CLIENT), orchestrator at http://localhost:$(PORT_ORCHESTRATOR) (if the compose container holds that port: docker compose stop web-client)"
+	$(BUN) install --frozen-lockfile
+	PORT=$(PORT_WEB_CLIENT) ORCHESTRATOR_URL=http://localhost:$(PORT_ORCHESTRATOR) $(BUN) run --cwd apps/web-client dev
+
+web-backoffice: ## Dev server of the back office on the host (hot reload; needs Bun), against the stack from `make up`
+	@command -v $(BUN) >/dev/null 2>&1 || { printf 'web-backoffice: ' >&2; $(NO_BUN); }
+	@echo "web-backoffice on http://localhost:$(PORT_WEB_BACKOFFICE), orchestrator at :$(PORT_ORCHESTRATOR), banking-core at :$(PORT_BANKING_CORE); tokens and login are the development defaults (if the compose container holds the port: docker compose stop web-backoffice)"
+	$(BUN) install --frozen-lockfile
+	PORT=$(PORT_WEB_BACKOFFICE) ORCHESTRATOR_URL=http://localhost:$(PORT_ORCHESTRATOR) BANKING_CORE_URL=http://localhost:$(PORT_BANKING_CORE) $(BUN) run --cwd apps/web-backoffice dev

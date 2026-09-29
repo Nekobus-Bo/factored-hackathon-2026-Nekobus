@@ -1,0 +1,298 @@
+<!-- @dsCard group="Customer app" height=2200 subtitle="Every content type in the customer chat, and where it comes from" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatMessage — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 360px)); gap: 32px; align-items: start; padding: 16px; }
+  .sect { display: grid; gap: 10px; min-width: 0; }
+  .sect__head { display: grid; gap: 6px; }
+  .sect__head h2 { margin: 0; }
+  .src { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+  .frame { padding: 16px; }
+  .frame .pb-msg { max-width: 92%; }
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- 1 -->
+  <section class="sect" aria-labelledby="s1">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s1">1 · Texto</h2>
+      <p class="src"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Existe hoy</span><span class="pb-tag">blocks: text</span> El modelo solo puede emitir este bloque.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Mensajes de texto">
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:39</span>Hola, soy el asistente de Pattern Blue. ¿En qué te ayudo?</div>
+      <div class="pb-msg pb-msg--customer"><span class="pb-msg__meta">Tú · 10:39</span>Perdí mi tarjeta, necesito bloquearla ya.</div>
+      <div class="pb-msg pb-msg--assistant" lang="pt"><span class="pb-msg__meta">Assistente · 10:39</span>Posso ajudar com isso. Primeiro preciso confirmar a sua identidade.</div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="sect" aria-labelledby="s2">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s2">2 · Comprobante</h2>
+      <p class="src"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Existe hoy</span><span class="pb-tag">blocks: receipt</span> Armado por el motor con el resultado de una herramienta.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Comprobantes">
+      <article class="pb-cmsg" data-tone="receipt" aria-label="Comprobante de card.block">
+        <div class="pb-cmsg__head"><span class="pb-cmsg__kicker">Comprobante · card.block</span></div>
+        <h3 class="pb-cmsg__title">Bloqueé tu tarjeta</h3>
+        <span class="pb-transition">
+            <span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span>
+            <i class="pb-ico pb-ico--arrow" aria-label="cambió a"></i>
+            <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloqueada</span>
+          </span>
+        <dl class="pb-kv">
+          <dt>Tarjeta</dt><dd>•••• 4821</dd>
+          <dt>Referencia</dt><dd>AUD-20481</dd>
+        </dl>
+        <div class="pb-cmsg__foot"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado contra la base de datos</div>
+      </article>
+
+      <article class="pb-cmsg" data-tone="receipt" aria-label="Comprobante de otp.send">
+        <div class="pb-cmsg__head"><span class="pb-cmsg__kicker">Comprobante · otp.send</span></div>
+        <h3 class="pb-cmsg__title">Te envié un código</h3>
+        <span class="pb-transition">
+            <span class="pb-chip" data-state="identified"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>Identificado</span>
+            <i class="pb-ico pb-ico--arrow" aria-label="cambió a"></i>
+            <span class="pb-chip" data-state="otp-pending"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Código pendiente</span>
+          </span>
+        <dl class="pb-kv">
+          <dt>Destino</dt><dd>d***@example.com</dd>
+          <dt>Referencia</dt><dd>AUD-20479</dd>
+        </dl>
+        <div class="pb-cmsg__foot"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado contra la base de datos</div>
+      </article>
+
+      <article class="pb-cmsg" data-tone="receipt" aria-label="Receipt for otp.verify" lang="en">
+        <div class="pb-cmsg__head"><span class="pb-cmsg__kicker">Receipt · otp.verify</span></div>
+        <h3 class="pb-cmsg__title">Identity verified</h3>
+        <span class="pb-transition">
+            <span class="pb-chip" data-state="otp-pending"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Code pending</span>
+            <i class="pb-ico pb-ico--arrow" aria-label="changed to"></i>
+            <span class="pb-chip" data-state="verified"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verified</span>
+          </span>
+        <dl class="pb-kv">
+          <dt>Method</dt><dd class="pb-kv__text">OTP (email)</dd>
+          <dt>Reference</dt><dd>AUD-20480</dd>
+        </dl>
+        <div class="pb-cmsg__foot"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verified against the database</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="sect" aria-labelledby="s3">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s3">3 · Traspaso y agente humano</h2>
+      <p class="src"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Existe hoy</span><span class="pb-tag">blocks: handoff</span> Vista para el cliente; sin hechos internos. Luego escribe una persona.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Traspaso">
+      <article class="pb-cmsg" data-tone="handoff" aria-label="Traspaso a un agente">
+        <div class="pb-cmsg__head">
+          <span class="pb-cmsg__kicker">Traspaso</span>
+          <span class="pb-chip" data-state="handed-off"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>Con un agente</span>
+        </div>
+        <h3 class="pb-cmsg__title">Te pasé con un agente de Disputas</h3>
+        <dl class="pb-kv">
+          <dt>Referencia</dt><dd><span class="pb-caseid">CASE-0427</span></dd>
+          <dt>Posición</dt><dd>2 en la fila</dd>
+          <dt>Prioridad</dt><dd class="pb-kv__text">Urgente: te atienden primero</dd>
+        </dl>
+        <div>
+          <span class="pb-cmsg__kicker" style="display:block;margin-bottom:6px">El agente ya sabe</span>
+          <ul class="pb-cmsg__list">
+            <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>Tu identidad está verificada.</span></li>
+            <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>Tu tarjeta •••• 4821 está bloqueada.</span></li>
+            <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>Quieres disputar un cargo de USD 139.99.</span></li>
+          </ul>
+        </div>
+        <div class="pb-cmsg__foot"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>Desde aquí el asistente deja de actuar</div>
+      </article>
+      <div class="pb-sys" data-tone="joined"><span class="pb-sys__text"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>Marta se unió a la conversación</span></div>
+      <div class="pb-msg pb-msg--agent"><span class="pb-msg__meta"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>Agente humano · Marta · 10:52</span>Hola, soy Marta, del equipo de Disputas. Ya vi tu caso y empiezo revisando el cargo de USD 139.99.</div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="sect" aria-labelledby="s4">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s4">4 · Código enviado</h2>
+      <p class="src"><span class="pb-chip" data-tone="info"><i class="pb-ico pb-ico--info" aria-hidden="true"></i>Deriva el cliente</span><span class="pb-tag">otp.send + GET /inbox</span> Receipt de otp.send y la bandeja simulada.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Aviso de código">
+      <div class="pb-cmsg pb-cmsg--notice" role="status">
+        <span class="pb-cmsg__icon" aria-hidden="true"><i class="pb-ico pb-ico--mail"></i></span>
+        <p class="pb-cmsg__text">Te enviamos un código a <span class="pb-t-mono">d***@example.com</span> · vence en <span class="pb-t-mono">05:00</span></p>
+        <div class="pb-cmsg__actions"><a class="pb-action" href="#bandeja">Abrir bandeja<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a></div>
+      </div>
+      <div class="pb-msg pb-msg--customer"><span class="pb-msg__meta">Tú · 10:42</span>Código: ••••••</div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="sect" aria-labelledby="s5">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s5">5 · Líneas de sistema</h2>
+      <p class="src"><span class="pb-chip" data-tone="info"><i class="pb-ico pb-ico--info" aria-hidden="true"></i>Deriva el cliente</span><span class="pb-tag">estado FSM y eventos</span> No son burbujas.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Líneas de sistema">
+      <div class="pb-sys"><span class="pb-sys__text"><time datetime="2026-09-29T10:39:00-05:00">Hoy · 10:39</time></span></div>
+      <div class="pb-sys" data-tone="verified"><span class="pb-sys__text"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Identidad verificada</span></div>
+      <div class="pb-sys" data-tone="locked"><span class="pb-sys__text"><i class="pb-ico pb-ico--lock" aria-hidden="true"></i>Sesión bloqueada por intentos fallidos</span></div>
+      <div class="pb-sys" data-tone="joined"><span class="pb-sys__text"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>Un agente se unió a la conversación</span></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="sect" aria-labelledby="s6">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s6">6 · Errores y degradación</h2>
+      <p class="src"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Existe hoy</span><span class="pb-tag">masking · HTTP 503 · HTTP 429</span> Sin franja de peligro: el chat no alarma.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Errores">
+      <div class="pb-cmsg" data-tone="info" role="status">
+        <span class="pb-cmsg__eyebrow"><i class="pb-ico pb-ico--info" aria-hidden="true"></i>Mensaje no procesado</span>
+        <p class="pb-cmsg__text">No pude procesar ese mensaje de forma segura. ¿Puedes reformularlo sin datos personales?</p>
+      </div>
+      <div class="pb-msg pb-msg--customer" data-status="failed"><span class="pb-msg__meta">Tú · 10:44 · <i class="pb-ico pb-ico--warning" aria-hidden="true"></i>No enviado</span>Quiero ver mis movimientos recientes.</div>
+      <div class="pb-cmsg" data-tone="caution" role="alert">
+        <span class="pb-cmsg__eyebrow"><i class="pb-ico pb-ico--warning" aria-hidden="true"></i>Servicio no disponible</span>
+        <p class="pb-cmsg__text">El asistente no está disponible en este momento. Tu mensaje no se procesó.</p>
+        <div class="pb-cmsg__actions"><button class="pb-action" type="button">Reintentar<i class="pb-ico pb-ico--retry" aria-hidden="true"></i></button></div>
+      </div>
+      <div class="pb-cmsg" data-tone="caution" role="status">
+        <span class="pb-cmsg__eyebrow"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Demasiadas solicitudes</span>
+        <p class="pb-cmsg__text">Demasiadas conversaciones desde esta red. Intenta de nuevo en 5 minutos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="sect" aria-labelledby="s7">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s7">7 · Confirmación con respuestas rápidas</h2>
+      <p class="src"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>En diseño</span><span class="pb-tag">ADR-0012 confirm_gate</span> La compuerta aún no está en el backend.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Confirmación">
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:41</span>¿Confirmas que bloqueemos la tarjeta •••• 4821?</div>
+      <div class="pb-quick" role="group" aria-label="Respuestas rápidas">
+        <button class="pb-qr" type="button" data-say="Sí, bloquear">Sí, bloquear</button>
+        <button class="pb-qr" type="button" data-say="No">No</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8a -->
+  <section class="sect" aria-labelledby="s8">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s8">8 · Selector de tarjeta y de cargo</h2>
+      <p class="src"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Pendiente</span><span class="pb-tag">card.list · transaction.list_recent</span> Requiere un bloque nuevo armado por el motor.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Selectores">
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:45</span>¿A qué tarjeta te refieres?</div>
+      <article class="pb-cmsg" aria-label="Elige una tarjeta">
+        <div class="pb-cmsg__head">
+          <span class="pb-cmsg__kicker">Elige una tarjeta</span>
+          <span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Pendiente</span>
+        </div>
+        <div class="pb-pick" role="radiogroup" aria-label="Tarjetas">
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="true">
+            <span class="pb-pick__main"><i class="pb-ico pb-ico--check pb-pick__tick" aria-hidden="true"></i>Visa débito</span>
+            <span class="pb-pick__sub">•••• 4821</span>
+            <span class="pb-pick__side"><span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span></span>
+          </button>
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="false">
+            <span class="pb-pick__main"><i class="pb-ico pb-ico--check pb-pick__tick" aria-hidden="true"></i>Mastercard crédito</span>
+            <span class="pb-pick__sub">•••• 1107</span>
+            <span class="pb-pick__side"><span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span></span>
+          </button>
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="false" aria-disabled="true">
+            <span class="pb-pick__main">Visa crédito</span>
+            <span class="pb-pick__sub">•••• 9034</span>
+            <span class="pb-pick__side"><span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloqueada</span></span>
+          </button>
+        </div>
+      </article>
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:46</span>¿Cuál es el cargo que no reconoces?</div>
+      <article class="pb-cmsg" aria-label="Elige un cargo">
+        <div class="pb-cmsg__head">
+          <span class="pb-cmsg__kicker">Elige un cargo</span>
+          <span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Pendiente</span>
+        </div>
+        <div class="pb-pick" role="radiogroup" aria-label="Movimientos recientes">
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="true">
+            <span class="pb-pick__main"><i class="pb-ico pb-ico--check pb-pick__tick" aria-hidden="true"></i>Global Electronics Megastore</span>
+            <span class="pb-pick__sub">2026-09-27</span>
+            <span class="pb-pick__side"><span class="pb-pick__amt">USD 139.99</span><span class="pb-chip" data-tone="info"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Disputable</span></span>
+          </button>
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="false">
+            <span class="pb-pick__main"><i class="pb-ico pb-ico--check pb-pick__tick" aria-hidden="true"></i>Café Aroma</span>
+            <span class="pb-pick__sub">2026-09-28</span>
+            <span class="pb-pick__side"><span class="pb-pick__amt">USD 4.50</span><span class="pb-chip" data-tone="info"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Disputable</span></span>
+          </button>
+          <button class="pb-pick__row" type="button" role="radio" aria-checked="false" aria-disabled="true">
+            <span class="pb-pick__main">Pago de tarjeta</span>
+            <span class="pb-pick__sub">2026-09-25</span>
+            <span class="pb-pick__side"><span class="pb-pick__amt">USD 300.00</span><span class="pb-chip" data-tone="neutral"><i class="pb-ico pb-ico--minus" aria-hidden="true"></i>No disputable</span></span>
+          </button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="sect" aria-labelledby="s9">
+    <header class="sect__head">
+      <h2 class="pb-t-label" id="s9">9 · Resumen de cuenta</h2>
+      <p class="src"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Pendiente</span><span class="pb-tag">account.get_summary</span> Requiere un bloque nuevo. La herramienta arranca deshabilitada.</p>
+    </header>
+    <div class="pb-chat__log frame" role="group" aria-label="Resumen de cuenta">
+      <div class="pb-msg pb-msg--assistant"><span class="pb-msg__meta">Asistente · 10:47</span>Este es el resumen de tus cuentas.</div>
+      <article class="pb-cmsg" aria-label="Resumen de cuenta">
+        <div class="pb-cmsg__head">
+          <span class="pb-cmsg__kicker">Resumen de cuenta</span>
+          <span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Pendiente</span>
+        </div>
+        <ul class="pb-lines">
+          <li><span><span class="pb-lines__name">Cuenta de ahorros</span><span class="pb-lines__sub">•••• 3302</span></span><span class="pb-lines__amt">USD 1,250.40</span></li>
+          <li><span><span class="pb-lines__name">Cuenta corriente</span><span class="pb-lines__sub">•••• 7718</span></span><span class="pb-lines__amt">USD 312.75</span></li>
+        </ul>
+        <p class="pb-cmsg__note">Saldos disponibles al 2026-09-29 10:47 COT.</p>
+      </article>
+    </div>
+  </section>
+
+</div>
+<script>
+  (function () {
+    // pickers: one selectable row at a time; disabled rows stay put
+    document.querySelectorAll('.pb-pick').forEach(function (group) {
+      var rows = group.querySelectorAll('.pb-pick__row');
+      rows.forEach(function (row) {
+        row.addEventListener('click', function () {
+          if (row.getAttribute('aria-disabled') === 'true') return;
+          rows.forEach(function (r) { r.setAttribute('aria-checked', r === row ? 'true' : 'false'); });
+        });
+      });
+    });
+    // quick replies: choosing one locks the group
+    document.querySelectorAll('.pb-quick').forEach(function (group) {
+      var buttons = group.querySelectorAll('.pb-qr');
+      buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          buttons.forEach(function (b) { b.disabled = true; b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!-- @dsCard group="Customer app" height=460 subtitle="Verified write, re-read from the database" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReceiptCard — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; padding: 16px; }
+  .stage > article { flex: 1 1 320px; max-width: 460px; }
+  .cap { display: block; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <article class="pb-card pb-receipt pb-ticks" aria-labelledby="r1-title">
+    <header class="pb-receipt__head">
+      <div>
+        <div class="pb-receipt__kicker">Recibo · card.block</div>
+        <h2 class="pb-receipt__title" id="r1-title">Tarjeta bloqueada</h2>
+      </div>
+      <span class="pb-stamp"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado contra la base de datos</span>
+    </header>
+    <dl class="pb-kv">
+      <dt>Acción</dt><dd>card.block</dd>
+      <dt>Objetivo</dt><dd>•••• 4821</dd>
+      <dt>Estado</dt>
+      <dd><span class="pb-transition">
+        <span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span>
+        <i class="pb-ico pb-ico--arrow" aria-label="cambió a"></i>
+        <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloqueada</span>
+      </span></dd>
+      <dt>Audit id</dt><dd>AUD-20481</dd>
+      <dt>Idempotency</dt><dd>7f3a91c2…5a10</dd>
+      <dt>Verificado</dt><dd>2026-09-29 10:42:18 COT</dd>
+    </dl>
+    <p class="pb-receipt__foot">Releído de la base de datos después de escribir. Tu tarjeta •••• 4821 ya no acepta compras.</p>
+  </article>
+
+  <article class="pb-card pb-receipt" data-state="pending" aria-labelledby="r2-title">
+    <header class="pb-receipt__head">
+      <div>
+        <div class="pb-receipt__kicker">Recibo · card.block</div>
+        <h2 class="pb-receipt__title" id="r2-title">Sin comprobante</h2>
+      </div>
+      <span class="pb-stamp"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Esperando comprobante</span>
+    </header>
+    <dl class="pb-kv">
+      <dt>Acción</dt><dd>card.block</dd>
+      <dt>Objetivo</dt><dd>•••• 4821</dd>
+      <dt>Estado</dt><dd>sin confirmar</dd>
+      <dt>Idempotency</dt><dd>7f3a91c2…5a10</dd>
+    </dl>
+    <p class="pb-receipt__foot">La escritura se envió, pero la base de datos aún no la confirma. No se informa al cliente hasta tener el comprobante.</p>
+  </article>
+</div>
+</body>
+</html>

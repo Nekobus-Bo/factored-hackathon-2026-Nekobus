@@ -1,4 +1,6 @@
-"""Placeholder map encryption at rest (ADR-0001, ADR-0004, AGENTS rule 5).
+"""Encryption at rest: the placeholder map and the agent text kept as written.
+
+ADR-0001, ADR-0004, ADR-0013 (amendment 2026-09-29), AGENTS rule 5.
 
 Design choice: the placeholder map ([CARD_1], [DOC_1], ... -> raw PII) is
 needed server-side to rehydrate banking-core tool arguments and to keep
@@ -10,6 +12,11 @@ placeholders stable across turns. Two guarantees:
    operationally, so the map is encrypted before it is written, with Fernet
    (AES-128-CBC + HMAC-SHA256) keyed by SESSION_SECRET. The rest of the state
    (masked history) is stored in clear.
+
+The same key also protects the one free text that is kept as written: what a
+human agent typed to the customer (ADR-0013, amendment 2026-09-29). It is
+stored next to its masked twin as ciphertext (`encrypt_text`), and only the
+routes that show it to a reader decrypt it (`decrypt_text`).
 """
 
 import base64
@@ -70,3 +77,29 @@ class PlaceholderEncryptor:
         except Exception as exc:
             logger.error("Failed to decrypt placeholder map: %s", exc)
             raise CryptoError(f"Decryption failed: {exc}") from exc
+
+    def encrypt_text(self, text: str) -> str:
+        """Encrypt a piece of text into an ASCII ciphertext string.
+
+        Raises CryptoError. The text and the underlying error are never logged
+        here: the caller reports the failure without them.
+        """
+        try:
+            return self._fernet.encrypt(text.encode("utf-8")).decode("ascii")
+        except Exception as exc:
+            raise CryptoError("Text encryption failed") from exc
+
+    def decrypt_text(self, encrypted_token: str) -> str:
+        """Decrypt a ciphertext made by `encrypt_text` back into its text.
+
+        Raises CryptoError for an empty, corrupted, tampered or foreign-keyed
+        token. Unlike `decrypt_map`, an empty token is an error, not "nothing":
+        a caller that has no ciphertext must not call this. Nothing is logged
+        here, so a failure never carries text.
+        """
+        try:
+            return self._fernet.decrypt(encrypted_token.encode("ascii")).decode("utf-8")
+        except InvalidToken as exc:
+            raise CryptoError("Invalid encryption token for text") from exc
+        except Exception as exc:
+            raise CryptoError("Text decryption failed") from exc

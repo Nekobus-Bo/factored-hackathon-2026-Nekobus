@@ -14,7 +14,10 @@
 # and only by also layering docker-compose.bundled.yml (see that file): this
 # file alone does not require their passwords, so host mode never needs them.
 # Prebuilt images from a registry; no development defaults for app secrets.
-# Nothing is published except the orchestrator. App roots are read-only.
+# Published (on loopback, for the ingress or a tunnel): the orchestrator and the customer
+# web client. The back office is NOT published (ADR-0013): it is reachable only from the
+# compose networks, and needs ADMIN_API_TOKEN, AGENT_API_TOKEN, DEMO_AGENT_PASSWORD and
+# BACKOFFICE_SESSION_SECRET to be set (docs/deployment.md). App roots are read-only.
 
 x-app-readonly: &app-readonly
   read_only: true
@@ -102,6 +105,11 @@ services:
       # is generous, for local development and evaluation runs from one address;
       # a public environment keeps 30, whatever the base file says.
       RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-30}
+      # The base file enables the agent API with a public development token.
+      # Production never inherits that: the orchestrator would refuse to start.
+      # Switch it on explicitly, with a secret of your own.
+      AGENT_API_ENABLED: ${AGENT_API_ENABLED:-false}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       banking-core:
@@ -115,4 +123,31 @@ services:
     pull_policy: always
     environment:
       APP_ENV: production
+    ports: !reset []
+
+  # The customer path: the browser talks to this BFF, which forwards the four chat routes
+  # to the orchestrator. It holds no secret. The base file publishes its port on loopback.
+  web-client:
+    <<: *app-readonly
+    image: ${REGISTRY:?set REGISTRY}/pattern_blue-web-client:${IMAGE_TAG:?set IMAGE_TAG}
+    pull_policy: always
+    environment:
+      APP_ENV: production
+
+  # The agent back office. No `ports`: nothing outside the compose networks reaches it, and
+  # it holds the two API tokens. To use it, put its own login behind a reverse proxy on
+  # the same network, or publish it on loopback with an override file and tunnel to it
+  # (docs/deployment.md, "The front ends"). The server refuses to start under
+  # APP_ENV=production with a development password, secret or token; an unset value here is
+  # a compose error instead of a container that exits.
+  web-backoffice:
+    <<: *app-readonly
+    image: ${REGISTRY:?set REGISTRY}/pattern_blue-web-backoffice:${IMAGE_TAG:?set IMAGE_TAG}
+    pull_policy: always
+    environment:
+      APP_ENV: production
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?set ADMIN_API_TOKEN}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?set AGENT_API_TOKEN}
+      DEMO_AGENT_PASSWORD: ${DEMO_AGENT_PASSWORD:?set DEMO_AGENT_PASSWORD}
+      BACKOFFICE_SESSION_SECRET: ${BACKOFFICE_SESSION_SECRET:?set BACKOFFICE_SESSION_SECRET}
     ports: !reset []

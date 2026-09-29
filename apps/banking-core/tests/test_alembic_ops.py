@@ -280,3 +280,70 @@ def test_alembic_0007_leaves_an_empty_tool_policy_to_the_seed(
     count = db_session.execute(sa.text("SELECT count(*) FROM config.tool_policy"))
     assert count.scalar_one() == 0
     db_session.commit()
+
+
+def _handoff_columns(db_session: Session) -> dict[str, tuple[str, int | None]]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name, is_nullable, character_maximum_length "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'ops' AND table_name = 'handoff'"
+        )
+    ).all()
+    db_session.commit()  # no lock held while alembic changes the table
+    return {row[0]: (row[1], row[2]) for row in rows}
+
+
+def test_alembic_0008_handoff_assignment_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0008 adds the nullable assignment columns; rows saved before it keep working."""
+    command.downgrade(alembic_cfg, "0007_tool_policy_versions")
+    columns = _handoff_columns(db_session)
+    assert "assigned_agent" not in columns and "assigned_at" not in columns
+    db_session.execute(
+        sa.text(
+            "INSERT INTO ops.handoff (id, handoff_ref, session_ref, reason, priority, "
+            "department, summary, idempotency_scope) VALUES (gen_random_uuid(), "
+            "'hnd_migrationcheck', 'session-x', 'FRAUD', 'HIGH', 'FRAUD_OPERATIONS', "
+            "'{}', 'scope')"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    columns = _handoff_columns(db_session)
+    assert columns["assigned_agent"] == ("YES", 254)
+    assert columns["assigned_at"][0] == "YES"
+    row = db_session.execute(
+        sa.text(
+            "SELECT status, assigned_agent, assigned_at FROM ops.handoff "
+            "WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    ).one()
+    db_session.commit()
+    assert (row.status, row.assigned_agent, row.assigned_at) == ("QUEUED", None, None)
+
+    db_session.execute(
+        sa.text(
+            "UPDATE ops.handoff SET status = 'ASSIGNED', "
+            "assigned_agent = 'ana@bank.example', assigned_at = now() "
+            "WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    )
+    db_session.commit()
+    command.downgrade(alembic_cfg, "0007_tool_policy_versions")
+    columns = _handoff_columns(db_session)
+    assert "assigned_agent" not in columns and "assigned_at" not in columns
+    kept = db_session.execute(
+        sa.text(
+            "SELECT status FROM ops.handoff WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    ).scalar_one()
+    db_session.commit()
+    assert kept == "ASSIGNED"
+
+    db_session.execute(
+        sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_migrationcheck'")
+    )
+    db_session.commit()

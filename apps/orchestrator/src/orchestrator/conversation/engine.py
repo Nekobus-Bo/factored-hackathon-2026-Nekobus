@@ -58,6 +58,7 @@ from orchestrator.conversation.models import (
     ConversationContext,
     EncoderSignal,
     Lang,
+    TakeoverActiveError,
     ToolOutcome,
     TurnEvalData,
     TurnMetadata,
@@ -257,7 +258,15 @@ class TurnEngine:
         keys of the failed attempt, so banking-core answers from what it already
         did instead of acting twice. Without it the id is random and a retry is
         a new request.
+
+        Raises TakeoverActiveError, before anything else happens, when a human
+        agent holds the conversation: this is the one door to the LLM, the
+        encoder and the tools, and it stays shut for a taken-over conversation.
         """
+        if context.human_takeover:
+            raise TakeoverActiveError(
+                "A human agent holds this conversation; the engine does not run"
+            )
         lang = lang or context.language
         metadata = TurnMetadata(turn_id=turn_id or uuid4().hex)
         eval_data = TurnEvalData()
@@ -280,7 +289,7 @@ class TurnEngine:
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
         # pending, a bare digit run is the code.
         text_to_mask = user_text
-        if _otp_challenge_pending(history):
+        if otp_challenge_pending(history):
             text_to_mask = self._mask_bare_otps(user_text, mapping)
         try:
             masked_user = self._mask_user_text(
@@ -853,32 +862,7 @@ class TurnEngine:
 
     @staticmethod
     def _mask_bare_otps(text: str, mapping: dict[str, str]) -> str:
-        """Mask standalone 4-8 digit OTPs with one optional separator when pending."""
-        # Reuse only OTP placeholders: a code equal to an earlier value of
-        # another kind (a 6-digit document) must not resolve to that one.
-        reverse = {
-            raw: ph for ph, raw in mapping.items() if _OTP_PLACEHOLDER_RE.match(ph)
-        }
-        next_index = max(
-            (int(m.group(1)) for ph in mapping if (m := _OTP_PLACEHOLDER_RE.match(ph))),
-            default=0,
-        )
-
-        def repl(match: re.Match[str]) -> str:
-            nonlocal next_index
-            raw = match.group(0)
-            digits = raw.replace(" ", "").replace("-", "")
-            if not 4 <= len(digits) <= 8:
-                return raw
-            if raw in reverse:
-                return reverse[raw]
-            next_index += 1
-            placeholder = f"[OTP_{next_index}]"
-            mapping[placeholder] = raw
-            reverse[raw] = placeholder
-            return placeholder
-
-        return _BARE_OTP_RE.sub(repl, text)
+        return mask_bare_otps(text, mapping)
 
     # ---------------------------------------------------------------- helpers
 
@@ -1113,7 +1097,37 @@ def _tool_results(
             yield index, result
 
 
-def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
+def mask_bare_otps(text: str, mapping: dict[str, str]) -> str:
+    """Mask standalone 4-8 digit OTPs with one optional separator when pending.
+
+    `mapping` (placeholder -> raw) gains the new `[OTP_n]` placeholders.
+    """
+    # Reuse only OTP placeholders: a code equal to an earlier value of
+    # another kind (a 6-digit document) must not resolve to that one.
+    reverse = {raw: ph for ph, raw in mapping.items() if _OTP_PLACEHOLDER_RE.match(ph)}
+    next_index = max(
+        (int(m.group(1)) for ph in mapping if (m := _OTP_PLACEHOLDER_RE.match(ph))),
+        default=0,
+    )
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal next_index
+        raw = match.group(0)
+        digits = raw.replace(" ", "").replace("-", "")
+        if not 4 <= len(digits) <= 8:
+            return raw
+        if raw in reverse:
+            return reverse[raw]
+        next_index += 1
+        placeholder = f"[OTP_{next_index}]"
+        mapping[placeholder] = raw
+        reverse[raw] = placeholder
+        return placeholder
+
+    return _BARE_OTP_RE.sub(repl, text)
+
+
+def otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
     """True if an otp.send succeeded and no otp.verify has closed it since."""
     pending = False
     for _, result in _tool_results(history):

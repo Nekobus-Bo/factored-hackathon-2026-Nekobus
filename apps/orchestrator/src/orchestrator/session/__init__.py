@@ -6,6 +6,7 @@ from orchestrator.session.models import (
     Lang,
     Message,
     MessageRole,
+    Takeover,
 )
 from orchestrator.session.store import SessionStore
 
@@ -17,4 +18,5 @@ __all__ = [
     "MessageRole",
     "PlaceholderEncryptor",
     "SessionStore",
+    "Takeover",
 ]

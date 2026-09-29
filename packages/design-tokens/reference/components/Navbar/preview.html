@@ -1,0 +1,123 @@
+<!-- @dsCard group="Landing" height=760 subtitle="Wordmark, links, language, theme, login; collapsed menu on mobile" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navbar — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 28px; padding-bottom: 24px; }
+  .pb-nav { position: relative; }
+  .cap { padding: 0 16px; margin: 0 0 8px; display: block; }
+  .demo-open { min-height: 440px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div><span class="pb-t-label cap">Escritorio · español (se colapsa por debajo de 800 px)</span>
+  <header class="pb-nav" data-open="false" lang="es">
+  <div class="pb-nav__bar">
+    <a class="pb-nav__brand" href="#top" aria-label="Pattern Blue, inicio">Pattern Blue</a>
+    <button class="pb-nav__menu" type="button" aria-expanded="false" aria-controls="menu-a"><i class="pb-ico pb-ico--menu" aria-hidden="true"></i>Menú</button>
+    <div class="pb-nav__collapse" id="menu-a">
+      <nav class="pb-nav__links" aria-label="Principal"><a class="pb-nav__link" href="#funciones" aria-current="page">Funciones</a><a class="pb-nav__link" href="#como-funciona">Cómo funciona</a><a class="pb-nav__link" href="#s2">S²</a><a class="pb-nav__link" href="#ayuda">Ayuda</a></nav>
+      <div class="pb-nav__tools">
+        <div class="pb-lang" role="radiogroup" aria-label="Idioma"><button class="pb-lang__btn" type="button" role="radio" aria-checked="true" data-lang="es" lang="es" aria-label="Español">ES</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="pt" lang="pt" aria-label="Português">PT</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="en" lang="en" aria-label="English">EN</button></div>
+        <div class="pb-theme" role="radiogroup" aria-label="Tema"><button class="pb-theme__btn" type="button" role="radio" aria-checked="true" data-theme-set="light" aria-label="Tema claro"><i class="pb-ico pb-ico--sun" aria-hidden="true"></i></button><button class="pb-theme__btn" type="button" role="radio" aria-checked="false" data-theme-set="dark" aria-label="Tema oscuro"><i class="pb-ico pb-ico--moon" aria-hidden="true"></i></button></div>
+        <a class="pb-btn pb-btn--secondary" href="#ingresar">Ingresar</a>
+      </div>
+    </div>
+  </div>
+</header></div>
+  <div><span class="pb-t-label cap">Compacto cerrado · português</span>
+  <header class="pb-nav pb-nav--compact" data-open="false" lang="pt">
+  <div class="pb-nav__bar">
+    <a class="pb-nav__brand" href="#top" aria-label="Pattern Blue, início">Pattern Blue</a>
+    <button class="pb-nav__menu" type="button" aria-expanded="false" aria-controls="menu-b"><i class="pb-ico pb-ico--menu" aria-hidden="true"></i>Menu</button>
+    <div class="pb-nav__collapse" id="menu-b">
+      <nav class="pb-nav__links" aria-label="Principal"><a class="pb-nav__link" href="#funciones">Recursos</a><a class="pb-nav__link" href="#como-funciona">Como funciona</a><a class="pb-nav__link" href="#s2">S²</a><a class="pb-nav__link" href="#ayuda">Ajuda</a></nav>
+      <div class="pb-nav__tools">
+        <div class="pb-lang" role="radiogroup" aria-label="Idioma"><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="es" lang="es" aria-label="Español">ES</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="true" data-lang="pt" lang="pt" aria-label="Português">PT</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="en" lang="en" aria-label="English">EN</button></div>
+        <div class="pb-theme" role="radiogroup" aria-label="Tema"><button class="pb-theme__btn" type="button" role="radio" aria-checked="true" data-theme-set="light" aria-label="Tema claro"><i class="pb-ico pb-ico--sun" aria-hidden="true"></i></button><button class="pb-theme__btn" type="button" role="radio" aria-checked="false" data-theme-set="dark" aria-label="Tema escuro"><i class="pb-ico pb-ico--moon" aria-hidden="true"></i></button></div>
+        <a class="pb-btn pb-btn--secondary" href="#ingresar">Entrar</a>
+      </div>
+    </div>
+  </div>
+</header></div>
+  <div class="demo-open"><span class="pb-t-label cap">Compacto abierto · English</span>
+  <header class="pb-nav pb-nav--compact" data-open="true" lang="en">
+  <div class="pb-nav__bar">
+    <a class="pb-nav__brand" href="#top" aria-label="Pattern Blue, home">Pattern Blue</a>
+    <button class="pb-nav__menu" type="button" aria-expanded="true" aria-controls="menu-c"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>Menu</button>
+    <div class="pb-nav__collapse" id="menu-c">
+      <nav class="pb-nav__links" aria-label="Main"><a class="pb-nav__link" href="#funciones">Features</a><a class="pb-nav__link" href="#como-funciona">How it works</a><a class="pb-nav__link" href="#s2">S²</a><a class="pb-nav__link" href="#ayuda">Help</a></nav>
+      <div class="pb-nav__tools">
+        <div class="pb-lang" role="radiogroup" aria-label="Language"><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="es" lang="es" aria-label="Español">ES</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="false" data-lang="pt" lang="pt" aria-label="Português">PT</button><button class="pb-lang__btn" type="button" role="radio" aria-checked="true" data-lang="en" lang="en" aria-label="English">EN</button></div>
+        <div class="pb-theme" role="radiogroup" aria-label="Theme"><button class="pb-theme__btn" type="button" role="radio" aria-checked="true" data-theme-set="light" aria-label="Light theme"><i class="pb-ico pb-ico--sun" aria-hidden="true"></i></button><button class="pb-theme__btn" type="button" role="radio" aria-checked="false" data-theme-set="dark" aria-label="Dark theme"><i class="pb-ico pb-ico--moon" aria-hidden="true"></i></button></div>
+        <a class="pb-btn pb-btn--secondary" href="#ingresar">Log in</a>
+      </div>
+    </div>
+  </div>
+</header></div>
+</div>
+<script>
+  (function () {
+    var root = document.documentElement;
+    // theme toggle: sets data-theme on <html> and keeps every toggle in sync
+    function syncTheme() {
+      var cur = root.getAttribute('data-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.querySelectorAll('.pb-theme__btn').forEach(function (b) { b.setAttribute('aria-checked', b.getAttribute('data-theme-set') === cur ? 'true' : 'false'); });
+    }
+    document.querySelectorAll('.pb-theme__btn').forEach(function (b) {
+      b.addEventListener('click', function () { root.setAttribute('data-theme', b.getAttribute('data-theme-set')); syncTheme(); });
+    });
+    syncTheme();
+    // language switch (decorative here): keeps every switch in sync
+    document.querySelectorAll('.pb-lang__btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-lang');
+        document.querySelectorAll('.pb-lang__btn').forEach(function (o) { o.setAttribute('aria-checked', o.getAttribute('data-lang') === code ? 'true' : 'false'); });
+      });
+    });
+    // collapsed menu
+    document.querySelectorAll('.pb-nav__menu').forEach(function (m) {
+      m.addEventListener('click', function () {
+        var nav = m.closest('.pb-nav'), open = nav.getAttribute('data-open') !== 'true';
+        nav.setAttribute('data-open', open ? 'true' : 'false');
+        m.setAttribute('aria-expanded', open ? 'true' : 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--' + (open ? 'x' : 'menu');
+      });
+    });
+    // a tap on a menu link closes the collapsed menu
+    document.querySelectorAll('.pb-nav__link').forEach(function (l) {
+      l.addEventListener('click', function () {
+        var nav = l.closest('.pb-nav'), m = nav.querySelector('.pb-nav__menu');
+        nav.setAttribute('data-open', 'false'); m.setAttribute('aria-expanded', 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--menu';
+      });
+    });
+    // accordion (single open, collapsible)
+    document.querySelectorAll('.pb-faq').forEach(function (faq) {
+      var triggers = faq.querySelectorAll('.pb-faq__trigger');
+      function set(t, on) {
+        t.setAttribute('aria-expanded', on ? 'true' : 'false');
+        t.setAttribute('data-state', on ? 'open' : 'closed');
+        var c = document.getElementById(t.getAttribute('aria-controls'));
+        c.hidden = !on; c.setAttribute('data-state', on ? 'open' : 'closed');
+        t.closest('.pb-faq__item').setAttribute('data-state', on ? 'open' : 'closed');
+      }
+      triggers.forEach(function (t) {
+        t.addEventListener('click', function () {
+          var wasOpen = t.getAttribute('aria-expanded') === 'true';
+          triggers.forEach(function (o) { set(o, false); });
+          if (!wasOpen) set(t, true);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

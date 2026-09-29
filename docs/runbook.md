@@ -16,12 +16,13 @@ git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
 make demo
 ```
 
-`make demo` builds and starts the whole stack, applies the migrations, seeds the synthetic demo data, preloads the local models, checks that everything is healthy, and prints the URLs and the demo customers to use. It needs no `.env`, no API key and no external dataset: every default is a development default that works as it is. Running it again is safe; it re-seeds, so the demo customers' cards go back to their seed state and the handoff queue is emptied.
+`make demo` builds and starts the whole stack (the two web front ends included), applies the migrations, seeds the synthetic demo data, preloads the local models, checks that everything is healthy, and prints the URLs, the back-office login and the demo customers to use. It needs no `.env`, no API key and no external dataset: every default is a development default that works as it is. Running it again is safe; it re-seeds, so the demo customers' cards go back to their seed state and the handoff queue is emptied.
 
-Two things are still pending, and `make demo` says so in its summary instead of failing silently:
+One thing is still pending, and `make demo` says so in its summary instead of failing silently:
 
-- ⚠️ **Replay recordings.** `eval/replay/` is empty, so replay mode has nothing to replay and a chat turn answers 503. Until the recordings exist, talk to the assistant in live mode (section 4): `LLM_MODE=live` and your `LLM_API_KEY` in `.env`. The rest of the stack works without either.
-- ⚠️ **The two web frontends** (customer chat and back office). Until they exist the system is driven over HTTP, see the URLs in section 6.
+- ⚠️ **Replay recordings.** `eval/replay/` is empty, so replay mode has nothing to replay and a chat turn answers 503. Until the recordings exist, talk to the assistant in live mode (section 4): `LLM_MODE=live` and your `LLM_API_KEY` in `.env`. The rest of the stack works without either: both web front ends open, the back office shows its queue, guardrails and metrics, and the customer chat says plainly that a message could not be sent.
+
+When it finishes, open the customer chat at http://localhost:5173 and the back office at http://localhost:5174 (login in section 6).
 
 ---
 
@@ -36,9 +37,9 @@ Two things are still pending, and `make demo` says so in its summary instead of 
 | Cores | 2 | |
 | Disk | TODO GB | Includes local model weights |
 | Architecture | x86_64 and arm64 | Tested on both, Apple Silicon included |
-| Ports | 8080, 8081, 8090 (and 5173, 5174 once the frontends exist) | Bound to `127.0.0.1` only. Configurable in `.env` if taken |
+| Ports | 5173 (customer chat), 5174 (back office), 8080, 8081, 8090 | Bound to `127.0.0.1` only. Configurable in `.env` if taken |
 
-No Python, Node or Bun needed on the host: everything runs in containers. `make demo` needs only Docker Compose, `make` and `bash`.
+No Python, Node or Bun needed on the host: everything, the two front ends included, is built and runs in containers. `make demo` needs only Docker Compose, `make` and `bash`. Bun 1.3 or later is needed only to work on a front end from the host (`make web-client`, `make web-backoffice`, `make web-check`).
 
 ---
 
@@ -112,18 +113,27 @@ make demo               # everything below, in one command
 3. Preloads the local models on the model server (the `encoder` service): `make warmup-encoder` (builds the configured decision backend once, so a bad backend fails here) and `make warmup-retrieval` (puts the pinned `kb.search` embedding model, `EMBEDDING_MODEL` at `EMBEDDING_REVISION`, in the `hf-cache` volume and prints the hash to pin; it uses the network only if the model is not cached). If the download fails, `make demo` continues and prints a warning: everything but `kb.search` works, and `make warmup-retrieval` fixes it once you are online.
 4. `make up`: starts the services and waits until they are healthy. The migrations run first, as a dependency of `banking-core`.
 5. `make seed`: loads the synthetic demo data. It truncates and reloads it, which is what makes running `make demo` twice safe.
-6. `make smoke` and a `banking-core` readiness check, then the summary: URLs, the assistant's mode (with the notice when there are no recordings), the demo customers and the admin API hint.
+6. `make smoke` and a `banking-core` readiness check, then the summary: the URLs of the customer chat and the back office, the back-office login, the assistant's mode (with the notice when there are no recordings), the demo customers and the admin API hint.
 
 To go one step at a time instead: `make warmup`, `make up`, `make seed`, `make smoke`.
 
 | Service | Local URL |
 |---|---|
-| Customer chat (⚠️ pending) | http://localhost:5173 |
-| Agent back office & metrics (⚠️ pending) | http://localhost:5174 |
+| Customer chat (`web-client`) | http://localhost:5173 |
+| Agent back office & metrics (`web-backoffice`) | http://localhost:5174 |
 | Orchestrator: chat API and its docs | http://localhost:8080/docs |
 | Internal API (docs) | http://localhost:8081/docs |
 
-Backend containers include `postgres`, `banking-core`, `orchestrator`, `encoder`, and one Redis per trust zone ([ADR-0006](adr/0006-single-postgres-pgvector.md)): `redis-core` (internal network, used only by `banking-core`) and `redis-edge` (perimeter network, used by `orchestrator`).
+**Back office login** (the one demo agent): `agent@demo.local` / `demo-only-change-me`. These are development-only credentials, public in this repository; they are `DEMO_AGENT_EMAIL` and `DEMO_AGENT_PASSWORD` in `.env.example`, and the back office refuses to start with them under `APP_ENV=production`. The email is recorded on every claim and takeover.
+
+The containers are `postgres`, `banking-core`, `orchestrator`, `encoder`, one Redis per trust zone ([ADR-0006](adr/0006-single-postgres-pgvector.md)): `redis-core` (internal network, used only by `banking-core`) and `redis-edge` (perimeter network, used by `orchestrator`), and the two front ends, `web-client` and `web-backoffice`. Each front end is a Bun server that serves its page and a same-origin BFF: the browser never talks to the orchestrator or `banking-core` directly, and the tokens stay in the back-office server ([ADR-0013](adr/0013-front-ends-bff-takeover.md)). To work on one from the host, with hot reload, against the stack from `make up`:
+
+```bash
+docker compose -f infra/compose/docker-compose.yml stop web-client   # the container holds :5173
+make web-client                                                      # or: make web-backoffice (stop web-backoffice first)
+```
+
+Both need Bun. They reach the stack on `PORT_ORCHESTRATOR` and `PORT_BANKING_CORE` (8080 and 8081; pass them on the command line if you changed them) and use the development tokens and login.
 
 **Demo customers** (synthetic, identified by document and birth date, source of truth `apps/banking-core/src/banking_core/seed/fixtures.py`; `make demo` prints them too):
 
@@ -135,9 +145,9 @@ Backend containers include `postgres`, `banking-core`, `orchestrator`, `encoder`
 
 Each language also has a customer whose card is already blocked and one with no OTP channel (the latter must end in a human handoff).
 
-**Back-office actions over HTTP** (until the back office exists): in development the admin API is on with the public, development-only token `dev-only-admin-token`, so `GET`/`PUT http://localhost:8081/v1/admin/policy-config` work with `Authorization: Bearer dev-only-admin-token`. `banking-core` refuses to start with that token under `APP_ENV=production`. Agent login for the back office (⚠️ pending) is `DEMO_AGENT_*` in `.env.example`.
+**Back-office actions over HTTP** (the alternative to the back office: it makes these same calls from its screens): in development the admin API is on with the public, development-only token `dev-only-admin-token`, so `GET`/`PUT http://localhost:8081/v1/admin/policy-config` work with `Authorization: Bearer dev-only-admin-token`. `banking-core` refuses to start with that token under `APP_ENV=production`. The same token lists the handoff queue (`GET /v1/admin/handoffs`), shows a case (`GET /v1/admin/handoffs/<handoff_ref>`), takes it (`POST /v1/admin/handoffs/<handoff_ref>/claim` with `{"agent_ref": "<email>"}`) and returns counts (`GET /v1/admin/metrics?hours=24`). Taking a case from the API only claims it in `banking-core`; the back office also takes the conversation over in the orchestrator (the agent API, `AGENT_API_TOKEN`), which is what lets the agent write to the customer.
 
-**OTP codes** go to a simulated channel that the customer web client will show (⚠️ pending). Until then, for local use only, set `ALLOW_DEV_OTP_HOOK=true` in `.env`, run `make up`, and read a code at `GET http://localhost:8081/v1/dev/otp/<challenge_id>`.
+**OTP codes** go to a simulated channel and the customer web client shows them: when the assistant sends a code, the chat says "you got an email with the code" (with the masked destination and a countdown), and "Open inbox" then "Show code" reveal it. Nothing is sent anywhere, and the code disappears at expiry (`OTP_TTL_SECONDS`). Only for scripts, and for local use only, set `ALLOW_DEV_OTP_HOOK=true` in `.env`, run `make up`, and read a code at `GET http://localhost:8081/v1/dev/otp/<challenge_id>`.
 
 > The first `make demo` builds the images and downloads the embedding model: **TODO minutes** depending on your connection, around **TODO MB** (not measured yet). Later runs come from cache.
 
@@ -150,9 +160,13 @@ Each language also has a customer whose card is already blocked and one with no 
 ✓ banking-core   healthy
 ✓ orchestrator   healthy
 ✓ encoder        healthy
+✓ web-client     healthy
+✓ web-backoffice healthy
 ✓ migration      applied head (<revision>)
 smoke: OK
 ```
+
+The two front ends' check is `GET /healthz` inside the container: liveness only, it does not call the orchestrator or `banking-core`.
 
 If anything comes up red, see section 10.
 
@@ -163,8 +177,8 @@ If anything comes up red, see section 10.
 Two clones (or git worktrees) can run at the same time if each has its own compose project name and its own host ports. Otherwise the second `make demo` or `make up` reuses the first one's project and ports, and a `make down` in one tears down the other.
 
 ```bash
-COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 make demo
-COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 make smoke
+COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 PORT_WEB_CLIENT=58173 PORT_WEB_BACKOFFICE=58174 make demo
+COMPOSE_PROJECT_NAME=pb-b PORT_ORCHESTRATOR=58180 PORT_BANKING_CORE=58181 PORT_ENCODER=58190 PORT_WEB_CLIENT=58173 PORT_WEB_BACKOFFICE=58174 make smoke
 ```
 
 Use the same variables for `make down` and `make logs` (or put them in that copy's `.env`). Containers, networks, volumes and image tags are all prefixed by the project name. The default is `pattern-blue`.
@@ -175,11 +189,19 @@ Use the same variables for `make down` and `make logs` (or put them in that copy
 
 Works the same in replay and live mode.
 
-1. **Happy path (⚠️ pending UI).** Open the chat and report a charge you do not recognize. Watch: intent classification with its score, ownership matching without disclosing data, the verification code, the card block, and the **verified receipt** re-read from the database. Nothing is sent: the code arrives as a simulated "you got an email with the code" notice in the chat (a demo customer's registered channel is email), read from an in-app inbox that expires with the code (`OTP_TTL_SECONDS`, 5 minutes by default). Whoever sees the browser sees the code: in the demo the OTP does not prove possession of the channel ([limitations.md](limitations.md)).
-2. **The system stops (⚠️ pending UI).** Ask to dispute the charge. The structured handoff appears and the case enters the back-office queue with verified facts, actions taken, verification method and open questions.
-3. **Takeover (⚠️ pending UI).** From the back office, take the conversation and reply as a human agent.
-4. **Guardrail, live (⚠️ pending UI).** The threshold is compared against the amount of the disputed charge **as stored in the database**, never against what the customer types. The demo customer holds an unrecognized charge (Global Electronics Megastore, USD 139.99 for the English customer), and the default USD threshold is USD 500, so step 1 ends with the card blocked and no handoff. Lower the USD threshold to, say, USD 100 and set the mode to `block` (handoff required), then repeat the same conversation: the card is still blocked, but the conversation now ends in a **priority handoff** to a human agent, created by the system itself and not by the model, instead of automated resolution. No deployment, no restart. Until the back-office UI exists, change the policy with the banking-core admin API (`PUT /v1/admin/policy-config`, see [deployment.md](deployment.md)); in `flag` mode (handoff recommended) the same change only suggests the handoff.
-5. **Another workflow, no code (⚠️ pending UI: back-office toggle; today one admin API call).** The second workflow, account inquiries, uses `account.get_summary`, which starts disabled. As a verified customer, ask for your balance: the assistant says it cannot help with that here, because banking-core refuses the tool (audited as `TOOL_DISABLED`). Then enable it, live, with the admin API (`ADMIN_API_ENABLED=true` and `ADMIN_API_TOKEN` set in `.env`; banking-core listens on `PORT_BANKING_CORE`, 8081 by default):
+1. **Happy path.** Open the customer chat (http://localhost:5173) and report a charge you do not recognize. Watch: intent classification with its score, ownership matching without disclosing data, the verification code, the card block, and the **verified receipt** re-read from the database. Talking to the assistant needs an LLM key in `.env` (section 4) until the replay recordings exist (section 3). Nothing is sent: the code arrives as a simulated "you got an email with the code" notice in the chat (a demo customer's registered channel is email), read from an in-app inbox that expires with the code (`OTP_TTL_SECONDS`, 5 minutes by default): "Open inbox", then "Show code". Whoever sees the browser sees the code: in the demo the OTP does not prove possession of the channel ([limitations.md](limitations.md)).
+2. **The system stops.** Ask to dispute the charge. The structured handoff appears in the chat (the customer sees the state, never the summary) and the case enters the back-office queue (http://localhost:5174, login in section 6; the queue refreshes every 3 seconds) with verified facts, actions taken, verification method and open questions.
+3. **Takeover.** In the back office, open the case and press "Tomar caso" ("Take case" in English; the language switch is in the header). The claim is audited with the agent's email (`admin.handoff.claimed`), the conversation switches to the agent and the reply box opens. Reply as a human agent: the customer's chat shows "Un agente está atendiendo tu caso" (in the customer's language) and the message within 2 seconds. From then on the assistant never sees that conversation, and there is no hand-back ([limitations.md](limitations.md)).
+4. **Guardrail, live.** The threshold is compared against the amount of the disputed charge **as stored in the database**, never against what the customer types. The demo customer holds an unrecognized charge (Global Electronics Megastore, USD 139.99 for the English customer), and the default USD threshold is USD 500, so step 1 ends with the card blocked and no handoff. In the back office, open **Guardrails**, lower the USD threshold to 100, set the mode to "handoff required" (`block`), press "Save changes" and confirm. Then repeat the same conversation: the card is still blocked, but the conversation now ends in a **priority handoff** to a human agent, created by the system itself and not by the model, instead of automated resolution. No deployment, no restart. In `flag` mode (handoff recommended) the same change only suggests the handoff. The same change over the API, as the alternative (the request replaces the whole set of thresholds; the development token is `dev-only-admin-token`):
+
+   ```bash
+   curl -sS -X PUT http://localhost:8081/v1/admin/policy-config \
+     -H "Authorization: Bearer dev-only-admin-token" -H "Content-Type: application/json" \
+     -d '{"amount_mode": "block", "thresholds_minor": {"USD": 10000, "EUR": 50000, "BRL": 250000, "COP": 200000000, "ARS": 17795642}}'
+   ```
+
+   Put it back the same way, with `"amount_mode": "flag"` and `"USD": 50000`. "Reset demo" in Guardrails restores the demo cards and the tools, not the thresholds or the mode.
+5. **Another workflow, no code.** The second workflow, account inquiries, uses `account.get_summary`, which starts disabled. As a verified customer, ask for your balance: the assistant says it cannot help with that here, because banking-core refuses the tool (audited as `TOOL_DISABLED`). Then, in the back office, open **Guardrails**, find `account.get_summary` in "Tools by state", switch it on and save. Or enable it, live, with the admin API (in development it is already on; use your own `ADMIN_API_TOKEN` if `.env` sets one; banking-core listens on `PORT_BANKING_CORE`, 8081 by default):
 
    ```bash
    curl -sS -X PUT http://localhost:8081/v1/admin/tool-policy \
@@ -187,8 +209,8 @@ Works the same in replay and live mode.
      -d '{"tools": {"account.get_summary": ["VERIFIED"]}}'
    ```
 
-   Ask again: the balance comes back. No deployment, no restart, no code: the response is the new policy version, and the audit row `admin.tool_policy.updated` keeps the before and after. `GET /v1/admin/tool-policy` shows the policy in force and the code floor; asking for a state beyond it (for example `card.block` for `ANONYMOUS`) is refused with a 422. To run the demo again, `POST /v1/admin/demo/reset-fixtures` with the same header (and `DEMO_RESET_ENABLED=true` under `APP_ENV=production`) puts the tool back to disabled, along with the demo cards.
-6. **Language (⚠️ pending UI).** Repeat step 1 in Portuguese.
+   Ask again: the balance comes back. No deployment, no restart, no code: the response is the new policy version, and the audit row `admin.tool_policy.updated` keeps the before and after. `GET /v1/admin/tool-policy` shows the policy in force and the code floor; asking for a state beyond it (for example `card.block` for `ANONYMOUS`) is refused with a 422, and the Guardrails screen shows that refusal when you click a cell beyond the floor. To run the demo again, "Reset demo" in Guardrails, or `POST /v1/admin/demo/reset-fixtures` with the same header (and `DEMO_RESET_ENABLED=true` under `APP_ENV=production`), puts the tool back to disabled, along with the demo cards.
+6. **Language.** Repeat step 1 in Portuguese. The customer page follows the browser's language (Spanish, Portuguese or English; Spanish when it is none of them) and has a language switch in its header.
 
 Full scripts with exact messages: `demo/scripts/`.
 
@@ -227,7 +249,7 @@ That environment runs the same images as `make demo`: there is no special path t
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| A chat turn answers 503 (`replay_miss`, or no provider key) | Replay mode with no recording for that message (no recordings exist yet, ⚠️ pending), or live mode without a valid `LLM_API_KEY` | Switch to live mode (section 4). `make demo` prints this as a notice when it finishes |
+| A chat turn answers 503 (`replay_miss`, or no provider key); in the chat the message stays marked "Not sent" with a "Try again" button | Replay mode with no recording for that message (no recordings exist yet, ⚠️ pending), or live mode without a valid `LLM_API_KEY` | Switch to live mode (section 4). `make demo` prints this as a notice when it finishes |
 | `make demo` stops at "the Docker daemon is not reachable" | Docker is not running | Start Docker and run `make demo` again |
 | `make demo` warns that the embedding model could not be preloaded | No network on the first run, so `kb.search` is unavailable | Get online and run `make warmup-retrieval`; the rest of the stack is unaffected |
 | `banking-core` `/ready` answers 503 `knowledge search unavailable` | The model server is not up yet or unreachable at `MODEL_SERVER_URL`; or the embedding model is not in its `hf-cache` volume (`GET http://localhost:8090/ready` shows `embedding.state`); or `EMBEDDING_MODEL`/`EMBEDDING_REVISION` differ between banking-core and the model server | `make warmup-retrieval`, check both services use the same two variables, then `make logs s=banking-core` and `make logs s=encoder` if it persists |
@@ -240,11 +262,13 @@ That environment runs the same images as `make demo`: there is no special path t
 | `make seed` fails with a contract error | Dataset missing or schema mismatch | See section 5; the message names the exact field |
 | High latency on the first turn | Encoder or embedding model cold start | Normal on a stack that was not started with `make demo`, which warms both; `make warmup` preloads them |
 | `banking-core` exits at startup with "no real OTP delivery provider is implemented; set OTP_CHANNEL_MODE=simulated" | `OTP_CHANNEL_MODE` in `.env` is not `simulated`; it is the only delivery mode implemented | Set `OTP_CHANNEL_MODE=simulated` (or remove it: unset means `simulated`) |
-| The "you got an email with the code" notice (⚠️ pending UI) is gone or empty | The code expired (`OTP_TTL_SECONDS`), or the conversation or its banking session expired | Ask for a new code; the inbox only holds unexpired ones |
+| The "you got an email with the code" notice is gone or empty | The code expired (`OTP_TTL_SECONDS`), or the conversation or its banking session expired | Ask for a new code; the inbox only holds unexpired ones |
 | Port already in use | Another local service on the same port | Change ports in `.env` |
 | Encoder container keeps restarting | Less than 4 GB RAM available | Raise Docker's memory limit |
 | `make smoke` fails | A service is unhealthy or not running | Run `make logs s=<service>` to inspect |
-| Back office does not update live | WebSocket blocked by a proxy | Check the reverse proxy |
+| Back office (or the chat, during a takeover) does not update on its own | Nothing is pushed: both poll (the queue every 3 s, an open case and a taken-over chat every 2 s), and only while the tab is visible, so a background tab catches up when you come back to it | Bring the tab forward. There is no WebSocket, so a proxy is not the cause; if requests fail, `make logs s=web-backoffice` and `make logs s=web-client` |
+| The back office logs in but its screens show an error instead of data (`/api/handoffs` answers 404, or 502 `upstream_unauthorized`) | The admin API or the agent API is off (404), or its token differs from the one the back office holds (502) | Check `ADMIN_API_ENABLED`, `AGENT_API_ENABLED`, `ADMIN_API_TOKEN` and `AGENT_API_TOKEN` in `.env`; in development the defaults already match. Then `make up` |
+| The back office rejects `agent@demo.local` | `DEMO_AGENT_EMAIL` or `DEMO_AGENT_PASSWORD` was changed in `.env` | Use the values in `.env`, then `make up` if you just changed them |
 | No provider response in live mode | Invalid key or exhausted quota | Check `.env`. The system degrades to an unavailability message: **it does not invent responses** |
 | Image will not start on Apple Silicon | Wrong architecture build | Report it: images are multi-arch and that would be our bug |
 | `make data-quality` cannot write to `reports/` | On Linux, `reports/` is owned by a different uid | The container writes as uid 1000: `sudo chown -R 1000:1000 reports/`, or run the service with `--user $(id -u):$(id -g)` |
@@ -282,8 +306,9 @@ make up          # recreates the orchestrator with the new value
 Test on a clean machine, with no Docker cache, before submitting:
 
 - [ ] `git clone` + `make demo` works with no `.env` and no key (the chat answers 503 until recordings exist or a key is set, and `make demo` says so)
-- [ ] Every command mentioned in this document exists in the `Makefile`
-- [ ] Every URL in section 6 responds
+- [x] Every command mentioned in this document exists in the `Makefile` (a static check: every `make <target>` in this file and in the README is a target)
+- [ ] Every URL in section 6 responds, and the back-office login in section 6 signs in
+- [ ] The walkthrough in section 7 runs in a browser, steps 1 to 6 (steps 1 to 3 need an LLM key until the replay recordings exist)
 - [ ] The real output of `make smoke` matches section 6
 - [ ] Running `make demo` twice in a row succeeds, on a clean machine and on one with the caches warm
 - [ ] `make seed` fails with a clear message when `data/raw/` holds a dataset with no ingest mapping

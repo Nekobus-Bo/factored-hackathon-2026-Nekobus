@@ -1,22 +1,24 @@
-"""Operator-only API for live policy configuration and demo fixture resets."""
+"""Operator-only API: live configuration, the handoff queue, metrics, demo resets."""
 
 from __future__ import annotations
 
 import hmac
 import os
 import re
-from datetime import datetime
-from typing import Annotated, Literal
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import sqlalchemy as sa
 from contracts.envelope import VerificationState
 from contracts.tools import CODE_FLOOR
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from contracts.tools.handoff_create import Department, HandoffPriority, HandoffStatus
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from sqlalchemy.orm import Session
 
 from banking_core.api.routes_sessions import get_session_store
+from banking_core.audit.metrics import MetricsSnapshot, collect_metrics
 from banking_core.audit.service import append
 from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import (
@@ -34,9 +36,17 @@ from banking_core.control.tool_policy import (
 )
 from banking_core.crypto import compute_blind_index
 from banking_core.db.session import get_session_maker
+from banking_core.handoff.queue import (
+    ClaimedByAnotherAgentError,
+    HandoffNotFoundError,
+    claim_handoff,
+    priority_rank,
+    queue_position_expression,
+)
 from banking_core.identity.config import IdentityConfig
 from banking_core.models.config import PolicyConfigRecord
 from banking_core.models.core_bank import Card
+from banking_core.models.ops import Handoff
 from banking_core.seed.fixtures import create_scenario_fixtures
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -121,6 +131,93 @@ class DemoResetResponse(BaseModel):
     attempt_limits_cleared: int
     tool_policy_version: int
     tool_policy_changed: bool
+
+
+class HandoffItem(BaseModel):
+    """One open case in the back-office queue."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    handoff_ref: str
+    status: HandoffStatus
+    priority: HandoffPriority
+    department: Department
+    reason: str
+    created_at: datetime
+    # Only while QUEUED, by the rule the customer's handoff receipt uses.
+    queue_position: int | None
+    assigned_agent: str | None
+    assigned_at: datetime | None
+    session_ref: str
+
+    @field_validator("created_at", "assigned_at")
+    @classmethod
+    def in_utc(cls, value: datetime | None) -> datetime | None:
+        # The database session may hand times back in its own zone.
+        return value.astimezone(UTC) if value is not None else None
+
+
+class HandoffListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[HandoffItem]
+
+
+class HandoffDetail(HandoffItem):
+    """A queue item with the summary exactly as handoff.create stored it."""
+
+    summary: dict[str, Any]
+
+
+class AdminHandoffClaimRequest(BaseModel):
+    """The agent taking a handoff, as the back office identifies them.
+
+    The email is the audit actor, and `ops.audit_log.actor_ref` holds 128
+    characters, so that is the cap, not the 254 of the address format.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_ref: str = Field(min_length=3, max_length=128, pattern=r"^[^@\s]+@[^@\s]+$")
+
+
+class ToolCallMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str
+    decision: str
+    reason_code: str | None
+    count: int
+
+
+class HandoffMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total: int
+    by_status: dict[str, int]
+    by_priority: dict[str, int]
+    by_department: dict[str, int]
+
+
+class OtpMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sent: int
+    verified: int
+    failed: int
+
+
+class MetricsResponse(BaseModel):
+    """Counts over the window; names, enums and numbers only, no PII."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    generated_at: datetime
+    window_hours: int
+    tool_calls: list[ToolCallMetric]
+    handoffs: HandoffMetrics
+    cards_blocked: int
+    otp: OtpMetrics
 
 
 def _environment_flag(name: str) -> bool:
@@ -318,6 +415,142 @@ def put_tool_policy(request: AdminToolPolicyRequest) -> ToolPolicyResponse:
             ) from exc
         session.commit()
         return _tool_policy_response(change.version, change.matrix)
+
+
+def _handoff_fields(row: Handoff, position: int | None) -> dict[str, Any]:
+    return {
+        "handoff_ref": row.handoff_ref,
+        "status": HandoffStatus(row.status),
+        "priority": HandoffPriority(row.priority),
+        "department": Department(row.department),
+        "reason": row.reason,
+        "created_at": row.created_at,
+        "queue_position": position,
+        "assigned_agent": row.assigned_agent,
+        "assigned_at": row.assigned_at,
+        "session_ref": row.session_ref,
+    }
+
+
+def _load_handoff(session: Session, handoff_ref: str) -> HandoffDetail:
+    """The handoff as stored, with its place in line, read now."""
+    found = session.execute(
+        sa.select(Handoff, queue_position_expression(Handoff)).where(
+            Handoff.handoff_ref == handoff_ref
+        )
+    ).one_or_none()
+    if found is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="handoff_not_found"
+        )
+    row, position = found
+    return HandoffDetail(**_handoff_fields(row, position), summary=row.summary)
+
+
+@router.get(
+    "/handoffs",
+    response_model=HandoffListResponse,
+    dependencies=[Depends(require_admin)],
+)
+def list_handoffs(
+    statuses: Annotated[list[HandoffStatus] | None, Query(alias="status")] = None,
+) -> HandoffListResponse:
+    """Cases most urgent first, then oldest first; QUEUED and ASSIGNED by default."""
+    wanted = statuses or [HandoffStatus.QUEUED, HandoffStatus.ASSIGNED]
+    with get_session_maker()() as session:
+        rows = session.execute(
+            sa.select(Handoff, queue_position_expression(Handoff))
+            .where(Handoff.status.in_([item.value for item in wanted]))
+            .order_by(
+                priority_rank(Handoff.priority).desc(),
+                Handoff.created_at,
+                Handoff.id,
+            )
+        ).all()
+        return HandoffListResponse(
+            items=[
+                HandoffItem(**_handoff_fields(row, position)) for row, position in rows
+            ]
+        )
+
+
+@router.get(
+    "/handoffs/{handoff_ref}",
+    response_model=HandoffDetail,
+    dependencies=[Depends(require_admin)],
+)
+def get_handoff(handoff_ref: str) -> HandoffDetail:
+    with get_session_maker()() as session:
+        return _load_handoff(session, handoff_ref)
+
+
+@router.post(
+    "/handoffs/{handoff_ref}/claim",
+    response_model=HandoffDetail,
+    dependencies=[Depends(require_admin)],
+)
+def claim_handoff_for_agent(
+    handoff_ref: str, request: AdminHandoffClaimRequest
+) -> HandoffDetail:
+    """Assign the case to the agent, audited in the same transaction.
+
+    Idempotent for the agent who holds it; 409 for any other. The response is
+    read back after the commit.
+    """
+    with get_session_maker()() as session:
+        try:
+            claim_handoff(session, handoff_ref, request.agent_ref)
+        except HandoffNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="handoff_not_found"
+            ) from exc
+        except ClaimedByAnotherAgentError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="claimed_by_another_agent",
+            ) from exc
+        session.commit()
+        session.expire_all()
+        return _load_handoff(session, handoff_ref)
+
+
+def _metrics_response(snapshot: MetricsSnapshot) -> MetricsResponse:
+    return MetricsResponse(
+        generated_at=snapshot.generated_at.astimezone(UTC),
+        window_hours=snapshot.window_hours,
+        tool_calls=[
+            ToolCallMetric(
+                action=call.action,
+                decision=call.decision,
+                reason_code=call.reason_code,
+                count=call.count,
+            )
+            for call in snapshot.tool_calls
+        ],
+        handoffs=HandoffMetrics(
+            total=snapshot.handoffs.total,
+            by_status=snapshot.handoffs.by_status,
+            by_priority=snapshot.handoffs.by_priority,
+            by_department=snapshot.handoffs.by_department,
+        ),
+        cards_blocked=snapshot.cards_blocked,
+        otp=OtpMetrics(
+            sent=snapshot.otp.sent,
+            verified=snapshot.otp.verified,
+            failed=snapshot.otp.failed,
+        ),
+    )
+
+
+@router.get(
+    "/metrics",
+    response_model=MetricsResponse,
+    dependencies=[Depends(require_admin)],
+)
+def get_metrics(hours: Annotated[int, Query(ge=1, le=720)] = 24) -> MetricsResponse:
+    """Counts from the audit log and the queue over the last `hours` hours."""
+    with get_session_maker()() as session:
+        return _metrics_response(collect_metrics(session, hours))
 
 
 def get_attempt_limit_store() -> AttemptLimitStore:

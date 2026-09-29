@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     rate_limit_conversations_per_ip_hour: int = Field(
         default=30, ge=1, alias="RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR"
     )
+    # Reverse index from a banking-core session id to the conversation id, for the
+    # agent API (see session/store.py). Same redis-edge, so the edge ACL (~orch:*)
+    # must cover the prefix.
+    redis_edge_session_index_key_prefix: str = Field(
+        default="orch:session:",
+        validation_alias=AliasChoices("REDIS_EDGE_SESSION_INDEX_KEY_PREFIX"),
+    )
     # How many reverse proxies stand in front of the orchestrator. 0 (default)
     # ignores X-Forwarded-For entirely; N strips N entries from its right.
     trusted_proxy_hops: int = Field(default=0, ge=0, le=8, alias="TRUSTED_PROXY_HOPS")
@@ -91,6 +98,18 @@ class Settings(BaseSettings):
     max_tool_rounds: int = Field(default=5, ge=1, le=20, alias="MAX_TOOL_ROUNDS")
 
     eval_expose_turn: bool = Field(default=False, alias="EVAL_EXPOSE_TURN")
+
+    # Agent API (/v1/agent): the back office reads a masked transcript and takes a
+    # conversation over from the assistant (docs/adr/0013-front-ends-bff-takeover.md).
+    # Off by default. When on it needs a bearer token; startup refuses the public
+    # development token, and an empty one, under APP_ENV=production (agent/auth.py).
+    agent_api_enabled: bool = Field(default=False, alias="AGENT_API_ENABLED")
+    agent_api_token: SecretStr = Field(default=SecretStr(""), alias="AGENT_API_TOKEN")
+    # How long a takeover or an agent message waits for a customer turn in flight
+    # (the turn lock) before answering 503. Only the agent API waits.
+    agent_lock_wait_seconds: float = Field(
+        default=10.0, ge=0, le=120, alias="AGENT_LOCK_WAIT_SECONDS"
+    )
 
     default_locale: Literal["es", "pt", "en"] = Field(
         default="es", alias="DEFAULT_LOCALE"
@@ -125,6 +144,11 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("1", "true", "yes", "on")
         return bool(v)
+
+    @property
+    def effective_agent_api_token(self) -> str:
+        """The agent token as compared and validated: surrounding blanks dropped."""
+        return self.agent_api_token.get_secret_value().strip()
 
     @property
     def turn_lock_seconds(self) -> float:

@@ -131,3 +131,8 @@ class Handoff(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
     )
+    # Set together by the back-office claim (ADR-0013); empty until then.
+    assigned_agent: Mapped[str | None] = mapped_column(sa.String(254), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )

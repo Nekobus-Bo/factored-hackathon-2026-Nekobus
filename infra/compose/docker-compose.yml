@@ -14,9 +14,18 @@
 #
 # Network isolation (ADR-0004, ADR-0006 amendment):
 #   core  internal, no egress: postgres, redis-core, banking-core, migrate
-#   edge  orchestrator, encoder, redis-edge, banking-core
+#   edge  orchestrator, encoder, redis-edge, banking-core, web-client, web-backoffice
 # banking-core is the only service on both. The orchestrator has no network path
-# to postgres or redis-core. One Redis per trust zone, each with a password.
+# to postgres or redis-core, and neither has a front end. One Redis per trust zone,
+# each with a password.
+#
+# The front ends (ADR-0013) are Bun servers, each with a same-origin BFF: the browser
+# talks only to them. web-client forwards the four chat routes to the orchestrator and
+# holds no secret. web-backoffice calls the banking-core admin API and the orchestrator
+# agent API with ADMIN_API_TOKEN and AGENT_API_TOKEN, which are the same variables with
+# the same development defaults as on those two services, so the tokens match with no
+# .env. Both are built from the repo root (see their Dockerfile.dockerignore) and are
+# published on loopback, like every other port here.
 #
 # The encoder is the model server (ADR-0012, Appendix J): it serves the decision model
 # (/v1/analyze) and the embedding model (/v1/embed) and receives raw customer text, so it
@@ -254,11 +263,24 @@ services:
       REDIS_URL: ${REDIS_EDGE_URL:-}
       REDIS_EDGE_KEY_PREFIX: ${REDIS_EDGE_KEY_PREFIX:-orch:conv:}
       REDIS_EDGE_RATE_LIMIT_KEY_PREFIX: ${REDIS_EDGE_RATE_LIMIT_KEY_PREFIX:-orch:ratelimit:}
+      REDIS_EDGE_SESSION_INDEX_KEY_PREFIX: ${REDIS_EDGE_SESSION_INDEX_KEY_PREFIX:-orch:session:}
       # Conversations one client address may open per hour. Generous on purpose:
       # a local session or an evaluation run (one conversation per scenario) comes
       # from one address. The production overlay pins 30 back. Must be >= 1.
       RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-1000}
-      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      # The customer path is the web-client BFF, which sends the address of its own
+      # connection as X-Forwarded-For: one trusted hop, or every customer would share the
+      # BFF's bucket. 8080 is published on loopback only, so nothing but this host can
+      # reach the orchestrator directly and send a forged header. The orchestrator's own
+      # default stays 0 (no proxy).
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      # Development defaults, as for the admin API above: the agent API (the human
+      # takeover, ADR-0013) is on with a public, development-only token. The
+      # orchestrator refuses to start with this token under APP_ENV=production, and
+      # the production override pins these back to off / empty.
+      AGENT_API_ENABLED: ${AGENT_API_ENABLED:-true}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-dev-only-agent-token}
+      AGENT_LOCK_WAIT_SECONDS: ${AGENT_LOCK_WAIT_SECONDS:-10}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-regenerate-this-secret}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-3600}
       SESSION_LOCK_MARGIN_SECONDS: ${SESSION_LOCK_MARGIN_SECONDS:-60}
@@ -349,6 +371,64 @@ services:
         # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS alone: set ENCODER_MEMORY_LIMIT=5g
         # with the embedding model.
         limits: { cpus: "2.0", memory: "${ENCODER_MEMORY_LIMIT:-3g}" }
+
+  web-client:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/web-client/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/web-client:dev
+    environment:
+      PORT: "5173"
+      ORCHESTRATOR_URL: http://orchestrator:8080
+    ports:
+      - "127.0.0.1:${PORT_WEB_CLIENT:-5173}:5173"
+    depends_on:
+      orchestrator: { condition: service_healthy }
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      # The image has no curl. Liveness only: /healthz does not call the orchestrator.
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+    deploy:
+      resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
+        limits: { cpus: "0.5", memory: 256m }
+
+  web-backoffice:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/web-backoffice/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/web-backoffice:dev
+    environment:
+      PORT: "5174"
+      APP_ENV: ${APP_ENV:-development}
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      BANKING_CORE_URL: http://banking-core:8081
+      # The same variables and development defaults as banking-core (ADMIN_API_TOKEN) and
+      # the orchestrator (AGENT_API_TOKEN), so the three sides agree with no .env. Under
+      # APP_ENV=production the server refuses to start with any development value below.
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-only-admin-token}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-dev-only-agent-token}
+      DEMO_AGENT_EMAIL: ${DEMO_AGENT_EMAIL:-agent@demo.local}
+      DEMO_AGENT_PASSWORD: ${DEMO_AGENT_PASSWORD:-demo-only-change-me}
+      BACKOFFICE_SESSION_SECRET: ${BACKOFFICE_SESSION_SECRET:-dev-only-backoffice-session-secret}
+    ports:
+      - "127.0.0.1:${PORT_WEB_BACKOFFICE:-5174}:5174"
+    depends_on:
+      banking-core: { condition: service_healthy }
+      orchestrator: { condition: service_healthy }
+    # banking-core is on edge as well, so edge reaches both upstreams. Not on core: the back
+    # office has no business with postgres or redis-core.
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5174) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+    deploy:
+      resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
+        limits: { cpus: "0.5", memory: 256m }
 
 networks:
   core:
