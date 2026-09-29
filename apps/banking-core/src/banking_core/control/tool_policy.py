@@ -212,10 +212,17 @@ def _active_statement() -> sa.Select[tuple[ToolPolicyRecord]]:
 def _seed_if_empty(session: Session) -> None:
     """Insert version 1 from the environment when the table has no versions.
 
-    Concurrent first seeds race on the unique version; the loser inserts nothing
-    and audits nothing. The winner audits the seed, as the change from the catalog
-    defaults it is, in the same transaction. Flushes only: the caller owns the
-    transaction.
+    Concurrent first seeds race on two unique indexes: the version and the single
+    active row. The loser inserts nothing and audits nothing. The winner audits the
+    seed, as the change from the catalog defaults it is, in the same transaction.
+    Flushes only: the caller owns the transaction.
+
+    The conflict has no target on purpose. ``ON CONFLICT (version)`` only arbitrates
+    that one index; a loser that gets past its check before the winner's row is
+    visible still reaches the partial unique index on ``is_active``, which is not an
+    arbiter and raises instead of doing nothing. Which index trips first depends on
+    timing, so the failure was intermittent. Without a target every unique index is
+    an arbiter, so any losing insert is a no-op.
     """
     exists = session.execute(sa.select(ToolPolicyRecord.id).limit(1)).first()
     if exists is not None:
@@ -224,7 +231,7 @@ def _seed_if_empty(session: Session) -> None:
     inserted = session.execute(
         pg_insert(ToolPolicyRecord)
         .values(version=1, is_active=True, matrix=seeded)
-        .on_conflict_do_nothing(index_elements=["version"])
+        .on_conflict_do_nothing()
         .returning(ToolPolicyRecord.id)
     ).first()
     if inserted is None:

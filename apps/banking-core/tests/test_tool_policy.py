@@ -1,6 +1,7 @@
 """Versioned tool policy: seed, saves, audit, floor and live effect (ADR-0002)."""
 
 import threading
+import time
 
 import banking_core.main as main
 import pytest
@@ -189,6 +190,53 @@ def test_concurrent_first_seed_creates_one_version(
     assert errors == []
     assert seen == [1] * workers
     assert _versions(db_session) == [(1, True)]
+
+
+def test_a_first_seed_that_loses_on_the_active_row_inserts_nothing(
+    db_engine: sa.Engine, db_session: Session
+) -> None:
+    """Losing on the single-active index is a no-op, not only losing on the version.
+
+    Another writer holds an uncommitted active row with a different version, so the
+    seed passes its check on the version and can only lose on ``is_active``. That
+    is the outcome of the concurrent first seed that depends on timing; here it is
+    forced. It used to raise IntegrityError from the non-arbiter unique index.
+    """
+    maker = sessionmaker(bind=db_engine)
+    errors: list[BaseException] = []
+    seen: list[int] = []
+
+    def seed() -> None:
+        try:
+            with maker() as session:
+                seen.append(active_tool_policy(session).version)
+        except BaseException as exc:  # collected and asserted below
+            errors.append(exc)
+
+    with maker() as other:
+        other.add(ToolPolicyRecord(version=2, is_active=True, matrix={}))
+        other.flush()  # uncommitted: the seed sees an empty table
+        thread = threading.Thread(target=seed)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            blocked = db_session.execute(
+                sa.text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            ).scalar_one()
+            db_session.rollback()
+            if blocked:
+                break
+            time.sleep(0.02)
+        other.commit()
+    thread.join()
+
+    assert errors == []
+    assert seen == [2]
+    assert _versions(db_session) == [(2, True)]
+    assert _audit_rows(db_session, seed=True) == []
 
 
 def test_a_save_is_a_new_active_version_with_an_audit_row(
