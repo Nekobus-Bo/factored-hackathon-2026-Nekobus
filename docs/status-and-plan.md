@@ -2,7 +2,7 @@
 
 > Internal working document: where the work stands and how to continue it, from a local machine or by another teammate. It is updated at every milestone. Delete it, or fold what is still true into [limitations.md](limitations.md), before submitting (see the cross-check checklist at the end of [runbook.md](runbook.md)).
 
-**Last update:** 2026-09-29, 11:40 UTC.
+**Last update:** 2026-09-29, 11:40 UTC (after #4 merged).
 
 > **History rewritten on 2026-09-29.** The commits made from the cloud session were authored as "Claude"; `main` and `claude/optimistic-feynman-tj7ew9` were rewritten so that they carry Marcelo Mendez as author and no `Co-Authored-By: Claude` line (contents unchanged; Daniela's commit `fea5e9b` and the #1 merge keep their hashes). **If you cloned before that, re-sync:** `git fetch origin && git checkout main && git reset --hard origin/main` (and the same for any branch taken from the rewritten commits). Branches cut from `main` before 2026-09-29, such as `feat/disputes-table-fit`, are not affected.
 
@@ -35,7 +35,7 @@ Tests at the last merge of #3 (the branch now has 1906 passed, 5 skipped in Pyth
 - evalrunner: 141 passed.
 - `make design-tokens-check`: 38 passed.
 
-## 2. The front ends: built, on `claude/optimistic-feynman-tj7ew9`, not merged yet
+## 2. The front ends: merged to `main` (#4)
 
 The specification and the HTTP contract between the pieces are in [front-ends.md](front-ends.md). The decisions are in [ADR-0013](adr/0013-front-ends-bff-takeover.md). Each work package below is one branch off `main` and ships with tests.
 
@@ -52,10 +52,10 @@ The specification and the HTTP contract between the pieces are in [front-ends.md
 - Verified: both front-end images build through `docker compose build` exactly as committed (the install step served from the BuildKit cache; a cold-cache install fails with `SELF_SIGNED_CERT_IN_CHAIN` unless the CA is mounted, so it was checked once with a temporary Dockerfile copy that does, nothing committed); the whole stack came up healthy with no `.env`; `make smoke` printed all eight services and the migration; the two `make` dev-server targets served `/healthz` and the page; the demo summary ran against the live stack. A takeover ran end to end through both BFFs with the compose defaults (claim, agent reply masked, which was the behavior then and is not any more, the customer reading it, the queue showing `ASSIGNED`), and a Guardrails save went through the BFF to the admin API. The production images start under the overlay's constraints (read-only root, no capabilities) and the back office refuses the development values.
 - Not verified: `make up` itself (its `--build` needs the Python images to build from the committed Dockerfiles, which the sandbox blocks; they were built from temporary copies and the stack was started without `--build`, with the embedding model off); `make demo` from start to finish (it downloads the embedding model); the CI and deploy workflows (only YAML-parsed, never run on GitHub); the images pulled from a registry, and the `linux/arm64` builds; the UI in a browser (no browser here). Do these on the clean-machine check.
 
-**Nothing is in progress in the cloud session.** Every package above is committed and pushed on `claude/optimistic-feynman-tj7ew9`; no work lives only in a local worktree.
+**Nothing is in progress in the cloud session.** Everything is merged to `main` (#4, 2026-09-29); no work lives only in a local worktree.
 
 **What is left for the front ends:**
-1. Open a pull request and merge the branch into `main` (70+ commits ahead). CI has not run on it yet: `ci.yml` runs on pull requests and on pushes to `main` only. Every check it runs passed locally (`uv run pytest -q`, `ruff`, `make web-check`, `make design-tokens-check`); the `images` job with the two new front-end images and the arm64 builds have never run.
+1. Done: merged as #4 on 2026-09-29, with CI green on its last head (Python, TypeScript and the five images, amd64 and arm64).
 2. On a real machine, with an LLM key in `.env`: `make demo`, then walk through [runbook.md](runbook.md) section 7 in a browser, in es, pt and en, in light and dark. No browser run against the real stack exists yet; the screens were checked against fake upstreams and the BFFs against the live stack.
 3. The clean-machine check of the runbook's cross-check checklist, including the arm64 images (built in CI, never run).
 4. Decided and done (2026-09-29): agent text is shown as written. `content` stays masked, in clear, in redis-edge; the text as written is stored encrypted next to it and both transcripts return it; the assistant never sees it. Recorded in [ADR-0013](adr/0013-front-ends-bff-takeover.md) (amendment 2026-09-29, "agent text shown as written") and declared in [limitations.md](limitations.md). It is covered by the orchestrator and back-office tests; the stack was not brought up again with it, so the live takeover walk-through of item 2 should include an agent writing a name.
