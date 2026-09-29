@@ -7,6 +7,11 @@ from pydantic import Field, StrictBool, StrictInt
 
 from contracts.tools.base import BaseToolInput, BaseToolModel, BaseToolOutput
 
+# One definition of the opaque transaction id constraints: the id returned here
+# is the id card.block and handoff.create accept back.
+TRANSACTION_ID_MIN_LENGTH = 8
+TRANSACTION_ID_MAX_LENGTH = 64
+
 
 class TransactionStatus(str, Enum):
     """Settlement status of a transaction."""
@@ -43,8 +48,8 @@ class TransactionItem(BaseToolModel):
 
     transaction_id: str = Field(
         ...,
-        min_length=8,
-        max_length=64,
+        min_length=TRANSACTION_ID_MIN_LENGTH,
+        max_length=TRANSACTION_ID_MAX_LENGTH,
         description="Opaque transaction identifier",
     )
     card_ref: str = Field(
