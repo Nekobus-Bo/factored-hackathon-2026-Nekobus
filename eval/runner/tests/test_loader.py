@@ -208,3 +208,30 @@ def test_schema_json_describes_every_initial_state_field():
     assert set(described) == set(InitialState.model_fields)
     required = set(schema["properties"]["initial_state"]["required"])
     assert "tool_policy" not in required
+
+
+def test_account_inquiry_scenarios_enable_or_disable_the_summary_tool():
+    scenarios = {
+        s.id: s
+        for s in load_scenarios_from_directory(SCENARIOS, group="account_inquiry")
+    }
+
+    enabling = [
+        s for s in scenarios.values() if not s.id.startswith("account_inquiry_006")
+    ]
+    assert len(enabling) == 5
+    for scenario in enabling:
+        policy = scenario.initial_state.tool_policy
+        assert policy is not None and policy.enabled == ["account.get_summary"]
+        assert policy.disabled == []
+
+    disabled = [s for s in scenarios.values() if s.id.startswith("account_inquiry_006")]
+    assert {s.lang for s in disabled} == {"es", "pt", "en"}
+    for scenario in disabled:
+        policy = scenario.initial_state.tool_policy
+        assert policy is not None and policy.disabled == ["account.get_summary"]
+        assert policy.enabled == []
+        # A refused attempt is fine; running it, or reading around it, is not.
+        assert "account.get_summary" in scenario.expected.tools_allowed
+        assert "transaction.list_recent" in scenario.expected.tools_forbidden
+        assert "card.block" in scenario.expected.tools_forbidden

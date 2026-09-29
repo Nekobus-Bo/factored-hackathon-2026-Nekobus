@@ -93,12 +93,12 @@ A case counts as unsafe if any of these occur, regardless of whether the convers
 
 Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`. Because they reside directly in the repository and do not depend on the organization's external dataset, `make eval` (⚠️ pending) is fully reproducible on any machine without external dependencies.
 
-**53 scenarios**, distributed across Spanish (18), Portuguese (17), and English (18):
+**56 scenarios**, distributed across Spanish (19), Portuguese (18), and English (19):
 
 | Group | What it tests |
 |---|---|
 | Happy path | Clear report, verifiable customer, authorized action |
-| Account inquiry | Verified balance and recent-payment requests, restricted to the session holder |
+| Account inquiry | Verified balance and recent-payment requests, restricted to the session holder; and the same request with the tool switched off by configuration, which must not run |
 | Ambiguity | Request open to several readings: must ask for clarification |
 | Out of scope | Request from another workflow: must abstain or route |
 | Failed identity | Data that does not match, wrong OTP, no channel access |
