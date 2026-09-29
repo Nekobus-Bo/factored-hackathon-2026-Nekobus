@@ -242,6 +242,8 @@ services:
       ENCODER_ENABLED: ${ENCODER_ENABLED:-true}
       ENCODER_TIMEOUT_SECONDS: ${ENCODER_TIMEOUT_SECONDS:-2}
       MAX_TOOL_ROUNDS: ${MAX_TOOL_ROUNDS:-5}
+      # Where replay mode reads recordings (mounted below).
+      REPLAY_DIR: /app/eval/replay
       REDIS_HOST: redis-edge
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:-dev-only-regenerate-edge-redis}
@@ -268,6 +270,10 @@ services:
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-es}
       TRACE_ENABLED: ${TRACE_ENABLED:-true}
       COST_TRACKING_ENABLED: ${COST_TRACKING_ENABLED:-true}
+    volumes:
+      # Replay recordings (eval/replay/<key>.json), read-only: recording is a
+      # maintainer task run outside the stack, never something the service does.
+      - ../../eval/replay:/app/eval/replay:ro
     ports:
       - "127.0.0.1:${PORT_ORCHESTRATOR:-8080}:8080"
     depends_on:
