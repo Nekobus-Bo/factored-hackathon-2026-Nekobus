@@ -56,11 +56,13 @@ Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, c
 
 **Abstention threshold τ = TODO**, calibrated on validation and never on the test split. Calibration criterion: maximum coverage subject to a minimum per-class precision (ADR-0010).
 
+The decisions the engine consumes have their own thresholds, one per decision point and language, in the calibration artifact; their evidence is in `reports/calibration-decision-points-2026-09-29.md` (see "Decision points" below). **Those per-decision-point numbers are provisional**: the test split is AI-written and small, and nothing is certified.
+
 ### Decision points ([ADR-0012](adr/0012-decision-points.md))
 
 Two levels, kept apart because they answer different questions.
 
-- **Classifier level, from the calibration harness** (`reports/calibration-dp-<dp>-<date>.md`, ⚠️ pending until the harness lands): precision at τ with its Wilson lower bound, coverage, ECE and the certification status ("certified: no, needs N"), per decision point, language and label. Whether a decision is *right* is answered here and nowhere else.
+- **Classifier level, from the calibration harness** (`make calibrate TASK=decision-points` writes `reports/calibration-decision-points-<date>.md`; the first is `reports/calibration-decision-points-2026-09-29.md`): precision at τ with its Wilson lower bound, coverage, ECE and the certification status ("certified: no, needs N"), per decision point, language and label. Whether a decision is *right* is answered here and nowhere else. **The per-decision-point numbers are provisional.** They come from a synthetic train and validation set and an AI-written test split of 10 rows per intent and language, with thresholds chosen on validation by the point estimate; every decision point is `calibrated` and none is certified (for example `confirm_gate` made no false `confirm`, 21/21, but its Wilson lower bound is 0.845 against a 0.95 floor, and `handoff_route` `HUMAN_REQUEST` is 0.61 against 0.90). The gaps are declared in `docs/limitations.md`.
 - **Scenario level, from the evalrunner** (section 4, "Decision Points by Language", of `reports/eval-<date>.md`): what the decision points did over the scenario suite, from the decision and effect records the orchestrator's eval hook returns. Counts per language, never a pass or a fail:
 
 | Reported | Definition |
