@@ -207,3 +207,76 @@ def test_alembic_0006_attempt_limits_down_and_up(
         )
     ).one()
     assert [str(value) for value in row] == list(ATTEMPT_LIMIT_COLUMNS.values())
+
+
+def _tool_policy_columns(db_session: Session) -> set[str]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'config' AND table_name = 'tool_policy'"
+        )
+    ).fetchall()
+    db_session.commit()  # no lock held while alembic changes the table
+    return {row[0] for row in rows}
+
+
+def test_alembic_0007_tool_policy_versions_keep_saved_rows(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0007 turns the per-tool rows into version 1; downgrading keeps the active one."""
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    assert _tool_policy_columns(db_session) == {
+        "tool_name",
+        "permitted_states",
+        "updated_at",
+    }
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.tool_policy (tool_name, permitted_states) VALUES "
+            "('card.list', '[\"VERIFIED\"]'), ('account.get_summary', '[]')"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    assert _tool_policy_columns(db_session) == {
+        "id",
+        "version",
+        "is_active",
+        "matrix",
+        "created_at",
+    }
+    rows = db_session.execute(
+        sa.text("SELECT version, is_active, matrix FROM config.tool_policy")
+    ).all()
+    db_session.commit()
+    assert [(r.version, r.is_active, r.matrix) for r in rows] == [
+        (1, True, {"card.list": ["VERIFIED"], "account.get_summary": []})
+    ]
+
+    # Only one version can be active; older versions are history.
+    db_session.execute(sa.text("UPDATE config.tool_policy SET is_active = false"))
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.tool_policy (version, is_active, matrix) "
+            "VALUES (2, true, '{\"card.block\": []}')"
+        )
+    )
+    db_session.commit()
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    legacy = db_session.execute(
+        sa.text("SELECT tool_name, permitted_states FROM config.tool_policy")
+    ).all()
+    db_session.commit()
+    assert [(r.tool_name, r.permitted_states) for r in legacy] == [("card.block", [])]
+
+
+def test_alembic_0007_leaves_an_empty_tool_policy_to_the_seed(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    command.upgrade(alembic_cfg, "head")
+
+    count = db_session.execute(sa.text("SELECT count(*) FROM config.tool_policy"))
+    assert count.scalar_one() == 0
+    db_session.commit()
