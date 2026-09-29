@@ -3,6 +3,11 @@
 POST /v1/conversations                 open a conversation (and a banking-core session)
 POST /v1/conversations/{id}/messages   run one turn, return the blocks
 GET  /v1/conversations/{id}            masked transcript only
+
+A message may carry a `client_message_id`. It makes the request safe to retry:
+the writes of a re-run turn reuse their idempotency keys, and a retry of the
+last completed turn gets its stored outcome back without running again. A
+message without one is not deduplicated.
 """
 
 import logging
@@ -13,12 +18,13 @@ from contracts import MESSAGE_BLOCK_ADAPTER
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from orchestrator.chat.handler import TurnHandler
+from orchestrator.chat.handler import TurnHandler, derive_turn_id
 from orchestrator.chat.transcript import mask_for_transcript
 from orchestrator.conversation.models import TurnEvalData
 from orchestrator.llm.replay import ReplayMissError
 from orchestrator.privacy.masking import Masker, RegexMasker
 from orchestrator.session.models import (
+    CompletedTurn,
     ConversationState,
     Lang,
     Message,
@@ -50,6 +56,16 @@ class SendMessageRequest(BaseModel):
 
     text: str = Field(..., min_length=1, max_length=2000)
     lang: Lang | None = None
+    client_message_id: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description=(
+            "Unique per message, repeated unchanged when the same message is "
+            "sent again. Without it a retry is treated as a new message"
+        ),
+    )
 
 
 class SendMessageResponse(BaseModel):
@@ -152,10 +168,33 @@ async def send_message(
         )
     try:
         state = await _load(store, conversation_id)
+        completed = state.last_turn
+        if (
+            body.client_message_id is not None
+            and completed is not None
+            and completed.client_message_id == body.client_message_id
+        ):
+            # The client is retrying the turn that just completed: answer from
+            # the stored outcome. No LLM call, no tool call, nothing appended.
+            logger.info("Retried message answered from the stored outcome")
+            return SendMessageResponse(
+                conversation_id=conversation_id,
+                blocks=_validate_blocks(
+                    [
+                        _unmask_block_values(block, state.placeholder_map)
+                        for block in completed.blocks
+                    ]
+                ),
+            )
         if body.lang:
             state.language = body.lang
+        turn_id = (
+            derive_turn_id(conversation_id, body.client_message_id)
+            if body.client_message_id is not None
+            else None
+        )
         try:
-            outcome = await handler.handle_turn(state, body.text)
+            outcome = await handler.handle_turn(state, body.text, turn_id=turn_id)
         except ReplayMissError as exc:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, detail="replay_miss"
@@ -169,6 +208,7 @@ async def send_message(
 
         blocks = _validate_blocks(outcome.blocks)
         _append_transcript(state, body.text, blocks, outcome.metadata)
+        state.last_turn = _completed_turn(state, body.client_message_id, blocks)
         state.updated_at = datetime.now(UTC)
         if not await store.save_fenced(state, token):
             logger.error("Turn lost its lock before saving; state not saved")
@@ -214,6 +254,39 @@ def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
             for key, item in value.items()
         }
     return value
+
+
+def _unmask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
+    """Inverse of _mask_block_values: put the customer's own values back."""
+    if isinstance(value, str):
+        return _masker.unmask(value, placeholder_map)
+    if isinstance(value, list):
+        return [_unmask_block_values(item, placeholder_map) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _unmask_block_values(item, placeholder_map)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _completed_turn(
+    state: ConversationState,
+    client_message_id: str | None,
+    blocks: list[dict[str, Any]],
+) -> CompletedTurn | None:
+    """What a retry of this turn gets back; None if the client did not tag it.
+
+    The blocks reach the customer with their own values in the text, so they are
+    stored masked like the transcript and unmasked again on replay: Redis never
+    holds them in clear.
+    """
+    if client_message_id is None:
+        return None
+    return CompletedTurn(
+        client_message_id=client_message_id,
+        blocks=[_mask_block_values(block, state.placeholder_map) for block in blocks],
+    )
 
 
 def _append_transcript(

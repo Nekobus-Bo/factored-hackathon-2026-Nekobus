@@ -41,6 +41,23 @@ class Message(BaseModel):
     )
 
 
+class CompletedTurn(BaseModel):
+    """The last completed turn, kept so a retried request is answered, not re-run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_message_id: str = Field(
+        ..., description="Id the client sent with the message (its retry handle)"
+    )
+    blocks: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Blocks returned to the customer, masked like the transcript (never "
+            "raw PII); unmasked with the placeholder map when replayed"
+        ),
+    )
+
+
 class ConversationState(BaseModel):
     """State for an ongoing customer conversation session on redis-edge.
 
@@ -50,6 +67,7 @@ class ConversationState(BaseModel):
     - Session language (stored as given)
     - Masked message history
     - Sensitive placeholder map (encrypted at rest in Redis, never returned to client)
+    - The last completed turn's masked outcome, for client retries
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -81,6 +99,13 @@ class ConversationState(BaseModel):
         default_factory=dict,
         description=(
             "Placeholder to raw PII mapping (encrypted at rest, server-side only)"
+        ),
+    )
+    last_turn: CompletedTurn | None = Field(
+        default=None,
+        description=(
+            "Outcome of the last completed turn that carried a client_message_id; "
+            "None if the last turn had none"
         ),
     )
     created_at: datetime = Field(
