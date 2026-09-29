@@ -33,6 +33,7 @@ from pydantic import ValidationError
 
 from orchestrator.config import Settings
 from orchestrator.conversation.blocks import MAX_TEXT_LENGTH, filter_model_blocks
+from orchestrator.conversation.dates import normalize_date_arguments
 from orchestrator.conversation.models import (
     ConversationContext,
     EncoderSignal,
@@ -230,6 +231,7 @@ class TurnEngine:
                 receipts,
                 handoffs,
                 guard,
+                lang,
             )
 
         # 5. Final reply through the block allowlist
@@ -277,6 +279,7 @@ class TurnEngine:
         receipts: list[ReceiptBlock],
         handoffs: list[HandoffBlock],
         guard: _TurnGuard,
+        lang: Lang,
     ) -> None:
         parsed = [
             self._parse_tool_call(i, tc) for i, tc in enumerate(response.tool_calls)
@@ -301,7 +304,7 @@ class TurnEngine:
 
         for call_id, name, args in parsed:
             result = await self._execute(
-                session_id, call_id, name, args, mapping, history, metadata, guard
+                session_id, call_id, name, args, mapping, history, metadata, guard, lang
             )
             if result is not None:
                 handoff = self._handoff_block_of(result)
@@ -329,6 +332,7 @@ class TurnEngine:
         history: list[dict[str, Any]],
         metadata: TurnMetadata,
         guard: _TurnGuard,
+        lang: Lang,
     ) -> ToolResult | None:
         tool = self._tool_names.get(name)
         if tool is None or args is None:
@@ -375,6 +379,8 @@ class TurnEngine:
                 code = tool_args.get("code")
                 if isinstance(code, str):
                     tool_args["code"] = re.sub(r"[ -]", "", code)
+            if isinstance(tool_args, dict):
+                normalize_date_arguments(tool, tool_args, lang)
             tool_call = ToolCall(
                 tool=tool,
                 args=tool_args,
