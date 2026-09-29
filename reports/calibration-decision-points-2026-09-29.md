@@ -5,11 +5,11 @@
 > Validation shares its generating process with train, so a calibrator fitted on it is over-confident on real traffic. Thresholds here are chosen on validation only; nothing in this report is a guarantee on real customers.
 > Every decision point stays in `shadow` until a separate reviewed diff flips it to `enforce` after the sign-off of ADR-0012, Appendix F.5.
 
-- **Run id:** `602eaec9e0fe`
+- **Run id:** `a38b3ffd3f05`
 - **Date:** 2026-09-29
 - **Task:** `decision-points` (ADR-0012, Appendix F)
 - **Decision points in this run:** `turn_intent`, `confirm_gate`, `block_reason`, `handoff_route`, `smalltalk_route`
-- **Artifact:** `packages/encoder/calibration/decision_points.json` -> `artifact_id` `c805801cea92` (official run: merged into the committed artifact)
+- **Artifact:** `packages/encoder/calibration/decision_points.json` -> `artifact_id` `0535e172ffa8` (official run: merged into the committed artifact)
 - **Environment:** Linux 6.18.44-fc-v37 (x86_64), Python 3.12.3, scikit-learn 1.9.1, 4 CPUs (host, single process; not measured under the container limits)
 
 ## Provenance and hashes
@@ -94,7 +94,7 @@ The threshold chosen on validation did not hold on the held-out test split for t
 - **Certification rule on test:** Wilson 95% lower bound >= floor (always, whatever the selection rule)
 - **Threshold scope:** `per_language`; **calibrator:** `temperature`
 - **Backend:** `intent_tfidf` (`tfidf_lr@train-sha256:a563c0c445d6`), `tfidf_lr`, distribution
-- **CPU latency (single text, host):** p50 0.53 ms, p95 0.93 ms (budget `timeout_ms` 200); RAM model+inference 17.8 MB
+- **CPU latency (single text, host):** p50 0.49 ms, p95 0.92 ms (budget `timeout_ms` 200); RAM model+inference 17.5 MB
 - **Status written:** `calibrated`; certified: **no** (0 of 21 scopes clear the Wilson bound)
 
 ### Candidate selection
@@ -508,8 +508,9 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -544,14 +545,14 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 
 ### Diff against the previous artifact
 
-- `new decision point (no previous entry)`
+- `+ evidence.uncovered = []`
 
 ### Definition of done (Appendix F.5)
 
 - [x] Artifact entry `status: calibrated` (this run: `calibrated`).
 - [ ] Constraint met on test with the Wilson bound (0 of 21 scopes clear the Wilson bound); otherwise the shortfall belongs in `docs/limitations.md`.
 - [x] ECE after calibration <= 0.10 on test in every language.
-- [x] p95 inside the DP's `timeout_ms` (RAM 17.8 MB; the encoder's memory floor is checked by the service at startup).
+- [x] p95 inside the DP's `timeout_ms` (RAM 17.5 MB; the encoder's memory floor is checked by the service at startup).
 - [ ] `make calibration-verify` and the encoder tests pass (run after committing the artifact).
 - [ ] Shadow traffic or the eval run shows the DP against the LLM (`select_agreement`, `would_apply`): pending, needs WP4/WP6.
 - [ ] Report and artifact committed; the `enforce` diff separate and reviewed.
@@ -566,7 +567,7 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 - **Certification rule on test:** Wilson 95% lower bound >= floor (always, whatever the selection rule)
 - **Threshold scope:** `per_language_per_label`; **calibrator:** `temperature`
 - **Backend:** `gate_tfidf` (`tfidf_lr@map-38e4e1a6/train-sha256:a563c0c445d6`), `tfidf_lr`, distribution
-- **CPU latency (single text, host):** p50 0.66 ms, p95 1.01 ms (budget `timeout_ms` 200); RAM model+inference 2.9 MB
+- **CPU latency (single text, host):** p50 0.47 ms, p95 0.75 ms (budget `timeout_ms` 200); RAM model+inference 3.2 MB
 - **Status written:** `calibrated`; certified: **no** (0 of 6 scopes clear the Wilson bound)
 
 ### Candidate selection
@@ -822,8 +823,9 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -858,14 +860,14 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 
 ### Diff against the previous artifact
 
-- `new decision point (no previous entry)`
+- `+ evidence.uncovered = []`
 
 ### Definition of done (Appendix F.5)
 
 - [x] Artifact entry `status: calibrated` (this run: `calibrated`).
 - [ ] Constraint met on test with the Wilson bound (0 of 6 scopes clear the Wilson bound); otherwise the shortfall belongs in `docs/limitations.md`.
 - [x] ECE after calibration <= 0.10 on test in every language.
-- [x] p95 inside the DP's `timeout_ms` (RAM 2.9 MB; the encoder's memory floor is checked by the service at startup).
+- [x] p95 inside the DP's `timeout_ms` (RAM 3.2 MB; the encoder's memory floor is checked by the service at startup).
 - [ ] `make calibration-verify` and the encoder tests pass (run after committing the artifact).
 - [ ] Shadow traffic or the eval run shows the DP against the LLM (`select_agreement`, `would_apply`): pending, needs WP4/WP6.
 - [ ] Report and artifact committed; the `enforce` diff separate and reviewed.
@@ -880,7 +882,7 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 - **Certification rule on test:** Wilson 95% lower bound >= floor (always, whatever the selection rule)
 - **Threshold scope:** `per_label_pooled`; **calibrator:** `temperature`
 - **Backend:** `intent_tfidf` (`tfidf_lr@train-sha256:a563c0c445d6`), `tfidf_lr`, distribution
-- **CPU latency (single text, host):** p50 0.53 ms, p95 0.93 ms (budget `timeout_ms` 200); RAM model+inference 17.8 MB
+- **CPU latency (single text, host):** p50 0.49 ms, p95 0.92 ms (budget `timeout_ms` 200); RAM model+inference 17.5 MB
 - **Status written:** `calibrated`; certified: **no** (0 of 5 scopes clear the Wilson bound)
 
 ### Candidate selection
@@ -1236,8 +1238,9 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -1297,14 +1300,14 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 
 ### Diff against the previous artifact
 
-- `new decision point (no previous entry)`
+- `+ evidence.uncovered = []`
 
 ### Definition of done (Appendix F.5)
 
 - [x] Artifact entry `status: calibrated` (this run: `calibrated`).
 - [ ] Constraint met on test with the Wilson bound (0 of 5 scopes clear the Wilson bound); otherwise the shortfall belongs in `docs/limitations.md`.
 - [x] ECE after calibration <= 0.10 on test in every language.
-- [x] p95 inside the DP's `timeout_ms` (RAM 17.8 MB; the encoder's memory floor is checked by the service at startup).
+- [x] p95 inside the DP's `timeout_ms` (RAM 17.5 MB; the encoder's memory floor is checked by the service at startup).
 - [ ] `make calibration-verify` and the encoder tests pass (run after committing the artifact).
 - [ ] Shadow traffic or the eval run shows the DP against the LLM (`select_agreement`, `would_apply`): pending, needs WP4/WP6.
 - [ ] Report and artifact committed; the `enforce` diff separate and reviewed.
@@ -1319,7 +1322,7 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 - **Certification rule on test:** Wilson 95% lower bound >= floor (always, whatever the selection rule)
 - **Threshold scope:** `per_label_pooled`; **calibrator:** `temperature`
 - **Backend:** `intent_tfidf` (`tfidf_lr@train-sha256:a563c0c445d6`), `tfidf_lr`, distribution
-- **CPU latency (single text, host):** p50 0.53 ms, p95 0.93 ms (budget `timeout_ms` 200); RAM model+inference 17.8 MB
+- **CPU latency (single text, host):** p50 0.49 ms, p95 0.92 ms (budget `timeout_ms` 200); RAM model+inference 17.5 MB
 - **Status written:** `calibrated`; certified: **no** (0 of 4 scopes clear the Wilson bound)
 
 ### Candidate selection
@@ -1644,8 +1647,9 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -1699,14 +1703,14 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 
 ### Diff against the previous artifact
 
-- `new decision point (no previous entry)`
+- `+ evidence.uncovered = []`
 
 ### Definition of done (Appendix F.5)
 
 - [x] Artifact entry `status: calibrated` (this run: `calibrated`).
 - [ ] Constraint met on test with the Wilson bound (0 of 4 scopes clear the Wilson bound); otherwise the shortfall belongs in `docs/limitations.md`.
 - [x] ECE after calibration <= 0.10 on test in every language.
-- [x] p95 inside the DP's `timeout_ms` (RAM 17.8 MB; the encoder's memory floor is checked by the service at startup).
+- [x] p95 inside the DP's `timeout_ms` (RAM 17.5 MB; the encoder's memory floor is checked by the service at startup).
 - [ ] `make calibration-verify` and the encoder tests pass (run after committing the artifact).
 - [ ] Shadow traffic or the eval run shows the DP against the LLM (`select_agreement`, `would_apply`): pending, needs WP4/WP6.
 - [ ] Report and artifact committed; the `enforce` diff separate and reviewed.
@@ -1721,7 +1725,7 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 - **Certification rule on test:** Wilson 95% lower bound >= floor (always, whatever the selection rule)
 - **Threshold scope:** `per_language`; **calibrator:** `temperature`
 - **Backend:** `intent_tfidf` (`tfidf_lr@train-sha256:a563c0c445d6`), `tfidf_lr`, distribution
-- **CPU latency (single text, host):** p50 0.53 ms, p95 0.93 ms (budget `timeout_ms` 200); RAM model+inference 17.8 MB
+- **CPU latency (single text, host):** p50 0.49 ms, p95 0.92 ms (budget `timeout_ms` 200); RAM model+inference 17.5 MB
 - **Status written:** `calibrated`; certified: **no** (0 of 6 scopes clear the Wilson bound)
 
 ### Candidate selection
@@ -1981,8 +1985,9 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
         },
         "provenance": "synthetic-provisional",
         "report": "reports/calibration-decision-points-2026-09-29.md",
-        "run_id": "602eaec9e0fe",
-        "split": "test"
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
@@ -2023,14 +2028,14 @@ Not measured: there is no hard-negative set yet (ADR-0012, F.1 and WP9). Until t
 
 ### Diff against the previous artifact
 
-- `new decision point (no previous entry)`
+- `+ evidence.uncovered = []`
 
 ### Definition of done (Appendix F.5)
 
 - [x] Artifact entry `status: calibrated` (this run: `calibrated`).
 - [ ] Constraint met on test with the Wilson bound (0 of 6 scopes clear the Wilson bound); otherwise the shortfall belongs in `docs/limitations.md`.
 - [x] ECE after calibration <= 0.10 on test in every language.
-- [x] p95 inside the DP's `timeout_ms` (RAM 17.8 MB; the encoder's memory floor is checked by the service at startup).
+- [x] p95 inside the DP's `timeout_ms` (RAM 17.5 MB; the encoder's memory floor is checked by the service at startup).
 - [ ] `make calibration-verify` and the encoder tests pass (run after committing the artifact).
 - [ ] Shadow traffic or the eval run shows the DP against the LLM (`select_agreement`, `would_apply`): pending, needs WP4/WP6.
 - [ ] Report and artifact committed; the `enforce` diff separate and reviewed.
