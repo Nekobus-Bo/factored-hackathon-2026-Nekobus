@@ -14,7 +14,7 @@
 set -Eeuo pipefail
 
 COMPOSE=${COMPOSE:-docker compose -f infra/compose/docker-compose.yml}
-MAKE=${MAKE:-make}
+MAKE=${MAKE:-make --no-print-directory}
 ENV_FILE=${ENV_FILE:-.env}
 RECORDINGS_DIR=eval/replay # what the orchestrator container mounts as its REPLAY_DIR
 
@@ -106,13 +106,13 @@ STEP="preloading local models"
 say "3/6 Preloading local models"
 # The encoder backend is built once so a bad backend fails here rather than at
 # startup: tfidf_lr only checks its training data, gliner downloads its weights.
-$MAKE --no-print-directory warmup-encoder
+$MAKE warmup-encoder
 KB_OK=1
 if [ "$(cfg RETRIEVAL_MODE vector)" = "bm25" ]; then
   echo "kb.search: RETRIEVAL_MODE=bm25, no embedding model to preload"
 else
   echo "kb.search: embedding model (downloaded once; the network is needed only if it is not cached)"
-  if ! $MAKE --no-print-directory warmup-retrieval; then
+  if ! $MAKE warmup-retrieval; then
     KB_OK=0
     warn "the embedding model could not be preloaded, so kb.search will not work. Connect to the network and run: make warmup-retrieval"
   fi
@@ -120,15 +120,15 @@ fi
 
 STEP="starting the stack"
 say "4/6 Starting the stack (migrations run first, as a dependency of banking-core)"
-$MAKE --no-print-directory up
+$MAKE up
 
 STEP="seeding the database"
 say "5/6 Seeding the database (idempotent: it truncates and reloads the demo data)"
-$MAKE --no-print-directory seed
+$MAKE seed
 
 STEP="checking the stack"
 say "6/6 Checking the stack"
-$MAKE --no-print-directory smoke
+$MAKE smoke
 if [ "$KB_OK" = 1 ]; then
   readiness=$(readiness_probe || true)
   case "$readiness" in

@@ -9,6 +9,11 @@ WAIT_TIMEOUT ?= 240
 # on its own. Pass it explicitly when it exists; with no .env every default applies.
 COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .env)
 
+# How infra/compose/demo.sh calls back into make. Not spelled $(MAKE) in the
+# recipe on purpose: make runs any recipe line containing that string even under
+# `make -n`, and a dry run of `make demo` must not start a stack.
+SUBMAKE := $(MAKE) --no-print-directory
+
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
@@ -51,7 +56,7 @@ build-multiarch: ## Build app images for linux/amd64 and linux/arm64, no push (u
 	done
 
 demo: ## One command: build, start, seed, preload models, print URLs and demo customers
-	@COMPOSE="$(COMPOSE)" MAKE="$(MAKE)" bash infra/compose/demo.sh
+	@COMPOSE="$(COMPOSE)" MAKE="$(SUBMAKE)" bash infra/compose/demo.sh
 
 seed: ## Seed the database: synthetic demo data + every ingested dataset in data/staging
 	$(COMPOSE) run --rm seed python -m banking_core.seed.cli seed
