@@ -17,8 +17,11 @@ from banking_core.api import (
 from banking_core.control.config import get_control_config_repository
 from banking_core.identity.config import IdentityConfig, validate_otp_channel_mode
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
+from banking_core.log_redaction import install_redaction
 
 logger = logging.getLogger(__name__)
+
+install_redaction()
 
 app = FastAPI(title="banking-core")
 app.include_router(sessions_router)
