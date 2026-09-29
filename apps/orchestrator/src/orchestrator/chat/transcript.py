@@ -1,12 +1,41 @@
 """Masked transcript: what GET /v1/conversations/{id} may show."""
 
 import logging
+from datetime import datetime
+from typing import Any
 
-from orchestrator.privacy.masking import Masker, MaskingError
+from pydantic import BaseModel
+
+from orchestrator.privacy.masking import Masker, MaskingError, RegexMasker
+from orchestrator.session.models import ConversationState, MessageRole
 
 logger = logging.getLogger(__name__)
 
 REDACTED = "[REDACTED]"
+
+# The one masker that writes the stored transcript: customer turns, assistant
+# blocks and agent messages all pass through it with the conversation's map.
+TRANSCRIPT_MASKER: Masker = RegexMasker()
+
+
+class TranscriptMessage(BaseModel):
+    """A stored message as a transcript shows it: no metadata, no retry handle."""
+
+    role: MessageRole
+    content: str
+    blocks: list[dict[str, Any]]
+    created_at: datetime
+
+
+def transcript_messages(state: ConversationState) -> list[TranscriptMessage]:
+    """The messages a transcript may show, system prompts left out."""
+    return [
+        TranscriptMessage(
+            role=m.role, content=m.content, blocks=m.blocks, created_at=m.created_at
+        )
+        for m in state.messages
+        if m.role is not MessageRole.SYSTEM
+    ]
 
 
 def mask_for_transcript(

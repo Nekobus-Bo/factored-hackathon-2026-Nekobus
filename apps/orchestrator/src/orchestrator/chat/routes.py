@@ -2,11 +2,19 @@
 
 POST /v1/conversations                 open a conversation (and a banking-core session);
                                        limited per client address (429 + Retry-After)
-POST /v1/conversations/{id}/messages   run one turn, return the blocks
-GET  /v1/conversations/{id}            masked transcript only
+POST /v1/conversations/{id}/messages   run one turn, return the blocks; while a human
+                                       agent holds the conversation, store the message
+                                       for the agent and return no blocks
+GET  /v1/conversations/{id}            masked transcript only, agent messages included,
+                                       and whether an agent holds the conversation
 GET  /v1/conversations/{id}/inbox      the simulated OTP messages of this conversation
                                        (ADR-0007): the code shown to the browser
                                        that types it, never stored or sent to the LLM
+
+While a takeover is active (agent API) the LLM, the encoder and the banking-core
+tools are out of the loop: the customer's message is masked and stored, and the
+answer is an empty block list. The customer sees the agent's replies by reading
+the transcript.
 
 A message may carry a `client_message_id`. It makes the request safe to retry:
 the writes of a re-run turn reuse their idempotency keys, and a retry of the
@@ -29,10 +37,15 @@ from redis.exceptions import RedisError
 
 from orchestrator.chat.client_ip import client_ip
 from orchestrator.chat.handler import TurnHandler, derive_turn_id
-from orchestrator.chat.transcript import mask_for_transcript
+from orchestrator.chat.transcript import (
+    TRANSCRIPT_MASKER,
+    TranscriptMessage,
+    mask_for_transcript,
+    transcript_messages,
+)
+from orchestrator.conversation.engine import mask_bare_otps, otp_challenge_pending
 from orchestrator.conversation.models import TurnEvalData
 from orchestrator.llm.replay import ReplayMissError
-from orchestrator.privacy.masking import Masker, RegexMasker
 from orchestrator.session.models import (
     CompletedTurn,
     ConversationState,
@@ -51,8 +64,6 @@ from orchestrator.tools_client import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/conversations", tags=["chat"])
-
-_masker: Masker = RegexMasker()
 
 
 class CreateConversationRequest(BaseModel):
@@ -89,17 +100,18 @@ class SendMessageResponse(BaseModel):
     eval: TurnEvalData | None = None
 
 
-class TranscriptMessage(BaseModel):
-    role: MessageRole
-    content: str
-    blocks: list[dict[str, Any]]
-    created_at: datetime
+class TakeoverStatus(BaseModel):
+    """What the customer may know: that an agent is attending, and since when."""
+
+    active: bool
+    since: datetime | None
 
 
 class TranscriptResponse(BaseModel):
     conversation_id: str
     language: Lang
     messages: list[TranscriptMessage]
+    takeover: TakeoverStatus
 
 
 class InboxMessageResponse(BaseModel):
@@ -213,9 +225,16 @@ async def send_message(
 ) -> SendMessageResponse:
     store = _store(request)
     handler = _handler(request)
-    await _load(store, conversation_id)
+    known = await _load(store, conversation_id)
 
-    token = await store.acquire_turn_lock(conversation_id)
+    # A conversation an agent holds is not a turn: the agent API may be writing
+    # to it at the same moment, so wait a moment for the lock instead of failing.
+    token = await store.acquire_turn_lock(
+        conversation_id,
+        wait_seconds=(
+            request.app.state.agent_lock_wait_seconds if known.takeover.active else 0.0
+        ),
+    )
     if token is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="A turn is already in progress"
@@ -242,6 +261,24 @@ async def send_message(
             )
         if body.lang:
             state.language = body.lang
+        if state.takeover.active:
+            # Read under the lock, so a takeover that just landed is seen. The
+            # handler is never reached: no LLM, no encoder, no tool.
+            _append_customer_message(state, body.text)
+            state.last_turn = _completed_turn(state, body.client_message_id, [])
+            state.updated_at = datetime.now(UTC)
+            if not await store.save_fenced(state, token):
+                logger.error("Message lost its lock before saving; state not saved")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="The message took too long and was not saved",
+                )
+            return SendMessageResponse(
+                conversation_id=conversation_id,
+                blocks=[],
+                # There is no turn, so no provider evidence: an empty record.
+                eval=TurnEvalData() if request.app.state.eval_expose_turn else None,
+            )
         turn_id = (
             derive_turn_id(conversation_id, body.client_message_id)
             if body.client_message_id is not None
@@ -286,13 +323,10 @@ async def get_transcript(request: Request, conversation_id: str) -> TranscriptRe
     return TranscriptResponse(
         conversation_id=state.conversation_id,
         language=state.language,
-        messages=[
-            TranscriptMessage(
-                role=m.role, content=m.content, blocks=m.blocks, created_at=m.created_at
-            )
-            for m in state.messages
-            if m.role is not MessageRole.SYSTEM
-        ],
+        messages=transcript_messages(state),
+        takeover=TakeoverStatus(
+            active=state.takeover.active, since=state.takeover.since
+        ),
     )
 
 
@@ -333,7 +367,7 @@ async def get_inbox(
 def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
     """Mask recursive JSON values; Any represents nested MessageBlock payloads."""
     if isinstance(value, str):
-        return mask_for_transcript(value, placeholder_map, _masker)
+        return mask_for_transcript(value, placeholder_map, TRANSCRIPT_MASKER)
     if isinstance(value, list):
         return [_mask_block_values(item, placeholder_map) for item in value]
     if isinstance(value, dict):
@@ -347,7 +381,7 @@ def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
 def _unmask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
     """Inverse of _mask_block_values: put the customer's own values back."""
     if isinstance(value, str):
-        return _masker.unmask(value, placeholder_map)
+        return TRANSCRIPT_MASKER.unmask(value, placeholder_map)
     if isinstance(value, list):
         return [_unmask_block_values(item, placeholder_map) for item in value]
     if isinstance(value, dict):
@@ -377,6 +411,24 @@ def _completed_turn(
     )
 
 
+def _append_customer_message(state: ConversationState, user_text: str) -> None:
+    """Store a customer message masked, with nothing after it: an agent answers.
+
+    The assistant is not reading, so a code the customer types into a challenge
+    that was pending when the agent took over is masked here, as the engine
+    would: an OTP never enters the transcript.
+    """
+    text = user_text
+    if otp_challenge_pending(state.llm_history):
+        text = mask_bare_otps(text, state.placeholder_map)
+    state.messages.append(
+        Message(
+            role=MessageRole.USER,
+            content=mask_for_transcript(text, state.placeholder_map, TRANSCRIPT_MASKER),
+        )
+    )
+
+
 def _append_transcript(
     state: ConversationState,
     user_text: str,
@@ -387,14 +439,15 @@ def _append_transcript(
     pm = state.placeholder_map
     state.messages.append(
         Message(
-            role=MessageRole.USER, content=mask_for_transcript(user_text, pm, _masker)
+            role=MessageRole.USER,
+            content=mask_for_transcript(user_text, pm, TRANSCRIPT_MASKER),
         )
     )
     reply = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
     state.messages.append(
         Message(
             role=MessageRole.ASSISTANT,
-            content=mask_for_transcript(reply, pm, _masker) if reply else "",
+            content=mask_for_transcript(reply, pm, TRANSCRIPT_MASKER) if reply else "",
             blocks=[
                 _mask_block_values(block, pm)
                 for block in blocks

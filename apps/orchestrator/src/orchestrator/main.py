@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from redis.asyncio import Redis
 
+from orchestrator.agent.auth import validate_agent_api_settings
 from orchestrator.chat.engine_handler import EngineTurnHandler
 from orchestrator.chat.handler import TurnHandler
 from orchestrator.chat.routes import router as chat_router
@@ -31,6 +32,7 @@ def create_app(
     cfg = settings or get_settings()
     if cfg.eval_expose_turn and cfg.app_env.strip().casefold() == "production":
         raise ValueError("EVAL_EXPOSE_TURN cannot be enabled when APP_ENV=production")
+    validate_agent_api_settings(cfg)
     app = FastAPI(title="orchestrator")
     install_redaction(("uvicorn.access", "uvicorn.error"))
 
@@ -56,6 +58,7 @@ def create_app(
             ttl_seconds=cfg.session_ttl_seconds,
             lock_timeout_seconds=cfg.turn_lock_seconds,
             key_prefix=cfg.redis_edge_key_prefix,
+            session_index_prefix=cfg.redis_edge_session_index_key_prefix,
         )
     app.state.session_store = session_store
     # Same redis-edge connection as the conversations, its own key prefix.
@@ -76,6 +79,8 @@ def create_app(
     app.state.turn_handler = handler
     app.state.default_lang = cfg.default_locale
     app.state.eval_expose_turn = cfg.eval_expose_turn
+    app.state.agent_lock_wait_seconds = cfg.agent_lock_wait_seconds
+    app.state.agent_api_token = cfg.effective_agent_api_token
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
