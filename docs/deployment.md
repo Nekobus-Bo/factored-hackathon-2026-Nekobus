@@ -208,6 +208,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
    - Policy thresholds (`POLICY_SEED_THRESHOLDS_MINOR`), the amount mode (`POLICY_SEED_AMOUNT_MODE`: `flag` recommends a handoff above the threshold, `block` requires one), and verification policies are **not constants in code**.
    - The environment variables only seed initial values into PostgreSQL tables on first boot.
    - Active policies reside in the database and can be queried and modified at runtime via the banking-core Admin API (`GET` / `PUT /v1/admin/policy-config`, authenticated via bearer token when `ADMIN_API_ENABLED=true`), with zero service restart or redeployment.
+   - The same goes for which tools are enabled (the state × tool matrix, only ever narrower than the code floor): `POLICY_SEED_DISABLED_TOOLS` (default `account.get_summary`) seeds the first version, and `GET` / `PUT /v1/admin/tool-policy` read and change it. Each change is a new audited version that applies to the next tool call. Migration `0007` makes `config.tool_policy` versioned.
 
 3. **Managed Cloud Services Note (⚠️ Pending Validation):**
    - Any PostgreSQL instance with `pgvector` via `DATABASE_URL` and any Redis instance with ACL/TLS via `REDIS_CORE_URL` / `REDIS_EDGE_URL` (`rediss://`) are supported purely by configuration.
