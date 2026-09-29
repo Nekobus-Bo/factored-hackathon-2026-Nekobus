@@ -212,13 +212,28 @@ services:
         # The embedding model adds ~1.3 GB (see docs/limitations.md).
         limits: { cpus: "1.0", memory: "${BANKING_CORE_MEMORY_LIMIT:-2g}" }
 
-  # `make warmup`: downloads the embedding model into hf-cache. The only
-  # banking-core container with egress (edge); it gets no credentials or keys.
+  # `make warmup-retrieval`: puts the embedding model into hf-cache. Network is
+  # used only when the model is not cached yet, so a second `make demo` works
+  # offline. The only banking-core container with egress (edge); it gets no
+  # credentials or keys.
   warmup:
     <<: *app-hardening
     build: *banking-core-build
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
-    command: ["python", "-c", "import os; from huggingface_hub import snapshot_download; print(snapshot_download(os.environ['EMBEDDING_MODEL']))"]
+    command:
+      - python
+      - -c
+      - |
+        import os
+        from huggingface_hub import snapshot_download
+        model = os.environ["EMBEDDING_MODEL"]
+        try:
+            path = snapshot_download(model, local_files_only=True)
+            print(f"warmup: {model} already cached at {path}")
+        except Exception:
+            print(f"warmup: {model} is not cached; downloading (needs network)")
+            path = snapshot_download(model)
+            print(f"warmup: {model} downloaded to {path}")
     environment:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
     volumes:
