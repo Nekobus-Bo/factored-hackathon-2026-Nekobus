@@ -1058,47 +1058,74 @@ def test_a_foreign_and_a_missing_transaction_cannot_be_told_apart(
     assert payloads[0] == payloads[1]
 
 
-def test_a_session_without_a_holder_cannot_name_a_transaction(
-    seeded_api: tuple[TestClient, Session],
-) -> None:
-    client, db_session = seeded_api
-    session_id: str = client.post("/v1/sessions").json()["session_id"]
-
-    named = _call_tool(
+def _handoff_with_transaction(
+    client: TestClient, session_id: str, transaction_id: str, key: str
+) -> dict[str, Any]:
+    return _call_tool(
         client,
         session_id,
         "handoff.create",
         {
             "reason": "CUSTOMER_REQUEST",
             "summary": "Customer asks for a person.",
-            "transaction_id": ES_CHARGE,
+            "transaction_id": transaction_id,
         },
-        "idem_handoff_anon_tx_01",
-    )
-    plain = _call_tool(
-        client,
-        session_id,
-        "handoff.create",
-        {"reason": "CUSTOMER_REQUEST", "summary": "Customer asks for a person."},
-        "idem_handoff_anon_01",
+        key,
     )
 
-    assert (named["status"], named["reason_code"]) == ("refused", "INVALID_ARGUMENTS")
-    assert plain["status"] == "ok"
-    db_session.expire_all()
-    assert len(db_session.scalars(sa.select(Handoff)).all()) == 1
 
-
-def test_card_block_state_is_checked_for_a_transaction_of_the_holder(
+def test_a_handoff_outside_a_verified_session_attaches_no_charge(
     seeded_api: tuple[TestClient, Session],
 ) -> None:
-    """An identified customer's own charge resolves, then the FSM refuses the block."""
+    """Attaching a charge reads customer data: only a verified session gets it.
+
+    The id is dropped, not refused (an escalation is never held up), and an own,
+    a foreign and a missing id are answered alike, so nothing is confirmed.
+    """
+    client, db_session = seeded_api
+    unverified = [
+        client.post("/v1/sessions").json()["session_id"],  # no holder yet
+        _identified_session(client),  # holder claimed, no OTP
+        _identified_session(client),
+        _identified_session(client),
+    ]
+    ids = [ES_CHARGE, ES_CHARGE, PT_CHARGE, str(uuid.uuid4())]
+
+    results = [
+        _handoff_with_transaction(client, session_id, tx, f"idem_handoff_unv_{n}")
+        for n, (session_id, tx) in enumerate(zip(unverified, ids, strict=True))
+    ]
+
+    for result in results:
+        assert result["status"] == "ok"
+        assert "disputed_transaction" not in result["data"]["summary"]["verified_facts"]
+    db_session.expire_all()
+    rows = db_session.scalars(sa.select(Handoff)).all()
+    assert len(rows) == 4
+    assert all("disputed_transaction" not in r.summary["verified_facts"] for r in rows)
+    audits = db_session.scalars(
+        sa.select(AuditLog).where(AuditLog.action == "handoff.create")
+    ).all()
+    assert all("transaction_id" not in a.payload["details"] for a in audits)
+
+
+def test_card_block_state_is_checked_before_any_transaction_lookup(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    """An identified customer's own, a foreign and a missing charge look alike."""
     client, db_session = seeded_api
     session_id = _identified_session(client)
 
-    result = _block(client, session_id, "idem_block_state_01", transaction_id=ES_CHARGE)
+    results = [
+        _block(client, session_id, f"idem_block_state_{n}", transaction_id=tx)
+        for n, tx in enumerate((ES_CHARGE, PT_CHARGE, str(uuid.uuid4())))
+    ]
 
-    assert (result["status"], result["reason_code"]) == ("refused", "STATE_NOT_ALLOWED")
+    for result in results:
+        assert (result["status"], result["reason_code"]) == (
+            "refused",
+            "STATE_NOT_ALLOWED",
+        )
     db_session.expire_all()
     card = db_session.scalar(sa.select(Card).where(Card.card_ref == "card_demo_es"))
     assert card is not None and card.status == "ACTIVE"
