@@ -27,6 +27,7 @@ From the repository root (`make` is the single entry point; Bun 1.3 or later):
 
 ```bash
 make web-check                          # typecheck and bun test for the contracts and every apps/web-*
+make web-backoffice                     # the dev server against the stack from `make up` (stop the compose container first)
 bun run --cwd apps/web-backoffice dev   # bun --hot src/server.ts, on :5174
 bun run --cwd apps/web-backoffice build # bun build --target=bun: dist/server.js, the page and its assets
 bun run --cwd apps/web-backoffice start # serves dist/ (run `build` first)
@@ -36,11 +37,13 @@ bun run --cwd apps/web-backoffice test
 
 To try it without the backend, `tests/support/fake-upstreams.ts` starts a fake banking-core and a fake orchestrator that follow the contract, with fixtures; the tests and the visual check use them.
 
-The image (the compose service is wired separately, at integration):
+The image, from the repository root (`Dockerfile.dockerignore` next to the Dockerfile is its build context):
 
 ```bash
-docker build -f apps/web-backoffice/Dockerfile -t pattern-blue/web-backoffice .   # from the repository root
+docker build -f apps/web-backoffice/Dockerfile -t pattern-blue/web-backoffice .
 ```
+
+Compose builds it as the `web-backoffice` service (`make up` and `make demo` start it on `127.0.0.1:5174`, with the same development tokens as the two backends, so no `.env` is needed). The production overlay does not publish it and requires its four secrets ([docs/deployment.md](../../docs/deployment.md), section 3).
 
 ## Configuration
 
@@ -107,4 +110,4 @@ Theme (system, light or dark, `data-theme` on `<html>`, remembered in `localStor
 - **One demo agent.** There is one login (`DEMO_AGENT_*`), no user store, no roles, no login rate limiting, no CSRF token beyond `SameSite=Strict` and the JSON content type. It is meant to run inside the private network, or behind its own login in the presentation environment.
 - **No decision-point numbers** in the metrics and no derived rates: nothing feeds them yet.
 - **Fonts load from Google Fonts**; offline the fallback stacks apply.
-- The compose service, the Makefile and CI are wired at integration, not here.
+- **Not published in production.** The production compose overlay gives it no host port: it is reached through a proxy with its own login, or a loopback port the operator publishes and tunnels to ([docs/deployment.md](../../docs/deployment.md)).

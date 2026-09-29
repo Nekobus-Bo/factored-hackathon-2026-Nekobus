@@ -6,7 +6,7 @@ Bun fullstack (`Bun.serve` with an HTML import, no Vite), React 19, XState v5, A
 
 ## Commands
 
-From the repository root, `make web-check` runs `typecheck` and `bun test` for this app (and the contracts). Inside the app:
+From the repository root, `make web-check` runs `typecheck` and `bun test` for this app (and the contracts), and `make web-client` runs the dev server against the stack from `make up` (stop the compose container first, it holds :5173). Inside the app:
 
 ```bash
 bun run dev         # bun --hot src/server.ts, on :5173
@@ -103,7 +103,7 @@ docker build -f apps/web-client/Dockerfile -t pattern-blue-web-client .   # cont
 docker run --rm -p 5173:5173 -e ORCHESTRATOR_URL=http://host.docker.internal:8080 pattern-blue-web-client
 ```
 
-Three stages on `oven/bun:1.3`: the manifests and the lockfile (all workspaces: `--frozen-lockfile` refuses a lockfile that lists a workspace whose `package.json` is missing), install and build, and a runtime that holds only `dist/` and runs as the non-root `bun` user. The image has no `curl`; for a compose healthcheck use
+Two stages on `oven/bun:1.3`, laid out like the back office's: install and build, then a runtime that holds only `dist/` and runs as the non-root `bun` user. `Dockerfile.dockerignore` next to the Dockerfile is the build context: the workspace manifests (all of them: `--frozen-lockfile` refuses a lockfile that lists a workspace whose `package.json` is missing), the contracts and design-tokens entries, and this app's sources. The build stage runs on the builder's platform, so a `linux/arm64` image needs no emulation. Compose builds it as the `web-client` service (`make up` and `make demo` start it on `127.0.0.1:5173`, in front of the orchestrator). The image has no `curl`; the compose healthcheck is
 
 ```
 bun -e "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
