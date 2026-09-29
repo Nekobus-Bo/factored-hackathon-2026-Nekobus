@@ -12,8 +12,10 @@ from banking_core.identity.ports import (
     get_dev_sink,
 )
 from banking_core.identity.tools import (
+    CustomerLockedError,
     NoOtpChannelError,
     OtpResendLimitError,
+    OtpVerifyResult,
     execute_customer_match,
     execute_identity_verify_document,
     execute_otp_send,
@@ -21,12 +23,14 @@ from banking_core.identity.tools import (
 )
 
 __all__ = [
+    "CustomerLockedError",
     "DevOtpSink",
     "IdentityConfig",
     "NoOtpChannelError",
     "OtpChallengeStore",
     "OtpDeliveryPort",
     "OtpResendLimitError",
+    "OtpVerifyResult",
     "execute_customer_match",
     "execute_identity_verify_document",
     "execute_otp_send",

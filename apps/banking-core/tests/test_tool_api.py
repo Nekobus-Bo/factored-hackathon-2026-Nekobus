@@ -853,6 +853,13 @@ MATCH_ES = {
 }
 
 
+MATCH_PT = {
+    "tool": "customer.match",
+    "version": "1.0",
+    "args": {"document_type": "NATIONAL_ID", "document_number": "12345678900"},
+}
+
+
 class Harness:
     def __init__(self, lock_wait_ms: int) -> None:
         self.redis = fakeredis.FakeRedis(decode_responses=True)
@@ -1354,3 +1361,278 @@ def test_idempotency_key_reused_with_other_arguments_is_a_refusal(
         "INVALID_ARGUMENTS",
     )
     assert audit.payload["idempotency_scope"] == session_id
+
+
+# --- Cross-session OTP lock per customer (attempt limits) ---------------------
+
+CUSTOMER_OTP_MAX_FAILURES = 4
+
+
+def _customer_id(h: Harness) -> str:
+    return str(h.db.customers[0].id)
+
+
+def _wrong_verify(h: Harness, session_id: str, key: str) -> dict[str, Any]:
+    return h.call(
+        session_id,
+        {"tool": "otp.verify", "args": {"code": "000000"}, "idempotency_key": key},
+    )
+
+
+def _lock_customer_through_two_sessions(h: Harness) -> None:
+    """3 failures fill session A (its own limit); the 4th, in B, locks the customer."""
+    session_a, _ = _to_otp_pending(h)
+    for i in range(OTP_MAX_ATTEMPTS):
+        _wrong_verify(h, session_a, f"idem_lock_a_{i}")
+    session_b, _ = _to_otp_pending(h)
+    tripping = _wrong_verify(h, session_b, "idem_lock_b_0")
+    assert tripping["data"]["state"] == "LOCKED"
+    assert h.dispatcher.attempt_limit_store.customer_locked(_customer_id(h))
+
+
+@pytest.fixture
+def lock_harness(make_harness, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(
+        "RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", str(CUSTOMER_OTP_MAX_FAILURES)
+    )
+    return make_harness
+
+
+def test_failed_verifies_in_different_sessions_add_up_to_a_customer_lock(
+    lock_harness,
+) -> None:
+    h = lock_harness()
+    limits = h.dispatcher.attempt_limit_store
+    session_a, _ = _to_otp_pending(h)
+    for i in range(OTP_MAX_ATTEMPTS):
+        _wrong_verify(h, session_a, f"idem_add_a_{i}")
+    stored_a = h.session_store.get(session_a)
+    assert stored_a is not None and stored_a.state == VerificationState.LOCKED
+    # A session that ends LOCKED by OTP failures has counted every failure.
+    assert not limits.customer_locked(_customer_id(h))
+
+    session_b, _ = _to_otp_pending(h)
+    tripping = _wrong_verify(h, session_b, "idem_add_b_0")
+
+    # One failure in B, far below the session limit: the customer limit is what
+    # ends it. No attempts are left and the receipt says LOCKED.
+    assert tripping["status"] == "ok"
+    assert tripping["data"]["verified"] is False
+    assert tripping["data"]["state"] == "LOCKED"
+    assert tripping["data"]["attempts_remaining"] == 0
+    assert tripping["data"]["receipt"]["state_after"] == "LOCKED"
+    stored_b = h.session_store.get(session_b)
+    assert stored_b is not None and stored_b.state == VerificationState.LOCKED
+    assert limits.customer_locked(_customer_id(h))
+
+
+def test_other_customers_are_not_locked_by_someone_elses_failures(
+    lock_harness,
+) -> None:
+    h = lock_harness()
+    _lock_customer_through_two_sessions(h)
+
+    session_id = h.new_session()
+    assert h.call(session_id, MATCH_PT)["data"] == {"matched": True}
+    sent = _otp_send(h, session_id, "idem_other_customer")
+
+    assert sent["status"] == "ok"
+
+
+def test_locked_customer_gets_no_code_from_a_new_session(lock_harness) -> None:
+    h = lock_harness()
+    _lock_customer_through_two_sessions(h)
+    challenges_before = _stored_challenges(h)
+    session_id = h.new_session()
+    assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
+    audits_before = len(h.db.audit_logs)
+
+    sink = get_dev_sink()
+    with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
+        refused = _otp_send(h, session_id, "idem_locked_send")
+
+    assert refused == {
+        "tool": "otp.send",
+        "status": "refused",
+        "reason_code": "RATE_LIMITED",
+        "data": None,
+    }
+    deliver.assert_not_called()
+    assert _stored_challenges(h) == challenges_before
+    session = h.session_store.get(session_id)
+    assert session is not None and session.state == VerificationState.LOCKED
+    assert len(h.db.audit_logs) == audits_before + 1
+    audit = h.db.audit_logs[-1]
+    assert (audit.action, audit.decision, audit.reason_code) == (
+        "otp.send",
+        "refused",
+        "RATE_LIMITED",
+    )
+    assert audit.payload["reason"] == "customer_otp_locked"
+    assert audit.payload["verification_state_before"] == "IDENTIFIED"
+    assert audit.payload["verification_state_after"] == "LOCKED"
+    assert audit.payload["details"]["customer_id"] == _customer_id(h)
+
+    # From here the session is LOCKED like any other: handoff only.
+    again = _otp_send(h, session_id, "idem_locked_send_again")
+    assert again["reason_code"] == "STATE_NOT_ALLOWED"
+
+
+def test_resend_from_a_pending_session_is_refused_while_the_customer_is_locked(
+    lock_harness,
+) -> None:
+    h = lock_harness()
+    pending, _ = _to_otp_pending(h)
+    _lock_customer_through_two_sessions(h)
+    challenges_before = _stored_challenges(h)
+
+    sink = get_dev_sink()
+    with patch.object(sink, "deliver", wraps=sink.deliver) as deliver:
+        refused = _otp_send(h, pending, "idem_locked_resend")
+
+    assert refused["reason_code"] == "RATE_LIMITED"
+    deliver.assert_not_called()
+    assert _stored_challenges(h) == challenges_before
+    session = h.session_store.get(pending)
+    assert session is not None and session.state == VerificationState.LOCKED
+
+
+def test_locked_customer_cannot_verify_even_the_right_code(lock_harness) -> None:
+    h = lock_harness()
+    pending, challenge_id = _to_otp_pending(h)
+    right_code = get_dev_sink().get_code(challenge_id, allow_hook=True)
+    _lock_customer_through_two_sessions(h)
+    evaluations_before = h.challenge_store.evaluations(challenge_id)
+
+    refused = h.call(
+        pending,
+        {
+            "tool": "otp.verify",
+            "args": {"code": right_code},
+            "idempotency_key": "idem_locked_verify_right",
+        },
+    )
+
+    assert refused == {
+        "tool": "otp.verify",
+        "status": "refused",
+        "reason_code": "RATE_LIMITED",
+        "data": None,
+    }
+    # Never compared: the challenge saw no evaluation and nothing was verified.
+    assert h.challenge_store.evaluations(challenge_id) == evaluations_before
+    session = h.session_store.get(pending)
+    assert session is not None and session.state == VerificationState.LOCKED
+    audit = h.db.audit_logs[-1]
+    assert (audit.action, audit.decision, audit.reason_code) == (
+        "otp.verify",
+        "refused",
+        "RATE_LIMITED",
+    )
+    assert audit.payload["reason"] == "customer_otp_locked"
+
+
+def test_customer_lock_is_audited_once_without_pii(lock_harness) -> None:
+    h = lock_harness()
+    _lock_customer_through_two_sessions(h)
+
+    events = [a for a in h.db.audit_logs if a.action == "security.customer_otp_locked"]
+
+    assert len(events) == 1
+    event = events[0]
+    assert (event.actor_type, event.decision, event.reason_code) == (
+        "system",
+        "refused",
+        "RATE_LIMITED",
+    )
+    assert event.payload["reason"] == "customer_otp_failure_limit_reached"
+    assert event.payload["verification_state_before"] == "OTP_PENDING"
+    assert event.payload["verification_state_after"] == "LOCKED"
+    assert event.payload["details"] == {
+        "customer_id": _customer_id(h),
+        "max_failures": CUSTOMER_OTP_MAX_FAILURES,
+        "window_seconds": 3600,
+        "lock_seconds": 1800,
+    }
+    rendered = json.dumps(event.payload)
+    for pii in ("1020304050", "Carlos", "carlos@example.com", "+573001234567"):
+        assert pii not in rendered
+
+
+def test_retrying_the_tripping_verify_counts_and_audits_nothing_more(
+    lock_harness,
+) -> None:
+    h = lock_harness()
+    session_a, _ = _to_otp_pending(h)
+    for i in range(OTP_MAX_ATTEMPTS):
+        _wrong_verify(h, session_a, f"idem_replay_a_{i}")
+    session_b, _ = _to_otp_pending(h)
+    _wrong_verify(h, session_b, "idem_replay_b")
+    failures_key = f"limit:customer:{_customer_id(h)}:otp_failures"
+    assert h.redis.get(failures_key) == str(CUSTOMER_OTP_MAX_FAILURES)
+
+    # The session is LOCKED now: a retry never reaches the tool.
+    retry = _wrong_verify(h, session_b, "idem_replay_b")
+
+    assert retry["reason_code"] == "STATE_NOT_ALLOWED"
+    assert h.redis.get(failures_key) == str(CUSTOMER_OTP_MAX_FAILURES)
+    events = [a for a in h.db.audit_logs if a.action == "security.customer_otp_locked"]
+    assert len(events) == 1
+
+
+def test_customer_lock_ends_after_its_duration(lock_harness) -> None:
+    h = lock_harness()
+    _lock_customer_through_two_sessions(h)
+    lock_key = f"limit:customer:{_customer_id(h)}:otp_lock"
+    assert 0 < h.redis.ttl(lock_key) <= 1800
+
+    h.redis.delete(lock_key)  # what the TTL does at the end of the lock
+    session_id = h.new_session()
+    assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
+
+    assert _otp_send(h, session_id, "idem_after_lock_ends")["status"] == "ok"
+
+
+def test_a_correct_code_is_not_counted_as_a_failure(lock_harness) -> None:
+    h = lock_harness()
+    session_id, challenge_id = _to_otp_pending(h)
+    code = get_dev_sink().get_code(challenge_id, allow_hook=True)
+
+    verified = h.call(
+        session_id,
+        {
+            "tool": "otp.verify",
+            "args": {"code": code},
+            "idempotency_key": "idem_right_code",
+        },
+    )
+
+    assert verified["data"]["verified"] is True
+    assert h.redis.keys("limit:*") == []
+
+
+def test_customer_limit_keys_hold_only_the_customer_uuid(lock_harness) -> None:
+    h = lock_harness()
+    _lock_customer_through_two_sessions(h)
+
+    keys = sorted(h.redis.keys("limit:*"))
+
+    assert keys == [
+        f"limit:customer:{_customer_id(h)}:otp_failures",
+        f"limit:customer:{_customer_id(h)}:otp_lock",
+    ]
+
+
+def test_customer_limit_thresholds_come_from_the_policy_config(
+    make_harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", "2")
+    monkeypatch.setenv("RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS", "120")
+    h = make_harness()
+    session_a, _ = _to_otp_pending(h)
+    _wrong_verify(h, session_a, "idem_cfg_a_0")
+    tripping = _wrong_verify(h, session_a, "idem_cfg_a_1")
+
+    assert tripping["data"]["state"] == "LOCKED"
+    lock_key = f"limit:customer:{_customer_id(h)}:otp_lock"
+    assert 0 < h.redis.ttl(lock_key) <= 120

@@ -6,6 +6,8 @@ States and transitions conform strictly to ADR-0003 Appendix A (Approved 2026-09
 - IDENTIFIED -> OTP_PENDING on otp.send
 - OTP_PENDING -> VERIFIED on valid otp.verify
 - OTP_PENDING -> LOCKED after N failed otp.verify attempts or max resends
+- IDENTIFIED / OTP_PENDING -> LOCKED when the customer is locked across sessions
+  (attempt limits: too many failed otp.verify for that customer in any session)
 - re-match in IDENTIFIED with a DIFFERENT holder replaces the pinned holder,
   discards the active OTP challenge, and counts as an attempt
 - Any state -> HANDED_OFF on handoff.create
@@ -147,6 +149,24 @@ class VerificationFSM:
     def _otp_send_limit_reached(self, resends: int, attempts: int) -> bool:
         return resends >= self.max_otp_resends or attempts >= self.max_failed_matches
 
+    def on_customer_locked(self, session: "SessionState") -> "SessionState":
+        """Lock a session whose customer is locked across sessions.
+
+        The refused call delivered and evaluated nothing, so no counter moves and
+        otp_challenge_id stays as it was. Only where otp.send / otp.verify apply.
+        """
+        if session.state not in (
+            VerificationState.IDENTIFIED,
+            VerificationState.OTP_PENDING,
+        ):
+            raise InvalidFSMTransitionError(
+                current_state=session.state,
+                action="customer.locked",
+                reason="only an IDENTIFIED or OTP_PENDING session can be locked here",
+            )
+        session.state = VerificationState.LOCKED
+        return session
+
     def otp_send_would_lock(self, session: "SessionState") -> bool:
         """Whether an otp.send now would trip the resend or attempt limit.
 
@@ -216,6 +236,7 @@ class VerificationFSM:
         session: "SessionState",
         valid: bool,
         max_failed_verifies: int | None = None,
+        customer_locked: bool = False,
     ) -> "SessionState":
         """Process otp.verify result against current session state.
 
@@ -223,7 +244,8 @@ class VerificationFSM:
         - On valid=True: transitions to VERIFIED, clears active challenge,
           resets failed_verifies and otp_resends.
         - On valid=False: increments verify failures and attempts.
-          If failed verifies >= N: transitions to LOCKED.
+          If failed verifies >= N, or this failure locked the customer across
+          sessions (customer_locked): transitions to LOCKED.
         """
         limit = (
             max_failed_verifies
@@ -246,7 +268,7 @@ class VerificationFSM:
         else:
             session.attempts += 1
             session.failed_verifies += 1
-            if session.failed_verifies >= limit:
+            if session.failed_verifies >= limit or customer_locked:
                 session.state = VerificationState.LOCKED
 
         return session
