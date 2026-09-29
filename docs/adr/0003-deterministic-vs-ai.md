@@ -109,7 +109,7 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 | `account.get_summary` | Read | `VERIFIED` | Returns balance and status summaries for accounts belonging to the pinned customer. Read-only; enables the secondary workflow (inquiries) via configuration alone without code changes (ADR-0002). |
 | `card.block` | state-changing: requires idempotency key, returns a receipt | `VERIFIED` | Blocks a payment card identified by its opaque `card_ref`. Requires an idempotency key and policy engine authorization. Permitted strictly in `VERIFIED` only (owner confirmed). Returns a verified `Receipt` re-read from the database. |
 | `handoff.create` | state-changing: requires idempotency key, returns a receipt | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Escalates the session to a human representative in the back-office queue with reason, priority, and department routing. Available in every state, including `LOCKED`. |
-| `kb.search` | Read / Public | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Lexical search, with a dense component only if it beats BM25 (ADR-0006). Never handles or returns customer PII. Available in all states. |
+| `kb.search` | Read / Public | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Vector search over the public knowledge base; BM25 or hybrid only when configured (ADR-0006). Never handles or returns customer PII. Available in all states. |
 
 ### State × Tool Authorization Matrix
 
