@@ -15,7 +15,7 @@ from banking_core.api import (
     validate_admin_api_settings,
 )
 from banking_core.control.config import get_control_config_repository
-from banking_core.identity.config import IdentityConfig
+from banking_core.identity.config import IdentityConfig, validate_otp_channel_mode
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ app = FastAPI(title="banking-core")
 app.include_router(sessions_router)
 app.include_router(tools_router)
 app.router.add_event_handler("startup", validate_admin_api_settings)
+app.router.add_event_handler("startup", validate_otp_channel_mode)
 
 
 def mount_admin_router_if_enabled(application: FastAPI) -> None:

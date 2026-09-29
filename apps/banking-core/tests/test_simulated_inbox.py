@@ -20,6 +20,8 @@ from banking_core.identity.simulated_inbox import (
     get_simulated_inbox,
     set_simulated_inbox,
 )
+from banking_core.main import app
+from fastapi.testclient import TestClient
 
 START = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
 
@@ -355,3 +357,31 @@ def test_the_delivery_port_is_the_process_wide_simulated_inbox(
         assert get_simulated_inbox() is custom
     finally:
         set_simulated_inbox(None)
+
+
+@pytest.mark.parametrize("value", ["smtp", "sms", "real"])
+def test_startup_refuses_a_mode_without_a_provider(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("OTP_CHANNEL_MODE", value)
+
+    with pytest.raises(
+        UnsupportedOtpChannelModeError,
+        match="no real OTP delivery provider is implemented; "
+        "set OTP_CHANNEL_MODE=simulated",
+    ):
+        with TestClient(app):
+            pass
+
+
+@pytest.mark.parametrize("value", [None, "simulated"])
+def test_startup_accepts_simulated_and_the_default(
+    monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("OTP_CHANNEL_MODE", raising=False)
+    else:
+        monkeypatch.setenv("OTP_CHANNEL_MODE", value)
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
