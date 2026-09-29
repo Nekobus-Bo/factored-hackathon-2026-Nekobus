@@ -4,6 +4,23 @@
   "private": true,
   "description": "Pattern Blue design tokens and pb-* component CSS, synced from the design-system artifact.",
   "type": "module",
+  "exports": {
+    "./index.css": "./index.css",
+    "./tokens.css": "./dist/tokens.css",
+    "./components.css": "./src/components.css",
+    "./tokens": "./dist/tokens.ts",
+    "./tokens.json": "./src/tokens.json",
+    "./fonts.html": "./dist/fonts.html"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "check": "bun run scripts/build.ts --check",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "typescript": "^7.0.2",
