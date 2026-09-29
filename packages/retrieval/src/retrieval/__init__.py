@@ -1,6 +1,12 @@
 from typing import TYPE_CHECKING, Any
 
-from retrieval.adapters import BM25Adapter, HybridAdapter
+from retrieval.adapters import (
+    BM25Adapter,
+    EmbeddingPinError,
+    EmbeddingServiceError,
+    HybridAdapter,
+    RemoteEmbeddingAdapter,
+)
 from retrieval.base import RetrievalAdapter
 from retrieval.kb import DEFAULT_KB_PATH, KBValidationError, KnowledgeBase
 from retrieval.models import KBSnippet, QueryExample, SearchResult
@@ -12,11 +18,14 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_KB_PATH",
     "BM25Adapter",
+    "EmbeddingPinError",
+    "EmbeddingServiceError",
     "HybridAdapter",
     "KBSnippet",
     "KBValidationError",
     "KnowledgeBase",
     "QueryExample",
+    "RemoteEmbeddingAdapter",
     "RetrievalAdapter",
     "Retriever",
     "SearchMode",
