@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import uuid4
@@ -300,7 +301,7 @@ class TurnEngine:
 
         for call_id, name, args in parsed:
             result = await self._execute(
-                session_id, call_id, name, args, mapping, metadata, guard
+                session_id, call_id, name, args, mapping, history, metadata, guard
             )
             if result is not None:
                 handoff = self._handoff_block_of(result)
@@ -325,6 +326,7 @@ class TurnEngine:
         name: str,
         args: dict[str, Any] | None,
         mapping: dict[str, str],
+        history: list[dict[str, Any]],
         metadata: TurnMetadata,
         guard: _TurnGuard,
     ) -> ToolResult | None:
@@ -342,7 +344,7 @@ class TurnEngine:
                 return None
             return self._local_error(tool)
 
-        local = self._local_rejection(tool, args, mapping, guard)
+        local = self._local_rejection(tool, args, mapping, history, guard)
         if local is not None:
             logger.warning(
                 "Turn %s: %s rejected locally (%s)",
@@ -435,6 +437,7 @@ class TurnEngine:
         tool: str,
         args: dict[str, Any],
         mapping: dict[str, str],
+        history: list[dict[str, Any]],
         guard: _TurnGuard,
     ) -> ToolResult | None:
         """Engine-enforced limits; the prompt only explains them to the model."""
@@ -463,6 +466,12 @@ class TurnEngine:
                     status=ToolResultStatus.ERROR,
                     reason_code=ReasonCode.INVALID_ARGUMENTS,
                 )
+        if tool == "otp.verify" and _otp_code_is_stale(args["code"], history):
+            return ToolResult(
+                tool=tool,
+                status=ToolResultStatus.ERROR,
+                reason_code=ReasonCode.INVALID_ARGUMENTS,
+            )
         return None
 
     @staticmethod
@@ -634,17 +643,26 @@ def _is_placeholder(value: str, kind: PiiType) -> bool:
     return re.fullmatch(rf"\[{kind.value}_\d+\]", value) is not None
 
 
-def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
-    """True if an otp.send succeeded and no otp.verify has closed it since."""
-    pending = False
-    for message in history:
+def _tool_results(
+    history: list[dict[str, Any]],
+) -> Iterator[tuple[int, dict[str, Any]]]:
+    """Yield (index, result) for every tool message that holds a JSON object."""
+    for index, message in enumerate(history):
         if message.get("role") != "tool":
             continue
         try:
             result = json.loads(message.get("content") or "")
         except ValueError:
             continue
-        if not isinstance(result, dict) or result.get("status") != "ok":
+        if isinstance(result, dict):
+            yield index, result
+
+
+def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
+    """True if an otp.send succeeded and no otp.verify has closed it since."""
+    pending = False
+    for _, result in _tool_results(history):
+        if result.get("status") != "ok":
             continue
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
         if result.get("tool") == "otp.send":
@@ -652,6 +670,30 @@ def _otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
         elif result.get("tool") == "otp.verify":
             pending = data.get("state") == "OTP_PENDING"
     return pending
+
+
+def _otp_code_is_stale(placeholder: str, history: list[dict[str, Any]]) -> bool:
+    """True if the customer last typed this code before the latest otp.send.
+
+    A code typed before the current challenge belongs to an older one. With no
+    successful otp.send in the history there is nothing to compare against, and
+    the FSM in banking-core refuses the call.
+    """
+    last_send = max(
+        (
+            index
+            for index, result in _tool_results(history)
+            if result.get("tool") == "otp.send" and result.get("status") == "ok"
+        ),
+        default=None,
+    )
+    if last_send is None:
+        return False
+    return not any(
+        message.get("role") == "user"
+        and placeholder in str(message.get("content") or "")
+        for message in history[last_send + 1 :]
+    )
 
 
 def _usage_token_count(usage: dict[str, Any]) -> int:
