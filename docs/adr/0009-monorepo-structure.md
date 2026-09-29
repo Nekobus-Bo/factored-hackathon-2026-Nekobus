@@ -78,3 +78,19 @@ The accepted cost is vocabulary: JavaScript-flavored names in a repository with 
 4. [ ] `infra/compose` with a development file and a production override
 5. [ ] `AGENTS.md` with the conventions derived from this structure
 6. [ ] CI running `make up` (⚠️ pending) and `make smoke` (⚠️ pending) on every push
+
+## Amendment 2026-09-29: the TypeScript workspace, the front-end stack and the design tokens
+
+**Context.** The decision says where TypeScript code lives, not how it is built. The front ends and their shared visual primitives now start, and the design system already exists as a published Claude Artifact.
+
+**Decision.**
+
+- **A Bun workspace at the root** covers the TypeScript side: `package.json` with `workspaces: ["packages/*", "apps/*"]` and a committed `bun.lock`. The entries are globs on purpose: Bun skips a directory that has no `package.json` (every Python package and app), but a workspace named in full without one is an error (`Workspace not found`). `apps/web-client` and `apps/web-backoffice` join by adding their own `package.json`. Python stays on uv; the two workspaces share the tree, not the tooling.
+- **The front-end stack** for `web-client` and `web-backoffice`: Bun with its own HTML and CSS bundler (no Vite), React, TypeScript, Zod for what crosses the contract, XState v5 (a global machine for the session and the theme, local machines per component) and Zag.js / Ark UI for accessible headless parts.
+- **`packages/design-tokens` is sourced from the design-system artifact** ([link](https://claude.ai/artifact/SCciz5Vfoa9s7sSY4KT2NV)), which stays the source of truth. `src/` holds verbatim copies of its `tokens.json` and `components/bundle.css`; a Bun script generates `dist/` (`tokens.css`, `tokens.ts`, `fonts.html`), which is committed so apps and CI need no build step. `make design-tokens-check` runs in CI and fails when `dist/` drifts from `src/`, when a component reads an undefined variable, or when the dark and light themes stop defining the same variables. Details: [packages/design-tokens/README.md](../../packages/design-tokens/README.md).
+
+**Consequences.**
+
+- *Easier:* both front ends share one look and one theme mechanism (`data-theme` on `<html>`), and a token that a component needs but nobody defined is a failing test, not a visual bug found in the demo.
+- *Harder:* CI has a second toolchain, the sync from the artifact is manual, and the fonts come from Google Fonts, a network dependency of the demo ([limitations](../limitations.md)).
+- *Unchanged:* the "to revisit" note above. If the two front ends merge, the package can be inlined; nothing here depends on there being two.
