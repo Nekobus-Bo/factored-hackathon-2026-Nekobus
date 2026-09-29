@@ -12,6 +12,7 @@
         "SESSION_BUSY",
         "INVALID_ARGUMENTS",
         "CODE_FLOOR_VIOLATION",
+        "CONFIRMATION_REQUIRED",
         "INTERNAL_ERROR"
       ],
       "title": "ReasonCode",

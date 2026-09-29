@@ -87,7 +87,7 @@ A third axis was added at acceptance: **one place to pin the models versus a net
 
 Everything named here and in the appendices is **pending** until its work package lands (AGENTS.md rule 7). The status table below is updated by the change that lands each item, so a reader can tell what exists from what is promised.
 
-1. [ ] WP1 contracts: `DecisionResult`, request and response fields, `ReasonCode.CONFIRMATION_REQUIRED` (0.5 d)
+1. [x] WP1 contracts: `DecisionResult`, request and response fields, `ReasonCode.CONFIRMATION_REQUIRED` (0.5 d)
 2. [ ] WP2 encoder decision layer, registry, `/v1/decision-points` (1.5 d)
 3. [ ] WP3 harness: `TASK=decision-points`, temperature calibrator, Wilson bound, artifact writer, `make calibration-verify` (1.5 d)
 4. [ ] WP4 orchestrator: effects loader, `DecisionState`, `gate` and `select`, metadata, prompt line (2 d)
@@ -102,7 +102,7 @@ Everything named here and in the appendices is **pending** until its work packag
 
 | What the ADR names | Work package | Status |
 |---|---|---|
-| `DecisionResult`, `decisions`, `config_version`, `decision_points` request field in `packages/contracts/src/contracts/encoder.py`; `ReasonCode.CONFIRMATION_REQUIRED` in `envelope.py` | WP1 | pending |
+| `DecisionResult`, `decisions`, `config_version`, `decision_points` request field, and the `GET /v1/decision-points` response model in `packages/contracts/src/contracts/encoder.py`; `ReasonCode.CONFIRMATION_REQUIRED` in `envelope.py`; exported schemas | WP1 | landed |
 | `packages/encoder/src/encoder/decision_points.py`, `registry.py`, `pinning.py`; `apps/encoder/src/encoder_service/{scoring,decisions}.py`; `GET /v1/decision-points`; `/ready` per-DP state; legacy seed mode; `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | WP2 | pending |
 | `packages/encoder/calibration/decision_points.json` (the artifact) and its JSON Schema | WP2 (schema), WP5 (artifact) | pending; no artifact ships until the harness writes one, and the service runs in legacy seed mode |
 | `packages/encoder/tests/test_adapter_conformance.py`; the `llm_sidecar` stub | WP7 | pending |
