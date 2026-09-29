@@ -907,3 +907,125 @@ def test_replay_miss_on_a_later_turn_after_earlier_tool_rows_is_a_failure(
     assert result.not_run_reason is None
     assert result.error == "replay miss after banking-core acted"
     assert len(result.turns) == 2
+
+
+def test_the_eval_hook_decision_records_reach_the_turn_result(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    hook = {
+        "decisions": [
+            {
+                "dp_id": "confirm_gate",
+                "effect": "gate",
+                "mode": "shadow",
+                "outcome": "abstained",
+                "confidence": 0.31,
+                "tau": 0.9,
+                "model_id": "tfidf_lr@train-sha256:a563c0c445d6",
+                "config_version": "cfg0123456789",
+                "unavailable_reason": None,
+                "a_future_field": 1,
+            }
+        ],
+        "effects": [
+            {
+                "dp_id": "confirm_gate",
+                "effect": "gate",
+                "mode": "shadow",
+                "tool": "card.block",
+                "applied": False,
+                "would_apply": True,
+                "detail": {"event": "withheld"},
+            }
+        ],
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    [decision] = turn.decisions
+    assert (decision.dp_id, decision.outcome, decision.mode) == (
+        "confirm_gate",
+        "abstained",
+        "shadow",
+    )
+    assert decision.config_version == "cfg0123456789"
+    [effect] = turn.effects
+    assert effect.would_apply is True and effect.applied is False
+    assert effect.detail == {"event": "withheld"}
+    assert turn.decisions_unreadable == 0
+
+
+def test_a_hook_record_that_does_not_parse_is_counted_not_dropped_silently(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    hook = {
+        "decisions": [
+            {"dp_id": "turn_intent", "outcome": "decided", "label": "greeting"},
+            {"outcome": "decided"},  # no dp_id
+            "not a record",
+        ],
+        "effects": {"not": "a list"},
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    assert [d.dp_id for d in turn.decisions] == ["turn_intent"]
+    assert turn.effects == []
+    assert turn.decisions_unreadable == 3
+
+
+def test_a_turn_without_the_hook_fields_has_no_decision_evidence(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval={"tokens": 3})
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    assert (turn.decisions, turn.effects, turn.decisions_unreadable) == ([], [], 0)
+
+
+def test_the_report_of_a_proposed_run_carries_the_decision_section(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    hook = {
+        "decisions": [
+            {
+                "dp_id": "turn_intent",
+                "effect": "record",
+                "mode": "shadow",
+                "outcome": "decided",
+                "label": "greeting",
+                "confidence": 0.95,
+            }
+        ]
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    scenario = load("happy_path/happy_path_001_es.yaml")
+    scenario.turns = scenario.turns[:1]
+
+    _, report = run_evaluation(
+        make_system(evidence, replay_dir), [scenario], tmp_path / "eval.md"
+    )
+
+    assert report is not None
+    text = report.read_text(encoding="utf-8")
+    assert "## 4. Decision Points by Language (ADR-0012)" in text
+    row = "| `turn_intent` | record | shadow | 1 | 1 | 0 | 0 | 0 | 100.0% (1/1)"
+    assert row in text
+
