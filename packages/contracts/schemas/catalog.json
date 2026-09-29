@@ -79,7 +79,7 @@
       "requires_idempotency": false
     },
     "kb.search": {
-      "description": "Lexical search, with a dense component only if it beats BM25 (ADR-0006).",
+      "description": "Vector search over the public knowledge base; BM25 or hybrid only when configured (ADR-0006).",
       "input_schema_file": "tools/kb_search.input.json",
       "is_write": false,
       "mutates_state": false,

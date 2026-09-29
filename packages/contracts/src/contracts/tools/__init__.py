@@ -195,7 +195,10 @@ TOOL_CATALOG: dict[str, ToolDefinition] = {
     ),
     "kb.search": ToolDefinition(
         name="kb.search",
-        description="Lexical search, with a dense component only if it beats BM25 (ADR-0006).",
+        description=(
+            "Vector search over the public knowledge base; "
+            "BM25 or hybrid only when configured (ADR-0006)."
+        ),
         input_model=KbSearchInput,
         output_model=KbSearchOutput,
         mutates_state=False,
