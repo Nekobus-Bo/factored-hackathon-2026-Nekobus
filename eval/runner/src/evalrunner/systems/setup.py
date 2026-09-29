@@ -55,13 +55,17 @@ def policy_differences(current: PolicySnapshot, wanted: PolicySnapshot) -> list[
             f"policy mode is '{current.amount_mode}', scenario needs "
             f"'{wanted.amount_mode}'"
         )
-    differing = sorted(
+    differing = {
         cur
         for cur, amount in wanted.thresholds_minor.items()
         if current.thresholds_minor.get(cur) != amount
-    )
+    }
+    if wanted.thresholds_minor:
+        # The admin API replaces the whole map, so a currency the scenario leaves
+        # out (an unmapped currency, on purpose) must be gone from the policy.
+        differing |= set(current.thresholds_minor) - set(wanted.thresholds_minor)
     if differing:
-        diffs.append(f"policy thresholds differ for {differing}")
+        diffs.append(f"policy thresholds differ for {sorted(differing)}")
     return diffs
 
 
