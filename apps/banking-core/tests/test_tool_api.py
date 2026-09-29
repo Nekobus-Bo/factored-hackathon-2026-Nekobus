@@ -749,46 +749,100 @@ def test_service_import_aborts_when_dev_otp_hook_is_on_in_production() -> None:
     assert "ALLOW_DEV_OTP_HOOK cannot be enabled" in result.stderr
 
 
-def test_identity_verify_document_in_identified_state(test_setup) -> None:
-    """Test identity.verify_document executes in IDENTIFIED state."""
-    client, _, _, _ = test_setup
+def _verify_document(
+    client: TestClient, headers: dict[str, str], front_ref: str
+) -> dict[str, Any]:
+    response = client.post(
+        "/v1/tools/call",
+        json={
+            "tool": "identity.verify_document",
+            "version": "1.0",
+            "args": {"document_type": "NATIONAL_ID", "document_front_ref": front_ref},
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    return body
 
-    sess_resp = client.post("/v1/sessions")
-    headers = {"X-Session-Id": sess_resp.json()["session_id"]}
 
-    # Match customer -> IDENTIFIED
+@pytest.mark.parametrize(
+    ("front_ref", "decision", "reason", "score_check"),
+    [
+        (
+            "sim-approve-front-0001",
+            "APPROVED",
+            "DOCUMENT_AUTHENTIC",
+            lambda score: score >= 0.9,
+        ),
+        (
+            "sim-reject-front-0001",
+            "REJECTED",
+            "DOCUMENT_NOT_AUTHENTIC",
+            lambda score: score <= 0.2,
+        ),
+        # No provider result for an asset the simulator does not know: a human
+        # decides. Unknown, lookalike and case-variant refs are never approved.
+        ("card_front_12345", "MANUAL_REVIEW_REQUIRED", "NO_PROVIDER_RESULT", None),
+        (
+            "SIM-APPROVE-front-0001",
+            "MANUAL_REVIEW_REQUIRED",
+            "NO_PROVIDER_RESULT",
+            None,
+        ),
+        (
+            "xsim-approve-front-0001",
+            "MANUAL_REVIEW_REQUIRED",
+            "NO_PROVIDER_RESULT",
+            None,
+        ),
+        (
+            "sim-approved-front-0001",
+            "MANUAL_REVIEW_REQUIRED",
+            "NO_PROVIDER_RESULT",
+            None,
+        ),
+    ],
+)
+def test_identity_verify_document_simulated_provider_follows_the_asset_ref(
+    test_setup,
+    front_ref: str,
+    decision: str,
+    reason: str,
+    score_check: Any,
+) -> None:
+    """The simulated provider is deterministic and never approves by default."""
+    client, mock_db, session_store, _ = test_setup
+    session_id = client.post("/v1/sessions").json()["session_id"]
+    headers = {"X-Session-Id": session_id}
     client.post(
         "/v1/tools/call",
         json={
             "tool": "customer.match",
             "version": "1.0",
-            "args": {
-                "document_type": "NATIONAL_ID",
-                "document_number": "1020304050",
-            },
+            "args": {"document_type": "NATIONAL_ID", "document_number": "1020304050"},
         },
         headers=headers,
     )
+    before = session_store.get(session_id)
+    assert before is not None and before.state == VerificationState.IDENTIFIED
 
-    # identity.verify_document is permitted in IDENTIFIED
-    doc_resp = client.post(
-        "/v1/tools/call",
-        json={
-            "tool": "identity.verify_document",
-            "version": "1.0",
-            "args": {
-                "document_type": "NATIONAL_ID",
-                "document_front_ref": "card_front_12345",
-            },
-        },
-        headers=headers,
-    )
-    assert doc_resp.status_code == 200
-    res = doc_resp.json()
+    res = _verify_document(client, headers, front_ref)
+
     assert res["status"] == "ok"
-    assert res["data"]["decision"] == "APPROVED"
-    assert res["data"]["score"] == 0.98
-    assert "LIVENESS_PASSED" in res["data"]["reasons"]
+    assert res["data"]["decision"] == decision
+    assert reason in res["data"]["reasons"]
+    if score_check is not None:
+        assert score_check(res["data"]["score"])
+    # Same input, same answer.
+    assert _verify_document(client, headers, front_ref) == res
+    # It reports; it never moves the verification state, even when APPROVED.
+    assert session_store.get(session_id) == before
+    audit = mock_db.audit_logs[-1]
+    assert audit.action == "identity.verify_document"
+    assert audit.payload["verification_state_before"] == "IDENTIFIED"
+    assert audit.payload["verification_state_after"] == "IDENTIFIED"
+    assert audit.payload["details"]["decision"] == decision
 
 
 OTP_MAX_ATTEMPTS = 3

@@ -18,7 +18,7 @@ Written so that a reviewer knows exactly what we tested, what we did not, and wh
 
 | Capability | Caveat |
 |---|---|
-| Document verification | Simulated provider; the interface is real, the verification is not ([ADR-0007](adr/0007-no-llm-biometrics.md)) |
+| Document verification | Simulated provider; the interface is real, the verification is not ([ADR-0007](adr/0007-no-llm-biometrics.md)). The simulator is deterministic and driven by the opaque `document_front_ref`: `sim-approve-*` returns APPROVED, `sim-reject-*` returns REJECTED, and any other ref returns MANUAL_REVIEW_REQUIRED (no provider result, a human decides). The tool only reports a decision and never changes the verification state |
 | Outbound OTP channel | Open decision (email, Telegram, WhatsApp or SMS; chosen by feasibility / free tier); currently delivery is simulated in a panel. The model never chooses the channel. |
 | Key management | Master key from the environment, not from a KMS ([ADR-0005](adr/0005-application-level-encryption.md)) |
 | Second workflow | Added by configuration and covered by a smoke test, not the full suite |
