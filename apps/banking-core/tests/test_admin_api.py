@@ -8,8 +8,11 @@ from uuid import UUID
 import fakeredis
 import pytest
 import sqlalchemy as sa
-from banking_core.api import admin_router
-from banking_core.api.routes_admin import get_attempt_limit_store
+from banking_core.api import admin_router, validate_admin_api_settings
+from banking_core.api.routes_admin import (
+    DEVELOPMENT_ADMIN_TOKEN,
+    get_attempt_limit_store,
+)
 from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import load_policy_config, save_policy_config
 from banking_core.crypto import RecordEncryptor, compute_blind_index, get_master_key
@@ -251,6 +254,68 @@ def test_startup_fails_when_admin_api_has_no_token(
     with pytest.raises(RuntimeError, match="ADMIN_API_TOKEN is required"):
         with TestClient(app):
             pass
+
+
+@pytest.mark.parametrize(
+    "app_env", ["production", "Production", " PRODUCTION "], ids=repr
+)
+@pytest.mark.parametrize(
+    "token",
+    [DEVELOPMENT_ADMIN_TOKEN, f" {DEVELOPMENT_ADMIN_TOKEN}\n"],
+    ids=["exact", "padded"],
+)
+def test_startup_refuses_the_development_admin_token_in_production(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, token: str
+) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("ADMIN_API_ENABLED", "true")
+    monkeypatch.setenv("ADMIN_API_TOKEN", token)
+
+    with pytest.raises(RuntimeError, match="public development token"):
+        with TestClient(app):
+            pass
+
+
+@pytest.mark.parametrize("token", ["", "   "], ids=["empty", "blank"])
+def test_startup_refuses_an_empty_admin_token_in_production(
+    monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("ADMIN_API_ENABLED", "true")
+    monkeypatch.setenv("ADMIN_API_TOKEN", token)
+
+    with pytest.raises(RuntimeError, match="ADMIN_API_TOKEN is required"):
+        validate_admin_api_settings()
+
+
+@pytest.mark.parametrize(
+    ("app_env", "enabled", "token"),
+    [
+        ("development", "true", DEVELOPMENT_ADMIN_TOKEN),
+        (None, "true", DEVELOPMENT_ADMIN_TOKEN),
+        ("production", "true", "a-real-secret-from-the-platform"),
+        ("production", "false", DEVELOPMENT_ADMIN_TOKEN),
+        ("production", "false", ""),
+    ],
+    ids=[
+        "development-accepts-the-development-token",
+        "unset-app-env-is-development",
+        "production-accepts-its-own-secret",
+        "production-with-the-api-off-uses-no-token",
+        "production-with-the-api-off-and-no-token",
+    ],
+)
+def test_startup_accepts_the_admin_settings_that_are_safe(
+    monkeypatch: pytest.MonkeyPatch, app_env: str | None, enabled: str, token: str
+) -> None:
+    if app_env is None:
+        monkeypatch.delenv("APP_ENV", raising=False)
+    else:
+        monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("ADMIN_API_ENABLED", enabled)
+    monkeypatch.setenv("ADMIN_API_TOKEN", token)
+
+    validate_admin_api_settings()
 
 
 @pytest.mark.usefixtures("db_engine")
