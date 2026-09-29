@@ -23,12 +23,13 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
    - It also serves `GET /healthz`.
 5. **Back-office data path** (amends ADR-0004, whose text says the orchestrator "exposes the back office"):
    - Queue, handoff detail, claim, guardrails and metrics come from the **banking-core admin API**, over the internal network.
-   - The conversation (masked transcript, takeover, agent reply) comes from a new **orchestrator agent API**.
+   - The conversation (transcript, takeover, agent reply) comes from a new **orchestrator agent API**.
    - The web-backoffice server runs in the internal network. In the presentation environment it is either not published or published only behind its login.
 6. **Takeover:**
    - The agent claims the handoff in banking-core first. That write is audited with `actor_type='agent'` and the agent's email as `actor_ref`, which is the "every takeover is recorded" of ADR-0004.
    - Then the BFF takes over the conversation in the orchestrator.
-   - From then on the LLM never sees that conversation again. Customer messages are stored masked and reach the agent. Agent messages are masked with the same masker before storage (fail closed to `[REDACTED]`), so the transcript never holds raw PII.
+   - From then on the LLM never sees that conversation again. Customer messages are stored masked and reach the agent.
+   - Agent messages are stored twice: masked with the same masker (fail closed to `[REDACTED]`), which is what redis-edge holds in clear, and as the agent wrote them, encrypted. Both transcripts show the agent's text as written (ADR-0013, amendment 2026-09-29). Nothing stored in clear holds raw PII.
    - There is no hand-back to the assistant; that is out of scope and declared in limitations.
 7. **Live updates by polling, no WebSocket:**
    - back-office queue: every 3 s;
@@ -61,6 +62,7 @@ All JSON. Times are ISO 8601 UTC. Errors keep FastAPI's `{"detail": ...}`.
 - `POST /v1/conversations/{id}/messages` `{text, lang?, client_message_id?}` → `{conversation_id, blocks[]}`; 503 `{detail:"replay_miss"}` or unavailable; 429.
 - `GET /v1/conversations/{id}` → `{conversation_id, language, messages[{role, content, blocks[], created_at}], takeover}`.
   - NEW: `role` may also be `"agent"`.
+  - NEW: for an agent message `content` is the text as the agent wrote it; every other `content` is masked. The shape is unchanged.
   - NEW: `takeover` is `{active: bool, since: time|null}`, with no agent identity.
 - `GET /v1/conversations/{id}/inbox` → `{messages[{channel, destination_masked, code, received_at, expires_at}]}`.
 - NEW behavior: while a takeover is active, `POST .../messages` stores the customer message (masked), does not call the LLM or banking-core tools, and returns `{conversation_id, blocks: []}`.
@@ -73,17 +75,22 @@ All JSON. Times are ISO 8601 UTC. Errors keep FastAPI's `{"detail": ...}`.
 
 Routes:
 - `GET /v1/agent/sessions/{session_ref}/conversation` → `{conversation_id}` or 404. It is backed by a reverse index in redis-edge, written when the conversation is created, with the conversation's TTL. `session_ref` is the banking-core session id, which is what `ops.handoff.session_ref` stores; verify that.
-- `GET /v1/agent/conversations/{id}` → the transcript shape above, with `takeover: {active, since, agent_ref|null}`.
+- `GET /v1/agent/conversations/{id}` → the transcript shape above, with `takeover: {active, since, agent_ref|null}`. An agent message's `content` is the text as written.
 - `POST /v1/agent/conversations/{id}/takeover` `{agent_ref, handoff_ref}` → `{conversation_id, takeover:{active:true, since, agent_ref}}`.
   - Idempotent for the same agent.
   - 409 `{detail:"taken_over_by_another_agent"}` when another agent holds it.
   - 404 for an unknown conversation.
 - `POST /v1/agent/conversations/{id}/messages` `{text (1..2000), client_message_id}` → `{message:{role:"agent", content, blocks:[], created_at}}`.
-  - The text is masked before storage.
+  - The text is stored twice: masked in `content` (what redis-edge holds in clear, fail closed to `[REDACTED]`) and, encrypted with the session key, as written. The answer's `content` is the text as written, after the strip and the length check.
+  - The ciphertext is internal: no response carries it, so no shape changes.
+  - If the text cannot be encrypted the write answers 503 `{detail:"The message was not saved"}` and stores nothing.
   - 409 `{detail:"no_active_takeover"}` if not taken over by this agent (the agent is identified by an `X-Agent-Ref` header the BFF sets from the session).
-  - A repeated `client_message_id` returns the stored message.
+  - A repeated `client_message_id` returns the stored message, with its text as written, whatever text the retry carries.
 - Takeover and agent messages take the conversation's turn lock and wait up to `AGENT_LOCK_WAIT_SECONDS` (default 10) for a customer turn in flight; past it they answer 503 `{detail:"turn_in_progress"}` with `Retry-After: 2`, and a retry is safe. A missing or malformed `X-Agent-Ref` is a 422.
-- Agent text is masked like everything stored, so the customer reads it masked too ("soy Ana" reads "soy [NAME_1]"): agents should not write personal data, their own name included. Declared in limitations.
+- Agent text is shown as written, to the customer and to the agent (ADR-0013, amendment 2026-09-29): "soy Ana" reads "soy Ana".
+  - Reads decrypt it. If a ciphertext cannot be read (a corrupted value, a changed `SESSION_SECRET`) the read falls back to the masked `content` and logs a warning that carries no text; it is never a 5xx. A message stored before the ciphertext existed reads as its masked `content`.
+  - The assistant never sees it. The takeover guard shuts the engine, and the model's history is `llm_history`, which no agent message enters. No log carries message text.
+  - The composer tells the agent this and to write only what the customer needs. Declared in limitations.
 
 ### banking-core admin API (NEW routes on the existing `/v1/admin` router, same `require_admin`)
 
