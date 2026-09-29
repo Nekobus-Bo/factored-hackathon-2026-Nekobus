@@ -84,6 +84,14 @@ class LabelFit:
     estimate: float | None = None  # the estimate the constraint used (per ci)
     best_estimate: float | None = None  # best any tau reached (for the report)
     reason: str | None = None  # why tau is None
+    n_predicted: int = 0  # rows whose top label this is, before any tau
+
+    @property
+    def binding(self) -> bool:
+        """Whether the constraint rejected anything. When it did not, tau is only
+        the lowest confidence seen and the validation set says nothing about how
+        low a confidence is still safe."""
+        return self.feasible and self.accepted < self.n_predicted
 
     @property
     def feasible(self) -> bool:
@@ -184,6 +192,7 @@ def fit_label_threshold(
         precision=tp / accepted_n,
         estimate=precision_estimate(tp, accepted_n, ci),
         best_estimate=best_estimate,
+        n_predicted=len(predicted),
     )
 
 
@@ -206,6 +215,11 @@ class ScalarFit:
     @property
     def coverage(self) -> float:
         return self.accepted / self.n_rows if self.n_rows else 0.0
+
+    @property
+    def binding(self) -> bool:
+        """Whether the constraint rejected any row (see ``LabelFit.binding``)."""
+        return self.feasible and self.accepted < self.n_rows
 
 
 def fit_scalar_threshold(
