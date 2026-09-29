@@ -9,6 +9,12 @@ WAIT_TIMEOUT ?= 240
 # on its own. Pass it explicitly when it exists; with no .env every default applies.
 COMPOSE = docker compose -f $(COMPOSE_FILE)$(if $(wildcard .env), --env-file .env)
 
+# `uv run --package calibrate` installs PyTorch, which the decision and embedding tasks
+# need. TASK=decision-points and calibration-verify do not; where the PyTorch wheels
+# cannot be downloaded, prepare an environment without them and pass
+# UV_RUN_FLAGS=--no-sync (tools/calibrate/README.md, "Without PyTorch").
+UV_RUN_FLAGS ?=
+
 # How infra/compose/demo.sh calls back into make. Not spelled $(MAKE) in the
 # recipe on purpose: make runs any recipe line containing that string even under
 # `make -n`, and a dry run of `make demo` must not start a stack.
@@ -16,7 +22,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate synth-data generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data generate-labels migrate \
 	profile-factored ingest
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -97,9 +103,12 @@ clean-models: ## pending: drop cached model weights
 deploy: ## pending: deploy to the target environment
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-calibrate: ## Compare and calibrate candidate models (TASK=decision|embedding, CONFIG=, OUT=reports)
-	@test -n "$(TASK)" || { echo "calibrate: set TASK=decision or TASK=embedding" >&2; exit 1; }
-	uv run --package calibrate python -m calibrate.cli --task $(TASK) $(if $(CONFIG),--config $(CONFIG)) --out $(or $(OUT),reports)
+calibrate: ## Compare and calibrate models (TASK=decision|embedding|decision-points, DP=, CONFIG=, OUT=reports)
+	@test -n "$(TASK)" || { echo "calibrate: set TASK=decision, embedding or decision-points" >&2; exit 1; }
+	uv run $(UV_RUN_FLAGS) --package calibrate python -m calibrate.cli --task $(TASK) $(if $(CONFIG),--config $(CONFIG)) $(if $(DP),--dp $(DP)) $(if $(ARTIFACT),--artifact $(ARTIFACT)) --out $(or $(OUT),reports)
+
+calibration-verify: ## Static check of the calibration artifact: schema, pins, data hashes, reports (ARTIFACT=, EFFECTS=)
+	uv run $(UV_RUN_FLAGS) --package calibrate python -m calibrate.verify $(if $(ARTIFACT),--artifact $(ARTIFACT)) $(if $(EFFECTS),--effects $(EFFECTS))
 
 synth-data: ## Generate reproducible synthetic train and validation datasets
 	uv run --with pyyaml python -m tools.synthdata.generate
