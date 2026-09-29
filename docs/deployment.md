@@ -28,12 +28,13 @@ flowchart TD
 
         subgraph UntrustedZone ["Untrusted Zone"]
             ORC["orchestrator<br/>(chat API, turn engine, PII masking)"]
-            ENC["encoder<br/>(local CPU inference)"]
+            ENC["encoder = model server<br/>(decision model + embedding model, local CPU)"]
         end
     end
 
     EXT[External Traffic] -->|HTTP :8080| ORC
     ORC -->|HTTP /v1/analyze| ENC
+    CORE -->|HTTP /v1/embed (kb.search)| ENC
     ORC -->|HTTP /v1/tools/call| CORE
     CORE -->|DATABASE_URL| PG
     MIG -->|DATABASE_URL| PG
@@ -69,6 +70,7 @@ flowchart TD
 3. **Application Stack:**
    - Containers run with dropped capabilities (`cap_drop: [ALL]`), `no-new-privileges:true`, and read-only root filesystems (`read_only: true` with temporary `/tmp` tmpfs mounts).
    - In production compose, `banking-core` and `encoder` expose no host ports. Only the `orchestrator` port (`8080`) is exposed (or placed behind an ingress reverse proxy).
+   - **Model server (`encoder`):** it serves the decision model (`POST /v1/analyze`, `GET /v1/decision-points`) and the embedding model of `kb.search` (`POST /v1/embed`) ([ADR-0012](adr/0012-decision-points.md), Appendix J). It receives **raw customer text**, so it must run inside your private network and never be a third-party or public service. It can share the host with the rest of the stack or run on its own host: set `ENCODER_URL` (orchestrator) and `MODEL_SERVER_URL` (banking-core) to its address, publish its port only to those two services (firewall or security group), and fill its `hf-cache` volume there (`make warmup-retrieval`, with network once). **There is no authentication or TLS between the services and the model server yet**: the network is the control (declared in [limitations.md](limitations.md)). banking-core depends on it only for `kb.search`; if it is down or serves another model than `EMBEDDING_MODEL`/`EMBEDDING_REVISION`, `kb.search` is unavailable and every other tool is unaffected.
    - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. Behind an ingress proxy that appends the address it saw (nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`), set `TRUSTED_PROXY_HOPS=1` (one more per extra proxy). **Left at `0` behind a proxy, every customer shares the proxy's address and its budget, and once it is spent nobody can open a conversation until the hour ends.** Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. The orchestrator stores only a keyed hash of the address.
 
 ---
@@ -156,8 +158,14 @@ The production compose override enforces explicit configuration without developm
 | `MASTER_KEY` | Master key for application-level encryption | `seed`, `banking-core` | 32-byte base64/hex secret |
 | `BLIND_INDEX_SALT` | Salt for deterministic blind indexing | `seed`, `banking-core` | 32-byte secret |
 | `SESSION_SECRET` | Secret key for conversation placeholder encryption | `orchestrator` | 32-byte secret |
-| `BANKING_CORE_MEMORY_LIMIT` | Container memory limit for banking-core | `banking-core` | `2g` |
-| `ENCODER_MEMORY_LIMIT` | Container memory limit for encoder | `encoder` | `3g` (default) or `4g` (`gliner`) |
+| `BANKING_CORE_MEMORY_LIMIT` | Container memory limit for banking-core. The embedding model no longer loads there by default, so it can be lowered once measured on Linux | `banking-core` | `2g` |
+| `ENCODER_MEMORY_LIMIT` | Container memory limit for the model server | `encoder` | `3g` (default; should fit `tfidf_lr` plus the embedding model, estimate) or `5g` (`gliner` plus the embedding model, estimate) |
+| `MODEL_SERVER_URL` | Base URL of the model server for `kb.search` | `banking-core` | `http://encoder:8090` (default) or `http://models.internal:8090` |
+| `EMBEDDING_MODEL` | Embedding model the model server serves and banking-core expects | `encoder`, `banking-core` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `EMBEDDING_REVISION` | Pin: a full 40-hex commit of that model. banking-core rejects any answer from another revision | `encoder`, `banking-core` | a 40-hex commit |
+| `EMBEDDING_WEIGHTS_SHA256` | Optional pin: SHA-256 of the weights file, verified when the model server starts. `make warmup-retrieval` prints it | `encoder` | 64 hex characters |
+| `EMBEDDING_BACKEND` | `remote` (the model server, default) or `local` (in process, tests and local development only; needs the `vector` extra in the image) | `banking-core` | `remote` |
+| `DECISION_POINTS_FILE`, `DECISION_POINTS_ALLOW_STALE`, `DECISION_POINTS_TAU_RAISE` | Decision-point artifact path, downgrade of a pin mismatch (refused under `APP_ENV=production`), raise-only tau override. No artifact ships yet: the model server runs in legacy seed mode ([ADR-0012](adr/0012-decision-points.md)) | `encoder` | empty, `false`, empty |
 
 ### Trust Boundary Verification
 
@@ -187,7 +195,7 @@ Infrastructure Plumbing (.env / Container Environment)
   ├── DATABASE_URL, REDIS_CORE_URL, REDIS_EDGE_URL
   ├── MASTER_KEY, BLIND_INDEX_SALT, SESSION_SECRET
   ├── ENCODER_BACKEND, ENCODER_MODEL, ABSTENTION_THRESHOLD
-  ├── EMBEDDING_MODEL, RETRIEVAL_MODE
+  ├── EMBEDDING_MODEL, EMBEDDING_REVISION, MODEL_SERVER_URL, RETRIEVAL_MODE
   └── LLM_MODE, LLM_MODEL, LLM_BASE_URL, LLM_API_KEY
         │
         ▼ (Seed only on initial boot)
@@ -200,7 +208,7 @@ Dynamic Business Rules (PostgreSQL `config` schema & Admin API)
 1. **Pure Environment (`.env`):**
    - **Data connectivity:** Plugging your own external PostgreSQL (`DATABASE_URL`, pgvector extension required) or Redis instances (`REDIS_CORE_URL`, `REDIS_EDGE_URL` supporting `redis://` or `rediss://` with username, password, port and TLS; use database 0, or add `+select` to both ACL users if you pick another DB number).
    - **Key prefixes:** Overriding `REDIS_SESSION_KEY_PREFIX`, `REDIS_OTP_CHALLENGE_KEY_PREFIX`, `REDIS_OTP_INBOX_KEY_PREFIX`, `REDIS_ATTEMPT_LIMIT_KEY_PREFIX`, `REDIS_EDGE_KEY_PREFIX`, and `REDIS_EDGE_RATE_LIMIT_KEY_PREFIX`. Keep the ACL key patterns aligned with them: a prefix outside `~session:*`, `~otp:*`, `~limit:*` (core) or `~orch:*` (edge) is refused with `NOPERM`.
-   - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), embedding models (`EMBEDDING_MODEL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
+   - **Model selection:** Switching encoder backends (`ENCODER_BACKEND=tfidf_lr|gliner`), calibration abstention threshold (`ABSTENTION_THRESHOLD`), the pinned embedding model (`EMBEDDING_MODEL`, `EMBEDDING_REVISION`) and where it runs (`MODEL_SERVER_URL`), and retrieval modes (`RETRIEVAL_MODE=vector|bm25|hybrid`).
    - **LLM engine:** Switching between deterministic `replay` and live provider (`live`), model names (`LLM_MODEL`), base URLs, and timeouts.
    - **Resource caps:** Memory ceilings (`BANKING_CORE_MEMORY_LIMIT`, `ENCODER_MEMORY_LIMIT`).
 
@@ -228,9 +236,9 @@ The application services are architecturally stateless:
 
 | Component | Operational Ceiling / Limit | Notes |
 |---|---|---|
-| `banking-core` per-replica RAM | ~1.3 GB RSS added at startup (`BANKING_CORE_MEMORY_LIMIT=2g`) | Loads `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` and indexes the 120-snippet Knowledge Base in RAM on boot. Database `pgvector` table ingestion is pending. |
-| `encoder` (`tfidf_lr`) | ~43 MB model footprint, < 500 MB total container RSS | Default fast lexical classifier on CPU. Runs easily within `ENCODER_MEMORY_LIMIT=3g`. |
-| `encoder` (`gliner`) | ~3.45 GB peak RSS (`ENCODER_MEMORY_LIMIT=4g`) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not the default**: `.env.example` seeds `ENCODER_BACKEND=tfidf_lr` because of this memory footprint. |
+| `banking-core` per-replica RAM | Small: the embedding model no longer loads here (it added ~1.3 GB RSS with the KB index, measured on macOS, when it did). The 120-snippet KB index is still built in RAM from vectors the model server returns. The Linux figure is pending; the `2g` limit is unchanged until it is measured | The image still installs the `vector` extra ([ADR-0012](adr/0012-decision-points.md), J.6). Database `pgvector` table ingestion is pending. |
+| Model server (`encoder`) with `tfidf_lr` and the embedding model | ~43 MB for `tfidf_lr`, plus the embedding model (PyTorch and MiniLM; the Linux figure is pending) | Should fit `ENCODER_MEMORY_LIMIT=3g` (estimate). Loaded once, shared by every banking-core replica. Without `EMBEDDING_MODEL` it is < 500 MB. |
+| Model server (`encoder`) with `gliner` | ~3.45 GB peak RSS alone (`ENCODER_MEMORY_LIMIT=5g` with the embedding model, estimate) | Requires `ENCODER_GLINER_MIN_MEMORY_MB=4096`. **Not the default**: `.env.example` seeds `ENCODER_BACKEND=tfidf_lr` because of this memory footprint. |
 | One-off tasks (`migrate`, `seed`) | Run once per deployment | Database migrations and initial seed run as separate execution tasks, never concurrently per replica. |
 | Audit log verification | Linear verification over hash chain | Hash chain integrity is verified via `make verify-audit`. Tail truncation checkpointing to an external store remains pending. |
 
@@ -309,7 +317,7 @@ to the same environment from overlapping.
 |---|---|---|---|
 | `DEPLOY_PLATFORMS` | variable | Build target(s): `linux/amd64`, `linux/arm64`, or both comma-separated | `linux/amd64` |
 | `BANKING_CORE_SYNC_ARGS` | variable | Build arg forwarded to `apps/banking-core/Dockerfile` | `--extra vector` |
-| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile` (`gliner` to include it; empty for `tfidf_lr` only) | empty |
+| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile`: `embed` (PyTorch and sentence-transformers for `/v1/embed`, needed by `kb.search`), `gliner`, or several separated by a space; empty builds the decision baseline only, and then `EMBEDDING_MODEL` must be empty or the model server refuses to start | `embed` |
 | `DEPLOY_ENABLED` | variable | Must be `"true"` or the `deploy` job no-ops cleanly (this is what lets a fork exist without a working deploy). **Must be set at the repository level, not inside a GitHub Environment**: the `deploy` job's `if:` is evaluated before the job's `environment:` binds, so an environment-scoped variable of the same name would never be visible there and the job would silently skip forever | unset |
 
 ### Per-environment configuration

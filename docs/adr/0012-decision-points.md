@@ -95,7 +95,7 @@ Everything named here and in the appendices is **pending** until its work packag
 6. [ ] WP6 scenarios, evalrunner DP section, re-record (1 d), below the approved minimum
 7. [x] WP7 adapter conformance test, `llm_sidecar` stub that fails as "pending" (0.5 d), below the approved minimum; the `encoder-bench` extension stays pending
 8. [ ] WP8 docs: cross-links in ADR-0003/0010, `limitations.md`, `evaluation.md`, `AGENTS.md`, runbook kill switch (0.5 d)
-9. [ ] WP12 model server: `POST /v1/embed`, remote embedding adapter, `kb.search` remote backend, compose and docs (1.5 d)
+9. [x] WP12 model server: `POST /v1/embed`, remote embedding adapter, `kb.search` remote backend, compose and docs (1.5 d)
 10. [ ] Teammate: candidates, DP datasets, calibration runs, embedding-model pin, sign-off and `shadow` to `enforce` flips (Appendix H)
 
 ### Implementation status (rule 7)
@@ -118,7 +118,7 @@ Everything named here and in the appendices is **pending** until its work packag
 | `SentenceTransformersAdapter.embed` and `RemoteEmbeddingAdapter` in `packages/retrieval` | WP12 | landed |
 | `POST /v1/embed`, `EMBEDDING_MODEL`, `EMBEDDING_REVISION`, `EMBEDDING_WEIGHTS_SHA256`, `EMBEDDING_MAX_BATCH`, the `embed` extra and the embedding part of `warmup` in `apps/encoder` | WP12 | landed |
 | banking-core `kb.search` remote backend: `EMBEDDING_BACKEND`, `MODEL_SERVER_URL`, `MODEL_SERVER_TIMEOUT_SECONDS`, `EMBEDDING_REVISION` | WP12 | landed |
-| Compose wiring, `make warmup-retrieval` on the model server, `.env.example`, `docs/deployment.md`, `docs/limitations.md`, `docs/runbook.md` | WP12 | pending |
+| Compose wiring, `make warmup-retrieval` on the model server, `.env.example`, `docs/deployment.md`, `docs/limitations.md`, `docs/runbook.md` | WP12 | landed |
 | The AGENTS.md line, `limitations.md` rows for the gate and the effects, the ADR-0003 row and ADR-0010 §1 text (Appendix I) | WP8 | pending |
 
 ---
@@ -634,7 +634,7 @@ banking-core calls the model server, so the trusted zone gains an **integrity de
 - **Embedding model:** configured by environment. `EMBEDDING_REVISION` must be a full 40-hex commit for a hub id (a branch is not a pin) and the snapshot must be in the local cache at exactly that commit; a local directory needs `EMBEDDING_WEIGHTS_SHA256` and a revision label. `EMBEDDING_WEIGHTS_SHA256`, when set, is the SHA-256 of the primary weights file and is verified at startup.
 - **Startup, by failure class:** a model that is configured with an invalid or missing pin, or whose weights do not match the pin, stops the service. A pinned model that is simply not in the cache (no network on the first run) does not: the service starts, serves decisions, answers `/v1/embed` with 503 and an explicit reason, and reports `embedding: unavailable` in `/ready`. That keeps the documented `make demo` behavior (everything but `kb.search` works offline) and never serves an unpinned model.
 - **banking-core** is configured with the same `EMBEDDING_MODEL` and `EMBEDDING_REVISION` and compares them with every response.
-- The teammate owns the pin values. `make warmup-retrieval` downloads the pinned revision and prints the resolved revision and weights hash to copy into `.env`.
+- The teammate owns the pin values. `make warmup-retrieval` downloads the pinned revision and prints the resolved revision and weights hash to copy into `.env`. The default `EMBEDDING_REVISION` in compose and `.env.example` was written without network access to the hub and is **unverified**: `make warmup-retrieval` fails on a wrong one, and the teammate confirms or replaces it.
 
 ### J.4 The `kb.search` wiring
 

@@ -16,7 +16,7 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 |---|---|
 | `apps/banking-core` | Trusted zone. Data, tools, policies, FSM, audit. The only service with database credentials |
 | `apps/orchestrator` | Untrusted zone. Chat, session, LLM, PII masking |
-| `apps/encoder` | Serving layer for local decision and extraction model. Runs on CPU |
+| `apps/encoder` | Model server: serves the local decision, extraction and embedding models. Runs on CPU, inside the private network |
 | `apps/web-client` | Simulated fintech and chat bubble |
 | `apps/web-backoffice` | Queue, handoff, guardrails, metrics |
 | `packages/contracts` | Tools, message blocks and policies. Source of truth for types |

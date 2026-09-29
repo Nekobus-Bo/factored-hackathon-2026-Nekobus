@@ -116,7 +116,7 @@ All project operations are exposed through `make`:
 | `make ingest` | Ingest a raw dataset into `data/staging/<source>` (`SOURCE=factored`) | Working |
 | `make data-quality` | Run data quality checks and output report | Working |
 | `make verify-audit` | Verify the cryptographic hash chain of the audit log | Working |
-| `make warmup` | Preload encoder and embedding weights into Docker volumes (`warmup-encoder` + `warmup-retrieval`) | Working |
+| `make warmup` | Preload the decision backend and the pinned `kb.search` embedding model onto the model server's Docker volume (`warmup-encoder` + `warmup-retrieval`) | Working |
 | `make encoder-bench` | Encoder p95 latency and peak RAM on CPU | Working |
 | `make build-multiarch` | Build app images for linux/amd64 and linux/arm64 (no push) | Working |
 | `make generate-labels` | Regenerate the contract label enums from `schema.yaml` | Working |
