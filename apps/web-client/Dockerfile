@@ -1,45 +1,48 @@
-# web-client: the landing, the chat dock and their same-origin BFF. Build context: the repository root
-# (`docker build -f apps/web-client/Dockerfile .`). The image holds the production bundle and the server,
-# and nothing else: no sources, no node_modules, no package manager cache.
+# web-client: the landing, the chat dock and their same-origin BFF, as one Bun server.
+#
+# Build from the repository root, because the app imports two workspace packages:
+#   docker build -f apps/web-client/Dockerfile -t pattern-blue/web-client .
+# The build context is cut down by Dockerfile.dockerignore next to this file: only the manifests of the
+# JS workspace members, the two packages this app imports and the app itself reach the build. The root
+# lockfile lists every workspace of the repository (the back office included) and `bun install
+# --frozen-lockfile` refuses one whose package.json is missing, which is why all the manifests are let in.
 
-# 1. Every package.json of the workspace, and the lockfile. `bun install --frozen-lockfile` refuses a
-#    lockfile that lists a workspace whose package.json is missing, and the root lockfile lists every app
-#    and package of the repository (the back office included), so all the manifests are needed, not only
-#    the ones this app imports. Everything else is dropped again, so a change to a source file does not
-#    invalidate the install layer below.
-FROM oven/bun:1.3 AS manifests
-WORKDIR /app
+# --- Build: install with the lockfile as it is, then bundle the server and the page ------------------------
+# Pinned to the platform that runs the build, not the one it targets: the bundle is JavaScript, so a
+# linux/arm64 image built on an amd64 runner never has to run Bun under emulation. Only the runtime stage
+# below takes the target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.3 AS build
+WORKDIR /repo
+
+# The workspace: the root manifest and bun.lock, then the members. `apps/*` and `packages/*` bring the
+# package.json of every JS member (the lockfile lists them all, and a frozen install fails if one is
+# missing) plus, by the ignore file, the sources of the three this build needs.
 COPY package.json bun.lock ./
-COPY apps ./apps
-COPY packages ./packages
-RUN find apps packages -type f ! -name package.json -delete \
- && find apps packages -type d -empty -delete
+COPY packages packages
+COPY apps apps
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 
-# 2. Install and build. Only what the bundle imports is copied in: the TypeScript entry of the contracts,
-#    the design tokens, and this app.
-FROM oven/bun:1.3 AS build
-WORKDIR /app
-COPY --from=manifests /app ./
-RUN bun install --frozen-lockfile
-COPY packages/contracts/ts ./packages/contracts/ts
-COPY packages/design-tokens/index.css ./packages/design-tokens/index.css
-COPY packages/design-tokens/src ./packages/design-tokens/src
-COPY packages/design-tokens/dist ./packages/design-tokens/dist
-COPY apps/web-client/tsconfig.json ./apps/web-client/tsconfig.json
-COPY apps/web-client/src ./apps/web-client/src
 RUN bun run --cwd apps/web-client build
 
-# 3. Run. `dist/` is self-contained (the server and the page bundle, dependencies included) and Bun looks
-#    its assets up relative to the working directory, so the server starts from the directory that holds it.
+# --- Run: only the production bundle and the server, as a non-root user ------------------------------------
 FROM oven/bun:1.3 AS runtime
 ENV NODE_ENV=production \
     PORT=5173 \
     ORCHESTRATOR_URL=http://orchestrator:8080
 WORKDIR /app
-COPY --from=build --chown=bun:bun /app/apps/web-client/dist ./
-# `bun` is the non-root user (uid 1000) of the official image.
+
+# `dist/` holds server.js (dependencies bundled in), the page and its assets. Nothing else is copied: no
+# sources, no node_modules, no lockfile.
+COPY --from=build --chown=bun:bun /repo/apps/web-client/dist/ ./
+
+# The `bun` user comes with the base image (uid 1000).
 USER bun
 EXPOSE 5173
-# The image has no curl. A healthcheck for compose:
-#   bun -e "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+
+# Liveness only (`GET /healthz` does not call the orchestrator). The image has no curl. Compose declares its
+# own check as well.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
+  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT ?? 5173}/healthz`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
+# The server looks its bundled assets up relative to the working directory, which is why WORKDIR is /app.
 CMD ["bun", "server.js"]
