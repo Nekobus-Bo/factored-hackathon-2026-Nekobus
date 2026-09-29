@@ -616,3 +616,59 @@ def test_session_save_failing_after_the_commit_fails_closed(
     # The database side committed and says so; only the session did not advance.
     assert _decisions(db_session, "otp.send", session_id) == ["allowed", "error"]
     assert _idempotency_rows(db_session, key) == 1
+
+
+def _verified_session(client: TestClient) -> str:
+    session_id, challenge_id = _otp_pending_session(client)
+    verified = _call_tool(
+        client,
+        session_id,
+        "otp.verify",
+        {"code": _dev_otp(client, challenge_id)},
+        "idem_otp_verify_setup_01",
+    )
+    assert verified["data"]["verified"] is True
+    return session_id
+
+
+def test_idempotency_conflict_is_refused_not_an_internal_error(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = _verified_session(client)
+    key = "idem_card_block_conflict_01"
+
+    blocked = _call_tool(
+        client,
+        session_id,
+        "card.block",
+        {"card_ref": "card_demo_es", "reason": "LOST"},
+        key,
+    )
+    assert blocked["status"] == "ok"
+
+    conflict = _call_tool(
+        client,
+        session_id,
+        "card.block",
+        {"card_ref": "card_demo_es", "reason": "STOLEN"},
+        key,
+    )
+
+    assert conflict == {
+        "tool": "card.block",
+        "status": "refused",
+        "reason_code": "INVALID_ARGUMENTS",
+        "data": None,
+    }
+    assert _decisions(db_session, "card.block", session_id) == ["allowed", "refused"]
+    assert _idempotency_rows(db_session, key) == 1
+    # The original call still replays untouched.
+    replayed = _call_tool(
+        client,
+        session_id,
+        "card.block",
+        {"card_ref": "card_demo_es", "reason": "LOST"},
+        key,
+    )
+    assert replayed["data"] == blocked["data"]
