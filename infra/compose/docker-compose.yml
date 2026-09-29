@@ -279,11 +279,14 @@ services:
       PORT: "8090"
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      ENCODER_BACKEND: ${ENCODER_BACKEND:-}
+      # Defaults are the calibrated seed from .env.example (tfidf_lr, tau 0.37), so a
+      # stack with no .env can serve chat turns. `-`, not `:-`: a value set to empty
+      # still means "no model" / "uncalibrated" (503), as .env.example documents.
+      ENCODER_BACKEND: ${ENCODER_BACKEND-tfidf_lr}
       ENCODER_MODEL: ${ENCODER_MODEL:-}
       ENCODER_DEVICE: ${ENCODER_DEVICE:-cpu}
       ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
-      ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD:-}
+      ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD-0.37}
       ENCODER_GLINER_MIN_MEMORY_MB: ${ENCODER_GLINER_MIN_MEMORY_MB:-4096}
     volumes:
       # Model weights cache (HF_HOME=/models/hf), filled by `make warmup`.
