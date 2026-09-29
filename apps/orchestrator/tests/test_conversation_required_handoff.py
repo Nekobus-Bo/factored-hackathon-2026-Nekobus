@@ -14,8 +14,11 @@ import httpx
 import pytest
 import respx
 from contracts import HandoffBlock, ToolResultStatus
-from orchestrator.conversation import ConversationContext
+from orchestrator.config import Settings
+from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.conversation.engine import ENGINE_HANDOFF_SUMMARY, LLM_HIDDEN_FIELDS
+from orchestrator.privacy.masking import RegexMasker
+from orchestrator.tools_client import BankingCoreClient
 
 from .fake_llm import ScriptedLLM, Step, tool_call
 from .test_conversation_engine import (
@@ -458,6 +461,49 @@ async def test_the_strongest_of_several_required_blocks_sets_the_handoff(
     [handoff_call] = banking.calls_to("handoff.create")
     assert handoff_call["args"]["priority"] == "URGENT"
     assert {r["session"] for r in banking.requests} == {SESSION_ID}
+
+
+class ResultTextUnsafeMasker(RegexMasker):
+    """Rejects the card.block result text ("BLOCKED"), as a masking failure would."""
+
+    def verify_safe(self, text: str) -> bool:
+        return "BLOCKED" not in text and super().verify_safe(text)
+
+
+async def test_the_requirement_survives_a_result_withheld_by_masking(
+    services: Any,
+) -> None:
+    """Withholding the data of a card.block must not make a required handoff vanish."""
+    banking = serve(
+        services, FlakyHandoffBanking(failures=1, data=block_data(REQUIRED))
+    )
+    engine = TurnEngine(
+        llm=block_then_reply(),
+        banking=BankingCoreClient(base_url=BANKING_URL, settings=Settings()),
+        masker=ResultTextUnsafeMasker(),
+    )
+    context = new_context()
+
+    await engine.run_turn(context, "Bloquea mi tarjeta", turn_id="t1")
+
+    block_result = json.loads(
+        next(
+            m["content"]
+            for m in context.history
+            if m["role"] == "tool" and '"card.block"' in m["content"]
+        )
+    )
+    assert block_result["data"] == {"handoff_requirement": REQUIRED}
+    # The first write failed; the next turn retries it from that same history.
+    assert len(banking.calls_to("handoff.create")) == 1
+    retry_engine = TurnEngine(
+        llm=ScriptedLLM([Step(content="Sigo aquí.")]),
+        banking=BankingCoreClient(base_url=BANKING_URL, settings=Settings()),
+        masker=ResultTextUnsafeMasker(),
+    )
+    second = await retry_engine.run_turn(context, "¿Hola?", turn_id="t2")
+    assert len(banking.calls_to("handoff.create")) == 2
+    assert len(handoff_blocks(second)) == 1
 
 
 def test_engine_handoff_context_is_a_plain_conversation_context() -> None:

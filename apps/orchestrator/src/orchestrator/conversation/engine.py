@@ -884,7 +884,9 @@ class TurnEngine:
             return json.dumps(masked, sort_keys=True, ensure_ascii=False)
         except MaskingError:
             logger.warning("Tool result for %s failed masking; data withheld", name)
-            payload["data"] = None
+            # The requirement is three enum values and no customer data: it stays,
+            # or a required handoff would vanish with the rest of the data.
+            payload["data"] = _requirement_only(result)
             masked = mask_json_string_values(payload, self.masker, mapping)
             return json.dumps(masked, sort_keys=True, ensure_ascii=False)
 
@@ -951,6 +953,28 @@ class TurnEngine:
 def _is_placeholder(value: str, kind: PiiType) -> bool:
     """True if `value` is exactly one placeholder of `kind`, e.g. `[OTP_3]`."""
     return re.fullmatch(rf"\[{kind.value}_\d+\]", value) is not None
+
+
+def _requirement_only(result: ToolResult | None) -> dict[str, Any] | None:
+    """The handoff_requirement of an ok card.block result, on its own, else None."""
+    if (
+        result is None
+        or result.tool != "card.block"
+        or result.status is not ToolResultStatus.OK
+        or not result.data
+    ):
+        return None
+    raw = result.data.get("handoff_requirement")
+    if raw is None:
+        return None
+    try:
+        return {
+            "handoff_requirement": HandoffRequirement.model_validate(raw).model_dump(
+                mode="json"
+            )
+        }
+    except ValidationError:
+        return None
 
 
 def _requirement_of(result: dict[str, Any]) -> HandoffRequirement | None:
