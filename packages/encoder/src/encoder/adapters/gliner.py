@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 class GLiNERAdapter(DecisionAdapter):
     """GLiNER / GLiNER2 adapter for zero-shot intent classification
     and slot extraction.
+
+    `probabilities` is not a distribution: the top label carries its confidence and
+    the rest share what is left uniformly. So this adapter is `top1_only`: a plain
+    threshold on the top confidence, no calibrator, no group view.
     """
+
+    kind = "gliner"
+    probability_kind = "top1_only"
 
     def __init__(
         self,

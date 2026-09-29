@@ -1,0 +1,221 @@
+{
+  "artifact_id": "ff7435f37ea9",
+  "backends": {
+    "gate_tfidf": {
+      "cost_class": "low",
+      "kind": "tfidf_lr",
+      "local_only": true,
+      "model_id": "tfidf_lr@map-38e4e1a6/train-sha256:5e5786d0005f",
+      "probability_kind": "distribution",
+      "timeout_ms": 2000,
+      "train": {
+        "label_map": {
+          "*": "other",
+          "confirm": "confirm",
+          "deny": "deny"
+        },
+        "path": "packages/encoder/tests/fixtures/intent.train.jsonl",
+        "sha256": "5e5786d0005ff586a9bb3ce98efb51eae1cfe6c2baeeec3365142326cecbb431"
+      }
+    },
+    "intent_tfidf": {
+      "cost_class": "low",
+      "kind": "tfidf_lr",
+      "local_only": true,
+      "model_id": "tfidf_lr@train-sha256:5e5786d0005f",
+      "probability_kind": "distribution",
+      "timeout_ms": 2000,
+      "train": {
+        "path": "packages/encoder/tests/fixtures/intent.train.jsonl",
+        "sha256": "5e5786d0005ff586a9bb3ce98efb51eae1cfe6c2baeeec3365142326cecbb431"
+      }
+    }
+  },
+  "created_at": "2026-09-29T00:00:00Z",
+  "data": {
+    "test_provenance": "synthetic-provisional",
+    "train_sha256": "5e5786d0005ff586a9bb3ce98efb51eae1cfe6c2baeeec3365142326cecbb431"
+  },
+  "decision_points": {
+    "block_reason": {
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "*": {
+            "T": 0.25
+          }
+        },
+        "kind": "temperature"
+      },
+      "evidence": {
+        "provenance": "fixture",
+        "run_id": "fixture"
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "*": 0.5
+      },
+      "view": {
+        "groups": {
+          "CUSTOMER_REQUEST": [
+            "request_card_block"
+          ],
+          "LOST": [
+            "report_lost_card"
+          ],
+          "STOLEN": [
+            "report_stolen_card"
+          ],
+          "SUSPICIOUS_ACTIVITY": [
+            "report_suspicious_activity"
+          ],
+          "UNRECOGNIZED_CHARGE": [
+            "report_unrecognized_charge"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "confirm_gate": {
+      "backend": "gate_tfidf",
+      "calibrator": {
+        "by_lang": {},
+        "kind": "none"
+      },
+      "constraint": {
+        "ci": "wilson95_lower",
+        "label": "confirm",
+        "metric": "precision",
+        "n_min": 30,
+        "p_min": 0.95
+      },
+      "evidence": {
+        "provenance": "fixture",
+        "run_id": "fixture"
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "*": 0.5,
+        "es": {
+          "confirm": 0.6,
+          "deny": 0.5,
+          "other": 0.5
+        },
+        "pt": null
+      },
+      "view": {
+        "kind": "labels",
+        "labels": [
+          "confirm",
+          "deny",
+          "other"
+        ]
+      }
+    },
+    "handoff_route": {
+      "always_on": false,
+      "backend": "intent_tfidf",
+      "status": "infeasible",
+      "thresholds": {},
+      "view": {
+        "groups": {
+          "DISPUTE": [
+            "request_dispute"
+          ],
+          "HUMAN_REQUEST": [
+            "request_human_agent"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "smalltalk_route": {
+      "always_on": false,
+      "backend": "intent_tfidf",
+      "enabled": false,
+      "status": "calibrated",
+      "thresholds": {
+        "*": 0.5
+      },
+      "view": {
+        "groups": {
+          "greeting": [
+            "greeting"
+          ],
+          "other": [
+            "report_unrecognized_charge",
+            "report_lost_card",
+            "report_stolen_card",
+            "report_suspicious_activity",
+            "request_card_block",
+            "request_dispute",
+            "request_human_agent",
+            "provide_identity_data",
+            "provide_otp_code",
+            "confirm",
+            "deny",
+            "check_balance",
+            "check_recent_transactions"
+          ],
+          "out_of_scope": [
+            "out_of_scope"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "turn_intent": {
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.5
+          },
+          "es": {
+            "T": 0.5
+          },
+          "pt": {
+            "T": 0.5
+          }
+        },
+        "kind": "temperature"
+      },
+      "evidence": {
+        "provenance": "fixture",
+        "run_id": "fixture"
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "en": null,
+        "es": 0.3,
+        "pt": 0.3
+      },
+      "view": {
+        "kind": "labels",
+        "labels": [
+          "report_unrecognized_charge",
+          "report_lost_card",
+          "report_stolen_card",
+          "report_suspicious_activity",
+          "request_card_block",
+          "request_dispute",
+          "request_human_agent",
+          "provide_identity_data",
+          "provide_otp_code",
+          "confirm",
+          "deny",
+          "check_balance",
+          "check_recent_transactions",
+          "greeting",
+          "out_of_scope"
+        ]
+      }
+    }
+  },
+  "harness": {
+    "config_path": null,
+    "config_sha256": null,
+    "git_sha": null
+  },
+  "schema_version": 1
+}
