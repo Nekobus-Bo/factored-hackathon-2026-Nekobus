@@ -1,24 +1,23 @@
 id: "risk_threshold_006_en"
 lang: "en"
 group: "risk_threshold"
-description: "Unrecognized charge in unknown currency (¥35,000 JPY) -> unmapped currency conservatively treated as above threshold, card blocked, priority handoff required."
+description: "Unrecognized charge in the database in a currency without a configured threshold (USD left out of the policy) -> unknown amount conservatively treated as above threshold, card blocked, priority handoff required."
 initial_state:
   customer: "demo_en"
   card_status: "ACTIVE"
   registered_otp_channel: "present"
   policy:
     amount_threshold_minor:
-      USD: 50000
       COP: 200000000
       BRL: 250000
       EUR: 50000
     mode: "flag"
   fault: "none"
 turns:
-  - "Someone charged ¥35,000 at a store in Tokyo using my card number."
+  - "Someone charged my card at an online electronics store and I do not recognize it."
   - "My passport is P12345678."
   - "{{otp}}"
-  - "Please block the card right away."
+  - "It is the Global Electronics Megastore charge. Please block the card right away."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +25,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"
