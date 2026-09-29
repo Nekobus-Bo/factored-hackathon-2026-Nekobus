@@ -1,0 +1,28 @@
+/* Layout glue for the chat, and nothing else: no colors, no tokens, no component styles. Everything visual
+   comes from @pattern-blue/design-tokens. */
+
+/* Message text keeps the line breaks the assistant or an agent wrote. */
+.chat-text { white-space: pre-wrap; }
+
+/* Chat header: the title, then the state chip next to the close button. On a phone the panel is narrower than
+   the title plus the longest chip plus the button, so the chip takes a row of its own under the title. */
+.pb-dock .pb-chat__title { white-space: nowrap; }
+.chat-head-chip { margin-left: auto; margin-right: var(--space-2); }
+@media (max-width: 391px) {
+  .pb-dock .pb-chat__head { flex-wrap: wrap; row-gap: var(--space-2); }
+  .pb-dock .chat-head-chip { order: 1; flex: 0 0 100%; margin: 0; }
+}
+
+/* A retry inside a failed message sits on its own line. */
+.chat-inline-action { display: flex; margin-top: var(--space-2); margin-left: auto; }
+
+/* "The agent already knows": the kicker above the list is a block. */
+.chat-knows { display: block; margin-bottom: 6px; }
+
+/* Inside the simulated inbox. */
+.chat-inbox-title { margin: 0; }
+.chat-flush { margin: 0; }
+.chat-inbox-actions { display: flex; }
+
+/* The hero button and the dock are the only things that open the chat; a hash link lands under the sticky bar. */
+html { scroll-padding-top: 72px; }

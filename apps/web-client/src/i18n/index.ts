@@ -44,3 +44,6 @@ export function formatWait(dict: Dictionary, seconds: number): string {
   const minutes = Math.ceil(seconds / 60);
   return format(minutes === 1 ? rl.minutesOne : rl.minutesOther, { n: minutes });
 }
+
+/** Each language written in itself: the names on the switch are not translated. */
+export const LANG_NAMES: Record<Lang, string> = { es: "Español", pt: "Português", en: "English" };
