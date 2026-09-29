@@ -19,8 +19,9 @@ Operational summary of the decisions taken in [ADR-0004](adr/0004-trust-boundary
 
 **Evaluation hook.** `EVAL_EXPOSE_TURN` is disabled by default and rejected when
 `APP_ENV=production`. When enabled, chat responses expose only masked outbound
-messages, replay keys, token totals and USD cost. The hook never exposes a
-banking session ID or the placeholder map.
+messages, replay keys, token totals, USD cost and the turn's decision-point
+records (identifiers, enum values and numbers, never text: ADR-0012). The hook
+never exposes a banking session ID or the placeholder map.
 
 **Encryption at rest** at the application level, with envelope encryption. The master key lives in the environment and never in the database. **Known limitation:** in production it belongs in a KMS or HSM.
 
