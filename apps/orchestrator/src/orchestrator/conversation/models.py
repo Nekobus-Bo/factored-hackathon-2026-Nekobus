@@ -65,6 +65,13 @@ class TurnMetadata(BaseModel):
     turn_id: str
     encoder: EncoderSignal | None = None
     encoder_unavailable: bool = False
+    # The encoder was configured but gave no PII spans this turn (unavailable,
+    # timed out, invalid payload): the text was masked by the regexes alone.
+    masking_regex_only: bool = False
+    # Counts only, never offsets or text: spans the encoder returned, and how
+    # many of them masked characters the regexes had left in clear.
+    encoder_pii_spans: int = Field(default=0, ge=0)
+    encoder_spans_added: int = Field(default=0, ge=0)
     masking_failed: bool = False
     tool_rounds: int = 0
     max_tool_rounds_reached: bool = False

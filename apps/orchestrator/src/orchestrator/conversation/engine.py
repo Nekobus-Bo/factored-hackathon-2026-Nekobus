@@ -1,4 +1,7 @@
-"""Conversation turn engine: mask -> encoder (optional) -> LLM <-> tools -> blocks.
+"""Conversation turn engine: encoder -> mask -> LLM <-> tools -> blocks.
+
+The encoder is optional; its PII spans widen the masking of the customer text,
+which is otherwise done by the regexes alone.
 
 The model proposes tool calls; banking-core decides (AGENTS rules 1 and 2).
 The engine never retries a refused call and never alters model arguments
@@ -19,6 +22,7 @@ from contracts import (
     TOOL_CATALOG,
     AnalyzeResponse,
     HandoffBlock,
+    PiiSpan,
     PiiType,
     ReasonCode,
     Receipt,
@@ -58,6 +62,7 @@ from orchestrator.privacy.masking import (
     RegexMasker,
     mask_json_string_values,
 )
+from orchestrator.privacy.spans import union_mask
 from orchestrator.tools_client import BankingCoreClient
 
 logger = logging.getLogger(__name__)
@@ -200,24 +205,31 @@ class TurnEngine:
         metadata = TurnMetadata(turn_id=turn_id or uuid4().hex)
         eval_data = TurnEvalData()
         mapping = dict(context.placeholder_map)
+        previous = frozenset(mapping)
         history = copy.deepcopy(context.history)
 
-        # 1. Mask the user text (fail closed: nothing goes out if it fails).
-        # While an OTP challenge is pending, a bare digit run is the code.
+        # 1. The encoder reads the raw text first (a local service on the edge
+        # network, see docs/limitations.md): its intent goes to the metadata and
+        # its PII spans widen the masking below. It is optional: on any failure
+        # the turn goes on masked by the regexes alone, never by less.
+        pii_spans = await self._analyze(user_text, lang, metadata)
+
+        # 2. Mask the user text: the union of the regexes and the encoder's spans
+        # (fail closed: nothing goes out if it fails). While an OTP challenge is
+        # pending, a bare digit run is the code.
         text_to_mask = user_text
         if _otp_challenge_pending(history):
             text_to_mask = self._mask_bare_otps(user_text, mapping)
         try:
-            masked_user = self._mask(text_to_mask, mapping)
+            masked_user = self._mask_user_text(
+                user_text, text_to_mask, mapping, previous, pii_spans, metadata
+            )
         except MaskingError:
             logger.warning("Turn %s: user text failed masking", metadata.turn_id)
             metadata.masking_failed = True
             return TurnResult(
                 blocks=[TextBlock(text=REPHRASE_MESSAGES[lang])], metadata=metadata
             )
-
-        # 2. Optional encoder signal; degrade to LLM-only on any failure
-        await self._analyze(user_text, lang, metadata)
 
         history.append({"role": "user", "content": masked_user})
 
@@ -283,25 +295,38 @@ class TurnEngine:
 
     # ------------------------------------------------------------------ steps
 
-    async def _analyze(self, text: str, lang: Lang, metadata: TurnMetadata) -> None:
+    async def _analyze(
+        self, text: str, lang: Lang, metadata: TurnMetadata
+    ) -> list[PiiSpan]:
+        """Record the encoder signal; return its PII spans (none if it failed)."""
         if self.encoder is None:
-            return
+            return []
         try:
             analysis = await self.encoder.analyze(text, lang)
-        except EncoderUnavailableError as exc:
+        except Exception as exc:
+            # Any failure degrades the same way. Only the error type is logged
+            # for an unexpected one: its message could quote the customer text.
+            reason = (
+                str(exc)
+                if isinstance(exc, EncoderUnavailableError)
+                else type(exc).__name__
+            )
             logger.warning(
-                "Turn %s: encoder unavailable (%s), continuing LLM-only",
+                "Turn %s: encoder unavailable (%s), masking with regexes only",
                 metadata.turn_id,
-                exc,
+                reason,
             )
             metadata.encoder_unavailable = True
-            return
+            metadata.masking_regex_only = True
+            return []
         metadata.encoder = EncoderSignal(
             intent=analysis.intent,
             confidence=analysis.confidence,
             abstain=analysis.abstain,
             model_id=analysis.model_id,
         )
+        metadata.encoder_pii_spans = len(analysis.pii_spans)
+        return list(analysis.pii_spans)
 
     async def _run_tool_round(
         self,
@@ -554,6 +579,28 @@ class TurnEngine:
         if not self.masker.verify_safe(result.masked_text):
             raise MaskingError("residual PII after masking")
         return result.masked_text
+
+    def _mask_user_text(
+        self,
+        raw_text: str,
+        text_to_mask: str,
+        mapping: dict[str, str],
+        previous: frozenset[str],
+        pii_spans: list[PiiSpan],
+        metadata: TurnMetadata,
+    ) -> str:
+        """Regex masking of the customer text, widened by the encoder's PII spans.
+
+        `raw_text` is what the encoder saw (its offsets refer to it);
+        `text_to_mask` is the same text after the pending-OTP pre-pass. With no
+        spans the result is exactly the regex masking.
+        """
+        masked = self._mask(text_to_mask, mapping)
+        if not pii_spans:
+            return masked
+        union = union_mask(self.masker, raw_text, masked, mapping, previous, pii_spans)
+        metadata.encoder_spans_added = union.spans_added
+        return union.masked_text
 
     def _mask_or_none(self, text: str | None, mapping: dict[str, str]) -> str | None:
         return self._mask(text, mapping) if text else text
