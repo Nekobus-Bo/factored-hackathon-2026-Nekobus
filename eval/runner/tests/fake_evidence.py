@@ -123,6 +123,11 @@ class FakeEvidence:
         return self.handoff_table
 
 
+def seed_tools() -> dict[str, list[str]]:
+    """A slice of banking-core's seed tool policy: the second workflow's tool is off."""
+    return {"account.get_summary": [], "card.list": ["VERIFIED"]}
+
+
 @dataclass
 class FakeAdmin:
     """Test-only admin API acting on a FakeEvidence (what banking-core would do)."""
@@ -131,6 +136,8 @@ class FakeAdmin:
     is_available: bool = True
     calls: list[str] = field(default_factory=list)
     broken_reset: bool = False
+    broken_tool_put: bool = False
+    tools: dict[str, list[str]] = field(default_factory=seed_tools)
 
     def available(self) -> bool:
         return self.is_available
@@ -143,10 +150,19 @@ class FakeAdmin:
         self.calls.append(f"put_policy:{policy.amount_mode}")
         self.evidence.policy = policy
 
+    def tool_policy(self) -> dict[str, list[str]]:
+        return {name: list(states) for name, states in self.tools.items()}
+
+    def put_tool_policy(self, tools: dict[str, list[str]]) -> None:
+        self.calls.append("put_tool_policy:" + ",".join(sorted(tools)))
+        if not self.broken_tool_put:
+            self.tools.update(tools)
+
     def reset_fixtures(self) -> None:
         self.calls.append("reset_fixtures")
         if self.broken_reset:
             return
+        self.tools = seed_tools()
         self.evidence.card_rows = [
             CardRow(c.card_ref, c.customer_id, "ACTIVE", None)
             for c in self.evidence.card_rows

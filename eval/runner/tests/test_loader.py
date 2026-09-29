@@ -14,6 +14,9 @@ from evalrunner.loader import (
     load_scenario_from_dict,
     load_scenarios_from_directory,
 )
+from evalrunner.models import InitialState
+
+SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
 
 
 def _sample_scenario_dict(
@@ -163,3 +166,45 @@ def test_load_scenarios_from_directory_skips_schema_json():
         loaded = load_scenarios_from_directory(base)
         assert len(loaded) == 1
         assert loaded[0].id == "valid_1"
+
+
+def test_tool_policy_is_optional_and_parsed():
+    without = load_scenario_from_dict(_sample_scenario_dict())
+    assert without.initial_state.tool_policy is None
+
+    data = _sample_scenario_dict()
+    data["initial_state"]["tool_policy"] = {
+        "enabled": ["account.get_summary"],
+        "disabled": ["card.list"],
+    }
+    sc = load_scenario_from_dict(data)
+
+    assert sc.initial_state.tool_policy is not None
+    assert sc.initial_state.tool_policy.enabled == ["account.get_summary"]
+    assert sc.initial_state.tool_policy.disabled == ["card.list"]
+
+
+@pytest.mark.parametrize(
+    ("tool_policy", "message"),
+    [
+        ({"enabled": ["card.nuke"]}, "unknown tool"),
+        ({"enabled": ["card.list"], "disabled": ["card.list"]}, "both enables"),
+        ({}, "at least one tool"),
+        ({"enable": ["card.list"]}, "enable"),
+    ],
+)
+def test_invalid_tool_policy_is_rejected(tool_policy, message):
+    data = _sample_scenario_dict()
+    data["initial_state"]["tool_policy"] = tool_policy
+
+    with pytest.raises(ValueError, match=message):
+        load_scenario_from_dict(data)
+
+
+def test_schema_json_describes_every_initial_state_field():
+    schema = json.loads((SCENARIOS / "schema.json").read_text(encoding="utf-8"))
+    described = schema["properties"]["initial_state"]["properties"]
+
+    assert set(described) == set(InitialState.model_fields)
+    required = set(schema["properties"]["initial_state"]["required"])
+    assert "tool_policy" not in required

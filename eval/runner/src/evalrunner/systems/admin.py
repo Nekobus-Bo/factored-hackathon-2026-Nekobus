@@ -5,9 +5,14 @@ when ADMIN_API_ENABLED=true there:
   GET  /v1/admin/policy-config        -> {"amount_mode": str, "thresholds_minor": {...},
                                           "version": int}
   PUT  /v1/admin/policy-config        <- {"amount_mode": str, "thresholds_minor": {...}}
-  POST /v1/admin/demo/reset-fixtures  -> 200 (demo cards back to seed state, and the
+  GET  /v1/admin/tool-policy          -> {"version": int, "tools": {tool: [state, ...]},
+                                          "disabled": [tool, ...], "code_floor": {...}}
+  PUT  /v1/admin/tool-policy          <- {"tools": {tool: [state, ...]}}  ([] disables;
+                                         422 for a state beyond the code floor)
+  POST /v1/admin/demo/reset-fixtures  -> 200 (demo cards back to seed state, the
                                          fixture customers' cross-session attempt limits
-                                         forgotten); 403 when APP_ENV=production
+                                         forgotten, and the tool policy back to its
+                                         seed); 403 when APP_ENV=production
                                          without DEMO_RESET_ENABLED
   Auth: "Authorization: Bearer <EVAL_ADMIN_TOKEN>" (banking-core's ADMIN_API_TOKEN).
   Every write is audited there.
@@ -34,6 +39,12 @@ class AdminApi(Protocol):
     def policy(self) -> PolicySnapshot: ...
 
     def put_policy(self, policy: PolicySnapshot) -> None: ...
+
+    def tool_policy(self) -> dict[str, list[str]]:
+        """States that enable each tool in the active tool policy ([] = disabled)."""
+        ...
+
+    def put_tool_policy(self, tools: dict[str, list[str]]) -> None: ...
 
     def reset_fixtures(self) -> None: ...
 
@@ -79,6 +90,18 @@ class HttpAdminApi:
         )
         if response.status_code not in (200, 204):
             raise AdminError(f"policy update failed: HTTP {response.status_code}")
+
+    def tool_policy(self) -> dict[str, list[str]]:
+        response = self._call("GET", "/v1/admin/tool-policy")
+        if response.status_code != 200:
+            raise AdminError(f"tool policy read failed: HTTP {response.status_code}")
+        tools = response.json().get("tools") or {}
+        return {str(name): [str(s) for s in states] for name, states in tools.items()}
+
+    def put_tool_policy(self, tools: dict[str, list[str]]) -> None:
+        response = self._call("PUT", "/v1/admin/tool-policy", json={"tools": tools})
+        if response.status_code not in (200, 204):
+            raise AdminError(f"tool policy update failed: HTTP {response.status_code}")
 
     def reset_fixtures(self) -> None:
         response = self._call("POST", "/v1/admin/demo/reset-fixtures")

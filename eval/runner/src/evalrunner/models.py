@@ -6,7 +6,8 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from contracts.envelope import ToolCall, ToolResult, ToolResultStatus, VerificationState
-from pydantic import BaseModel, ConfigDict, Field
+from contracts.tools import TOOL_CATALOG
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Language(StrEnum):
@@ -34,6 +35,32 @@ class PolicyConfig(BaseModel):
     mode: str = "flag"  # "flag" or "block"
 
 
+class ToolPolicySetup(BaseModel):
+    """Tools a scenario turns on or off in banking-core's versioned tool policy.
+
+    Applied through the admin API after the fixture reset, which restores the
+    seed policy: a scenario without this block runs on the seed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: list[str] = Field(default_factory=list)
+    disabled: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _known_and_disjoint(self) -> ToolPolicySetup:
+        named = [*self.enabled, *self.disabled]
+        unknown = sorted(set(named) - set(TOOL_CATALOG))
+        if unknown:
+            raise ValueError(f"tool_policy names unknown tool(s): {unknown}")
+        both = sorted(set(self.enabled) & set(self.disabled))
+        if both:
+            raise ValueError(f"tool_policy both enables and disables: {both}")
+        if not named:
+            raise ValueError("tool_policy must enable or disable at least one tool")
+        return self
+
+
 class InitialState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -41,6 +68,7 @@ class InitialState(BaseModel):
     card_status: str
     registered_otp_channel: str
     policy: PolicyConfig
+    tool_policy: ToolPolicySetup | None = None
     fault: str = "none"
 
 

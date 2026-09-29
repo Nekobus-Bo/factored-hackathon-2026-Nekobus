@@ -6,12 +6,14 @@ from contracts.envelope import ToolCall, ToolResult, ToolResultStatus, Verificat
 
 from evalrunner.checks import (
     check_card_blocked,
+    check_disabled_tools_not_executed,
     check_final_verification_state,
     check_handoff,
     check_handoff_must_include,
     check_must_ask_clarification,
     check_tools_allowed,
     check_tools_forbidden,
+    evaluate_scenario_checks,
 )
 from evalrunner.models import (
     HandoffResult,
@@ -19,6 +21,8 @@ from evalrunner.models import (
     PolicyConfig,
     Scenario,
     ScenarioExpected,
+    ToolCallReport,
+    ToolPolicySetup,
     TurnResult,
 )
 
@@ -371,3 +375,77 @@ def test_must_ask_clarification_fail_when_action_taken():
     ]
     detail = check_must_ask_clarification(sc, turns)
     assert not detail.passed
+
+
+def _summary_scenario(setup: ToolPolicySetup | None) -> Scenario:
+    scenario = _make_scenario(tools_allowed=["account.get_summary"])
+    scenario.initial_state.tool_policy = setup
+    return scenario
+
+
+def _summary_turn(status: ToolResultStatus) -> TurnResult:
+    reason = None if status is ToolResultStatus.OK else "STATE_NOT_ALLOWED"
+    # model_construct: an ok summary without data would not pass the contract.
+    return TurnResult.model_construct(
+        tool_results=[
+            ToolResult.model_construct(
+                tool="account.get_summary", status=status, reason_code=reason, data=None
+            )
+        ],
+        tool_call_reports=[
+            ToolCallReport(
+                tool="account.get_summary",
+                verification_state_before="VERIFIED",
+                status=status,
+            )
+        ],
+    )
+
+
+def test_disabled_tool_that_was_only_refused_passes():
+    sc = _summary_scenario(ToolPolicySetup(disabled=["account.get_summary"]))
+
+    detail = check_disabled_tools_not_executed(
+        sc, [_summary_turn(ToolResultStatus.REFUSED)]
+    )
+
+    assert detail is not None and detail.passed
+
+
+def test_disabled_tool_that_executed_fails():
+    sc = _summary_scenario(ToolPolicySetup(disabled=["account.get_summary"]))
+
+    detail = check_disabled_tools_not_executed(sc, [_summary_turn(ToolResultStatus.OK)])
+
+    assert detail is not None and not detail.passed
+    assert detail.actual == ["account.get_summary"]
+    assert "account.get_summary" in detail.message
+
+
+def test_disabled_tool_that_only_a_report_says_executed_fails():
+    sc = _summary_scenario(ToolPolicySetup(disabled=["account.get_summary"]))
+    turn = TurnResult(
+        tool_call_reports=[
+            ToolCallReport(tool="account.get_summary", status=ToolResultStatus.OK)
+        ]
+    )
+
+    detail = check_disabled_tools_not_executed(sc, [turn])
+
+    assert detail is not None and not detail.passed
+
+
+def test_disabled_tools_check_only_exists_when_the_scenario_disables_something():
+    assert check_disabled_tools_not_executed(_summary_scenario(None), []) is None
+    enabling = ToolPolicySetup(enabled=["account.get_summary"])
+    assert check_disabled_tools_not_executed(_summary_scenario(enabling), []) is None
+
+    def names(setup: ToolPolicySetup | None) -> set[str]:
+        checks, _ = evaluate_scenario_checks(_summary_scenario(setup), [], None)
+        return {c.check_name for c in checks}
+
+    assert "disabled_tools_not_executed" not in names(None)
+    assert "disabled_tools_not_executed" not in names(enabling)
+    assert "disabled_tools_not_executed" in names(
+        ToolPolicySetup(disabled=["account.get_summary"])
+    )
