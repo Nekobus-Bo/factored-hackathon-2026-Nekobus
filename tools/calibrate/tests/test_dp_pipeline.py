@@ -549,7 +549,8 @@ def test_the_report_leads_with_where_the_validation_tau_did_not_hold(
     below = [c for r in result.dps for c in r.chosen.certifications if c.below_floor]
     if below:  # the tiny data is noisy enough that some label misses its floor
         first = below[0]
-        assert f"{first.tp} of {first.accepted} decisions correct on test" in report
+        assert "| Decision point | Scope | Label | Correct / decided |" in report
+        assert f"| {first.tp}/{first.accepted} |" in report
     else:
         assert "Nothing to flag" in report
 

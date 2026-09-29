@@ -94,16 +94,30 @@ def _certification_summary(result: DpResult) -> str:
 def _findings(results: Sequence[DpResult]) -> list[str]:
     """What the reader should know before the tables: where the validation tau did
     not hold on test, and where the constraint never bound."""
+    misses = [
+        (r.dp.dp_id, c)
+        for r in results
+        for c in r.chosen.certifications
+        if c.below_floor
+    ]
     lines: list[str] = []
+    if misses:
+        lines += [
+            "The threshold chosen on validation did not hold on the held-out test "
+            "split for these acted labels: their precision is below the floor even "
+            "by the point estimate.",
+            "",
+            "| Decision point | Scope | Label | Correct / decided | Precision "
+            "| Floor |",
+            "|---|---|---|---:|---:|---:|",
+        ]
+        lines += [
+            f"| `{dp_id}` | {c.scope} | `{c.label}` | {c.tp}/{c.accepted} | "
+            f"{num(c.point, 2)} | {c.p_min:.2f} |"
+            for dp_id, c in misses
+        ]
+        lines.append("")
     for r in results:
-        for c in r.chosen.certifications:
-            if c.below_floor:
-                lines.append(
-                    f"- `{r.dp.dp_id}`, {c.scope}, `{c.label}`: {c.tp} of {c.accepted} "
-                    f"decisions correct on test ({c.tp / c.accepted:.2f}) against a "
-                    f"floor of {c.p_min:.2f}. The threshold chosen on validation did "
-                    "not hold on the held-out split."
-                )
         unbound = [
             lang
             for lang, fit in r.chosen.scalar_fits.items()
