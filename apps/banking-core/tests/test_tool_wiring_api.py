@@ -672,3 +672,72 @@ def test_idempotency_conflict_is_refused_not_an_internal_error(
         key,
     )
     assert replayed["data"] == blocked["data"]
+
+
+def test_repeated_handoff_returns_the_open_one_even_when_handed_off(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    client, db_session = seeded_api
+    session_id = _identified_session(client)
+    first = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {"reason": "DISPUTE_CLAIM", "summary": "Customer disputes a charge."},
+        "idem_handoff_first_01",
+    )
+    assert first["status"] == "ok"
+    stored = get_session_store().get(session_id)
+    assert stored is not None and stored.state == VerificationState.HANDED_OFF
+
+    # A different key, different arguments, and now in HANDED_OFF.
+    second = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "CUSTOMER_REQUEST",
+            "summary": "Customer asks again for a person.",
+            "priority": "URGENT",
+        },
+        "idem_handoff_second_01",
+    )
+
+    assert second["status"] == "ok"
+    assert second["data"]["handoff_id"] == first["data"]["handoff_id"]
+    assert second["data"]["priority"] == first["data"]["priority"]
+    receipt = second["data"]["receipt"]
+    assert (receipt["state_before"], receipt["state_after"]) == ("QUEUED", "QUEUED")
+    assert receipt["audit_id"] != first["data"]["receipt"]["audit_id"]
+
+    db_session.expire_all()
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(Handoff)) == 1
+    audits = list(
+        db_session.scalars(
+            sa.select(AuditLog)
+            .where(
+                AuditLog.action == "handoff.create",
+                AuditLog.actor_ref == session_id,
+            )
+            .order_by(AuditLog.id)
+        )
+    )
+    assert [a.decision for a in audits] == ["allowed", "allowed"]
+    assert audits[1].payload["details"]["already_open"] is True
+    assert audits[1].payload["verification_state_before"] == "HANDED_OFF"
+    assert receipt["audit_id"] == f"aud_{audits[1].id:08d}"
+
+    # The repeat itself replays like any other write.
+    replay = _call_tool(
+        client,
+        session_id,
+        "handoff.create",
+        {
+            "reason": "CUSTOMER_REQUEST",
+            "summary": "Customer asks again for a person.",
+            "priority": "URGENT",
+        },
+        "idem_handoff_second_01",
+    )
+    assert replay["data"] == second["data"]
+    assert db_session.scalar(sa.select(sa.func.count()).select_from(Handoff)) == 1

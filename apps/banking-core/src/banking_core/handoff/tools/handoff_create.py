@@ -11,6 +11,10 @@ Rules (ADR-0003 Appendix A, AGENTS rule 4):
   session state require; the model can raise it, never lower it.
 - The queue row and its audit row commit in one transaction; the receipt is
   then re-read from the database.
+- At most one open handoff (QUEUED, ASSIGNED or PENDING) per banking session: a
+  further call returns the existing handoff instead of queueing a duplicate, and
+  is audited like any other call. A customer who asks twice reaches the same
+  human once.
 """
 
 import secrets
@@ -20,7 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
-from contracts.audit import AuditPayload
+from contracts.audit import AuditDetail, AuditPayload
 from contracts.envelope import (
     Receipt,
     ResourceState,
@@ -42,6 +46,9 @@ from banking_core.control.policy import Decision
 from banking_core.models.ops import AuditLog, Handoff
 
 ACTION = "handoff.create"
+
+# Every status the queue holds is an open one (see ck_handoff_status).
+_OPEN_STATUSES = tuple(status.value for status in HandoffStatus)
 
 _PRIORITY_ORDER = [
     HandoffPriority.LOW,
@@ -90,6 +97,29 @@ def _new_handoff_ref() -> str:
     return "hnd_" + "".join(secrets.choice(string.ascii_lowercase) for _ in range(16))
 
 
+def _lock_session_handoffs(db_session: Session, session_id: str) -> None:
+    """Serialize handoff creation per session inside this transaction.
+
+    The dispatcher already serializes a session's calls with its Redis lock; this
+    keeps "one open handoff per session" true even if that lock expires mid-call.
+    """
+    bind = db_session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        db_session.execute(
+            sa.text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"handoff.create:{session_id}"},
+        )
+
+
+def _open_handoff(db_session: Session, session_id: str) -> Handoff | None:
+    return db_session.scalar(
+        sa.select(Handoff)
+        .where(Handoff.session_ref == session_id, Handoff.status.in_(_OPEN_STATUSES))
+        .order_by(Handoff.created_at, Handoff.id)
+        .limit(1)
+    )
+
+
 def _actions_taken(db_session: Session, session_ref: str) -> list[dict[str, Any]]:
     rows = db_session.scalars(
         sa.select(AuditLog)
@@ -124,7 +154,8 @@ def reread_handoff_create_result(
     receipt = Receipt(
         action=ACTION,
         target_masked=stored.handoff_ref,
-        state_before=ResourceState.NONE,
+        # Not stored anywhere: NONE for a new handoff, the open status for a repeat.
+        state_before=existing_output.receipt.state_before,
         state_after=ResourceState(stored.status),
         verified_at=stored.created_at,
         audit_id=f"aud_{audit.id:08d}",
@@ -160,6 +191,10 @@ def execute_handoff_create(
 ) -> HandoffCreateResult:
     """Queue a handoff and re-read its receipt within the caller's transaction.
 
+    When the session already has an open handoff nothing is queued: that handoff
+    is returned (receipt state_before = state_after = its status) and the call is
+    audited with already_open.
+
     When ``commit`` is false, the dispatcher commits the handoff, audit and
     idempotency record atomically.
 
@@ -176,29 +211,47 @@ def execute_handoff_create(
     )
 
     try:
-        summary = {
-            "verified_facts": {
-                "verification_state": verification_state_before.value,
-                "customer_identified": holder_id is not None,
-                "policy_flags": list(policy_decision.flags),
-            },
-            "actions_taken": _actions_taken(db_session, session_id),
-            "verification_method": _VERIFICATION_METHOD[verification_state_before],
-            "open_questions": [{"source": "model_unverified", "text": args.summary}],
-        }
-        handoff = Handoff(
-            handoff_ref=_new_handoff_ref(),
-            session_ref=session_id,
-            customer_id=holder_id,
-            reason=args.reason.value,
-            priority=priority.value,
-            department=args.department.value,
-            status=HandoffStatus.QUEUED.value,
-            summary=summary,
-            idempotency_scope=idempotency_scope,
-        )
-        db_session.add(handoff)
-        db_session.flush()
+        _lock_session_handoffs(db_session, session_id)
+        existing = _open_handoff(db_session, session_id)
+        extra_details: dict[str, AuditDetail] = {}
+        if existing is not None:
+            handoff_ref = existing.handoff_ref
+            state_before = ResourceState(existing.status)
+            queued_status = HandoffStatus(existing.status)
+            queued_priority = HandoffPriority(existing.priority)
+            department = existing.department
+            extra_details["already_open"] = True
+        else:
+            summary = {
+                "verified_facts": {
+                    "verification_state": verification_state_before.value,
+                    "customer_identified": holder_id is not None,
+                    "policy_flags": list(policy_decision.flags),
+                },
+                "actions_taken": _actions_taken(db_session, session_id),
+                "verification_method": _VERIFICATION_METHOD[verification_state_before],
+                "open_questions": [
+                    {"source": "model_unverified", "text": args.summary}
+                ],
+            }
+            handoff = Handoff(
+                handoff_ref=_new_handoff_ref(),
+                session_ref=session_id,
+                customer_id=holder_id,
+                reason=args.reason.value,
+                priority=priority.value,
+                department=args.department.value,
+                status=HandoffStatus.QUEUED.value,
+                summary=summary,
+                idempotency_scope=idempotency_scope,
+            )
+            db_session.add(handoff)
+            db_session.flush()
+            handoff_ref = handoff.handoff_ref
+            state_before = ResourceState.NONE
+            queued_status = HandoffStatus.QUEUED
+            queued_priority = priority
+            department = args.department.value
         # The model's free text stays in the queue row, never in the audit log.
         audit_row = append_audit(
             session=db_session,
@@ -212,17 +265,18 @@ def execute_handoff_create(
                 verification_state_after=verification_state_after,
                 status=ToolResultStatus.OK,
                 reason=args.reason.value,
-                handoff_status=HandoffStatus.QUEUED,
-                handoff_priority=priority,
+                handoff_status=queued_status,
+                handoff_priority=queued_priority,
                 idempotency_scope=idempotency_scope,
                 details={
-                    "department": args.department.value,
-                    "handoff_ref": handoff.handoff_ref,
+                    "department": department,
+                    "handoff_ref": handoff_ref,
                     "flags": list(policy_decision.flags),
+                    **extra_details,
                 },
             ),
         )
-        handoff_ref, audit_id = handoff.handoff_ref, audit_row.id
+        audit_id = audit_row.id
         if commit:
             db_session.commit()
     except Exception:
@@ -255,7 +309,7 @@ def execute_handoff_create(
     receipt = Receipt(
         action=ACTION,
         target_masked=stored.handoff_ref,
-        state_before=ResourceState.NONE,
+        state_before=state_before,
         state_after=ResourceState(stored.status),
         verified_at=stored.created_at,
         audit_id=f"aud_{audit.id:08d}",
