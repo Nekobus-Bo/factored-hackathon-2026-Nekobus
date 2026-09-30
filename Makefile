@@ -42,7 +42,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored ingest design-tokens design-tokens-check web-check web-client web-backoffice
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -148,6 +148,32 @@ build-test-regional: ## Fill the hand-written test templates into the provisiona
 check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR)
 	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
 	$(SYNTH_REGIONAL).checks --locale $(LOCALE)
+
+pool-data-regional: ## Pool the pt-BR, es-MX and es-AR splits (+ English template validation/test) into data/staging/decision_pooled
+	uv run python -m tools.synthdata_regional.pool
+
+train-encoder: ## Fine-tune and pin a decision model (CONFIG=tools/calibrate/configs/train_intent_distilbert.yaml); MPS when available
+	uv run $(UV_RUN_FLAGS) --package calibrate python -m calibrate.train --config $(or $(CONFIG),tools/calibrate/configs/train_intent_distilbert.yaml)
+
+WEIGHTS_DIR ?= packages/encoder/weights/distilbert-intent-pooled
+WEIGHTS_IMAGE ?= ghcr.io/nekobus-bo/pattern_blue-encoder-weights
+
+encoder-weights-image: ## Pack a trained model dir into the weights-only seed image (WEIGHTS=, IMAGE=); PUSH=1 pushes amd64+arm64 and prints the digest to pin
+	@set -e; dir="$(or $(WEIGHTS),$(WEIGHTS_DIR))"; repo="$(or $(IMAGE),$(WEIGHTS_IMAGE))"; \
+	uv run python -m encoder.weights verify "$$dir"; \
+	pins="$$(uv run python -m encoder.weights show "$$dir")"; \
+	rev="$$(printf '%s' "$$pins" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')"; \
+	sha="$$(printf '%s' "$$pins" | python3 -c 'import json,sys; print(json.load(sys.stdin)["weights_sha256"])')"; \
+	image="$$repo:$$(printf '%s' "$$rev" | tr ':' '-')"; \
+	args="-f apps/encoder/weights.Dockerfile --build-arg MODEL_NAME=$${rev%%:*} --build-arg REVISION_LABEL=$$rev --build-arg WEIGHTS_SHA256=$$sha"; \
+	if [ -n "$(PUSH)" ]; then \
+		docker buildx build --platform linux/amd64,linux/arm64 $$args -t "$$image" --push "$$dir"; \
+		digest="$$(docker buildx imagetools inspect "$$image" --format '{{json .Manifest.Digest}}' | tr -d '"')"; \
+		echo "pushed $$image"; echo "pin in apps/encoder/Dockerfile: $$repo@$$digest"; \
+	else \
+		docker buildx build $$args -t "$$image" --load "$$dir"; \
+		echo "built $$image (local, single platform); PUSH=1 publishes amd64+arm64 to $$repo"; \
+	fi
 
 profile-factored: ## Profile the Factored dataset and print aggregate statistics
 	uv run --package profile-factored python -m profile_factored.cli $(if $(DATA_DIR),--data-dir $(DATA_DIR)) $(if $(OUT),--markdown-out $(OUT))
