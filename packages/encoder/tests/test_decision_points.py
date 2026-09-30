@@ -400,17 +400,17 @@ def test_the_locale_temperature_pairs_with_the_locale_tau() -> None:
     assert ar.outcome == "abstained"  # flattened by the language's T=2
 
 
-def test_locale_keys_must_match_between_calibrator_and_thresholds() -> None:
-    with pytest.raises(ValueError, match="locale keys must match"):
+def test_a_locale_tau_needs_the_locale_temperature() -> None:
+    with pytest.raises(ValueError, match="have no calibrator entry"):
         dp(
             calibrator={"kind": "temperature", "by_lang": {"es": {"T": 0.5}}},
             thresholds={"es-MX": 0.6, "es": 0.6},
         )
-    with pytest.raises(ValueError, match="locale keys must match"):
-        dp(
-            calibrator={"kind": "temperature", "by_lang": {"es-MX": {"T": 0.5}}},
-            thresholds={"es": 0.6},
-        )
+    # A locale temperature under a pooled tau is how the harness scores at tau 0.
+    dp(
+        calibrator={"kind": "temperature", "by_lang": {"es-MX": {"T": 0.5}}},
+        thresholds={"*": 0.0},
+    )
 
 
 @pytest.mark.parametrize("key", ["es-ES", "pt-PT", "es_MX", "ES-mx"])

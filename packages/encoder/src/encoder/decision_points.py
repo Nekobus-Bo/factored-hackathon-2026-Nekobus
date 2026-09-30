@@ -223,13 +223,14 @@ class DecisionPointSpec(_Model):
                             f"threshold for '{lang}.{label}' must be within [0, 1]"
                         )
         if self.calibrator.kind != "none":
-            # T and tau must come from one group: a locale key is in both or neither.
+            # A locale tau was fitted on scores calibrated with that locale's T, so it
+            # never travels without it (ADR-0014).
             cal = {k for k in self.calibrator.by_lang if k in LOCALES}
             thr = {k for k in self.thresholds if k in LOCALES}
-            if cal != thr:
+            if not thr <= cal:
                 raise ValueError(
-                    "locale keys must match between calibrator and thresholds "
-                    f"(calibrator {sorted(cal)}, thresholds {sorted(thr)})"
+                    f"threshold locale keys {sorted(thr - cal)} have no calibrator "
+                    "entry; a locale tau needs the locale's temperature"
                 )
         return self
 
