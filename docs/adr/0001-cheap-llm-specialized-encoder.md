@@ -1,6 +1,6 @@
 # ADR-0001: Cheap generic LLM for language, small specialized encoder for decisions
 
-**Status:** Accepted · amended 2026-09-26, 2026-09-29 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-26, 2026-09-29, 2026-09-30 ([ADR-0014](0014-distilbert-intent-backend.md): the pooled DistilBERT is the decision model; the `hint` effect is the structured context) · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 

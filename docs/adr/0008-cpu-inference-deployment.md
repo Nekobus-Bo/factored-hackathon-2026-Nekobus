@@ -1,6 +1,6 @@
 # ADR-0008: CPU inference, offline training and private-environment deployment
 
-**Status:** Accepted · amended 2026-09-29 · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-29, 2026-09-30 ([ADR-0014](0014-distilbert-intent-backend.md): decision weights are baked into the encoder image from a digest-pinned seed image) · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
