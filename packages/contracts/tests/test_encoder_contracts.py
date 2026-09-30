@@ -44,6 +44,22 @@ def test_analyze_request_invalid() -> None:
         AnalyzeRequest(text="Hello", extra_field="bad")  # type: ignore[call-arg]
 
 
+def test_analyze_request_locale_implies_its_language() -> None:
+    request = AnalyzeRequest(text="me robaron la tarjeta", locale="es-MX")
+    assert request.lang == "es" and request.locale == "es-MX"
+    both = AnalyzeRequest(text="não reconheço", lang="pt", locale="pt-BR")
+    assert both.lang == "pt"
+    assert AnalyzeRequest(text="hola", lang="es").locale is None
+
+
+def test_analyze_request_rejects_a_contradicting_or_unknown_locale() -> None:
+    with pytest.raises(ValidationError, match="does not match locale"):
+        AnalyzeRequest(text="hola", lang="pt", locale="es-AR")
+    for bad in ("es-ES", "pt-PT", "es_MX", "MX"):
+        with pytest.raises(ValidationError):
+            AnalyzeRequest(text="hola", locale=bad)
+
+
 def test_slot_valid_and_invalid() -> None:
     """Verify Slot validation."""
     slot = Slot(type="card_last4", value="1234", start=0, end=4, normalized="1234")
@@ -243,9 +259,7 @@ def test_decision_result_decided_must_pass_its_tau() -> None:
 
 
 def test_decision_result_abstained_may_lack_tau_when_the_language_is_infeasible() -> None:
-    result = _result(
-        outcome="abstained", label=None, confidence=0.4, tau=None, tau_source=None
-    )
+    result = _result(outcome="abstained", label=None, confidence=0.4, tau=None, tau_source=None)
     assert result.tau is None
     with_tau = _result(outcome="abstained", label=None, confidence=0.4, tau=0.9)
     assert with_tau.label is None
@@ -264,8 +278,9 @@ def test_decision_result_non_computed_outcomes_carry_nothing(outcome: str) -> No
     )
     assert result.outcome == outcome
     with pytest.raises(ValidationError, match="carries no confidence"):
-        _result(outcome=outcome, label=None, confidence=0.4, runner_up=None, tau=None,
-                tau_source=None)
+        _result(
+            outcome=outcome, label=None, confidence=0.4, runner_up=None, tau=None, tau_source=None
+        )
 
 
 def test_decision_result_is_strict_and_text_free() -> None:

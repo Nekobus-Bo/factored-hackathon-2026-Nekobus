@@ -3,7 +3,7 @@
 
 import re
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from contracts.labels import PiiType, SlotType
+from contracts.locale import LOCALES, Locale, lang_of
 
 # A decision point id is data, written by the calibration harness (ADR-0012).
 DECISION_POINT_ID_PATTERN = r"^[a-z][a-z0-9_]{2,40}$"
@@ -186,6 +187,13 @@ class AnalyzeRequest(BaseModel):
         default=None,
         description="Optional language code (es, pt, en)",
     )
+    locale: Locale | None = Field(
+        default=None,
+        description=(
+            "Optional market (ADR-0014). Thresholds are looked up by locale, then "
+            "language, then '*'. When given alone, lang is derived from it"
+        ),
+    )
     decision_points: list[str] | None = Field(
         default=None,
         max_length=MAX_DECISION_POINTS_PER_REQUEST,
@@ -207,6 +215,19 @@ class AnalyzeRequest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("decision_points must not repeat an id")
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_lang_from_locale(cls, data: Any) -> Any:
+        """``locale`` alone implies its language; a contradicting ``lang`` is a 422."""
+        if not isinstance(data, dict) or data.get("locale") not in LOCALES:
+            return data
+        lang = lang_of(data["locale"])
+        if data.get("lang") is None:
+            return {**data, "lang": lang}
+        if data["lang"] != lang:
+            raise ValueError(f"lang {data['lang']!r} does not match locale {data['locale']!r}")
+        return data
 
 
 class AnalyzeResponse(BaseModel):
