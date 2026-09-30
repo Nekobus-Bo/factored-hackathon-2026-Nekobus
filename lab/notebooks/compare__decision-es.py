@@ -119,38 +119,43 @@ def _(COUNTRIES, STAGING, pl):
 
 
 @app.cell
-def _(CRITERIA, INSTRUCTIONS, LAYA_MAX_LENGTH, LAYA_MODEL, eval_sets, laya, pl, time):
+def _(CRITERIA, INSTRUCTIONS, LAYA_MAX_LENGTH, LAYA_MODEL, eval_sets, laya, mo, pl, time):
     _agent = laya.load(LAYA_MODEL, device="cpu")
     _questions = {"intent": {"type": "choice", "instructions": INSTRUCTIONS, "criteria": CRITERIA}}
     _rows = []
-    for _set, _d in eval_sets.items():
-        for _text, _intent in _d.iter_rows():
-            _start = time.perf_counter()
-            _answer = _agent.predict(_text, _questions, lang="es", max_len=LAYA_MAX_LENGTH)["answers"]["intent"]
-            _rows.append({"model": "Laya (zero-shot)", "set": _set, "text": _text, "intent": _intent, "predicted": _answer["choice"],
-                          "latency_ms": 1000 * (time.perf_counter() - _start)})
+    with mo.status.progress_bar(total=sum(d.height for d in eval_sets.values()), title="Laya (zero-shot)", show_rate=True, show_eta=True) as _bar:
+        for _set, _d in eval_sets.items():
+            for _text, _intent in _d.iter_rows():
+                _start = time.perf_counter()
+                _answer = _agent.predict(_text, _questions, lang="es", max_len=LAYA_MAX_LENGTH)["answers"]["intent"]
+                _rows.append({"model": "Laya (zero-shot)", "set": _set, "text": _text, "intent": _intent, "predicted": _answer["choice"],
+                              "latency_ms": 1000 * (time.perf_counter() - _start)})
+                _bar.update(subtitle=_set)
     laya_predictions = pl.DataFrame(_rows)
     laya_predictions.group_by("set").agg(accuracy=(pl.col("predicted") == pl.col("intent")).mean().round(3))
     return (laya_predictions,)
 
 
 @app.cell
-def _(CRITERIA, RERANKER_MAX_LENGTH, RERANKER_MODEL, eval_sets, pl, time, torch):
+def _(CRITERIA, RERANKER_MAX_LENGTH, RERANKER_MODEL, eval_sets, mo, pl, time, torch):
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
     _tokenizer = AutoTokenizer.from_pretrained(RERANKER_MODEL)
     _model = AutoModelForSequenceClassification.from_pretrained(RERANKER_MODEL).eval()
     _intents, _descriptions = list(CRITERIA), list(CRITERIA.values())
     _rows = []
-    for _set, _d in eval_sets.items():
-        for _text, _intent in _d.iter_rows():
-            _start = time.perf_counter()
-            _inputs = _tokenizer([_text] * len(_descriptions), _descriptions, padding=True, truncation="only_first",
-                                 max_length=RERANKER_MAX_LENGTH, return_tensors="pt")
-            with torch.no_grad():
-                _best = int(_model(**_inputs).logits.view(-1).argmax())
-            _rows.append({"model": "Reranker (zero-shot)", "set": _set, "text": _text, "intent": _intent,
-                          "predicted": _intents[_best], "latency_ms": 1000 * (time.perf_counter() - _start)})
+    # The slowest cell: 15 (message, intent) pairs per message through a ~568M-parameter cross-encoder on CPU
+    with mo.status.progress_bar(total=sum(d.height for d in eval_sets.values()), title="Reranker (zero-shot)", show_rate=True, show_eta=True) as _bar:
+        for _set, _d in eval_sets.items():
+            for _text, _intent in _d.iter_rows():
+                _start = time.perf_counter()
+                _inputs = _tokenizer([_text] * len(_descriptions), _descriptions, padding=True, truncation="only_first",
+                                     max_length=RERANKER_MAX_LENGTH, return_tensors="pt")
+                with torch.no_grad():
+                    _best = int(_model(**_inputs).logits.view(-1).argmax())
+                _rows.append({"model": "Reranker (zero-shot)", "set": _set, "text": _text, "intent": _intent,
+                              "predicted": _intents[_best], "latency_ms": 1000 * (time.perf_counter() - _start)})
+                _bar.update(subtitle=_set)
     reranker_predictions = pl.DataFrame(_rows)
     reranker_predictions.group_by("set").agg(accuracy=(pl.col("predicted") == pl.col("intent")).mean().round(3))
     return AutoModelForSequenceClassification, AutoTokenizer, reranker_predictions
@@ -171,6 +176,7 @@ def _(
     TRAIN_MAX_LENGTH,
     eval_sets,
     label2id,
+    mo,
     pl,
     time,
     torch,
@@ -189,26 +195,32 @@ def _(
         ).to(TRAIN_DEVICE)
         _optimizer = torch.optim.AdamW(_model.parameters(), lr=LEARNING_RATE)
         _texts, _y = _train["text"].to_list(), torch.tensor([label2id[i] for i in _train["intent"]])
-        for _epoch in range(1, EPOCHS + 1):
-            _model.train()
-            for _idx in torch.randperm(len(_texts)).split(BATCH_SIZE):
-                _batch = _tokenizer([_texts[i] for i in _idx], padding=True, truncation=True, max_length=TRAIN_MAX_LENGTH, return_tensors="pt").to(TRAIN_DEVICE)
-                _model(**_batch, labels=_y[_idx].to(TRAIN_DEVICE)).loss.backward()
-                _optimizer.step()
-                _optimizer.zero_grad()
-        _model.eval()
-        with torch.no_grad():
-            _batch = _tokenizer(_validation["text"].to_list(), padding=True, truncation=True, max_length=TRAIN_MAX_LENGTH, return_tensors="pt").to(TRAIN_DEVICE)
-            _pred = [_model.config.id2label[int(i)] for i in _model(**_batch).logits.argmax(-1)]
-        _history.append({"training set": _name, "own validation macro_f1": round(f1_score(_validation["intent"], _pred, average="macro"), 3)})
-        _model.to("cpu")
-        for _set, _d in eval_sets.items():
-            for _text, _intent in _d.iter_rows():
-                _start = time.perf_counter()
-                with torch.no_grad():
-                    _logits = _model(**_tokenizer(_text, truncation=True, max_length=FT_MAX_LENGTH, return_tensors="pt")).logits[0]
-                _rows.append({"model": f"Fine-tuned ({_name})", "set": _set, "text": _text, "intent": _intent,
-                              "predicted": _model.config.id2label[int(_logits.argmax())], "latency_ms": 1000 * (time.perf_counter() - _start)})
+        _steps = EPOCHS * -(-len(_texts) // BATCH_SIZE)
+        # One bar per model: training steps first, then one tick per scored message
+        with mo.status.progress_bar(total=_steps + sum(d.height for d in eval_sets.values()), title=f"Fine-tuned ({_name})",
+                                    show_rate=True, show_eta=True) as _bar:
+            for _epoch in range(1, EPOCHS + 1):
+                _model.train()
+                for _idx in torch.randperm(len(_texts)).split(BATCH_SIZE):
+                    _batch = _tokenizer([_texts[i] for i in _idx], padding=True, truncation=True, max_length=TRAIN_MAX_LENGTH, return_tensors="pt").to(TRAIN_DEVICE)
+                    _model(**_batch, labels=_y[_idx].to(TRAIN_DEVICE)).loss.backward()
+                    _optimizer.step()
+                    _optimizer.zero_grad()
+                    _bar.update(subtitle=f"training, epoch {_epoch}/{EPOCHS}")
+            _model.eval()
+            with torch.no_grad():
+                _batch = _tokenizer(_validation["text"].to_list(), padding=True, truncation=True, max_length=TRAIN_MAX_LENGTH, return_tensors="pt").to(TRAIN_DEVICE)
+                _pred = [_model.config.id2label[int(i)] for i in _model(**_batch).logits.argmax(-1)]
+            _history.append({"training set": _name, "own validation macro_f1": round(f1_score(_validation["intent"], _pred, average="macro"), 3)})
+            _model.to("cpu")
+            for _set, _d in eval_sets.items():
+                for _text, _intent in _d.iter_rows():
+                    _start = time.perf_counter()
+                    with torch.no_grad():
+                        _logits = _model(**_tokenizer(_text, truncation=True, max_length=FT_MAX_LENGTH, return_tensors="pt")).logits[0]
+                    _rows.append({"model": f"Fine-tuned ({_name})", "set": _set, "text": _text, "intent": _intent,
+                                  "predicted": _model.config.id2label[int(_logits.argmax())], "latency_ms": 1000 * (time.perf_counter() - _start)})
+                    _bar.update(subtitle=f"scoring {_set}")
     finetune_predictions = pl.DataFrame(_rows)
     pl.DataFrame(_history)
     return (finetune_predictions,)
