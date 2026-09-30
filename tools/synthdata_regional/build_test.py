@@ -20,7 +20,23 @@ GENERATOR = "claude-opus-5-5"
 
 
 def load_templates(data_dir: Path) -> list[dict[str, str]]:
+    """Rows from test_templates.*.tsv (intent, length, topic, template per line) and
+    test_templates.*.txt (a `@intent length [topic]` header, then one template per line)."""
     rows = []
+    for path in sorted(data_dir.glob("test_templates.*.txt")):
+        header = None
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not line.strip():
+                continue
+            if line.startswith("@"):
+                fields = line[1:].split()
+                if len(fields) not in (2, 3):
+                    raise ValueError(f"{path.name}:{line_no}: expected '@intent length [topic]'")
+                header = {"intent": fields[0], "length": fields[1], "topic": fields[2] if len(fields) == 3 else ""}
+                continue
+            if header is None:
+                raise ValueError(f"{path.name}:{line_no}: template before any @ header")
+            rows.append({**header, "template": line.strip()})
     for path in sorted(data_dir.glob("test_templates.*.tsv")):
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():

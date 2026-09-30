@@ -44,6 +44,7 @@ NEAR_DUP = 0.85  # stricter than the 0.9 gate in checks.py, whose IDF is fitted 
 LEAK_NGRAM = 8
 SEED = 7
 WORKERS = 8
+TOPUP_ROUNDS, TOPUP_FACTOR = 3, 2.5  # extra calls for intents the filters left short, asking 2.5× the gap
 
 
 def _llm_settings() -> tuple[str, str, str | None]:
@@ -93,6 +94,22 @@ def plan_calls(loc: Locale, intents: list[str], mode: str) -> pl.DataFrame:
                 calls.append({"call": i, "intent": intent, "length": length, "n": min(batch, n - k),
                               "persona": loc.personas[i % len(loc.personas)],
                               "topic": loc.oos_rotation[k // batch % len(loc.oos_rotation)] if intent == "out_of_scope" else ""})
+    return pl.DataFrame(calls)
+
+
+def topup_calls(loc: Locale, deficit: dict[str, int], start: int, round_: int) -> pl.DataFrame:
+    """Extra calls for intents that the filters left short (short greetings collapse into near-duplicates)."""
+    calls = []
+    for intent, missing in deficit.items():
+        n = -(-int(missing * TOPUP_FACTOR) // BATCH) * BATCH
+        n_long = 0 if intent in SHORT_ONLY else round(n * LONG_SHARE)
+        for length, count in (("short", n - n_long), ("long", n_long)):
+            for k in range(0, count, BATCH):
+                i = start + len(calls)
+                calls.append({"call": i, "intent": intent, "length": length, "n": min(BATCH, count - k),
+                              "persona": f"{loc.personas[i % len(loc.personas)]}. Top-up batch {round_}: earlier batches were too alike, "
+                                         "so avoid the most common wordings for this intent and make every message clearly different",
+                              "topic": loc.oos_rotation[(k // BATCH + round_) % len(loc.oos_rotation)] if intent == "out_of_scope" else ""})
     return pl.DataFrame(calls)
 
 
@@ -236,25 +253,38 @@ def generate(loc: Locale, mode: str, out_dir: Path) -> pl.DataFrame:
     if loc.bad_source:
         rejected = pl.read_parquet(loc.raw_file, columns=["source", "ask"]).filter(pl.col("source") == loc.bad_source)["ask"].sort().to_list()
 
+    def run(batch: pl.DataFrame) -> tuple[list[dict], int]:
+        prompts = build_prompts(loc, batch, card, phrases, definitions, rejected)
+        with ThreadPoolExecutor(WORKERS) as pool:
+            records = list(pool.map(lambda p: ask(p, model, api_key, base_url), prompts))
+        rows = []
+        for c, record in zip(batch.iter_rows(named=True), records):
+            messages = parse(record["text"]).get("messages", [])
+            rows += [{**c, "template": m} for m in messages if isinstance(m, str) and m.strip()]
+        return rows, sum(r["tokens"] for r in records)
+
     calls = plan_calls(loc, list(definitions), mode)
-    prompts = build_prompts(loc, calls, card, phrases, definitions, rejected)
-    with ThreadPoolExecutor(WORKERS) as pool:
-        records = list(pool.map(lambda p: ask(p, model, api_key, base_url), prompts))
-    raw = []
-    for c, record in zip(calls.iter_rows(named=True), records):
-        messages = parse(record["text"]).get("messages", [])
-        raw += [{**c, "template": m} for m in messages if isinstance(m, str) and m.strip()]
-    raw = pl.DataFrame(raw)
-    filled, rejected_rows = fill_rows(loc, raw)
-    unique = dedup(filled)
-    no_leak = drop_leaks(loc, unique)
-    clean = drop_foreign(loc, drop_pii(loc, no_leak))
-    print(f"calls {calls.height} · tokens {sum(r['tokens'] for r in records):,} · messages {raw.height} · "
+    raw_rows, tokens = run(calls)
+    needed = PILOT_PER_INTENT // 2 if mode == "pilot" else sum(TARGET.values())
+    for round_ in range(TOPUP_ROUNDS + 1):
+        raw = pl.DataFrame(raw_rows)
+        filled, rejected_rows = fill_rows(loc, raw)
+        unique = dedup(filled)
+        no_leak = drop_leaks(loc, unique)
+        clean = drop_foreign(loc, drop_pii(loc, no_leak))
+        have = dict(clean.group_by("intent").len().iter_rows())
+        deficit = {i: needed - have.get(i, 0) for i in definitions if have.get(i, 0) < needed}
+        if not deficit or mode == "pilot" or round_ == TOPUP_ROUNDS:
+            break
+        extra = topup_calls(loc, deficit, start=int(calls["call"].max()) + 1, round_=round_ + 1)
+        print(f"top-up round {round_ + 1}: {deficit} → {extra.height} extra calls")
+        more, more_tokens = run(extra)
+        calls, raw_rows, tokens = pl.concat([calls, extra]), raw_rows + more, tokens + more_tokens
+    print(f"calls {calls.height} · tokens {tokens:,} · messages {raw.height} · "
           f"placeholder rejects {rejected_rows.height} · after dedup {unique.height} · after leaks {no_leak.height} · "
           f"after PII and foreign markers {clean.height}")
-    short = clean.group_by("intent").len().filter(pl.col("len") < (PILOT_PER_INTENT // 2 if mode == "pilot" else sum(TARGET.values())))
-    if short.height:
-        print(f"WARNING: intents below target:\n{short}")
+    if deficit:
+        print(f"WARNING: intents below target: {deficit}")
 
     dataset = split_rows(loc, clean, mode, model)
     for (split,), g in dataset.group_by("split"):
