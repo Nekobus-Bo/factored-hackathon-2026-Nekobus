@@ -55,7 +55,7 @@ def _(mo, os):
     BATCH = 20  # messages per call
     LONG_SHARE = 0.375  # for intents that can be long; overall this gives about 25% long rows
     N_PHRASES = 5  # masked real phrases shown per call
-    NEAR_DUP = 0.9  # character n-gram cosine at or above this is a near-duplicate
+    NEAR_DUP = 0.85  # near-duplicate cosine; stricter than the 0.9 gate in tools/synthdata_pt/checks.py, whose IDF is fitted on other rows
     LEAK_NGRAM = 8  # a shared run of this many words with a real complaint is a leak
     SEED = 7
     return (
@@ -360,14 +360,17 @@ def _(BR_FILLERS, PLACEHOLDERS, REPO, SEED, pl, random, raw, re, sys):
 
 @app.cell
 def _(NEAR_DUP, filled, np, pl, re):
-    # Exact and near-duplicates, compared on the placeholder text so filled values do not hide repeats
+    # Exact and near-duplicates, on both the placeholder text (filled values must not hide repeats)
+    # and the filled text (what tools/synthdata_pt/checks.py compares across splits)
     from sklearn.feature_extraction.text import TfidfVectorizer
 
-    _norm = filled["template"].map_elements(lambda t: re.sub(r"\W+", " ", t.lower()).strip(), return_dtype=pl.String)
-    _vectors = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(_norm)
+    _norm = lambda col: filled[col].map_elements(lambda t: re.sub(r"\W+", " ", t.lower()).strip(), return_dtype=pl.String)
+    _by_template = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(_norm("template"))
+    _vectors = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5)).fit_transform(_norm("text"))
     _keep, _kept_idx = [], []
     for _i in range(filled.height):
-        _dup = bool(_kept_idx) and float((_vectors[_kept_idx] @ _vectors[_i].T).max()) >= NEAR_DUP
+        _dup = bool(_kept_idx) and max(float((_by_template[_kept_idx] @ _by_template[_i].T).max()),
+                                       float((_vectors[_kept_idx] @ _vectors[_i].T).max())) >= NEAR_DUP
         _keep.append(not _dup)
         if not _dup:
             _kept_idx.append(_i)
