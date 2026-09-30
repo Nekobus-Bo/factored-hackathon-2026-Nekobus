@@ -37,7 +37,7 @@ def spec(**overrides: Any) -> BackendSpec:
 
 
 def test_the_freeze_kinds_are_registered() -> None:
-    assert {"tfidf_lr", "gliner", "llm_sidecar"} <= set(kinds())
+    assert {"tfidf_lr", "gliner", "hf_seqcls", "llm_sidecar"} <= set(kinds())
 
 
 def test_registering_twice_or_empty_is_refused() -> None:
@@ -49,9 +49,9 @@ def test_registering_twice_or_empty_is_refused() -> None:
 
 def test_an_unknown_kind_lists_what_is_registered() -> None:
     with pytest.raises(
-        BackendBuildError, match="unknown backend kind 'hf_seqcls'"
+        BackendBuildError, match="unknown backend kind 'embedding_lr'"
     ) as info:
-        build(spec(kind="hf_seqcls"))
+        build(spec(kind="embedding_lr"))
     assert "tfidf_lr" in str(info.value)
 
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,11 +85,27 @@ def _gliner() -> Built:
     return Built(GLiNERAdapter(model_id=model_dir, device="cpu"), INTENTS)
 
 
+_HF_DIR: list[Path] = []
+
+
+def _hf_seqcls() -> Built:
+    """A tiny random DistilBERT, pinned and built through the registry."""
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+    from .tiny_hf import backend_spec_dict, build_pinned_dir
+
+    if not _HF_DIR:
+        _HF_DIR.append(build_pinned_dir(Path(tempfile.mkdtemp()) / "tiny-intent"))
+    spec = BackendSpec.model_validate(backend_spec_dict(_HF_DIR[0]))
+    return Built(registry.build(spec), INTENTS)
+
+
 # One entry per registered kind. A new adapter adds its line here.
 BUILDERS: dict[str, Callable[[], Built]] = {
     "tfidf_lr": _tfidf_intents,
     "tfidf_lr/gate": _tfidf_gate,
     "gliner": _gliner,
+    "hf_seqcls": _hf_seqcls,
 }
 # Registered kinds that are promised but not implemented: they must say so.
 PENDING_KINDS = {"llm_sidecar"}
