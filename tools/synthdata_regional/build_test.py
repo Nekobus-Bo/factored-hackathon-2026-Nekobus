@@ -1,8 +1,10 @@
-"""Build the provisional pt-BR test split from hand-written templates.
+"""Build a locale's provisional test split from hand-written templates.
 
-The templates (`test_templates.*.tsv`: intent, length, topic, template) were written by the
+The templates (`test_templates.*.tsv`: intent, length, topic, template) are written by the
 coding agent from the half-B style cards, a different model and process from the LLM-generated
 train/validation splits. They are provisional synthetic data, not human (docs/labeling-rubric.md §1).
+
+Usage: python -m tools.synthdata_regional.build_test --locale es-MX
 """
 
 import argparse
@@ -10,9 +12,9 @@ import json
 import random
 from pathlib import Path
 
-from tools.synthdata_pt.fill import fill
+from tools.synthdata_regional.fill import fill
+from tools.synthdata_regional.locales import LOCALES, Locale, get_locale
 
-DEFAULT_DIR = Path("data/staging/decision_pt")
 SEED = 1009  # differs from the generation seed so test and train never share filled values by construction
 GENERATOR = "claude-opus-5-5"
 
@@ -31,7 +33,7 @@ def load_templates(data_dir: Path) -> list[dict[str, str]]:
     return rows
 
 
-def build(data_dir: Path) -> Path:
+def build(loc: Locale, data_dir: Path) -> Path:
     templates = load_templates(data_dir)
     if not templates:
         raise SystemExit(f"No test_templates.*.tsv found in {data_dir}")
@@ -39,13 +41,14 @@ def build(data_dir: Path) -> Path:
     records = []
     for row in templates:
         rng = random.Random(f"{SEED}-{row['intent']}-{row['template']}")
-        text, slots = fill(row["template"], row["intent"], rng)
+        text, slots = fill(loc, row["template"], row["intent"], rng)
         index = counters.get(row["intent"], 0)
         counters[row["intent"]] = index + 1
         records.append({
-            "id": f"synthpt_test_{row['intent']}_{index:03d}",
+            "id": f"{loc.id_prefix}_test_{row['intent']}_{index:03d}",
             "text": text,
-            "lang": "pt",
+            "lang": loc.lang,
+            **({"locale": loc.code} if loc.record_locale else {}),
             "intent": row["intent"],
             "slots": slots,
             "split": "test",
@@ -55,16 +58,18 @@ def build(data_dir: Path) -> Path:
             "length": row["length"],
             "topic": row["topic"],
         })
-    out = data_dir / "decision.pt.test.provisional.jsonl"
+    out = data_dir / loc.splits["test"]
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records), encoding="utf-8")
     return out
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DIR)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--locale", required=True, choices=list(LOCALES))
+    parser.add_argument("--data-dir", type=Path, help="defaults to the locale's staging directory")
     args = parser.parse_args()
-    out = build(args.data_dir)
+    loc = get_locale(args.locale)
+    out = build(loc, args.data_dir or loc.out_dir)
     print(f"Wrote {sum(1 for _ in out.open(encoding='utf-8'))} rows to {out}")
 
 

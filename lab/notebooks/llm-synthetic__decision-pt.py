@@ -55,7 +55,7 @@ def _(mo, os):
     BATCH = 20  # messages per call
     LONG_SHARE = 0.375  # for intents that can be long; overall this gives about 25% long rows
     N_PHRASES = 5  # masked real phrases shown per call
-    NEAR_DUP = 0.85  # near-duplicate cosine; stricter than the 0.9 gate in tools/synthdata_pt/checks.py, whose IDF is fitted on other rows
+    NEAR_DUP = 0.85  # near-duplicate cosine; stricter than the 0.9 gate in tools/synthdata_regional/checks.py, whose IDF is fitted on other rows
     LEAK_NGRAM = 8  # a shared run of this many words with a real complaint is a leak
     SEED = 7
     return (
@@ -361,7 +361,7 @@ def _(BR_FILLERS, PLACEHOLDERS, REPO, SEED, pl, random, raw, re, sys):
 @app.cell
 def _(NEAR_DUP, filled, np, pl, re):
     # Exact and near-duplicates, on both the placeholder text (filled values must not hide repeats)
-    # and the filled text (what tools/synthdata_pt/checks.py compares across splits)
+    # and the filled text (what tools/synthdata_regional/checks.py compares across splits)
     from sklearn.feature_extraction.text import TfidfVectorizer
 
     _norm = lambda col: filled[col].map_elements(lambda t: re.sub(r"\W+", " ", t.lower()).strip(), return_dtype=pl.String)

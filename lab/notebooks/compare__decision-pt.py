@@ -99,7 +99,7 @@ def _(SCHEMA_PATH, yaml):
 
 @app.cell
 def _(COMPLAINTS_PATH, LABELS_PATH, PT_DIR, mo, pl):
-    mo.stop(not (PT_DIR / "decision.pt.test.provisional.jsonl").exists(), mo.md("**Build the pt dataset first** (`llm-synthetic__decision-pt.py`, `tools/synthdata_pt`)."))
+    mo.stop(not (PT_DIR / "decision.pt.test.provisional.jsonl").exists(), mo.md("**Build the pt dataset first** (`llm-synthetic__decision-pt.py`, `tools/synthdata_regional`)."))
     eval_sets = {
         "new pt test": pl.read_ndjson(PT_DIR / "decision.pt.test.provisional.jsonl").select("text", "intent"),
         "real BR complaints": pl.read_parquet(COMPLAINTS_PATH).with_row_index("id").join(
