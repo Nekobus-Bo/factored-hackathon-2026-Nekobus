@@ -42,7 +42,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional generate-labels migrate \
 	profile-factored ingest design-tokens design-tokens-check web-check web-client web-backoffice
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -132,6 +132,22 @@ calibration-verify: ## Static check of the calibration artifact: schema, pins, d
 
 synth-data: ## Generate reproducible synthetic train and validation datasets
 	uv run --with pyyaml python -m tools.synthdata.generate
+
+SYNTH_REGIONAL = uv run --with polars --with pyyaml --with scikit-learn --with litellm python -m tools.synthdata_regional
+
+synth-data-regional: ## Mine real text, generate train/validation with an LLM, then check (LOCALE=pt-BR|es-MX|es-AR; LLM_API_KEY unless cached)
+	@test -n "$(LOCALE)" || { echo "synth-data-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+	$(SYNTH_REGIONAL).mine --locale $(LOCALE) --if-missing
+	$(SYNTH_REGIONAL).generate --locale $(LOCALE) --mode full
+	$(MAKE) check-data-regional LOCALE=$(LOCALE)
+
+build-test-regional: ## Fill the hand-written test templates into the provisional test split (LOCALE=pt-BR|es-MX|es-AR)
+	@test -n "$(LOCALE)" || { echo "build-test-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+	$(SYNTH_REGIONAL).build_test --locale $(LOCALE)
+
+check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR)
+	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+	$(SYNTH_REGIONAL).checks --locale $(LOCALE)
 
 profile-factored: ## Profile the Factored dataset and print aggregate statistics
 	uv run --package profile-factored python -m profile_factored.cli $(if $(DATA_DIR),--data-dir $(DATA_DIR)) $(if $(OUT),--markdown-out $(OUT))

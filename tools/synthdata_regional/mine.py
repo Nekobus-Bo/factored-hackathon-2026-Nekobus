@@ -162,9 +162,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--locale", required=True, choices=list(LOCALES))
     parser.add_argument("--out-dir", type=Path, help="defaults to the locale's staging directory")
+    parser.add_argument("--if-missing", action="store_true",
+                        help="keep existing style cards: re-mining can reorder tied terms, which changes the prompts and misses the LLM cache")
     args = parser.parse_args()
     loc = get_locale(args.locale)
     out_dir = args.out_dir or loc.out_dir
+    if args.if_missing and (out_dir / "style_cards.A.yaml").exists():
+        print(f"Style cards already in {out_dir}; not re-mining (drop --if-missing to force).")
+        return
     bank = mine(loc, out_dir)
     counts = bank.group_by("intent", "half").len().pivot("half", index="intent", values="len").fill_null(0).sort("A", descending=True)
     with pl.Config(tbl_rows=30):

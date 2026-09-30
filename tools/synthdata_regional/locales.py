@@ -362,7 +362,7 @@ _ES_SHARED = dict(
     prompt=_ES_PROMPT,
     oos_rotation=["oos_app", "general", "oos_transfer", "oos_credit", "general", "oos_account", "oos_cash", "general", "oos_payments", "oos_rewards"],
     pii_rx=r"[\w.+-]+@[\w-]+\.\w+|\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}|\d{6,}|\b\d{2}\.\d{3}\.\d{3}\b|\b\d{2}-\d{8}-\d\b"
-           r"|\b[A-Z]{4}\d{6}[A-Z0-9]{3,8}\b|\+\d{2}[\s-]?\d|\b\d{2,4}[\s-]\d{4}[\s-]?\d{4}\b",
+           r"|\b[A-Z]{4}\d{6}[A-Z0-9]{3,8}\b|\+\d{2}[\s-]?\d|\b\d{2,4}[\s-]\d{3,4}[\s-]?\d{4}\b",
     leak_all_sources=True,
     absolute_date_context=r"(?i)\b(el|del|al|d[ií]a|fecha)\s*$",
     long_rules=[  # the rejected rows all sat at 20-40 words; bands keep long messages spread out

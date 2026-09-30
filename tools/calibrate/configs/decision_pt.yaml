@@ -1,0 +1,17 @@
+# Zero-shot decision calibration on the pt-BR dataset grounded in Reclame Aqui complaints
+# (tools/synthdata_regional). The splits are local only (data/staging is not versioned):
+# build them with `make synth-data-regional LOCALE=...` and `make build-test-regional LOCALE=...`.
+# Train/validation are LLM-generated and the test split is provisional synthetic (not human).
+task: decision
+mode: zeroshot
+data_paths:
+  - data/staging/decision_pt/decision.pt.train.jsonl
+  - data/staging/decision_pt/decision.pt.validation.jsonl
+  - data/staging/decision_pt/decision.pt.test.provisional.jsonl
+p_min: 0.9
+languages:
+  - pt
+candidates:
+  - name: tfidf_lr_baseline
+    type: tfidf_lr
+    model_id: tfidf_lr
