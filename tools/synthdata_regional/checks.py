@@ -105,7 +105,7 @@ def check_duplicates(df: pl.DataFrame) -> tuple[list[str], dict]:
     splits = df["file_split"].to_list()
     errors, report = [], {}
     seen: dict[str, str] = {}
-    for text, split in zip(norm, splits):
+    for text, split in zip(norm, splits, strict=True):
         if text in seen and seen[text] != split:
             errors.append(f"exact duplicate across {seen[text]} and {split}: {text!r}")
         seen.setdefault(text, split)

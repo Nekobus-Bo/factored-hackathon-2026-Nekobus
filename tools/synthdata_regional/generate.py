@@ -27,7 +27,15 @@ import yaml
 
 from tools.synthdata_regional.checks import check_pii, source_texts
 from tools.synthdata_regional.fill import fill, placeholder_problem
-from tools.synthdata_regional.locales import LENGTH_RULES, LOCALES, PLACEHOLDERS, REPO, SHORT_ONLY, Locale, get_locale
+from tools.synthdata_regional.locales import (
+    LENGTH_RULES,
+    LOCALES,
+    PLACEHOLDERS,
+    REPO,
+    SHORT_ONLY,
+    Locale,
+    get_locale,
+)
 
 SCHEMA_PATH = REPO / "data" / "eval" / "synthetic" / "schema.yaml"
 CACHE_DIR = REPO / "lab" / ".cache" / "llm"  # shared with the lab notebooks, so their calls are reused
@@ -258,7 +266,7 @@ def generate(loc: Locale, mode: str, out_dir: Path) -> pl.DataFrame:
         with ThreadPoolExecutor(WORKERS) as pool:
             records = list(pool.map(lambda p: ask(p, model, api_key, base_url), prompts))
         rows = []
-        for c, record in zip(batch.iter_rows(named=True), records):
+        for c, record in zip(batch.iter_rows(named=True), records, strict=True):
             messages = parse(record["text"]).get("messages", [])
             rows += [{**c, "template": m} for m in messages if isinstance(m, str) and m.strip()]
         return rows, sum(r["tokens"] for r in records)

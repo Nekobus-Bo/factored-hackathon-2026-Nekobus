@@ -10,7 +10,14 @@ from tools.synthdata_regional import register
 from tools.synthdata_regional.build_test import load_templates
 from tools.synthdata_regional.checks import check_pii, check_purity
 from tools.synthdata_regional.fill import fill, placeholder_problem
-from tools.synthdata_regional.locales import ES_AR, ES_MX, LOCALES, PLACEHOLDERS, PT_BR, document_profiles
+from tools.synthdata_regional.locales import (
+    ES_AR,
+    ES_MX,
+    LOCALES,
+    PLACEHOLDERS,
+    PT_BR,
+    document_profiles,
+)
 
 
 @pytest.mark.parametrize("loc", list(LOCALES.values()), ids=list(LOCALES))
