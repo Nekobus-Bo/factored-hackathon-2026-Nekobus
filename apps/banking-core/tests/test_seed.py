@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import date
 from pathlib import Path
@@ -6,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
 import pytest
+from banking_core.identity.tools.otp_send import _mask_email
 from banking_core.models.enums import DocumentType
 from banking_core.seed.cli import check_raw_directory, main
 from banking_core.seed.curated import load_curated_data
@@ -19,6 +21,7 @@ from banking_core.seed.fixtures import (
     NO_OTP_DOCUMENT_EN,
     NO_OTP_DOCUMENT_ES,
     NO_OTP_DOCUMENT_PT,
+    create_scenario_fixtures,
 )
 from banking_core.seed.generator import generate_synthetic_dataset
 from banking_core.seed.quality import generate_quality_report
@@ -27,6 +30,7 @@ from banking_core.seed.staging import (
     StagingValidationError,
     load_and_validate_staging,
 )
+from contracts.envelope import MASKED_EMAIL_PATTERN
 from sqlalchemy.orm import Session
 
 
@@ -145,6 +149,45 @@ def test_staging_validation_and_quality_report() -> None:
         assert "core_bank.transaction" in report_text
         assert "Intentionally Not Cleaned" in report_text
         assert report_path.exists()
+
+
+def test_demo_customers_get_the_code_by_email_and_others_keep_their_channel() -> None:
+    """The demo simulates "you got an email with the code" (ADR-0007 amendment)."""
+    demo = {
+        DEMO_CUSTOMER_DOCUMENT_ES,
+        DEMO_CUSTOMER_DOCUMENT_PT,
+        DEMO_CUSTOMER_DOCUMENT_EN,
+    }
+    blocked = {
+        BLOCKED_CARD_DOCUMENT_ES,
+        BLOCKED_CARD_DOCUMENT_PT,
+        BLOCKED_CARD_DOCUMENT_EN,
+    }
+    no_otp = {NO_OTP_DOCUMENT_ES, NO_OTP_DOCUMENT_PT, NO_OTP_DOCUMENT_EN}
+    expected = (
+        {doc: "email" for doc in demo}
+        | {doc: "sms" for doc in blocked}
+        | {doc: "NONE" for doc in no_otp}
+    )
+
+    fixtures = create_scenario_fixtures().customers
+    assert {c["document_number"]: c["registered_otp_channel"] for c in fixtures} == (
+        expected
+    )
+    # An email channel needs an address that masks into a valid destination.
+    for customer in fixtures:
+        if customer["document_number"] in demo:
+            masked = _mask_email(str(customer["email"]))
+            assert re.fullmatch(MASKED_EMAIL_PATTERN, masked), masked
+            assert masked.startswith(str(customer["email"])[0] + "***@example.")
+
+    # Staging accepts the channel: the synthetic dataset carries these fixtures.
+    with TemporaryDirectory() as tmp_dir:
+        raw_path = Path(tmp_dir) / "synthetic"
+        generate_synthetic_dataset(raw_path, seed=42)
+        staged = load_and_validate_staging(raw_path)
+    channels = {c.document_number: c.registered_otp_channel for c in staged.customers}
+    assert {doc: channels[doc] for doc in expected} == expected
 
 
 def test_staging_fails_loudly_on_violations() -> None:

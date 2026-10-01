@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from contracts.tools import TOOL_CATALOG
+
 from evalrunner.models import Scenario
 from evalrunner.systems.evidence import (
     SCENARIO_CUSTOMERS,
@@ -55,14 +57,44 @@ def policy_differences(current: PolicySnapshot, wanted: PolicySnapshot) -> list[
             f"policy mode is '{current.amount_mode}', scenario needs "
             f"'{wanted.amount_mode}'"
         )
-    differing = sorted(
+    differing = {
         cur
         for cur, amount in wanted.thresholds_minor.items()
         if current.thresholds_minor.get(cur) != amount
-    )
+    }
+    if wanted.thresholds_minor:
+        # The admin API replaces the whole map, so a currency the scenario leaves
+        # out (an unmapped currency, on purpose) must be gone from the policy.
+        differing |= set(current.thresholds_minor) - set(wanted.thresholds_minor)
     if differing:
-        diffs.append(f"policy thresholds differ for {differing}")
+        diffs.append(f"policy thresholds differ for {sorted(differing)}")
     return diffs
+
+
+def scenario_tool_policy(scenario: Scenario) -> dict[str, list[str]]:
+    """States the scenario wants for the tools it names; the rest stay on the seed.
+
+    An enabled tool gets its catalog states, which never exceed the code floor;
+    a disabled one gets none.
+    """
+    setup = scenario.initial_state.tool_policy
+    if setup is None:
+        return {}
+    wanted = {name: [] for name in setup.disabled}
+    for name in setup.enabled:
+        wanted[name] = sorted(s.value for s in TOOL_CATALOG[name].permitted_states)
+    return wanted
+
+
+def tool_policy_differences(
+    current: dict[str, list[str]], wanted: dict[str, list[str]]
+) -> list[str]:
+    return [
+        f"tool policy for '{name}' is {sorted(current.get(name, []))}, "
+        f"scenario needs {sorted(states)}"
+        for name, states in sorted(wanted.items())
+        if sorted(current.get(name, [])) != sorted(states)
+    ]
 
 
 def assess(
@@ -71,11 +103,15 @@ def assess(
     replay_dir: Path,
     admin_available: bool,
     faults: FaultInjector,
+    tool_policy_verified: bool = False,
 ) -> Assessment:
     """Static checks always; live checks when an evidence source is given.
 
     With `admin_available`, differences the admin API can fix (policy, card
     fixtures) are notes, not blockers: the run applies them, then re-verifies.
+    The tool policy is not in the evidence source: it is set and read back
+    through the admin API, so `tool_policy_verified` tells the re-verification
+    that the caller already did.
     """
     result = Assessment(scenario_id=scenario.id)
     state = scenario.initial_state
@@ -87,6 +123,9 @@ def assess(
 
     if state.customer not in SCENARIO_CUSTOMERS:
         result.blockers.append(f"customer '{state.customer}' has no seed fixture")
+
+    if state.tool_policy is not None and not (admin_available or tool_policy_verified):
+        result.blockers.append(f"tool policy needs setup ({ADMIN_MISSING})")
 
     if evidence is None:
         if state.policy.mode != SEED_POLICY_MODE and not admin_available:

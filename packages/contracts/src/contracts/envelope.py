@@ -38,6 +38,9 @@ class ReasonCode(str, Enum):
     SESSION_BUSY = "SESSION_BUSY"
     INVALID_ARGUMENTS = "INVALID_ARGUMENTS"
     CODE_FLOOR_VIOLATION = "CODE_FLOOR_VIOLATION"
+    # Emitted only by the orchestrator, never by banking-core: a decision-point gate
+    # withheld a write until the customer confirms it (ADR-0012).
+    CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 

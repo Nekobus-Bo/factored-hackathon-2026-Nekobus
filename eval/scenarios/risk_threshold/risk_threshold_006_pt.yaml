@@ -1,7 +1,7 @@
 id: "risk_threshold_006_pt"
 lang: "pt"
 group: "risk_threshold"
-description: "Unrecognized international charge in unknown currency (£450 GBP) -> unmapped currency conservatively treated as above threshold, card blocked, priority handoff required."
+description: "Customer understates the charge (R$ 20) but the disputed charge in the database (R$ 480) is above a lowered threshold (R$ 300), mode: block -> the stated amount is ignored, card blocked, priority handoff required."
 initial_state:
   customer: "demo_pt"
   card_status: "ACTIVE"
@@ -10,15 +10,15 @@ initial_state:
     amount_threshold_minor:
       USD: 50000
       COP: 200000000
-      BRL: 250000
+      BRL: 30000
       EUR: 50000
-    mode: "flag"
+    mode: "block"
   fault: "none"
 turns:
-  - "Identifiquei uma despesa estranha de £450 libras em Londres que não realizei."
+  - "Vi uma compra estranha de R$ 20 no meu cartão, em uma loja de eletrônicos."
   - "Meu CPF é 123.456.789-00."
   - "{{otp}}"
-  - "Bloqueiem o cartão imediatamente e encaminhem para atendimento humano prioritário."
+  - "É a compra da Global Electronics Megastore. Bloqueiem o cartão imediatamente."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +26,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"

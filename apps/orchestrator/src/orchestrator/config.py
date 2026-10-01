@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     encoder_url: str = Field(default="http://encoder:8090", alias="ENCODER_URL")
     encoder_timeout_seconds: float = Field(default=2.0, alias="ENCODER_TIMEOUT_SECONDS")
 
+    # Decision points (ADR-0012): the effects file binds each decision point to an
+    # engine effect; blank = the file shipped with the service. The mode override
+    # is the kill switch: 'confirm_gate=shadow,block_reason=off' needs no redeploy.
+    decision_effects_file: str | None = Field(
+        default=None, alias="DECISION_EFFECTS_FILE"
+    )
+    decision_points_modes: str = Field(default="", alias="DECISION_POINTS_MODES")
+
     # Redis Edge (Edge trust zone session store & distributed locking)
     redis_edge_url: SecretStr | None = Field(
         default=None,
@@ -52,6 +60,26 @@ class Settings(BaseSettings):
         default="orch:conv:",
         validation_alias=AliasChoices("REDIS_EDGE_KEY_PREFIX"),
     )
+    # Rate limit on POST /v1/conversations, per client address (see
+    # session/rate_limit.py). Counters live on redis-edge under this prefix, which
+    # the edge ACL (~orch:*) must cover.
+    redis_edge_rate_limit_key_prefix: str = Field(
+        default="orch:ratelimit:",
+        validation_alias=AliasChoices("REDIS_EDGE_RATE_LIMIT_KEY_PREFIX"),
+    )
+    rate_limit_conversations_per_ip_hour: int = Field(
+        default=30, ge=1, alias="RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR"
+    )
+    # Reverse index from a banking-core session id to the conversation id, for the
+    # agent API (see session/store.py). Same redis-edge, so the edge ACL (~orch:*)
+    # must cover the prefix.
+    redis_edge_session_index_key_prefix: str = Field(
+        default="orch:session:",
+        validation_alias=AliasChoices("REDIS_EDGE_SESSION_INDEX_KEY_PREFIX"),
+    )
+    # How many reverse proxies stand in front of the orchestrator. 0 (default)
+    # ignores X-Forwarded-For entirely; N strips N entries from its right.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=8, alias="TRUSTED_PROXY_HOPS")
     # No default on purpose: startup fails without it (see require_session_secret).
     session_secret: str | None = Field(
         default=None,
@@ -71,6 +99,18 @@ class Settings(BaseSettings):
 
     eval_expose_turn: bool = Field(default=False, alias="EVAL_EXPOSE_TURN")
 
+    # Agent API (/v1/agent): the back office reads a masked transcript and takes a
+    # conversation over from the assistant (docs/adr/0013-front-ends-bff-takeover.md).
+    # Off by default. When on it needs a bearer token; startup refuses the public
+    # development token, and an empty one, under APP_ENV=production (agent/auth.py).
+    agent_api_enabled: bool = Field(default=False, alias="AGENT_API_ENABLED")
+    agent_api_token: SecretStr = Field(default=SecretStr(""), alias="AGENT_API_TOKEN")
+    # How long a takeover or an agent message waits for a customer turn in flight
+    # (the turn lock) before answering 503. Only the agent API waits.
+    agent_lock_wait_seconds: float = Field(
+        default=10.0, ge=0, le=120, alias="AGENT_LOCK_WAIT_SECONDS"
+    )
+
     default_locale: Literal["es", "pt", "en"] = Field(
         default="es", alias="DEFAULT_LOCALE"
     )
@@ -82,6 +122,9 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
     llm_timeout_seconds: float = Field(default=30.0, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=2, alias="LLM_MAX_RETRIES")
+    # Reasoning models reject temperature 0 unless reasoning is off ("none").
+    # Blank = the parameter is not sent (non-reasoning models).
+    llm_reasoning_effort: str | None = Field(default=None, alias="LLM_REASONING_EFFORT")
     llm_replay_on_miss: Literal["fail", "passthrough"] = Field(
         default="fail", alias="LLM_REPLAY_ON_MISS"
     )
@@ -101,6 +144,11 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("1", "true", "yes", "on")
         return bool(v)
+
+    @property
+    def effective_agent_api_token(self) -> str:
+        """The agent token as compared and validated: surrounding blanks dropped."""
+        return self.agent_api_token.get_secret_value().strip()
 
     @property
     def turn_lock_seconds(self) -> float:
@@ -129,6 +177,12 @@ class Settings(BaseSettings):
         if not self.llm_base_url or self.llm_base_url.strip() in ("", "TODO"):
             return None
         return self.llm_base_url.strip()
+
+    @property
+    def effective_reasoning_effort(self) -> str | None:
+        if not self.llm_reasoning_effort or not self.llm_reasoning_effort.strip():
+            return None
+        return self.llm_reasoning_effort.strip().lower()
 
     @property
     def effective_api_key(self) -> str | None:

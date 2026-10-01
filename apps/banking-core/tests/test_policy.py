@@ -17,6 +17,7 @@ Verifies lead's exact policy-mode semantics:
 """
 
 import os
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -24,7 +25,15 @@ from banking_core.control.authorize import Authorizer
 from banking_core.control.config import InMemoryControlConfigRepository
 from banking_core.control.policy import Decision, PolicyConfig, PolicyEngine
 from banking_core.control.session import SessionState
-from contracts.envelope import ReasonCode, ToolCall, VerificationState
+from contracts.envelope import (
+    ReasonCode,
+    Receipt,
+    ResourceState,
+    ToolCall,
+    VerificationState,
+)
+from contracts.tools.otp_send import OtpChannel, OtpSendOutput
+from pydantic import ValidationError
 
 
 def test_decision_model() -> None:
@@ -79,6 +88,53 @@ def test_policy_config_validation() -> None:
         PolicyConfig(amount_mode="invalid_mode")  # type: ignore[arg-type]
 
 
+def _contract_accepts_otp_ttl(ttl: int) -> bool:
+    try:
+        OtpSendOutput(
+            sent=True,
+            challenge_id="chal_abcdefghijklmnop",
+            channel=OtpChannel.SMS,
+            destination_masked="+57 *** *** 4567",
+            expires_in_seconds=ttl,
+            receipt=Receipt(
+                action="otp.send",
+                target_masked="+57 *** *** 4567",
+                state_before=ResourceState.IDENTIFIED,
+                state_after=ResourceState.OTP_PENDING,
+                verified_at=datetime.now(UTC),
+                audit_id="aud_00000001",
+            ),
+        )
+    except ValidationError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("ttl", [-1, 0, 10, 29, 30, 31, 300, 899, 900, 901, 3600])
+def test_otp_ttl_bounds_are_exactly_the_otp_send_contract_bounds(ttl: int) -> None:
+    """A TTL the policy accepts is one otp.send can put in its own output."""
+    try:
+        PolicyConfig(otp_ttl_seconds=ttl)
+        config_accepts = True
+    except ValidationError:
+        config_accepts = False
+
+    assert config_accepts == _contract_accepts_otp_ttl(ttl)
+
+
+@pytest.mark.parametrize("ttl", [-1, 0, 10, 29, 901, 3600])
+def test_otp_ttl_outside_the_contract_bounds_is_rejected(ttl: int) -> None:
+    with pytest.raises(ValidationError, match="otp_ttl_seconds"):
+        PolicyConfig(otp_ttl_seconds=ttl)
+
+
+@pytest.mark.parametrize("ttl", ["10", "901"])
+def test_seed_env_cannot_configure_an_otp_ttl_the_contract_refuses(ttl: str) -> None:
+    with patch.dict(os.environ, {"OTP_TTL_SECONDS": ttl}, clear=False):
+        with pytest.raises(ValidationError, match="otp_ttl_seconds"):
+            PolicyConfig.from_env()
+
+
 def test_policy_config_from_env() -> None:
     env_vars = {
         "POLICY_SEED_THRESHOLDS_MINOR": '{"USD": 7500, "COP": 30000000}',
@@ -123,6 +179,73 @@ def test_policy_config_seed_defaults() -> None:
         assert cfg.thresholds_minor["COP"] == 200000000
         assert cfg.currency == "COP"
         assert cfg.amount_threshold_minor == 200000000
+
+
+ATTEMPT_LIMIT_ENV = {
+    "RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "4",
+    "RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS": "7200",
+    "RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS": "900",
+    "RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES": "12",
+    "RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS": "1800",
+}
+
+
+def test_attempt_limit_seed_defaults() -> None:
+    with patch.dict(os.environ, {}, clear=True):
+        cfg = PolicyConfig.from_env()
+    assert cfg.customer_otp_max_failures == 5
+    assert cfg.customer_otp_window_seconds == 3600
+    assert cfg.customer_otp_lock_seconds == 1800
+    assert cfg.document_match_max_failures == 10
+    assert cfg.document_match_window_seconds == 3600
+    # The model defaults and the env seed defaults are the same numbers.
+    assert cfg == PolicyConfig()
+
+
+def test_attempt_limits_are_seeded_from_env() -> None:
+    with patch.dict(os.environ, ATTEMPT_LIMIT_ENV, clear=False):
+        cfg = PolicyConfig.from_env()
+    assert cfg.customer_otp_max_failures == 4
+    assert cfg.customer_otp_window_seconds == 7200
+    assert cfg.customer_otp_lock_seconds == 900
+    assert cfg.document_match_max_failures == 12
+    assert cfg.document_match_window_seconds == 1800
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("customer_otp_max_failures", 0),
+        ("document_match_max_failures", 0),
+        ("customer_otp_window_seconds", 59),
+        ("customer_otp_window_seconds", 7 * 24 * 3600 + 1),
+        ("customer_otp_lock_seconds", 59),
+        ("customer_otp_lock_seconds", 7 * 24 * 3600 + 1),
+        ("document_match_window_seconds", 59),
+        ("document_match_window_seconds", 7 * 24 * 3600 + 1),
+    ],
+)
+def test_attempt_limits_outside_their_bounds_are_rejected(
+    field: str, value: int
+) -> None:
+    with pytest.raises(ValidationError, match=field):
+        PolicyConfig(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "env_key, value",
+    [
+        ("RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES", "0"),
+        ("RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS", "10"),
+        ("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "10"),
+    ],
+)
+def test_seed_env_cannot_configure_a_limit_out_of_bounds(
+    env_key: str, value: str
+) -> None:
+    with patch.dict(os.environ, {env_key: value}, clear=False):
+        with pytest.raises(ValidationError):
+            PolicyConfig.from_env()
 
 
 def test_policy_config_from_env_malformed_json_raises_loudly() -> None:
@@ -265,19 +388,31 @@ def test_policy_card_block_missing_amount_semantics() -> None:
     ]
     assert dec_dispute_no_amount.requires_handoff is True
 
-    # 3. Non-dispute without amount but explicit currency: treated as above threshold
+    # 3. A currency alone is not an amount: with no charge to compare, a
+    #    non-dispute reason carries no flags (the old "explicit currency without
+    #    amount" branch is gone; the trusted context always has both).
     dec_lost_with_curr = engine.evaluate(
         tool="card.block",
         session=session,
         context={"reason": "LOST", "currency": "USD"},
     )
     assert dec_lost_with_curr.allowed is True
-    assert dec_lost_with_curr.reason_code == ReasonCode.POLICY_FLAGGED
-    assert dec_lost_with_curr.flags == [
-        "POLICY_FLAGGED",
-        "HANDOFF_REQUIRED",
-        "PRIORITY",
-    ]
+    assert dec_lost_with_curr.reason_code is None
+    assert dec_lost_with_curr.flags == []
+
+    # 4. The reason also counts when it arrives in the tool arguments.
+    dec_dispute_in_args = engine.evaluate(
+        tool="card.block",
+        session=session,
+        args={"card_ref": "card_demo_es", "reason": "SUSPICIOUS_ACTIVITY"},
+    )
+    assert dec_dispute_in_args.requires_handoff is True
+    dec_lost_in_args = engine.evaluate(
+        tool="card.block",
+        session=session,
+        args={"card_ref": "card_demo_es", "reason": "STOLEN"},
+    )
+    assert dec_lost_in_args.flags == []
 
 
 def test_policy_card_block_amount_le_threshold() -> None:
@@ -430,15 +565,24 @@ def test_policy_card_block_missing_amount() -> None:
     assert dec_none.reason_code == ReasonCode.POLICY_FLAGGED
     assert dec_none.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
-    # 2. Key entirely missing
+    # 2. Key entirely missing: no lookup ran, so there is no amount context.
+    #    Without a dispute reason there is no charge to compare.
     dec_empty = engine.evaluate(
         tool="card.block",
         session=session,
         context={"currency": "USD"},
     )
     assert dec_empty.allowed is True
-    assert dec_empty.reason_code == ReasonCode.POLICY_FLAGGED
-    assert dec_empty.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+    assert dec_empty.reason_code is None
+    assert dec_empty.flags == []
+
+    # 3. Currency missing from an amount context: unknown currency, fail safe
+    dec_no_currency = engine.evaluate(
+        tool="card.block",
+        session=session,
+        context={"disputed_amount_minor": 100},
+    )
+    assert dec_no_currency.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
 
 def test_policy_card_block_negative_amount() -> None:
@@ -460,6 +604,76 @@ def test_policy_card_block_negative_amount() -> None:
     assert dec_neg.allowed is True
     assert dec_neg.reason_code == ReasonCode.POLICY_FLAGGED
     assert dec_neg.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+
+
+@pytest.mark.parametrize(
+    "amount_args",
+    [
+        {"amount_minor": 1},
+        {"disputed_amount_minor": 1},
+        {"disputed_amount": 0.01},
+        {"amount": 0.01},
+        {"currency": "USD"},
+        {"amount_minor": 1, "currency": "USD"},
+    ],
+)
+def test_policy_card_block_ignores_an_amount_in_the_tool_arguments(
+    amount_args: dict[str, object],
+) -> None:
+    """An amount the model puts in the arguments neither lowers nor raises anything.
+
+    The amount is a database fact banking-core puts in the trusted context
+    (ADR-0003 amendment 2026-09-29): model output derived from customer text
+    is not evidence.
+    """
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000}, currency="USD", amount_mode="block"
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+    args = {"card_ref": "card_demo_es", "reason": "LOST", **amount_args}
+
+    # No trusted context: nothing to compare for LOST, whatever the args say.
+    assert engine.evaluate("card.block", session, args=args).flags == []
+
+    # A dispute reason with no trusted amount fails safe, a tiny amount in the
+    # arguments does not talk it down.
+    dispute = {**args, "reason": "UNRECOGNIZED_CHARGE"}
+    assert engine.evaluate("card.block", session, args=dispute).requires_handoff
+
+    # The trusted context wins whatever the arguments claim.
+    above = engine.evaluate(
+        "card.block",
+        session,
+        args=args,
+        context={"disputed_amount_minor": 60000, "currency": "USD"},
+    )
+    assert above.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
+    below = engine.evaluate(
+        "card.block",
+        session,
+        args={**dispute, "amount_minor": 10**9, "currency": "COP"},
+        context={"disputed_amount_minor": 40000, "currency": "USD"},
+    )
+    assert below.flags == []
+
+
+@pytest.mark.parametrize("amount", [60000.0, "60000", True, [60000], {"v": 1}])
+def test_policy_card_block_context_amount_must_be_an_integer(amount: object) -> None:
+    """An amount that is not an int (including a bool) is not trusted: fail safe."""
+    cfg = PolicyConfig(
+        thresholds_minor={"USD": 50000}, currency="USD", amount_mode="flag"
+    )
+    engine = PolicyEngine(config=cfg)
+    session = SessionState(session_id="s1", state=VerificationState.VERIFIED)
+
+    decision = engine.evaluate(
+        "card.block",
+        session,
+        context={"disputed_amount_minor": amount, "currency": "USD"},
+    )
+
+    assert decision.flags == ["POLICY_FLAGGED", "HANDOFF_REQUIRED", "PRIORITY"]
 
 
 def test_policy_card_block_multi_currency() -> None:

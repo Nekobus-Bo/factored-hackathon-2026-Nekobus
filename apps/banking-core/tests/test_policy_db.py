@@ -33,7 +33,11 @@ VERIFIED_SESSION = SessionState(session_id="s-db", state=VerificationState.VERIF
 
 
 def _bad_credentials_url(postgres_url: str) -> str:
-    url = sa.engine.make_url(postgres_url).set(password="wrong-password")
+    # A role that does not exist is refused under every auth method; a wrong
+    # password alone is accepted by a server that trusts loopback connections.
+    url = sa.engine.make_url(postgres_url).set(
+        username="no_such_role", password="wrong-password"
+    )
     return url.render_as_string(hide_password=False)
 
 
@@ -83,6 +87,46 @@ def test_policy_loader_seeds_from_env_on_empty_db(db_session: Session) -> None:
     assert records[0].version == 1
     assert records[0].amount_mode == "block"
     assert records[0].currency == "USD"
+
+
+def test_attempt_limits_are_seeded_persisted_and_versioned(
+    db_session: Session,
+) -> None:
+    """The cross-session limits ride the same seed, load and save path as the rest."""
+    env_vars = {
+        "RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "4",
+        "RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS": "7200",
+        "RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS": "900",
+        "RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES": "12",
+        "RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS": "1800",
+    }
+    with patch.dict(os.environ, env_vars, clear=False):
+        seeded = load_policy_config(db_session)
+        db_session.commit()
+
+    record = db_session.query(PolicyConfigRecord).filter_by(is_active=True).one()
+    assert (
+        record.customer_otp_max_failures,
+        record.customer_otp_window_seconds,
+        record.customer_otp_lock_seconds,
+        record.document_match_max_failures,
+        record.document_match_window_seconds,
+    ) == (4, 7200, 900, 12, 1800)
+    assert seeded.customer_otp_max_failures == 4
+    assert seeded.document_match_window_seconds == 1800
+
+    # Env changes afterwards do not matter: the database is the source of truth.
+    with patch.dict(
+        os.environ, {"RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES": "9"}, clear=False
+    ):
+        assert load_policy_config(db_session).customer_otp_max_failures == 4
+
+    updated = seeded.model_copy(update={"document_match_max_failures": 3})
+    save_policy_config(updated, db_session)
+    db_session.commit()
+    reloaded = load_policy_config(db_session)
+    assert reloaded.document_match_max_failures == 3
+    assert reloaded.customer_otp_lock_seconds == 900
 
 
 def test_policy_loader_returns_persisted_db_config_on_subsequent_runs(
@@ -145,11 +189,9 @@ def test_tool_policy_loader_and_repository(
 
 
 def test_bad_db_credentials_refuse_closed_and_never_fall_back(
-    postgres_url: str | None,
+    postgres_url: str,
 ) -> None:
     """Unreachable DB config: refusal with a closed code, no env or InMemory config."""
-    if postgres_url is None:
-        pytest.skip("Compose Postgres database is not accessible on 127.0.0.1:38432")
     engine = sa.create_engine(_bad_credentials_url(postgres_url))
     try:
         repo = DatabaseControlConfigRepository(
@@ -174,13 +216,12 @@ def test_bad_db_credentials_refuse_closed_and_never_fall_back(
 
 
 def test_readiness_fails_on_bad_credentials_and_recovers_on_retry(
-    postgres_url: str | None,
+    postgres_url: str,
     db_session: Session,
     fresh_db_singletons: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Not ready while DB config cannot load; ready on the next probe once it can."""
-    assert postgres_url is not None
     client = TestClient(app)
 
     monkeypatch.setenv("DATABASE_URL", _bad_credentials_url(postgres_url))
@@ -212,8 +253,9 @@ def test_widened_tool_row_in_db_is_refused_as_code_floor_violation(
     """A row edited directly in the DB beyond CODE_FLOOR is refused, not a 500."""
     db_session.add(
         ToolPolicyRecord(
-            tool_name="card.block",
-            permitted_states=["ANONYMOUS", "VERIFIED"],
+            version=1,
+            is_active=True,
+            matrix={"card.block": ["ANONYMOUS", "VERIFIED"]},
         )
     )
     db_session.commit()
@@ -263,13 +305,16 @@ def test_empty_permitted_states_in_db_disables_the_tool(
     repo = DatabaseControlConfigRepository(session_factory=sessionmaker(bind=db_engine))
     repo.set_tool_permitted_states("card.block", set())
 
-    stored = db_session.get(ToolPolicyRecord, "card.block")
-    assert stored is not None and stored.permitted_states == []
+    stored = db_session.execute(
+        sa.select(ToolPolicyRecord).where(ToolPolicyRecord.is_active.is_(True))
+    ).scalar_one()
+    assert stored.matrix["card.block"] == []
     assert repo.get_tool_permitted_states("card.block") == frozenset()
     decision = Authorizer(config_repo=repo).authorize(CARD_BLOCK_CALL, VERIFIED_SESSION)
 
     assert decision.allowed is False
     assert decision.reason_code == ReasonCode.STATE_NOT_ALLOWED
+    assert decision.flags == ["TOOL_DISABLED"]
 
 
 def test_corrupt_tool_row_is_config_unavailable_not_code_floor(
@@ -277,7 +322,9 @@ def test_corrupt_tool_row_is_config_unavailable_not_code_floor(
 ) -> None:
     """A non-floor ValueError from stored config maps to INTERNAL_ERROR."""
     db_session.add(
-        ToolPolicyRecord(tool_name="card.block", permitted_states=["NOT_A_STATE"])
+        ToolPolicyRecord(
+            version=1, is_active=True, matrix={"card.block": ["NOT_A_STATE"]}
+        )
     )
     db_session.commit()
     repo = DatabaseControlConfigRepository(session_factory=sessionmaker(bind=db_engine))

@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "DecisionPointInfo": {
+      "additionalProperties": false,
+      "description": "One decision point as served by GET /v1/decision-points.",
+      "properties": {
+        "always_on": {
+          "title": "Always On",
+          "type": "boolean"
+        },
+        "backend_kind": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Backend Kind",
+          "type": "string"
+        },
+        "backend_model_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Backend Model Id",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{2,40}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "labels": {
+          "description": "Labels of the decision point's view",
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "languages_with_tau": {
+          "description": "Languages (and '*') that have a threshold; others abstain",
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages With Tau",
+          "type": "array"
+        },
+        "probability_kind": {
+          "enum": [
+            "distribution",
+            "top1_only"
+          ],
+          "title": "Probability Kind",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ready",
+            "unavailable",
+            "infeasible",
+            "off"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "calibrated",
+            "infeasible",
+            "uncalibrated_seed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "labels",
+        "backend_kind",
+        "backend_model_id",
+        "probability_kind",
+        "status",
+        "state",
+        "enabled",
+        "always_on",
+        "languages_with_tau"
+      ],
+      "title": "DecisionPointInfo",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Output contract for GET /v1/decision-points (used to cross-check the effects file).",
+  "properties": {
+    "config_version": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Calibration artifact id; null in legacy seed mode",
+      "title": "Config Version"
+    },
+    "decision_points": {
+      "items": {
+        "$ref": "#/$defs/DecisionPointInfo"
+      },
+      "title": "Decision Points",
+      "type": "array"
+    },
+    "source": {
+      "description": "legacy_seed: no artifact file, one uncalibrated turn_intent derived from ABSTENTION_THRESHOLD",
+      "enum": [
+        "artifact",
+        "legacy_seed"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source"
+  ],
+  "title": "DecisionPointsResponse",
+  "type": "object"
+}

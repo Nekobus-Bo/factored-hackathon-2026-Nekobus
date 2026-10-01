@@ -7,6 +7,7 @@ Implements the deterministic decision boundary:
 - Authorizer with non-configurable code floor
 """
 
+from banking_core.control.attempt_limits import AttemptLimits, AttemptLimitStore
 from banking_core.control.authorize import Authorizer, authorize
 from banking_core.control.config import (
     ControlConfigRepository,
@@ -28,6 +29,8 @@ from banking_core.control.session import (
 )
 
 __all__ = [
+    "AttemptLimitStore",
+    "AttemptLimits",
     "Authorizer",
     "ControlConfigRepository",
     "DatabaseControlConfigRepository",

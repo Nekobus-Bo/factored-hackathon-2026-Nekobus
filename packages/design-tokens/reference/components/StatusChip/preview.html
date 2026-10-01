@@ -1,0 +1,52 @@
+<!-- @dsCard group="Status & feedback" height=520 subtitle="FSM states, card status, priority" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StatusChip — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 24px; padding: 16px; }
+  .group { display: grid; gap: 8px; }
+  .list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .list li { display: grid; grid-template-columns: 172px 130px minmax(0, 1fr); gap: 8px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .list li:first-child { border-top: 0; }
+  .es { font: 600 15px/22px var(--font-sans); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+  @media (max-width: 560px) { .list li { grid-template-columns: auto minmax(0, 1fr); } .list li .pb-t-small { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="group">
+    <span class="pb-t-label">Estados de la conversación (FSM)</span>
+    <ul class="list">
+      <li><span class="pb-chip" data-state="anonymous"><i class="pb-ico pb-ico--user-dashed" aria-hidden="true"></i>ANONYMOUS</span><span class="es">Sin identificar</span><span class="pb-t-small">Nadie identificado todavía. Solo lectura pública.</span></li>
+      <li><span class="pb-chip" data-state="identified"><i class="pb-ico pb-ico--user" aria-hidden="true"></i>IDENTIFIED</span><span class="es">Identificado</span><span class="pb-t-small">Sabemos quién es, aún sin prueba.</span></li>
+      <li><span class="pb-chip" data-state="otp-pending"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>OTP_PENDING</span><span class="es">Código pendiente</span><span class="pb-t-small">Enviamos un código; esperamos al cliente.</span></li>
+      <li><span class="pb-chip pb-chip--live" data-state="verified"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>VERIFIED</span><span class="es">Verificado</span><span class="pb-t-small">Identidad comprobada. Habilita las herramientas de escritura.</span></li>
+      <li><span class="pb-chip" data-state="locked"><i class="pb-ico pb-ico--lock" aria-hidden="true"></i>LOCKED</span><span class="es">Bloqueado</span><span class="pb-t-small">Demasiados intentos fallidos. Sin escrituras.</span></li>
+      <li><span class="pb-chip" data-state="handed-off"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>HANDED_OFF</span><span class="es">Con un agente</span><span class="pb-t-small">Un humano tiene el caso; el asistente no actúa.</span></li>
+    </ul>
+  </div>
+  <div class="group">
+    <span class="pb-t-label">Estado de la tarjeta</span>
+    <div class="row">
+      <span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>ACTIVE</span>
+      <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>BLOCKED</span>
+    </div>
+  </div>
+  <div class="group">
+    <span class="pb-t-label">Prioridad del handoff</span>
+    <div class="row">
+      <span class="pb-chip" data-tone="danger"><i class="pb-ico pb-ico--chev2" aria-hidden="true"></i>URGENT</span>
+      <span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--chev1" aria-hidden="true"></i>HIGH</span>
+      <span class="pb-chip" data-tone="neutral"><i class="pb-ico pb-ico--minus" aria-hidden="true"></i>NORMAL</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

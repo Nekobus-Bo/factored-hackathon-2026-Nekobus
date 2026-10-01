@@ -6,6 +6,7 @@ import platform
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evalrunner.decisions import render_section
 from evalrunner.models import ScenarioRunResult
 
 
@@ -224,6 +225,9 @@ def render_evaluation_report(
         )
 
     lines.append("")
+
+    # Section 4: decision points (ADR-0012), from the eval hook's records
+    lines.extend(render_section(results, number=4, languages=languages))
 
     if not_run:
         lines.append("## Scenarios not run")

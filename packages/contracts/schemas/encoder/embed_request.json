@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "description": "Input contract for POST /v1/embed (ADR-0012, Appendix J).\n\nThe texts are search queries and public knowledge-base text, never a customer\nrecord; the model server still receives them only inside the private network.",
+  "properties": {
+    "texts": {
+      "description": "Texts to embed, in order",
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Texts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "texts"
+  ],
+  "title": "EmbedRequest",
+  "type": "object"
+}

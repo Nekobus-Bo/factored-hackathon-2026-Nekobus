@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -11,9 +12,11 @@ import httpx
 import pytest
 import respx
 
+from evalrunner import runner
 from evalrunner.cli import main as cli_main
+from evalrunner.guard import is_real_system
 from evalrunner.loader import load_scenario_file
-from evalrunner.models import Scenario
+from evalrunner.models import Scenario, ToolPolicySetup
 from evalrunner.runner import run_evaluation, run_scenario
 from evalrunner.systems.evidence import PolicySnapshot
 from evalrunner.systems.faults import NoFaultInjector
@@ -30,10 +33,18 @@ BANK = "http://banking-core.test"
 SESSION = "sess_eval_0001"
 OTP_CODE = "482913"
 SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def load(name: str) -> Scenario:
     return load_scenario_file(SCENARIOS / name)
+
+
+def with_tool_policy(**setup: list[str]) -> Scenario:
+    """A stock scenario that also turns some tools on or off."""
+    scenario = load("happy_path/happy_path_001_es.yaml")
+    scenario.initial_state.tool_policy = ToolPolicySetup(**setup)
+    return scenario
 
 
 @pytest.fixture
@@ -140,7 +151,7 @@ def test_happy_path_runs_on_trusted_evidence(
     )
 
     assert result.not_run_reason is None and result.error is None
-    assert sent[2] == OTP_CODE  # {{otp}} filled from the dev sink
+    assert sent[2] == OTP_CODE  # {{otp}} filled from the dev OTP hook
     last = result.turns[-1]
     assert last.verification_state == "VERIFIED"
     assert [r.tool for r in last.tool_call_reports] == [
@@ -155,6 +166,50 @@ def test_happy_path_runs_on_trusted_evidence(
     assert failed == []
     assert not [u.code for u in result.unsafe_outcomes if u.detected]
     assert result.passed is True
+
+
+@pytest.mark.parametrize("status_code", [403, 404])
+def test_otp_turn_fails_when_the_hook_has_no_code(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter, status_code: int
+) -> None:
+    """A disabled hook (403) or an expired or unknown challenge (404) is an error."""
+    router.get(f"{BANK}/v1/dev/otp/chal_abc12345").mock(
+        return_value=httpx.Response(status_code, json={"detail": "no"})
+    )
+    handler, sent = scripted_orchestrator(evidence)
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=handler)
+
+    result = run_scenario(
+        make_system(evidence, replay_dir), load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert result.error is not None
+    assert f"dev OTP hook unavailable: HTTP {status_code}" in result.error
+    assert result.passed is False
+    assert "{{otp}}" not in "".join(sent)
+
+
+def test_every_turn_carries_a_fresh_client_message_id(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    handler, _ = scripted_orchestrator(evidence)
+    ids: list[Any] = []
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        ids.append(json.loads(request.content).get("client_message_id"))
+        return handler(request)
+
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=spy)
+
+    run_scenario(
+        make_system(evidence, replay_dir), load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert len(ids) >= 3
+    assert all(
+        isinstance(i, str) and re.fullmatch(r"[A-Za-z0-9_-]{8,64}", i) for i in ids
+    )
+    assert len(set(ids)) == len(ids)
 
 
 def test_replay_miss_is_not_run_never_pass(
@@ -241,6 +296,20 @@ def test_other_http_failure_is_a_counted_error(
 
     assert result.not_run_reason is None
     assert result.error == "turn failed: HTTP 500"
+
+
+def test_the_orchestrators_address_limit_is_named_when_it_refuses_a_conversation(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    router.post(f"{ORCH}/v1/conversations").mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "1800"})
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 429.*RATE_LIMIT_CONVERSATIONS_PER_IP"):
+        run_scenario(
+            make_system(evidence, replay_dir),
+            load("happy_path/happy_path_001_es.yaml"),
+        )
 
 
 def test_unmet_setup_is_not_run_without_touching_the_system(
@@ -364,6 +433,28 @@ def test_report_lists_not_run_apart_from_metrics(
     assert "| `happy_path_001_es` | es | happy_path | replay miss |" in text
 
 
+def test_proposed_system_may_write_its_report_to_the_default_path(
+    evidence: FakeEvidence, replay_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered: list[dict[str, Any]] = []
+
+    def fake_render(**kwargs: Any) -> Path:
+        rendered.append(kwargs)
+        return kwargs["out_path"]
+
+    monkeypatch.setattr(runner, "render_evaluation_report", fake_render)
+    # The default path, reports/eval-<date>.md, is relative to the working directory.
+    monkeypatch.chdir(REPO_ROOT)
+    system = make_system(evidence, replay_dir)
+
+    assert is_real_system(system)
+    run_evaluation(system, [])
+
+    out_path = rendered[0]["out_path"]
+    assert out_path.parent == Path("reports")
+    assert out_path.resolve().is_relative_to(REPO_ROOT / "reports")
+
+
 def test_cli_dry_run_offline_lists_every_scenario(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -385,8 +476,9 @@ def test_cli_dry_run_offline_lists_every_scenario(
     assert "admin API: missing or unreachable" in out
     assert "needs compose-level fault injection" in out
     assert "policy mode 'block' needs setup (admin API missing)" in out
+    assert "tool policy needs setup (admin API missing)" in out
     assert "degradation_" in out and "fault" in out
-    assert "0/53 scenarios runnable." in out
+    assert "0/56 scenarios runnable." in out
     assert "would be runnable once replays are recorded." in out
 
 
@@ -417,6 +509,80 @@ def test_admin_api_sets_policy_and_resets_cards_before_the_run(
     assert session.conversation_id == "conv_1"
 
 
+def test_admin_api_applies_the_scenarios_tool_policy_after_the_reset(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    admin.tools["account.get_summary"] = ["VERIFIED"]  # left on by a previous scenario
+    admin.tools["card.list"] = []
+    scenario = with_tool_policy(enabled=["account.get_summary"])
+
+    make_system(evidence, replay_dir, admin).start(scenario)
+
+    # The reset returns to the seed (get_summary off), then the scenario turns it on.
+    assert admin.calls == ["reset_fixtures", "put_tool_policy:account.get_summary"]
+    assert admin.tools == {
+        "account.get_summary": ["VERIFIED"],
+        "card.list": ["VERIFIED"],
+    }
+
+
+def test_a_disabled_tool_at_the_seed_needs_no_tool_policy_call(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    scenario = with_tool_policy(disabled=["account.get_summary"])
+
+    make_system(evidence, replay_dir, admin).start(scenario)
+
+    assert admin.calls == ["reset_fixtures"]
+    assert admin.tools["account.get_summary"] == []
+
+
+def test_a_scenario_without_tool_policy_runs_on_the_seed(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence)
+    admin.tools["account.get_summary"] = ["VERIFIED"]
+
+    make_system(evidence, replay_dir, admin).start(
+        load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert admin.calls == ["reset_fixtures"]
+    assert admin.tools["account.get_summary"] == []
+
+
+def test_tool_policy_that_does_not_take_effect_is_not_run(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    admin = FakeAdmin(evidence, broken_tool_put=True)
+
+    result = run_scenario(
+        make_system(evidence, replay_dir, admin),
+        with_tool_policy(enabled=["account.get_summary"]),
+    )
+
+    assert result.not_run_reason is not None
+    assert result.not_run_reason.startswith(
+        "setup did not take effect: tool policy for 'account.get_summary' is []"
+    )
+    assert router.calls.call_count == 0
+
+
+def test_tool_policy_scenario_without_admin_api_is_not_run(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    result = run_scenario(
+        make_system(evidence, replay_dir),
+        with_tool_policy(enabled=["account.get_summary"]),
+    )
+
+    assert result.not_run_reason is not None
+    assert "tool policy needs setup (admin API missing)" in result.not_run_reason
+    assert router.calls.call_count == 0
+
+
 def test_setup_that_does_not_take_effect_is_not_run(
     evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
 ) -> None:
@@ -444,6 +610,40 @@ def test_policy_scenario_without_admin_api_is_not_run(
     assert "policy mode is 'flag', scenario needs 'block' (admin API missing)" in (
         result.not_run_reason
     )
+
+
+def test_http_admin_api_tool_policy_contract(router: respx.MockRouter) -> None:
+    from evalrunner.systems.admin import AdminError, HttpAdminApi
+
+    get = router.get(f"{BANK}/v1/admin/tool-policy").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "version": 3,
+                "tools": {"account.get_summary": [], "card.list": ["VERIFIED"]},
+                "disabled": ["account.get_summary"],
+                "code_floor": {},
+            },
+        )
+    )
+    put = router.put(f"{BANK}/v1/admin/tool-policy").mock(
+        return_value=httpx.Response(200, json={"version": 4})
+    )
+    api = HttpAdminApi(BANK, "tok", httpx.Client())
+
+    assert api.tool_policy() == {"account.get_summary": [], "card.list": ["VERIFIED"]}
+    api.put_tool_policy({"account.get_summary": ["VERIFIED"]})
+
+    assert get.calls.last.request.headers["Authorization"] == "Bearer tok"
+    assert json.loads(put.calls.last.request.content) == {
+        "tools": {"account.get_summary": ["VERIFIED"]}
+    }
+    put.mock(return_value=httpx.Response(422, json={"detail": []}))
+    with pytest.raises(AdminError, match="tool policy update failed: HTTP 422"):
+        api.put_tool_policy({"card.block": ["ANONYMOUS"]})
+    get.mock(return_value=httpx.Response(500))
+    with pytest.raises(AdminError, match="tool policy read failed: HTTP 500"):
+        api.tool_policy()
 
 
 def test_http_admin_api_contract(router: respx.MockRouter) -> None:
@@ -707,3 +907,125 @@ def test_replay_miss_on_a_later_turn_after_earlier_tool_rows_is_a_failure(
     assert result.not_run_reason is None
     assert result.error == "replay miss after banking-core acted"
     assert len(result.turns) == 2
+
+
+def test_the_eval_hook_decision_records_reach_the_turn_result(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    hook = {
+        "decisions": [
+            {
+                "dp_id": "confirm_gate",
+                "effect": "gate",
+                "mode": "shadow",
+                "outcome": "abstained",
+                "confidence": 0.31,
+                "tau": 0.9,
+                "model_id": "tfidf_lr@train-sha256:a563c0c445d6",
+                "config_version": "cfg0123456789",
+                "unavailable_reason": None,
+                "a_future_field": 1,
+            }
+        ],
+        "effects": [
+            {
+                "dp_id": "confirm_gate",
+                "effect": "gate",
+                "mode": "shadow",
+                "tool": "card.block",
+                "applied": False,
+                "would_apply": True,
+                "detail": {"event": "withheld"},
+            }
+        ],
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    [decision] = turn.decisions
+    assert (decision.dp_id, decision.outcome, decision.mode) == (
+        "confirm_gate",
+        "abstained",
+        "shadow",
+    )
+    assert decision.config_version == "cfg0123456789"
+    [effect] = turn.effects
+    assert effect.would_apply is True and effect.applied is False
+    assert effect.detail == {"event": "withheld"}
+    assert turn.decisions_unreadable == 0
+
+
+def test_a_hook_record_that_does_not_parse_is_counted_not_dropped_silently(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    hook = {
+        "decisions": [
+            {"dp_id": "turn_intent", "outcome": "decided", "label": "greeting"},
+            {"outcome": "decided"},  # no dp_id
+            "not a record",
+        ],
+        "effects": {"not": "a list"},
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    assert [d.dp_id for d in turn.decisions] == ["turn_intent"]
+    assert turn.effects == []
+    assert turn.decisions_unreadable == 3
+
+
+def test_a_turn_without_the_hook_fields_has_no_decision_evidence(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval={"tokens": 3})
+    )
+    system = make_system(evidence, replay_dir)
+    session = system.start(load("happy_path/happy_path_001_es.yaml"))
+
+    turn = system.send(session, "Hola")
+
+    assert (turn.decisions, turn.effects, turn.decisions_unreadable) == ([], [], 0)
+
+
+def test_the_report_of_a_proposed_run_carries_the_decision_section(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter, tmp_path: Path
+) -> None:
+    hook = {
+        "decisions": [
+            {
+                "dp_id": "turn_intent",
+                "effect": "record",
+                "mode": "shadow",
+                "outcome": "decided",
+                "label": "greeting",
+                "confidence": 0.95,
+            }
+        ]
+    }
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(
+        return_value=reply("Hola", eval=hook)
+    )
+    scenario = load("happy_path/happy_path_001_es.yaml")
+    scenario.turns = scenario.turns[:1]
+
+    _, report = run_evaluation(
+        make_system(evidence, replay_dir), [scenario], tmp_path / "eval.md"
+    )
+
+    assert report is not None
+    text = report.read_text(encoding="utf-8")
+    assert "## 4. Decision Points by Language (ADR-0012)" in text
+    row = "| `turn_intent` | record | shadow | 1 | 1 | 0 | 0 | 0 | 100.0% (1/1)"
+    assert row in text
+

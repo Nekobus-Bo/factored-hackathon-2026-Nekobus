@@ -1,0 +1,126 @@
+<!-- @dsCard group="Landing" height=640 subtitle="Accordion with Zag/Ark data attributes" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FaqAccordion — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+
+</style>
+</head>
+<body>
+<section class="pb-section" id="ayuda" aria-labelledby="faq-title">
+    <header class="pb-section__head">
+      <p class="pb-section__kicker"><i class="pb-ico pb-ico--info" aria-hidden="true"></i>Ayuda</p>
+      <h2 class="pb-section__title" id="faq-title"><span>Preguntas</span><span>frecuentes</span></h2>
+    </header>
+    <div class="pb-faq" data-scope="accordion" data-part="root">
+      <div class="pb-faq__item" data-scope="accordion" data-part="item" data-state="open">
+        <h3 class="pb-faq__heading">
+          <button class="pb-faq__trigger" type="button" id="f-t0" aria-expanded="true" aria-controls="f-c0" data-scope="accordion" data-part="item-trigger" data-state="open">
+            <span>¿Qué pasa si pierdo mi tarjeta?</span>
+            <span class="pb-faq__indicator" data-scope="accordion" data-part="item-indicator" aria-hidden="true"><i class="pb-ico pb-ico--plus"></i><i class="pb-ico pb-ico--minus"></i></span>
+          </button>
+        </h3>
+        <div class="pb-faq__content" id="f-c0" role="region" aria-labelledby="f-t0" data-scope="accordion" data-part="item-content" data-state="open"><p>Escríbele al asistente. Verifica tu identidad con un código de 6 dígitos y bloquea la tarjeta. Solo te confirma el bloqueo cuando el comprobante se leyó de la base de datos.</p></div>
+      </div>
+      <div class="pb-faq__item" data-scope="accordion" data-part="item" data-state="closed">
+        <h3 class="pb-faq__heading">
+          <button class="pb-faq__trigger" type="button" id="f-t1" aria-expanded="false" aria-controls="f-c1" data-scope="accordion" data-part="item-trigger" data-state="closed">
+            <span>¿El asistente puede resolver una disputa?</span>
+            <span class="pb-faq__indicator" data-scope="accordion" data-part="item-indicator" aria-hidden="true"><i class="pb-ico pb-ico--plus"></i><i class="pb-ico pb-ico--minus"></i></span>
+          </button>
+        </h3>
+        <div class="pb-faq__content" id="f-c1" role="region" aria-labelledby="f-t1" hidden data-scope="accordion" data-part="item-content" data-state="closed"><p>No. Reúne los hechos verificados y pasa el caso a una persona del equipo de Disputas. La resolución es siempre humana.</p></div>
+      </div>
+      <div class="pb-faq__item" data-scope="accordion" data-part="item" data-state="closed">
+        <h3 class="pb-faq__heading">
+          <button class="pb-faq__trigger" type="button" id="f-t2" aria-expanded="false" aria-controls="f-c2" data-scope="accordion" data-part="item-trigger" data-state="closed">
+            <span>¿Por qué me pide un código?</span>
+            <span class="pb-faq__indicator" data-scope="accordion" data-part="item-indicator" aria-hidden="true"><i class="pb-ico pb-ico--plus"></i><i class="pb-ico pb-ico--minus"></i></span>
+          </button>
+        </h3>
+        <div class="pb-faq__content" id="f-c2" role="region" aria-labelledby="f-t2" hidden data-scope="accordion" data-part="item-content" data-state="closed"><p>Para comprobar que eres tú antes de bloquear nada. El código tiene 6 dígitos y vale 5 minutos. Pattern Blue nunca te lo pedirá por teléfono ni por correo. En esta demo el correo es simulado y aparece en una bandeja dentro de la página.</p></div>
+      </div>
+      <div class="pb-faq__item" data-scope="accordion" data-part="item" data-state="closed">
+        <h3 class="pb-faq__heading">
+          <button class="pb-faq__trigger" type="button" id="f-t3" aria-expanded="false" aria-controls="f-c3" data-scope="accordion" data-part="item-trigger" data-state="closed">
+            <span>¿En qué idiomas atiende?</span>
+            <span class="pb-faq__indicator" data-scope="accordion" data-part="item-indicator" aria-hidden="true"><i class="pb-ico pb-ico--plus"></i><i class="pb-ico pb-ico--minus"></i></span>
+          </button>
+        </h3>
+        <div class="pb-faq__content" id="f-c3" role="region" aria-labelledby="f-t3" hidden data-scope="accordion" data-part="item-content" data-state="closed"><p>En español, português y English. Puedes cambiar de idioma cuando quieras.</p></div>
+      </div>
+      <div class="pb-faq__item" data-scope="accordion" data-part="item" data-state="closed">
+        <h3 class="pb-faq__heading">
+          <button class="pb-faq__trigger" type="button" id="f-t4" aria-expanded="false" aria-controls="f-c4" data-scope="accordion" data-part="item-trigger" data-state="closed">
+            <span>¿Esto es un banco real?</span>
+            <span class="pb-faq__indicator" data-scope="accordion" data-part="item-indicator" aria-hidden="true"><i class="pb-ico pb-ico--plus"></i><i class="pb-ico pb-ico--minus"></i></span>
+          </button>
+        </h3>
+        <div class="pb-faq__content" id="f-c4" role="region" aria-labelledby="f-t4" hidden data-scope="accordion" data-part="item-content" data-state="closed"><p>No. Pattern Blue es una demo del Factored AI & Data Hackathon 2026 con datos sintéticos. No hay cuentas, tarjetas ni dinero reales, y S² es un activo ficticio.</p></div>
+      </div>
+    </div>
+  </section>
+<script>
+  (function () {
+    var root = document.documentElement;
+    // theme toggle: sets data-theme on <html> and keeps every toggle in sync
+    function syncTheme() {
+      var cur = root.getAttribute('data-theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.querySelectorAll('.pb-theme__btn').forEach(function (b) { b.setAttribute('aria-checked', b.getAttribute('data-theme-set') === cur ? 'true' : 'false'); });
+    }
+    document.querySelectorAll('.pb-theme__btn').forEach(function (b) {
+      b.addEventListener('click', function () { root.setAttribute('data-theme', b.getAttribute('data-theme-set')); syncTheme(); });
+    });
+    syncTheme();
+    // language switch (decorative here): keeps every switch in sync
+    document.querySelectorAll('.pb-lang__btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-lang');
+        document.querySelectorAll('.pb-lang__btn').forEach(function (o) { o.setAttribute('aria-checked', o.getAttribute('data-lang') === code ? 'true' : 'false'); });
+      });
+    });
+    // collapsed menu
+    document.querySelectorAll('.pb-nav__menu').forEach(function (m) {
+      m.addEventListener('click', function () {
+        var nav = m.closest('.pb-nav'), open = nav.getAttribute('data-open') !== 'true';
+        nav.setAttribute('data-open', open ? 'true' : 'false');
+        m.setAttribute('aria-expanded', open ? 'true' : 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--' + (open ? 'x' : 'menu');
+      });
+    });
+    // a tap on a menu link closes the collapsed menu
+    document.querySelectorAll('.pb-nav__link').forEach(function (l) {
+      l.addEventListener('click', function () {
+        var nav = l.closest('.pb-nav'), m = nav.querySelector('.pb-nav__menu');
+        nav.setAttribute('data-open', 'false'); m.setAttribute('aria-expanded', 'false');
+        m.querySelector('.pb-ico').className = 'pb-ico pb-ico--menu';
+      });
+    });
+    // accordion (single open, collapsible)
+    document.querySelectorAll('.pb-faq').forEach(function (faq) {
+      var triggers = faq.querySelectorAll('.pb-faq__trigger');
+      function set(t, on) {
+        t.setAttribute('aria-expanded', on ? 'true' : 'false');
+        t.setAttribute('data-state', on ? 'open' : 'closed');
+        var c = document.getElementById(t.getAttribute('aria-controls'));
+        c.hidden = !on; c.setAttribute('data-state', on ? 'open' : 'closed');
+        t.closest('.pb-faq__item').setAttribute('data-state', on ? 'open' : 'closed');
+      }
+      triggers.forEach(function (t) {
+        t.addEventListener('click', function () {
+          var wasOpen = t.getAttribute('aria-expanded') === 'true';
+          triggers.forEach(function (o) { set(o, false); });
+          if (!wasOpen) set(t, true);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

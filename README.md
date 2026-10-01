@@ -12,21 +12,23 @@ Not a chatbot with database access. An engine where the model proposes and a det
 
 ```bash
 git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
-make up                 # starts banking-core, orchestrator, encoder, postgres, redis
-make seed               # seeds synthetic demo data and staging datasets
-make smoke              # verifies service health and connectivity
+make demo               # one command: build, start, migrate, seed, preload models, print URLs and demo customers
 ```
 
-> **Note on user interfaces:** The simulated frontends (`apps/web-client` and `apps/web-backoffice`) are pending and not built yet. The system is operated via HTTP APIs:
-> - **orchestrator** (`http://localhost:8080`): chat API (`/v1/conversations`), turn engine, PII masking, local encoder integration
-> - **banking-core** (`http://localhost:8081`): tool API (`/v1/tools/call`), Admin API (`/v1/admin/...`, disabled by default), policy engine
-> - **encoder** (`http://localhost:8090`): local CPU inference server (`/v1/analyze`)
+`make demo` needs no `.env` and no API key; it prints where everything is and which customers to use. Running it again is safe. One step at a time: `make up`, `make seed`, `make smoke`. Everything runs on your machine: there is no hosted instance to visit (the team's own presentation environment is described in [docs/deployment.md](docs/deployment.md), section 7).
 
-To run in automated replay mode:
-```bash
-make demo               # ⚠️ pending: full startup in replay mode
-```
-For manual testing and live LLM credentials, see **[docs/runbook.md](docs/runbook.md)**.
+> **Pending, and reported by `make demo` rather than hidden:**
+> - **Replay recordings** (`eval/replay/` is empty): until they exist a chat turn answers 503. To talk to the assistant now, set `LLM_MODE=live` and `LLM_API_KEY` in `.env` (see **[docs/runbook.md](docs/runbook.md)**, section 4). The rest works without a key.
+
+What `make demo` opens, all bound to `127.0.0.1`:
+
+- **Customer chat** (`http://localhost:5173`, `apps/web-client`): the simulated fintech with the chat bubble, in Spanish, Portuguese and English. The verification code shows up in a simulated inbox, nothing is sent.
+- **Back office** (`http://localhost:5174`, `apps/web-backoffice`): the handoff queue, taking a case and replying to the customer, the guardrails (thresholds, handoff mode, tools by state) and the metrics. Login: `agent@demo.local` / `demo-only-change-me` (development-only credentials, public in this repository).
+- **orchestrator** (`http://localhost:8080/docs`): chat API (`/v1/conversations`), turn engine, PII masking, local encoder integration
+- **banking-core** (`http://localhost:8081/docs`): tool API (`/v1/tools/call`), Admin API (`/v1/admin/...`; in development it is on with the public token `dev-only-admin-token`, in production off unless enabled and it refuses that token), policy engine
+- **encoder** (`http://localhost:8090`): local CPU inference server (`/v1/analyze`)
+
+Full run guide, troubleshooting and demo walkthrough: **[docs/runbook.md](docs/runbook.md)**.
 
 ---
 
@@ -46,8 +48,11 @@ Full documentation index: **[docs/README.md](docs/README.md)**. Working conventi
 
 ```mermaid
 flowchart LR
-    C[Customer<br/>chat API] --> ORC
-    A[Agent / Ops<br/>admin API] --> CORE
+    C[Customer<br/>browser] --> WC[web-client<br/>same-origin BFF]
+    A[Agent<br/>browser] --> WB[web-backoffice<br/>same-origin BFF]
+    WC -->|chat routes| ORC
+    WB -->|agent API| ORC
+    WB -->|admin API| CORE
 
     subgraph EXT [Untrusted zone]
         ORC[orchestrator<br/>session · tool loop<br/>PII masking]
@@ -72,7 +77,7 @@ flowchart LR
     ORC --> RE[(Redis Edge<br/>chat cache)]
 ```
 
-**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies and risk thresholds can be inspected and updated at runtime via the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config`, bearer token, off unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions.
+**Non-negotiable trust boundary:** `orchestrator` holds no database credentials ([ADR-0004](docs/adr/0004-trust-boundary.md)). All domain actions are dispatched over HTTP using typed Pydantic contracts (`packages/contracts`). Policies, risk thresholds and which tools are enabled can be inspected and updated at runtime from the back office's Guardrails screen, which calls the banking-core Admin API (`GET`/`PUT /v1/admin/policy-config` and `/v1/admin/tool-policy`, bearer token; on in the development compose with a development-only token, off in production unless `ADMIN_API_ENABLED=true`), completely decoupled from prompt instructions. The browser talks only to each front end's own server (a same-origin BFF); the tokens stay in the back-office server ([ADR-0013](docs/adr/0013-front-ends-bff-takeover.md)).
 
 ---
 
@@ -86,7 +91,7 @@ flowchart LR
 
 ## Evaluation & empirical evidence
 
-We evaluate the system using a scenario suite of **53 scenarios across 10 failure groups** in Spanish, Portuguese, and English: `happy_path`, `failed_identity`, `not_the_holder`, `risk_threshold`, `ambiguity`, `out_of_scope`, `adversarial`, `degradation`, `messy_conversation`, and `account_inquiry`.
+We evaluate the system using a scenario suite of **56 scenarios across 10 failure groups** in Spanish, Portuguese, and English: `happy_path`, `failed_identity`, `not_the_holder`, `risk_threshold`, `ambiguity`, `out_of_scope`, `adversarial`, `degradation`, `messy_conversation`, and `account_inquiry`.
 
 Empirical calibration and validation reports are versioned under [`reports/`](reports/):
 - **Decision calibration:** [`reports/calibration-decision-2026-09-28.md`](reports/calibration-decision-2026-09-28.md) (macro-F1, expected calibration error, latency/RAM benchmarks comparing TF-IDF and GLiNER2.5 models).
@@ -107,24 +112,27 @@ All project operations are exposed through `make`:
 
 | Target | Description | Status |
 |---|---|---|
-| `make up` | Build and start services (`banking-core`, `orchestrator`, `encoder`, `postgres`, `redis`) | Working |
+| `make demo` | One command from a clone: build, start, migrate, seed, preload models, print URLs and demo customers | Working |
+| `make up` | Build and start services (`banking-core`, `orchestrator`, `encoder`, `web-client`, `web-backoffice`, `postgres`, `redis`) | Working |
 | `make down` | Stop all services, keeping volumes | Working |
 | `make logs` | Stream logs from all services (or `make logs s=banking-core`) | Working |
 | `make clean` | Stop containers and destroy volumes (wipes database) | Working |
-| `make smoke` | Health check across all running services and databases | Working |
+| `make smoke` | Health check across all running services, both front ends and the databases | Working |
 | `make seed` | Seed database with synthetic demo data and staging datasets | Working |
 | `make migrate` | Apply database migrations via Alembic | Working |
 | `make ingest` | Ingest a raw dataset into `data/staging/<source>` (`SOURCE=factored`) | Working |
 | `make data-quality` | Run data quality checks and output report | Working |
 | `make verify-audit` | Verify the cryptographic hash chain of the audit log | Working |
-| `make warmup` | Preload encoder and embedding weights into Docker volumes (`warmup-encoder` + `warmup-retrieval`) | Working |
+| `make warmup` | Preload the decision backend and the pinned `kb.search` embedding model onto the model server's Docker volume (`warmup-encoder` + `warmup-retrieval`) | Working |
 | `make encoder-bench` | Encoder p95 latency and peak RAM on CPU | Working |
 | `make build-multiarch` | Build app images for linux/amd64 and linux/arm64 (no push) | Working |
+| `make web-check` | TypeScript gate: typecheck and tests for `@pattern-blue/contracts` and both front ends (needs Bun) | Working |
+| `make design-tokens-check` | Design tokens gate: `dist/` matches `src/`, typecheck, tests (needs Bun) | Working |
+| `make web-client`, `make web-backoffice` | Dev server of one front end on the host, with hot reload, against the stack from `make up` (needs Bun) | Working |
 | `make generate-labels` | Regenerate the contract label enums from `schema.yaml` | Working |
 | `make calibrate` | Run unified calibration pipeline (`TASK=decision\|embedding`) | Working |
 | `make synth-data` | Generate deterministic synthetic decision datasets | Working |
 | `make profile-factored` | Profile Factored dataset and output aggregate statistics | Working |
-| `make demo` | Full startup in prerecorded replay mode | ⚠️ pending |
 | `make eval` | Scenario evaluation suite execution | ⚠️ pending |
 | `make eval-baseline` | Baseline system evaluation execution | ⚠️ pending |
 | `make eval-adversarial` | Adversarial injection scenario suite execution | ⚠️ pending |
@@ -142,16 +150,16 @@ apps/
   banking-core/         trusted zone · data, tools API, admin API, policy engine, audit
   orchestrator/         untrusted zone · chat API, session, tool loop, PII masking
   encoder/              local decision & extraction server · CPU FastAPI service
-  web-client/           (pending) simulated fintech + customer chat bubble
-  web-backoffice/       (pending) queue, handoff review, guardrails, metrics
+  web-client/           simulated fintech + customer chat bubble · Bun server with a same-origin BFF
+  web-backoffice/       queue, handoff review and takeover, guardrails, metrics · Bun server with a same-origin BFF
 packages/
-  contracts/            tool schemas, message blocks, policy enums (Pydantic models)
+  contracts/            tool schemas, message blocks, policy enums (Pydantic models, and a Zod mirror for the front ends)
   encoder/              intent classification, slot extraction, PII detector logic
   retrieval/            knowledge base (40 topics × es/pt/en) and hybrid index
-  design-tokens/        (pending) shared design tokens and primitives
+  design-tokens/        design tokens and pb-* component CSS from the design-system artifact (Bun package)
 data/                   raw/ staging/ curated/ eval/
 eval/
-  scenarios/            53 executable test scenarios across 10 categories
+  scenarios/            56 executable test scenarios across 10 categories
   runner/               scenario execution engine
   replay/               (recordings pending) deterministic conversation replays
 infra/

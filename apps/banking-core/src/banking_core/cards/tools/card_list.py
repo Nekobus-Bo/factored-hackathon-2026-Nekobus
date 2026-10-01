@@ -27,8 +27,8 @@ def _masked_pan(last4: str) -> str:
 
 
 def _card_type(card: Card, account_type: str) -> CardType:
-    # Prefer a stored card_type (nullable column planned in ingest 0004, task
-    # 2A-3); otherwise derive it from the account product.
+    # Prefer a stored card_type (nullable column added by migration 0005, set only
+    # for dataset cards); otherwise derive it from the account product.
     stored = getattr(card, "card_type", None)
     if stored:
         return CardType(stored)

@@ -62,6 +62,9 @@ addopts = ["--import-mode=importlib"]
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+# lab/ is the exploratory sandbox, a separate uv project of marimo notebooks (whose
+# cells end in bare expressions on purpose); it is not shipped code.
+extend-exclude = ["lab"]
 
 [tool.ruff.lint]
 select = [
@@ -73,3 +76,8 @@ select = [
     "UP",  # pyupgrade
 ]
 ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Long lines here are LLM prompt text and es/pt seed phrases, kept unwrapped so they
+# read as the prompt the model sees.
+"tools/synthdata_regional/**" = ["E501"]

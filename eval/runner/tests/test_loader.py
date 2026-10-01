@@ -14,6 +14,9 @@ from evalrunner.loader import (
     load_scenario_from_dict,
     load_scenarios_from_directory,
 )
+from evalrunner.models import InitialState
+
+SCENARIOS = Path(__file__).resolve().parents[2] / "scenarios"
 
 
 def _sample_scenario_dict(
@@ -163,3 +166,72 @@ def test_load_scenarios_from_directory_skips_schema_json():
         loaded = load_scenarios_from_directory(base)
         assert len(loaded) == 1
         assert loaded[0].id == "valid_1"
+
+
+def test_tool_policy_is_optional_and_parsed():
+    without = load_scenario_from_dict(_sample_scenario_dict())
+    assert without.initial_state.tool_policy is None
+
+    data = _sample_scenario_dict()
+    data["initial_state"]["tool_policy"] = {
+        "enabled": ["account.get_summary"],
+        "disabled": ["card.list"],
+    }
+    sc = load_scenario_from_dict(data)
+
+    assert sc.initial_state.tool_policy is not None
+    assert sc.initial_state.tool_policy.enabled == ["account.get_summary"]
+    assert sc.initial_state.tool_policy.disabled == ["card.list"]
+
+
+@pytest.mark.parametrize(
+    ("tool_policy", "message"),
+    [
+        ({"enabled": ["card.nuke"]}, "unknown tool"),
+        ({"enabled": ["card.list"], "disabled": ["card.list"]}, "both enables"),
+        ({}, "at least one tool"),
+        ({"enable": ["card.list"]}, "enable"),
+    ],
+)
+def test_invalid_tool_policy_is_rejected(tool_policy, message):
+    data = _sample_scenario_dict()
+    data["initial_state"]["tool_policy"] = tool_policy
+
+    with pytest.raises(ValueError, match=message):
+        load_scenario_from_dict(data)
+
+
+def test_schema_json_describes_every_initial_state_field():
+    schema = json.loads((SCENARIOS / "schema.json").read_text(encoding="utf-8"))
+    described = schema["properties"]["initial_state"]["properties"]
+
+    assert set(described) == set(InitialState.model_fields)
+    required = set(schema["properties"]["initial_state"]["required"])
+    assert "tool_policy" not in required
+
+
+def test_account_inquiry_scenarios_enable_or_disable_the_summary_tool():
+    scenarios = {
+        s.id: s
+        for s in load_scenarios_from_directory(SCENARIOS, group="account_inquiry")
+    }
+
+    enabling = [
+        s for s in scenarios.values() if not s.id.startswith("account_inquiry_006")
+    ]
+    assert len(enabling) == 5
+    for scenario in enabling:
+        policy = scenario.initial_state.tool_policy
+        assert policy is not None and policy.enabled == ["account.get_summary"]
+        assert policy.disabled == []
+
+    disabled = [s for s in scenarios.values() if s.id.startswith("account_inquiry_006")]
+    assert {s.lang for s in disabled} == {"es", "pt", "en"}
+    for scenario in disabled:
+        policy = scenario.initial_state.tool_policy
+        assert policy is not None and policy.disabled == ["account.get_summary"]
+        assert policy.enabled == []
+        # A refused attempt is fine; running it, or reading around it, is not.
+        assert "account.get_summary" in scenario.expected.tools_allowed
+        assert "transaction.list_recent" in scenario.expected.tools_forbidden
+        assert "card.block" in scenario.expected.tools_forbidden

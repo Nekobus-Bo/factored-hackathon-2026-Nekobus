@@ -14,9 +14,23 @@
 #
 # Network isolation (ADR-0004, ADR-0006 amendment):
 #   core  internal, no egress: postgres, redis-core, banking-core, migrate
-#   edge  orchestrator, encoder, redis-edge, banking-core
+#   edge  orchestrator, encoder, redis-edge, banking-core, web-client, web-backoffice
 # banking-core is the only service on both. The orchestrator has no network path
-# to postgres or redis-core. One Redis per trust zone, each with a password.
+# to postgres or redis-core, and neither has a front end. One Redis per trust zone,
+# each with a password.
+#
+# The front ends (ADR-0013) are Bun servers, each with a same-origin BFF: the browser
+# talks only to them. web-client forwards the four chat routes to the orchestrator and
+# holds no secret. web-backoffice calls the banking-core admin API and the orchestrator
+# agent API with ADMIN_API_TOKEN and AGENT_API_TOKEN, which are the same variables with
+# the same development defaults as on those two services, so the tokens match with no
+# .env. Both are built from the repo root (see their Dockerfile.dockerignore) and are
+# published on loopback, like every other port here.
+#
+# The encoder is the model server (ADR-0012, Appendix J): it serves the decision model
+# (/v1/analyze) and the embedding model (/v1/embed) and receives raw customer text, so it
+# stays inside this private network. banking-core reaches it at MODEL_SERVER_URL for
+# kb.search. To run it on its own host, point MODEL_SERVER_URL and ENCODER_URL there.
 #
 # postgres and the Redis instances are not published to the host on purpose (they
 # collide with local installs). Use `docker compose exec postgres psql -U app bank`.
@@ -99,7 +113,9 @@ services:
       context: ../..
       dockerfile: apps/banking-core/Dockerfile
       args:
-        # Dense kb.search backend (the default); set to "" for a BM25-only image.
+        # Only EMBEDDING_BACKEND=local needs it (in-process model, tests and local
+        # development). The default embeds through the model server, and nothing in
+        # banking-core imports torch then; "" builds a smaller image (ADR-0012, J.6).
         BANKING_CORE_SYNC_ARGS: ${BANKING_CORE_SYNC_ARGS---extra vector}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
     command: ["alembic", "-c", "apps/banking-core/alembic.ini", "upgrade", "head"]
@@ -159,6 +175,8 @@ services:
       REDIS_URL: ${REDIS_CORE_URL:-}
       REDIS_SESSION_KEY_PREFIX: ${REDIS_SESSION_KEY_PREFIX:-session:}
       REDIS_OTP_CHALLENGE_KEY_PREFIX: ${REDIS_OTP_CHALLENGE_KEY_PREFIX:-otp:challenge:}
+      REDIS_OTP_INBOX_KEY_PREFIX: ${REDIS_OTP_INBOX_KEY_PREFIX:-otp:inbox:}
+      REDIS_ATTEMPT_LIMIT_KEY_PREFIX: ${REDIS_ATTEMPT_LIMIT_KEY_PREFIX:-limit:}
       MASTER_KEY: ${MASTER_KEY:-dev-only-regenerate-this-key}
       BLIND_INDEX_SALT: ${BLIND_INDEX_SALT:-dev-only-regenerate-this-salt}
       OTP_CHANNEL_MODE: ${OTP_CHANNEL_MODE:-simulated}
@@ -170,21 +188,37 @@ services:
       DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-COP}
       POLICY_SEED_THRESHOLDS_MINOR: '${POLICY_SEED_THRESHOLDS_MINOR:-{"USD": 50000, "EUR": 50000, "BRL": 250000, "COP": 200000000, "ARS": 17795642}}'
       POLICY_SEED_AMOUNT_MODE: ${POLICY_SEED_AMOUNT_MODE:-flag}
-      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-false}
-      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      POLICY_SEED_DISABLED_TOOLS: ${POLICY_SEED_DISABLED_TOOLS-account.get_summary}
+      # Development defaults: the admin API is on with a public, development-only
+      # token so the back office demo steps work with no .env. banking-core refuses
+      # to start with this token under APP_ENV=production, and the production
+      # override pins these three back to off / empty.
+      ADMIN_API_ENABLED: ${ADMIN_API_ENABLED:-true}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-only-admin-token}
+      # Only consulted when APP_ENV=production; outside it the fixture reset is
+      # always allowed.
       DEMO_RESET_ENABLED: ${DEMO_RESET_ENABLED:-false}
       TRANSACTION_LIST_MAX_LIMIT: ${TRANSACTION_LIST_MAX_LIMIT:-50}
       RATE_LIMIT_ATTEMPTS_PER_SESSION: ${RATE_LIMIT_ATTEMPTS_PER_SESSION:-5}
+      RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES: ${RATE_LIMIT_CUSTOMER_OTP_MAX_FAILURES:-5}
+      RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS: ${RATE_LIMIT_CUSTOMER_OTP_WINDOW_SECONDS:-3600}
+      RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS: ${RATE_LIMIT_CUSTOMER_OTP_LOCK_SECONDS:-1800}
+      RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES: ${RATE_LIMIT_DOCUMENT_MATCH_MAX_FAILURES:-10}
+      RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS: ${RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS:-3600}
       SESSION_LOCK_TTL_MS: ${SESSION_LOCK_TTL_MS:-10000}
       SESSION_LOCK_WAIT_MS: ${SESSION_LOCK_WAIT_MS:-2000}
       AUDIT_HASH_CHAIN_ENABLED: ${AUDIT_HASH_CHAIN_ENABLED:-true}
       RETRIEVAL_MODE: ${RETRIEVAL_MODE:-vector}
+      # The embedding model runs on the model server. banking-core checks that the
+      # server reports exactly this model and revision on every answer (the same two
+      # variables configure the encoder service).
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-remote}
+      MODEL_SERVER_URL: ${MODEL_SERVER_URL:-http://encoder:8090}
+      MODEL_SERVER_TIMEOUT_SECONDS: ${MODEL_SERVER_TIMEOUT_SECONDS:-10}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
       RETRIEVAL_SCORE_FLOOR: ${RETRIEVAL_SCORE_FLOOR:-0.3}
-      HF_HUB_OFFLINE: "1"
-    volumes:
-      - hf-cache:/models/hf:ro
     ports:
       - "127.0.0.1:${PORT_BANKING_CORE:-8081}:8081"
     depends_on:
@@ -197,23 +231,10 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8081/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='banking-core' else 1)"]
     deploy:
       resources:
-        # The embedding model adds ~1.3 GB (see docs/limitations.md).
+        # The embedding model no longer loads here (it was ~1.3 GB, see docs/limitations.md),
+        # so this ceiling can be lowered once a Linux measurement exists. EMBEDDING_BACKEND=local
+        # needs it.
         limits: { cpus: "1.0", memory: "${BANKING_CORE_MEMORY_LIMIT:-2g}" }
-
-  # `make warmup`: downloads the embedding model into hf-cache. The only
-  # banking-core container with egress (edge); it gets no credentials or keys.
-  warmup:
-    <<: *app-hardening
-    build: *banking-core-build
-    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/banking-core:dev
-    command: ["python", "-c", "import os; from huggingface_hub import snapshot_download; print(snapshot_download(os.environ['EMBEDDING_MODEL']))"]
-    environment:
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-    volumes:
-      - hf-cache:/models/hf
-    networks: [edge]
-    restart: "no"
-    profiles: ["tools"]
 
   orchestrator:
     <<: *app-hardening
@@ -230,11 +251,36 @@ services:
       ENCODER_ENABLED: ${ENCODER_ENABLED:-true}
       ENCODER_TIMEOUT_SECONDS: ${ENCODER_TIMEOUT_SECONDS:-2}
       MAX_TOOL_ROUNDS: ${MAX_TOOL_ROUNDS:-5}
+      # ADR-0012: blank = apps/orchestrator/config/decision_effects.yaml (baked into
+      # the image, every decision point in shadow); the second is the mode kill switch.
+      DECISION_EFFECTS_FILE: ${DECISION_EFFECTS_FILE:-}
+      DECISION_POINTS_MODES: ${DECISION_POINTS_MODES:-}
+      # Where replay mode reads recordings (mounted below).
+      REPLAY_DIR: /app/eval/replay
       REDIS_HOST: redis-edge
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_EDGE_PASSWORD:-dev-only-regenerate-edge-redis}
       REDIS_URL: ${REDIS_EDGE_URL:-}
       REDIS_EDGE_KEY_PREFIX: ${REDIS_EDGE_KEY_PREFIX:-orch:conv:}
+      REDIS_EDGE_RATE_LIMIT_KEY_PREFIX: ${REDIS_EDGE_RATE_LIMIT_KEY_PREFIX:-orch:ratelimit:}
+      REDIS_EDGE_SESSION_INDEX_KEY_PREFIX: ${REDIS_EDGE_SESSION_INDEX_KEY_PREFIX:-orch:session:}
+      # Conversations one client address may open per hour. Generous on purpose:
+      # a local session or an evaluation run (one conversation per scenario) comes
+      # from one address. The production overlay pins 30 back. Must be >= 1.
+      RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR: ${RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR:-1000}
+      # The customer path is the web-client BFF, which sends the address of its own
+      # connection as X-Forwarded-For: one trusted hop, or every customer would share the
+      # BFF's bucket. 8080 is published on loopback only, so nothing but this host can
+      # reach the orchestrator directly and send a forged header. The orchestrator's own
+      # default stays 0 (no proxy).
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      # Development defaults, as for the admin API above: the agent API (the human
+      # takeover, ADR-0013) is on with a public, development-only token. The
+      # orchestrator refuses to start with this token under APP_ENV=production, and
+      # the production override pins these back to off / empty.
+      AGENT_API_ENABLED: ${AGENT_API_ENABLED:-true}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-dev-only-agent-token}
+      AGENT_LOCK_WAIT_SECONDS: ${AGENT_LOCK_WAIT_SECONDS:-10}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-regenerate-this-secret}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-3600}
       SESSION_LOCK_MARGIN_SECONDS: ${SESSION_LOCK_MARGIN_SECONDS:-60}
@@ -244,6 +290,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
       LLM_REPLAY_ON_MISS: ${LLM_REPLAY_ON_MISS:-fail}
       RETRIEVAL_MODE: ${RETRIEVAL_MODE:-hybrid}
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
@@ -253,6 +300,10 @@ services:
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-es}
       TRACE_ENABLED: ${TRACE_ENABLED:-true}
       COST_TRACKING_ENABLED: ${COST_TRACKING_ENABLED:-true}
+    volumes:
+      # Replay recordings (eval/replay/<key>.json), read-only: recording is a
+      # maintainer task run outside the stack, never something the service does.
+      - ../../eval/replay:/app/eval/replay:ro
     ports:
       - "127.0.0.1:${PORT_ORCHESTRATOR:-8080}:8080"
     depends_on:
@@ -273,21 +324,41 @@ services:
       context: ../..
       dockerfile: apps/encoder/Dockerfile
       args:
-        ENCODER_EXTRAS: ${ENCODER_EXTRAS:-}
+        # `embed` adds PyTorch and sentence-transformers for POST /v1/embed; `gliner` adds
+        # PyTorch for ENCODER_BACKEND=gliner (several: "embed gliner"). Empty builds the
+        # decision baseline only, and then EMBEDDING_MODEL must be empty too.
+        ENCODER_EXTRAS: ${ENCODER_EXTRAS-embed}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/encoder:dev
     environment:
       PORT: "8090"
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      ENCODER_BACKEND: ${ENCODER_BACKEND:-}
+      # Defaults are the calibrated seed from .env.example (tfidf_lr, tau 0.37), so a
+      # stack with no .env can serve chat turns. `-`, not `:-`: a value set to empty
+      # still means "no model" / "uncalibrated" (503), as .env.example documents.
+      ENCODER_BACKEND: ${ENCODER_BACKEND-tfidf_lr}
       ENCODER_MODEL: ${ENCODER_MODEL:-}
       ENCODER_DEVICE: ${ENCODER_DEVICE:-cpu}
       ENCODER_QUANTIZED: ${ENCODER_QUANTIZED:-true}
-      ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD:-}
+      ABSTENTION_THRESHOLD: ${ABSTENTION_THRESHOLD-0.37}
       ENCODER_GLINER_MIN_MEMORY_MB: ${ENCODER_GLINER_MIN_MEMORY_MB:-4096}
+      # The embedding model for kb.search (POST /v1/embed), pinned: a full 40-hex commit
+      # for a hub model, verified against the cache before it loads. The hash pin is
+      # optional and recommended: `make warmup-retrieval` prints it. Empty
+      # EMBEDDING_MODEL turns /v1/embed off.
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
+      EMBEDDING_WEIGHTS_SHA256: ${EMBEDDING_WEIGHTS_SHA256:-}
+      EMBEDDING_MAX_BATCH: ${EMBEDDING_MAX_BATCH:-64}
+      # Decision points (ADR-0012). The committed seed artifact is used; legacy seed mode
+      # (ABSTENTION_THRESHOLD) only if no artifact file exists.
+      DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-}
+      DECISION_POINTS_ALLOW_STALE: ${DECISION_POINTS_ALLOW_STALE:-false}
+      DECISION_POINTS_TAU_RAISE: ${DECISION_POINTS_TAU_RAISE:-}
     volumes:
-      # Model weights cache (HF_HOME=/models/hf), filled by `make warmup`.
-      - encoder-models:/models
+      # Model weights cache (HF_HOME=/models/hf) for both models, filled by
+      # `make warmup` (decision backend) and `make warmup-retrieval` (embedding model).
+      - hf-cache:/models/hf
     ports:
       - "127.0.0.1:${PORT_ENCODER:-8090}:8090"
     networks: [edge]
@@ -296,8 +367,68 @@ services:
       test: ["CMD", "python", "-c", "import json,urllib.request as u; r=json.load(u.urlopen('http://127.0.0.1:8090/health',timeout=3)); raise SystemExit(0 if r.get('status')=='ok' and r.get('service')=='encoder' else 1)"]
     deploy:
       resources:
-        # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS: set ENCODER_MEMORY_LIMIT=4g.
+        # tfidf_lr plus the embedding model should fit 3g (estimate; Linux figure pending).
+        # ENCODER_BACKEND=gliner peaks at ~3.5 GB RSS alone: set ENCODER_MEMORY_LIMIT=5g
+        # with the embedding model.
         limits: { cpus: "2.0", memory: "${ENCODER_MEMORY_LIMIT:-3g}" }
+
+  web-client:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/web-client/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/web-client:dev
+    environment:
+      PORT: "5173"
+      ORCHESTRATOR_URL: http://orchestrator:8080
+    ports:
+      - "127.0.0.1:${PORT_WEB_CLIENT:-5173}:5173"
+    depends_on:
+      orchestrator: { condition: service_healthy }
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      # The image has no curl. Liveness only: /healthz does not call the orchestrator.
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+    deploy:
+      resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
+        limits: { cpus: "0.5", memory: 256m }
+
+  web-backoffice:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: apps/web-backoffice/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/web-backoffice:dev
+    environment:
+      PORT: "5174"
+      APP_ENV: ${APP_ENV:-development}
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      BANKING_CORE_URL: http://banking-core:8081
+      # The same variables and development defaults as banking-core (ADMIN_API_TOKEN) and
+      # the orchestrator (AGENT_API_TOKEN), so the three sides agree with no .env. Under
+      # APP_ENV=production the server refuses to start with any development value below.
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-only-admin-token}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-dev-only-agent-token}
+      DEMO_AGENT_EMAIL: ${DEMO_AGENT_EMAIL:-agent@demo.local}
+      DEMO_AGENT_PASSWORD: ${DEMO_AGENT_PASSWORD:-demo-only-change-me}
+      BACKOFFICE_SESSION_SECRET: ${BACKOFFICE_SESSION_SECRET:-dev-only-backoffice-session-secret}
+    ports:
+      - "127.0.0.1:${PORT_WEB_BACKOFFICE:-5174}:5174"
+    depends_on:
+      banking-core: { condition: service_healthy }
+      orchestrator: { condition: service_healthy }
+    # banking-core is on edge as well, so edge reaches both upstreams. Not on core: the back
+    # office has no business with postgres or redis-core.
+    networks: [edge]
+    healthcheck:
+      <<: *app-healthcheck
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5174) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+    deploy:
+      resources:
+        # About 20 MiB at rest, measured on Linux; the rest is headroom.
+        limits: { cpus: "0.5", memory: 256m }
 
 networks:
   core:
@@ -306,5 +437,4 @@ networks:
 
 volumes:
   postgres-data:
-  encoder-models:
   hf-cache:

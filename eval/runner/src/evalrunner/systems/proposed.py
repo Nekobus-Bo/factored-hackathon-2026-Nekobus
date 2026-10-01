@@ -1,14 +1,17 @@
 """ProposedSystem: drives the orchestrator chat API, reads evidence from banking-core.
 
-- Conversation: POST /v1/conversations, then POST .../messages per turn.
+- Conversation: POST /v1/conversations, then POST .../messages per turn, each
+  with a fresh client_message_id (the orchestrator's retry handle; the runner
+  never retries a turn, so it never repeats one).
 - Evidence (trusted side, read-only DSN): ops.audit_log rows of the scenario's
   banking session give tools, verification_state_before/after and outcomes;
   core_bank.card gives own/foreign blocks; handoff.create rows give handoffs.
 - The banking session is correlated through an audit watermark taken at
   scenario start: the eval stack must not run other traffic concurrently. More
   than one session in the window fails closed.
-- {{otp}} turns: the code comes from banking-core's dev OTP sink, looked up by
-  the challenge_id of this session's otp.send audit row.
+- {{otp}} turns: the code comes from banking-core's dev OTP hook (it reads the
+  simulated inbox on redis-core, ADR-0007), looked up by the challenge_id of
+  this session's otp.send audit row.
 - LLM runs in replay mode only; only a 503 with detail "replay_miss" is "not
   run". Any other failed turn FAILS the scenario, and the audit rows already in
   its window still go through U1-U8 (a tool may have run before the failure).
@@ -23,14 +26,17 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import Any, ClassVar
+from uuid import UUID, uuid4
 
 import httpx
 from contracts import TOOL_CATALOG, ReasonCode, ToolCall, ToolResult, ToolResultStatus
 from contracts.envelope import VerificationState
+from pydantic import ValidationError
 
 from evalrunner.models import (
+    DecisionEvidence,
+    EffectEvidence,
     HandoffResult,
     Scenario,
     ToolCallReport,
@@ -45,7 +51,13 @@ from evalrunner.systems.evidence import (
     fixture_customer_id,
 )
 from evalrunner.systems.faults import FaultInjector, NoFaultInjector
-from evalrunner.systems.setup import assess, policy_differences, scenario_policy
+from evalrunner.systems.setup import (
+    assess,
+    policy_differences,
+    scenario_policy,
+    scenario_tool_policy,
+    tool_policy_differences,
+)
 
 OTP_TOKEN = "{{otp}}"
 _RECORDING_KEY_RE = re.compile(r"[0-9a-f]{64}")
@@ -118,6 +130,8 @@ class ProposedSystem:
     """SystemUnderTest for the real stack (orchestrator + banking-core)."""
 
     name = "proposed"
+    # Lets its report be written into reports/ (see evalrunner.guard).
+    real_system: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -160,6 +174,13 @@ class ProposedSystem:
             f"{self.config.orchestrator_url}/v1/conversations",
             json={"lang": scenario.lang},
         )
+        if response.status_code == 429:
+            raise RuntimeError(
+                "could not open a conversation: HTTP 429, the orchestrator's "
+                "per-address limit was reached (RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR; "
+                "the suite opens one conversation per scenario from one address, "
+                "so raise it for evaluation runs)"
+            )
         if response.status_code != 201:
             raise RuntimeError(
                 f"could not open a conversation: HTTP {response.status_code}"
@@ -178,17 +199,33 @@ class ProposedSystem:
         return session
 
     def _apply_setup(self, scenario: Scenario) -> None:
-        """Reset fixtures and set the policy, then verify they took effect."""
+        """Reset fixtures and set the policy, then verify they took effect.
+
+        The reset also returns the tool policy to its seed, so a scenario only
+        states the tools it changes from there.
+        """
         self.admin.reset_fixtures()
         wanted = scenario_policy(scenario)
         if policy_differences(self.admin.policy(), wanted):
             self.admin.put_policy(wanted)
+        wanted_tools = scenario_tool_policy(scenario)
+        if wanted_tools:
+            if tool_policy_differences(self.admin.tool_policy(), wanted_tools):
+                self.admin.put_tool_policy(wanted_tools)
+            not_applied = tool_policy_differences(
+                self.admin.tool_policy(), wanted_tools
+            )
+            if not_applied:
+                raise ScenarioNotRunError(
+                    "setup did not take effect: " + "; ".join(not_applied)
+                )
         after = assess(
             scenario,
             self.evidence,
             self.config.replay_dir,
             admin_available=False,
             faults=self.faults,
+            tool_policy_verified=True,
         )
         if not after.runnable:
             raise ScenarioNotRunError(
@@ -226,7 +263,7 @@ class ProposedSystem:
         response = self.http.post(
             f"{self.config.orchestrator_url}/v1/conversations/"
             f"{session.conversation_id}/messages",
-            json={"text": text},
+            json={"text": text, "client_message_id": uuid4().hex},
         )
         body = _json_or_empty(response)
         if response.status_code == 503 and body.get("detail") == "replay_miss":
@@ -312,7 +349,7 @@ class ProposedSystem:
             f"{self.config.banking_core_url}/v1/dev/otp/{challenge_id}"
         )
         if response.status_code != 200:
-            raise RuntimeError(f"dev OTP sink unavailable: HTTP {response.status_code}")
+            raise RuntimeError(f"dev OTP hook unavailable: HTTP {response.status_code}")
         return message.replace(OTP_TOKEN, str(response.json()["code"]))
 
     def _recorded_outbound(self, keys: Any) -> list[str]:
@@ -354,6 +391,8 @@ class ProposedSystem:
             outbound.extend(recorded)
             provenance.append(PROVENANCE_REPLAY)
 
+        decisions, effects, unreadable = _decision_evidence(eval_info)
+
         tool_rows = [r for r in rows if r.action in TOOL_CATALOG]
         handoffs = [
             r
@@ -393,6 +432,9 @@ class ProposedSystem:
             latency_ms=latency_ms,
             cost_usd=float(eval_info.get("cost_usd") or 0.0),
             tokens_used=int(eval_info.get("tokens") or 0),
+            decisions=decisions,
+            effects=effects,
+            decisions_unreadable=unreadable,
         )
 
 
@@ -422,6 +464,31 @@ def _current_state(rows: list[AuditRow]) -> str:
             state = row.payload.get(VERIFICATION_AFTER)
             return str(state) if state else NO_EVIDENCE_STATE
     return VerificationState.ANONYMOUS.value
+
+
+def _decision_evidence(
+    eval_info: dict[str, Any],
+) -> tuple[list[DecisionEvidence], list[EffectEvidence], int]:
+    """Decision and effect records of the eval hook; what does not parse is counted."""
+    unreadable = 0
+    decisions: list[DecisionEvidence] = []
+    effects: list[EffectEvidence] = []
+    for key, model, out in (
+        ("decisions", DecisionEvidence, decisions),
+        ("effects", EffectEvidence, effects),
+    ):
+        raw = eval_info.get(key)
+        if raw is None:
+            continue
+        if not isinstance(raw, list):
+            unreadable += 1
+            continue
+        for item in raw:
+            try:
+                out.append(model.model_validate(item))  # type: ignore[arg-type]
+            except ValidationError:
+                unreadable += 1
+    return decisions, effects, unreadable
 
 
 def _strings(value: Any) -> list[str]:

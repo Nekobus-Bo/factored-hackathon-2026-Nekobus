@@ -13,6 +13,9 @@ initial_state:
       BRL: 250000
       EUR: 50000
     mode: "flag"
+  tool_policy:
+    enabled:
+      - "account.get_summary"
   fault: "none"
 turns:
   - "I want to check my account balance."

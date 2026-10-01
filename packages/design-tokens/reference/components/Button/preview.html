@@ -1,0 +1,56 @@
+<!-- @dsCard group="Actions" height=440 subtitle="Chamfered, four variants" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Button — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 20px; padding: 16px; }
+  .group { display: grid; gap: 10px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+  .is-focus { outline: 2px solid var(--focus); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="group">
+    <span class="pb-t-label">Variantes</span>
+    <div class="row">
+      <button class="pb-btn pb-btn--primary" type="button">Verificar identidad</button>
+      <button class="pb-btn pb-btn--secondary" type="button">Ver comprobante</button>
+      <button class="pb-btn pb-btn--danger" type="button"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloquear tarjeta</button>
+      <button class="pb-btn pb-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+  <div class="group">
+    <span class="pb-t-label">Tamaños y estados</span>
+    <div class="row">
+      <button class="pb-btn pb-btn--primary pb-btn--sm" type="button">Tomar caso</button>
+      <button class="pb-btn pb-btn--secondary pb-btn--sm" type="button">Reasignar</button>
+      <button class="pb-btn pb-btn--primary" type="button" disabled>Enviar código</button>
+      <button class="pb-btn pb-btn--primary is-focus" type="button">Con foco</button>
+      <button class="pb-btn pb-btn--primary pb-btn--icon" type="button" aria-label="Enviar mensaje"><i class="pb-ico pb-ico--send" aria-hidden="true"></i></button>
+    </div>
+  </div>
+  <div class="group">
+    <span class="pb-t-label">Acción en línea y enlace</span>
+    <div class="row">
+      <a class="pb-action" href="#bandeja">Abrir bandeja<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a>
+      <a class="pb-action" href="#comprobante">Ver comprobante<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a>
+    </div>
+    <p class="pb-t-small" style="margin:0;max-width:52ch">Consulta cómo protegemos tus datos en el <a class="pb-link" href="#ayuda">centro de ayuda</a> antes de continuar.</p>
+  </div>
+  <div class="group">
+    <span class="pb-t-label">Português · English</span>
+    <div class="row">
+      <button class="pb-btn pb-btn--danger" type="button">Bloquear cartão</button>
+      <button class="pb-btn pb-btn--secondary" type="button">View receipt</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

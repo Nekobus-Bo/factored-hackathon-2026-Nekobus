@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Installation check: one line per component, non-zero exit if any is not healthy.
-# Health comes from the compose healthchecks. Each app's healthcheck validates
-# the GET /health contract in-container: {"status":"ok","service":"<name>"}.
+# Health comes from the compose healthchecks. Each Python app's healthcheck validates
+# the GET /health contract in-container: {"status":"ok","service":"<name>"}. The two
+# front ends' check is GET /healthz (liveness only: it does not call their upstreams).
 set -u
 # Honors COMPOSE_PROJECT_NAME: it queries through `docker compose` of the same project
 # (make passes its own COMPOSE), so it never assumes the default project or ports.
 
 COMPOSE=${COMPOSE:-docker compose -f infra/compose/docker-compose.yml}
-SERVICES="postgres redis-core redis-edge banking-core orchestrator encoder"
+SERVICES="postgres redis-core redis-edge banking-core orchestrator encoder web-client web-backoffice"
 
 failed=0
 for svc in $SERVICES; do

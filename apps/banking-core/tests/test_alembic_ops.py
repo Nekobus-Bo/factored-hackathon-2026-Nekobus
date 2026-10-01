@@ -1,23 +1,35 @@
 """Tests for Alembic migrations downgrade and upgrade repeatability."""
 
+from collections.abc import Generator
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.orm import Session
 
 
-def test_alembic_downgrade_and_upgrade(db_session: Session, postgres_url: str) -> None:
-    """Verify clean downgrade to 0001_initial_schema and re-upgrade to head."""
-    import os
+@pytest.fixture
+def alembic_cfg(postgres_url: str) -> Generator[Config, None, None]:
+    """Alembic config for the test database; always leaves it at head.
 
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
+    The tests below downgrade on purpose. Restoring head on teardown, even when an
+    assertion fails half way, keeps the rest of the suite independent of test order.
+    """
     ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", postgres_url)
+    try:
+        yield cfg
+    finally:
+        command.upgrade(cfg, "head")
 
+
+def test_alembic_downgrade_and_upgrade(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """Verify clean downgrade to 0001_initial_schema and re-upgrade to head."""
     # 1. Downgrade to 0001_initial_schema
     command.downgrade(alembic_cfg, "0001_initial_schema")
 
@@ -48,20 +60,12 @@ def test_alembic_downgrade_and_upgrade(db_session: Session, postgres_url: str) -
 
 
 def test_alembic_0003_downgrade_to_0002_and_reupgrade(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """Verify downgrade to 0002_ops_audit_idempotency drops config tables.
 
     Also verifies that re-upgrade to head restores them.
     """
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
-
     # 1. Downgrade to 0002_ops_audit_idempotency
     command.downgrade(alembic_cfg, "0002_ops_audit_idempotency")
 
@@ -100,16 +104,9 @@ def test_alembic_0003_downgrade_to_0002_and_reupgrade(
 
 
 def test_alembic_0004_downgrade_drops_handoff_and_reupgrade(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """Downgrade to 0003_config_policy drops ops.handoff; head restores it."""
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
 
     def ops_tables() -> set[str]:
         rows = db_session.execute(
@@ -139,17 +136,9 @@ def _card_columns(db_session: Session) -> dict[str, str]:
 
 
 def test_alembic_0005_dataset_cards_down_and_up(
-    db_session: Session, postgres_url: str
+    db_session: Session, alembic_cfg: Config
 ) -> None:
     """0005 makes pan_enc nullable and adds card_type/expiry; downgrade reverts."""
-    import os
-
-    os.environ["DATABASE_URL"] = postgres_url
-    os.environ.setdefault("POSTGRES_PASSWORD", "dev-only-change-me")
-    ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
-    alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("sqlalchemy.url", postgres_url)
-
     command.downgrade(alembic_cfg, "0004_ops_handoff")
     columns = _card_columns(db_session)
     assert columns["pan_enc"] == "NO"
@@ -174,3 +163,187 @@ def test_alembic_0005_dataset_cards_down_and_up(
         "ck_card_card_type",
         "ck_card_expiry",
     } <= constraints
+
+
+ATTEMPT_LIMIT_COLUMNS = {
+    "customer_otp_max_failures": "5",
+    "customer_otp_window_seconds": "3600",
+    "customer_otp_lock_seconds": "1800",
+    "document_match_max_failures": "10",
+    "document_match_window_seconds": "3600",
+}
+
+
+def _policy_columns(db_session: Session) -> set[str]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'config' AND table_name = 'policy_config'"
+        )
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def test_alembic_0006_attempt_limits_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0006 adds the limit columns; rows saved before it take the seed defaults."""
+    command.downgrade(alembic_cfg, "0005_dataset_cards")
+    assert not set(ATTEMPT_LIMIT_COLUMNS) & _policy_columns(db_session)
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.policy_config (version, is_active) VALUES (1, true)"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    assert set(ATTEMPT_LIMIT_COLUMNS) <= _policy_columns(db_session)
+    row = db_session.execute(
+        sa.text(
+            "SELECT "
+            + ", ".join(ATTEMPT_LIMIT_COLUMNS)
+            + " FROM config.policy_config WHERE version = 1"
+        )
+    ).one()
+    assert [str(value) for value in row] == list(ATTEMPT_LIMIT_COLUMNS.values())
+
+
+def _tool_policy_columns(db_session: Session) -> set[str]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'config' AND table_name = 'tool_policy'"
+        )
+    ).fetchall()
+    db_session.commit()  # no lock held while alembic changes the table
+    return {row[0] for row in rows}
+
+
+def test_alembic_0007_tool_policy_versions_keep_saved_rows(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0007 turns the per-tool rows into version 1; downgrading keeps the active one."""
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    assert _tool_policy_columns(db_session) == {
+        "tool_name",
+        "permitted_states",
+        "updated_at",
+    }
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.tool_policy (tool_name, permitted_states) VALUES "
+            "('card.list', '[\"VERIFIED\"]'), ('account.get_summary', '[]')"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    assert _tool_policy_columns(db_session) == {
+        "id",
+        "version",
+        "is_active",
+        "matrix",
+        "created_at",
+    }
+    rows = db_session.execute(
+        sa.text("SELECT version, is_active, matrix FROM config.tool_policy")
+    ).all()
+    db_session.commit()
+    assert [(r.version, r.is_active, r.matrix) for r in rows] == [
+        (1, True, {"card.list": ["VERIFIED"], "account.get_summary": []})
+    ]
+
+    # Only one version can be active; older versions are history.
+    db_session.execute(sa.text("UPDATE config.tool_policy SET is_active = false"))
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.tool_policy (version, is_active, matrix) "
+            "VALUES (2, true, '{\"card.block\": []}')"
+        )
+    )
+    db_session.commit()
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    legacy = db_session.execute(
+        sa.text("SELECT tool_name, permitted_states FROM config.tool_policy")
+    ).all()
+    db_session.commit()
+    assert [(r.tool_name, r.permitted_states) for r in legacy] == [("card.block", [])]
+
+
+def test_alembic_0007_leaves_an_empty_tool_policy_to_the_seed(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    command.downgrade(alembic_cfg, "0006_attempt_limits")
+    command.upgrade(alembic_cfg, "head")
+
+    count = db_session.execute(sa.text("SELECT count(*) FROM config.tool_policy"))
+    assert count.scalar_one() == 0
+    db_session.commit()
+
+
+def _handoff_columns(db_session: Session) -> dict[str, tuple[str, int | None]]:
+    rows = db_session.execute(
+        sa.text(
+            "SELECT column_name, is_nullable, character_maximum_length "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'ops' AND table_name = 'handoff'"
+        )
+    ).all()
+    db_session.commit()  # no lock held while alembic changes the table
+    return {row[0]: (row[1], row[2]) for row in rows}
+
+
+def test_alembic_0008_handoff_assignment_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0008 adds the nullable assignment columns; rows saved before it keep working."""
+    command.downgrade(alembic_cfg, "0007_tool_policy_versions")
+    columns = _handoff_columns(db_session)
+    assert "assigned_agent" not in columns and "assigned_at" not in columns
+    db_session.execute(
+        sa.text(
+            "INSERT INTO ops.handoff (id, handoff_ref, session_ref, reason, priority, "
+            "department, summary, idempotency_scope) VALUES (gen_random_uuid(), "
+            "'hnd_migrationcheck', 'session-x', 'FRAUD', 'HIGH', 'FRAUD_OPERATIONS', "
+            "'{}', 'scope')"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    columns = _handoff_columns(db_session)
+    assert columns["assigned_agent"] == ("YES", 254)
+    assert columns["assigned_at"][0] == "YES"
+    row = db_session.execute(
+        sa.text(
+            "SELECT status, assigned_agent, assigned_at FROM ops.handoff "
+            "WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    ).one()
+    db_session.commit()
+    assert (row.status, row.assigned_agent, row.assigned_at) == ("QUEUED", None, None)
+
+    db_session.execute(
+        sa.text(
+            "UPDATE ops.handoff SET status = 'ASSIGNED', "
+            "assigned_agent = 'ana@bank.example', assigned_at = now() "
+            "WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    )
+    db_session.commit()
+    command.downgrade(alembic_cfg, "0007_tool_policy_versions")
+    columns = _handoff_columns(db_session)
+    assert "assigned_agent" not in columns and "assigned_at" not in columns
+    kept = db_session.execute(
+        sa.text(
+            "SELECT status FROM ops.handoff WHERE handoff_ref = 'hnd_migrationcheck'"
+        )
+    ).scalar_one()
+    db_session.commit()
+    assert kept == "ASSIGNED"
+
+    db_session.execute(
+        sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_migrationcheck'")
+    )
+    db_session.commit()

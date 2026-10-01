@@ -12,20 +12,26 @@ class EngineTurnHandler:
         self.engine = engine
 
     async def handle_turn(
-        self, conversation: ConversationState, user_text: str
+        self,
+        conversation: ConversationState,
+        user_text: str,
+        turn_id: str | None = None,
     ) -> TurnOutcome:
         context = ConversationContext(
             session_id=conversation.banking_session_id,
             language=conversation.language,
             history=conversation.llm_history,
             placeholder_map=conversation.placeholder_map,
+            decisions=conversation.decisions,
+            human_takeover=conversation.takeover.active,
         )
         result = await self.engine.run_turn(
-            context, user_text, lang=conversation.language
+            context, user_text, lang=conversation.language, turn_id=turn_id
         )
 
         conversation.llm_history = context.history
         conversation.placeholder_map = context.placeholder_map
+        conversation.decisions = context.decisions
         return TurnOutcome(
             blocks=[block.model_dump(mode="json") for block in result.blocks],
             metadata=result.metadata.model_dump(mode="json"),

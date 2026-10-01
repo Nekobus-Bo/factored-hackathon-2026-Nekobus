@@ -509,3 +509,15 @@ def test_tool_call_otp_send_without_channel():
             args={"destination": "user@example.com"},
             idempotency_key="idem-valid-12345",
         )
+
+
+def test_confirmation_required_is_a_valid_refusal_reason():
+    """ADR-0012: the orchestrator answers a withheld card.block with CONFIRMATION_REQUIRED."""
+    assert ReasonCode("CONFIRMATION_REQUIRED") is ReasonCode.CONFIRMATION_REQUIRED
+    result = ToolResult(
+        tool="card.block",
+        status=ToolResultStatus.REFUSED,
+        reason_code=ReasonCode.CONFIRMATION_REQUIRED,
+    )
+    assert result.data is None
+    assert ToolResult.model_validate_json(result.model_dump_json()) == result

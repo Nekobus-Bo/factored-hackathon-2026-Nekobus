@@ -1,24 +1,24 @@
 id: "risk_threshold_004_en"
 lang: "en"
 group: "risk_threshold"
-description: "Foreign transaction exceeding threshold ($1,500 USD) with policy mode: block -> card blocked and priority handoff required."
+description: "Unrecognized charge in the database ($139.99) above a lowered threshold ($100) with policy mode: block -> card blocked and priority handoff required."
 initial_state:
   customer: "demo_en"
   card_status: "ACTIVE"
   registered_otp_channel: "present"
   policy:
     amount_threshold_minor:
-      USD: 50000
+      USD: 10000
       COP: 200000000
       BRL: 250000
       EUR: 50000
     mode: "block"
   fault: "none"
 turns:
-  - "There is an unauthorized charge of $1,500 from a store in Paris on my debit card."
+  - "There is an unauthorized charge from an electronics store on my debit card."
   - "My passport number is P12345678."
   - "{{otp}}"
-  - "Freeze my card immediately."
+  - "It is the Global Electronics Megastore charge. Freeze my card immediately."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +26,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"

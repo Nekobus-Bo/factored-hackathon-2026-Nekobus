@@ -1,0 +1,519 @@
+// The chat machine. One actor per page; it makes no request until the customer sends a first message
+// (a conversation is created lazily: creation is rate limited per address, so a page load must not spend it).
+//
+// Four regions run side by side:
+//
+//   conversation  idle -> creating -> sending -> ready, and the ways out of a failure:
+//                   unavailable   503 and the like, and a network failure: "Reintentar" resends the same
+//                                 client_message_id, so the orchestrator answers a turn it already ran from its store
+//                   rateLimited   429: the composer is disabled until Retry-After, then the message can be retried
+//                   gone          404: the conversation expired; "Empezar de nuevo" opens a new one
+//   followup      after every completed turn, once: the transcript (to detect a takeover) and the inbox
+//   takeover      once the transcript says an agent holds the conversation: the transcript every 2 s
+//                 while the tab is visible, and the agent's messages join the log
+//   inbox         the OTP notice: shown while the simulated inbox holds a message that has not expired
+//                 and has not been used, hidden at expiry. The code is revealed only by CODE.REVEAL
+//
+// While a takeover is active a send returns `blocks: []` by design; that is a normal answer, not an error.
+//
+// The machine keeps what the customer sees (`entries`) apart from the one-time code, which lives only in
+// `inbox.message`: nothing that reaches an entry can contain it, and what the customer typed is masked
+// before it is stored.
+
+import type { InboxMessage, InboxResponse, Lang, SendMessageResponse, TranscriptResponse } from "@pattern-blue/contracts";
+import { parseBlocks } from "@pattern-blue/contracts";
+import { assign, enqueueActions, fromPromise, setup, type SnapshotFrom } from "xstate";
+import type { ApiClient, ApiResult } from "../api/client";
+import { dictionaries } from "../i18n";
+import {
+  deriveChip,
+  isOtpPending,
+  maskTypedSecrets,
+  newAgentMessages,
+  pickInboxMessage,
+  verifiedAtOf,
+  agentKey,
+  type ChipState,
+  type Entry,
+} from "./chat-model";
+
+export const POLL_INTERVAL_MS = 2000;
+export const MAX_MESSAGE_LENGTH = 2000;
+
+export interface ChatDeps {
+  api: ApiClient;
+  /** Epoch milliseconds. */
+  now: () => number;
+  /** A new client message id: unique per message, repeated unchanged on a retry. */
+  newId: () => string;
+}
+
+/** The message in flight, or the last one that failed: what a retry resends. */
+export interface PendingSend {
+  clientMessageId: string;
+  /** As typed. Kept only here, only until the turn is accepted, and never rendered. */
+  text: string;
+  lang: Lang;
+  entryId: string;
+}
+
+export interface InboxNotice {
+  message: InboxMessage;
+  /** The customer asked to see the code. */
+  revealed: boolean;
+}
+
+export interface ChatContext {
+  deps: ChatDeps;
+  conversationId: string | null;
+  entries: Entry[];
+  nextEntry: number;
+  pending: PendingSend | null;
+  /** Epoch milliseconds until which sending is disabled (a 429), or null. */
+  retryUntil: number | null;
+  takeover: { active: boolean; since: string | null };
+  inbox: InboxNotice | null;
+  /** `verified_at` of the last successful otp.verify: codes received before it are used. */
+  verifiedAt: string | null;
+  visible: boolean;
+}
+
+export type ChatEvent =
+  | { type: "SEND"; text: string; lang: Lang }
+  | { type: "RETRY" }
+  | { type: "CODE.REVEAL" }
+  | { type: "CODE.HIDE" }
+  | { type: "VISIBLE" }
+  | { type: "HIDDEN" }
+  // Internal: raised by the machine itself.
+  | { type: "TURN_DONE" }
+  | { type: "INBOX.FOUND"; message: InboxMessage }
+  | { type: "INBOX.NONE" };
+
+export interface ChatInput {
+  deps: ChatDeps;
+  /** `document.visibilityState === "visible"`. */
+  visible?: boolean;
+}
+
+const sameMessage = (a: InboxMessage, b: InboxMessage) =>
+  a.received_at === b.received_at && a.expires_at === b.expires_at && a.code === b.code;
+
+function withStatus(entries: Entry[], entryId: string | undefined, status: "sent" | "failed"): Entry[] {
+  return entries.map((entry) => (entry.id === entryId && entry.kind === "customer" ? { ...entry, status } : entry));
+}
+
+export const chatMachine = setup({
+  types: {} as { context: ChatContext; events: ChatEvent; input: ChatInput },
+  actors: {
+    createConversation: fromPromise(({ input }: { input: { api: ApiClient; lang: Lang } }) =>
+      input.api.createConversation({ lang: input.lang }),
+    ),
+    sendMessage: fromPromise(
+      ({ input }: { input: { api: ApiClient; conversationId: string; pending: PendingSend } }) =>
+        input.api.sendMessage(input.conversationId, {
+          text: input.pending.text,
+          lang: input.pending.lang,
+          client_message_id: input.pending.clientMessageId,
+        }),
+    ),
+    loadTranscript: fromPromise(({ input }: { input: { api: ApiClient; conversationId: string } }) =>
+      input.api.getTranscript(input.conversationId),
+    ),
+    loadInbox: fromPromise(({ input }: { input: { api: ApiClient; conversationId: string } }) =>
+      input.api.getInbox(input.conversationId),
+    ),
+  },
+  guards: {
+    canSend: ({ event }) =>
+      event.type === "SEND" && event.text.trim().length > 0 && event.text.trim().length <= MAX_MESSAGE_LENGTH,
+    canSendHere: ({ context, event }) =>
+      context.conversationId !== null &&
+      event.type === "SEND" &&
+      event.text.trim().length > 0 &&
+      event.text.trim().length <= MAX_MESSAGE_LENGTH,
+    hasConversation: ({ context }) => context.conversationId !== null,
+    takeoverActive: ({ context }) => context.takeover.active,
+    takeoverInactive: ({ context }) => !context.takeover.active,
+    isVisible: ({ context }) => context.visible,
+  },
+  delays: {
+    retryAfter: ({ context }) => Math.max(0, (context.retryUntil ?? 0) - context.deps.now()),
+    inboxExpiry: ({ context }) =>
+      context.inbox ? Math.max(0, Date.parse(context.inbox.message.expires_at) - context.deps.now()) : 0,
+    pollInterval: POLL_INTERVAL_MS,
+  },
+  actions: {
+    /** The customer's message enters the log at once, masked for display; the raw text waits in `pending`. */
+    startSend: assign(({ context, event }) => {
+      if (event.type !== "SEND") return {};
+      const text = event.text.trim();
+      const entryId = `e${context.nextEntry}`;
+      const display = maskTypedSecrets(text, {
+        otpPending: isOtpPending(context.entries),
+        knownCodes: context.inbox ? [context.inbox.message.code] : [],
+        codePrefix: dictionaries[event.lang].chat.codePrefix,
+      });
+      const entry: Entry = {
+        id: entryId,
+        kind: "customer",
+        text: display,
+        at: new Date(context.deps.now()).toISOString(),
+        lang: event.lang,
+        status: "sent",
+      };
+      return {
+        entries: [...context.entries, entry],
+        nextEntry: context.nextEntry + 1,
+        pending: { clientMessageId: context.deps.newId(), text, lang: event.lang, entryId },
+        retryUntil: null,
+      };
+    }),
+    /** A retry resends the same message under the same client_message_id. */
+    startRetry: assign(({ context }) => ({
+      entries: withStatus(context.entries, context.pending?.entryId, "sent"),
+      retryUntil: null,
+    })),
+    /** "Empezar de nuevo": a new conversation, keeping only the message that was not sent. */
+    startOver: assign(({ context }) => ({
+      conversationId: null,
+      entries: context.entries.filter((entry) => entry.id === context.pending?.entryId).map((entry) =>
+        entry.kind === "customer" ? { ...entry, status: "sent" as const } : entry,
+      ),
+      takeover: { active: false, since: null },
+      inbox: null,
+      verifiedAt: null,
+      retryUntil: null,
+    })),
+    markFailed: assign(({ context }) => ({ entries: withStatus(context.entries, context.pending?.entryId, "failed") })),
+    setRetryUntil: assign(({ context, event }) => {
+      const output = (event as unknown as { output?: ApiResult<unknown> }).output;
+      const seconds = output && !output.ok && output.kind === "rate_limited" ? output.retryAfterSeconds : 60;
+      return { retryUntil: context.deps.now() + seconds * 1000 };
+    }),
+    setConversation: assign(({ event }) => {
+      const output = (event as unknown as { output: ApiResult<{ conversation_id: string }> }).output;
+      return output.ok ? { conversationId: output.data.conversation_id } : {};
+    }),
+    /** A completed turn: the assistant's blocks join the log; a verified code hides the notice. */
+    applyTurn: enqueueActions(({ context, event, enqueue }) => {
+      const output = (event as unknown as { output: ApiResult<SendMessageResponse> }).output;
+      if (!output.ok) return;
+      const { blocks } = output.data;
+      const pending = context.pending;
+      const entries = withStatus(context.entries, pending?.entryId, "sent");
+      let nextEntry = context.nextEntry;
+      // An empty list is the normal answer during a takeover; blocks this build cannot render add nothing.
+      if (parseBlocks(blocks).blocks.length > 0) {
+        entries.push({
+          id: `e${nextEntry}`,
+          kind: "assistant",
+          blocks,
+          at: new Date(context.deps.now()).toISOString(),
+          lang: pending?.lang ?? "es",
+        });
+        nextEntry += 1;
+      }
+      const verifiedAt = verifiedAtOf(blocks) ?? context.verifiedAt;
+      enqueue.assign({ entries, nextEntry, pending: null, verifiedAt });
+      if (verifiedAt !== context.verifiedAt) enqueue.raise({ type: "INBOX.NONE" });
+      enqueue.raise({ type: "TURN_DONE" });
+    }),
+    /** The transcript: has an agent taken over, and what did the agent write. */
+    applyTranscript: assign(({ context, event }) => {
+      const output = (event as unknown as { output: ApiResult<TranscriptResponse> }).output;
+      if (!output.ok) return {};
+      const { takeover, messages } = output.data;
+      const entries = [...context.entries];
+      let nextEntry = context.nextEntry;
+      const wasActive = context.takeover.active;
+      const active = wasActive || takeover.active;
+      if (active && !wasActive) {
+        entries.push({ id: `e${nextEntry}`, kind: "system", code: "takeover", at: takeover.since ?? new Date(context.deps.now()).toISOString() });
+        nextEntry += 1;
+      }
+      if (active) {
+        for (const message of newAgentMessages(messages, entries)) {
+          entries.push({
+            id: `e${nextEntry}`,
+            kind: "agent",
+            text: message.content,
+            at: message.created_at,
+            key: agentKey(message),
+          });
+          nextEntry += 1;
+        }
+      }
+      return {
+        entries,
+        nextEntry,
+        takeover: { active, since: wasActive ? context.takeover.since : takeover.since },
+      };
+    }),
+    /** The inbox answered: tell the inbox region what is there. Unreadable answers change nothing. */
+    reportInbox: enqueueActions(({ context, event, enqueue }) => {
+      const output = (event as unknown as { output: ApiResult<InboxResponse> }).output;
+      if (!output.ok) return;
+      const message = pickInboxMessage(output.data.messages, context.deps.now(), context.verifiedAt);
+      enqueue.raise(message ? { type: "INBOX.FOUND", message } : { type: "INBOX.NONE" });
+    }),
+    showInbox: assign(({ context, event }) => {
+      if (event.type !== "INBOX.FOUND") return {};
+      const same = context.inbox !== null && sameMessage(context.inbox.message, event.message);
+      return { inbox: { message: event.message, revealed: same ? context.inbox!.revealed : false } };
+    }),
+    clearInbox: assign({ inbox: null }),
+    /** The code ran out unused: the notice goes, and the log says so once. */
+    expireInbox: assign(({ context }) => ({
+      inbox: null,
+      entries: [
+        ...context.entries,
+        { id: `e${context.nextEntry}`, kind: "system" as const, code: "codeExpired" as const, at: new Date(context.deps.now()).toISOString() },
+      ],
+      nextEntry: context.nextEntry + 1,
+    })),
+    reveal: assign(({ context }) => (context.inbox ? { inbox: { ...context.inbox, revealed: true } } : {})),
+    concealCode: assign(({ context }) => (context.inbox ? { inbox: { ...context.inbox, revealed: false } } : {})),
+    setVisible: assign({ visible: true }),
+    setHidden: assign({ visible: false }),
+  },
+}).createMachine({
+  id: "chat",
+  context: ({ input }): ChatContext => ({
+    deps: input.deps,
+    conversationId: null,
+    entries: [],
+    nextEntry: 1,
+    pending: null,
+    retryUntil: null,
+    takeover: { active: false, since: null },
+    inbox: null,
+    verifiedAt: null,
+    visible: input.visible ?? true,
+  }),
+  type: "parallel",
+  states: {
+    conversation: {
+      initial: "idle",
+      states: {
+        idle: {
+          on: { SEND: { guard: "canSend", target: "creating", actions: "startSend" } },
+        },
+        creating: {
+          invoke: {
+            src: "createConversation",
+            input: ({ context }) => ({ api: context.deps.api, lang: context.pending?.lang ?? "es" }),
+            onDone: [
+              { guard: ({ event }) => event.output.ok, target: "sending", actions: "setConversation" },
+              {
+                guard: ({ event }) => !event.output.ok && event.output.kind === "rate_limited",
+                target: "rateLimited",
+                actions: ["markFailed", "setRetryUntil"],
+              },
+              { target: "unavailable", actions: "markFailed" },
+            ],
+            onError: { target: "unavailable", actions: "markFailed" },
+          },
+        },
+        sending: {
+          invoke: {
+            src: "sendMessage",
+            input: ({ context }) => ({
+              api: context.deps.api,
+              conversationId: context.conversationId as string,
+              pending: context.pending as PendingSend,
+            }),
+            onDone: [
+              { guard: ({ event }) => event.output.ok, target: "ready", actions: "applyTurn" },
+              {
+                guard: ({ event }) => !event.output.ok && event.output.kind === "rate_limited",
+                target: "rateLimited",
+                actions: ["markFailed", "setRetryUntil"],
+              },
+              { guard: ({ event }) => !event.output.ok && event.output.kind === "not_found", target: "gone", actions: "markFailed" },
+              { target: "unavailable", actions: "markFailed" },
+            ],
+            onError: { target: "unavailable", actions: "markFailed" },
+          },
+        },
+        ready: {
+          on: { SEND: { guard: "canSend", target: "sending", actions: "startSend" } },
+        },
+        unavailable: {
+          on: {
+            RETRY: [
+              { guard: "hasConversation", target: "sending", actions: "startRetry" },
+              { target: "creating", actions: "startRetry" },
+            ],
+            SEND: [
+              { guard: "canSendHere", target: "sending", actions: "startSend" },
+              { guard: "canSend", target: "creating", actions: "startSend" },
+            ],
+          },
+        },
+        rateLimited: {
+          after: { retryAfter: "retryable" },
+        },
+        retryable: {
+          on: {
+            RETRY: [
+              { guard: "hasConversation", target: "sending", actions: "startRetry" },
+              { target: "creating", actions: "startRetry" },
+            ],
+            SEND: [
+              { guard: "canSendHere", target: "sending", actions: "startSend" },
+              { guard: "canSend", target: "creating", actions: "startSend" },
+            ],
+          },
+        },
+        gone: {
+          on: { RETRY: { target: "creating", actions: "startOver" } },
+        },
+      },
+    },
+
+    followup: {
+      initial: "idle",
+      states: {
+        idle: {
+          on: { TURN_DONE: { guard: "takeoverInactive", target: "loading" } },
+        },
+        loading: {
+          type: "parallel",
+          on: { TURN_DONE: { guard: "takeoverInactive", target: "loading", reenter: true } },
+          onDone: "idle",
+          states: {
+            transcript: {
+              initial: "run",
+              states: {
+                run: {
+                  invoke: {
+                    src: "loadTranscript",
+                    input: ({ context }) => ({ api: context.deps.api, conversationId: context.conversationId as string }),
+                    onDone: { target: "done", actions: "applyTranscript" },
+                    onError: "done",
+                  },
+                },
+                done: { type: "final" },
+              },
+            },
+            inbox: {
+              initial: "run",
+              states: {
+                run: {
+                  invoke: {
+                    src: "loadInbox",
+                    input: ({ context }) => ({ api: context.deps.api, conversationId: context.conversationId as string }),
+                    onDone: { target: "done", actions: "reportInbox" },
+                    onError: "done",
+                  },
+                },
+                done: { type: "final" },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    takeover: {
+      initial: "off",
+      on: {
+        VISIBLE: { actions: "setVisible" },
+        HIDDEN: { actions: "setHidden" },
+      },
+      states: {
+        off: { always: { guard: "takeoverActive", target: "on" } },
+        on: {
+          initial: "route",
+          states: {
+            route: { always: [{ guard: "isVisible", target: "polling" }, { target: "paused" }] },
+            polling: {
+              initial: "waiting",
+              on: { HIDDEN: { target: "paused", actions: "setHidden" } },
+              states: {
+                waiting: { after: { pollInterval: "fetching" } },
+                fetching: {
+                  invoke: {
+                    src: "loadTranscript",
+                    input: ({ context }) => ({ api: context.deps.api, conversationId: context.conversationId as string }),
+                    onDone: { target: "waiting", actions: "applyTranscript" },
+                    onError: "waiting",
+                  },
+                },
+              },
+            },
+            // Back on the tab: read at once instead of waiting out the interval.
+            paused: { on: { VISIBLE: { target: "polling.fetching", actions: "setVisible" } } },
+          },
+        },
+      },
+    },
+
+    inbox: {
+      initial: "hidden",
+      states: {
+        hidden: {
+          on: { "INBOX.FOUND": { target: "shown", actions: "showInbox" } },
+        },
+        shown: {
+          after: { inboxExpiry: { target: "hidden", actions: "expireInbox" } },
+          on: {
+            "INBOX.FOUND": { target: "shown", reenter: true, actions: "showInbox" },
+            "INBOX.NONE": { target: "hidden", actions: "clearInbox" },
+            "CODE.REVEAL": { actions: "reveal" },
+            "CODE.HIDE": { actions: "concealCode" },
+          },
+        },
+      },
+    },
+  },
+});
+
+export type ChatMachine = typeof chatMachine;
+
+// --- What the view reads -------------------------------------------------------------------------------------------
+
+export type ChatSnapshot = SnapshotFrom<ChatMachine>;
+
+export type ConversationState =
+  | "idle"
+  | "creating"
+  | "sending"
+  | "ready"
+  | "unavailable"
+  | "rateLimited"
+  | "retryable"
+  | "gone";
+
+const CONVERSATION_STATES: readonly ConversationState[] = [
+  "creating",
+  "sending",
+  "unavailable",
+  "rateLimited",
+  "retryable",
+  "gone",
+  "ready",
+  "idle",
+];
+
+export function conversationState(snapshot: ChatSnapshot): ConversationState {
+  return CONVERSATION_STATES.find((state) => snapshot.matches({ conversation: state })) ?? "idle";
+}
+
+/** The header chip: what the blocks prove, or nothing. */
+export function selectChip(snapshot: ChatSnapshot): ChipState | null {
+  return deriveChip(snapshot.context.entries, snapshot.context.takeover.active);
+}
+
+/** The assistant is working on it: show the typing indicator (not while a person has the conversation). */
+export function selectTyping(snapshot: ChatSnapshot): boolean {
+  const state = conversationState(snapshot);
+  return (state === "creating" || state === "sending") && !snapshot.context.takeover.active;
+}
+
+/** Sending is off while a message is in flight, until a 429 has run its course, and when the conversation is gone. */
+export function selectSendDisabled(snapshot: ChatSnapshot): boolean {
+  const state = conversationState(snapshot);
+  return state === "creating" || state === "sending" || state === "rateLimited" || state === "gone";
+}

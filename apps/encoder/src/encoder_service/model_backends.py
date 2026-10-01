@@ -107,6 +107,35 @@ def check_memory_floor(min_mb: int, memory_max: Path) -> None:
         )
 
 
+def check_memory_budget(required_mb: int, memory_max: Path, what: str) -> None:
+    """Refuse to start when the cgroup limit is below what ``what`` declares it needs.
+
+    The figure comes from the calibration artifact (``resources.ram_mb``, measured by
+    ``make encoder-bench``). An unreadable file or "max" cannot be checked: warn.
+    """
+    try:
+        raw = memory_max.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning("cannot read %s (%s); memory budget unchecked", memory_max, exc)
+        return
+    if raw == "max":
+        logger.warning("no cgroup memory limit; memory budget unchecked")
+        return
+    try:
+        limit_mb = int(raw) // (1024 * 1024)
+    except ValueError:
+        logger.warning(
+            "unexpected %s content %r; memory budget unchecked", memory_max, raw
+        )
+        return
+    if limit_mb < required_mb:
+        raise BackendConfigError(
+            f"{what} need about {required_mb} MiB (resources.ram_mb in the artifact), "
+            f"but the container memory limit is {limit_mb} MiB; "
+            "raise ENCODER_MEMORY_LIMIT"
+        )
+
+
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

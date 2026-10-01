@@ -1,0 +1,66 @@
+<!-- @dsCard group="Back office" height=400 subtitle="Handoff queue: id, priority, department, language, wait" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueueRow — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 16px; padding: 16px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+  .bar h2 { margin: 0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="bar">
+    <h2 class="pb-t-h2">Cola de handoff</h2>
+    <span class="pb-t-small">4 casos abiertos · SLA 15:00</span>
+  </div>
+  <div class="pb-queue" role="table" aria-label="Cola de handoff">
+    <div class="pb-queue__head" role="row">
+      <span role="columnheader">Caso</span><span role="columnheader">Prioridad</span><span role="columnheader">Departamento</span><span role="columnheader">Idioma</span><span role="columnheader">Espera</span><span role="columnheader">Cliente</span>
+    </div>
+
+    <div class="pb-qrow" role="row" aria-current="true">
+      <span role="cell" data-col="id"><a class="pb-caseid" href="#caso-0427">CASE-0427</a></span>
+      <span role="cell" data-col="pri"><span class="pb-chip" data-tone="danger"><i class="pb-ico pb-ico--chev2" aria-hidden="true"></i>URGENT</span></span>
+      <span role="cell" data-col="dept">FRAUD_OPERATIONS</span>
+      <span role="cell" data-col="lang"><span class="pb-tag">ES</span></span>
+      <span role="cell" data-col="wait">07:42</span>
+      <span role="cell" data-col="cust">D*** M***</span>
+    </div>
+
+    <div class="pb-qrow" role="row">
+      <span role="cell" data-col="id"><a class="pb-caseid" href="#caso-0426">CASE-0426</a></span>
+      <span role="cell" data-col="pri"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--chev1" aria-hidden="true"></i>HIGH</span></span>
+      <span role="cell" data-col="dept">DISPUTES</span>
+      <span role="cell" data-col="lang"><span class="pb-tag">PT</span></span>
+      <span role="cell" data-col="wait">12:05</span>
+      <span role="cell" data-col="cust">J*** S***</span>
+    </div>
+
+    <div class="pb-qrow" role="row">
+      <span role="cell" data-col="id"><a class="pb-caseid" href="#caso-0425">CASE-0425</a></span>
+      <span role="cell" data-col="pri"><span class="pb-chip" data-tone="neutral"><i class="pb-ico pb-ico--minus" aria-hidden="true"></i>NORMAL</span></span>
+      <span role="cell" data-col="dept">CUSTOMER_SUPPORT</span>
+      <span role="cell" data-col="lang"><span class="pb-tag">EN</span></span>
+      <span role="cell" data-col="wait">03:18</span>
+      <span role="cell" data-col="cust">A*** P***</span>
+    </div>
+
+    <div class="pb-qrow" role="row">
+      <span role="cell" data-col="id"><a class="pb-caseid" href="#caso-0424">CASE-0424</a></span>
+      <span role="cell" data-col="pri"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--chev1" aria-hidden="true"></i>HIGH</span></span>
+      <span role="cell" data-col="dept">FRAUD_OPERATIONS</span>
+      <span role="cell" data-col="lang"><span class="pb-tag">ES</span></span>
+      <span role="cell" data-col="wait" data-late><i class="pb-ico pb-ico--warning" aria-hidden="true"></i>18:30<span class="pb-sr"> SLA excedido</span></span>
+      <span role="cell" data-col="cust">L*** G***</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

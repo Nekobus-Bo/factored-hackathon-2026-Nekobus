@@ -1,0 +1,1189 @@
+{
+  "artifact_id": "0535e172ffa8",
+  "backends": {
+    "gate_tfidf": {
+      "cost_class": "low",
+      "kind": "tfidf_lr",
+      "labels": [
+        "confirm",
+        "deny",
+        "other"
+      ],
+      "local_only": true,
+      "model_id": "tfidf_lr@map-38e4e1a6/train-sha256:a563c0c445d6",
+      "params": {},
+      "probability_kind": "distribution",
+      "timeout_ms": 200,
+      "train": {
+        "label_map": {
+          "*": "other",
+          "confirm": "confirm",
+          "deny": "deny"
+        },
+        "path": "data/eval/synthetic/decision.train.jsonl",
+        "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+      }
+    },
+    "intent_tfidf": {
+      "cost_class": "low",
+      "kind": "tfidf_lr",
+      "labels": [
+        "check_balance",
+        "check_recent_transactions",
+        "confirm",
+        "deny",
+        "greeting",
+        "out_of_scope",
+        "provide_identity_data",
+        "provide_otp_code",
+        "report_lost_card",
+        "report_stolen_card",
+        "report_suspicious_activity",
+        "report_unrecognized_charge",
+        "request_card_block",
+        "request_dispute",
+        "request_human_agent"
+      ],
+      "local_only": true,
+      "model_id": "tfidf_lr@train-sha256:a563c0c445d6",
+      "params": {},
+      "probability_kind": "distribution",
+      "timeout_ms": 200,
+      "train": {
+        "path": "data/eval/synthetic/decision.train.jsonl",
+        "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+      }
+    }
+  },
+  "created_at": "2026-09-29T03:49:59Z",
+  "data": {
+    "test_provenance": "synthetic-provisional",
+    "test_sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7",
+    "train_sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984",
+    "validation_sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+  },
+  "decision_points": {
+    "block_reason": {
+      "always_on": true,
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.183985
+          },
+          "es": {
+            "T": 0.191028
+          },
+          "pt": {
+            "T": 0.182655
+          }
+        },
+        "kind": "temperature"
+      },
+      "constraint": {
+        "calibration_split": "validation",
+        "ci": "point",
+        "labels": [
+          "CUSTOMER_REQUEST",
+          "LOST",
+          "STOLEN",
+          "SUSPICIOUS_ACTIVITY",
+          "UNRECOGNIZED_CHARGE"
+        ],
+        "metric": "precision",
+        "n_min": 30,
+        "p_min": 0.9
+      },
+      "enabled": true,
+      "evidence": {
+        "candidate": "intent_tfidf",
+        "certified": false,
+        "config": {
+          "path": "tools/calibrate/configs/decision_points.yaml",
+          "sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87"
+        },
+        "data": {
+          "test": {
+            "path": "data/eval/synthetic/decision.test.provisional.jsonl",
+            "sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7"
+          },
+          "train": {
+            "path": "data/eval/synthetic/decision.train.jsonl",
+            "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+          },
+          "validation": {
+            "path": "data/eval/synthetic/decision.validation.jsonl",
+            "sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+          }
+        },
+        "per_lang": {
+          "en": {
+            "acted_coverage_test": 0.3267,
+            "certified": false,
+            "coverage_test": 0.3267,
+            "coverage_val": 0.3067,
+            "ece_post": 0.0501,
+            "ece_pre": 0.2141,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "CUSTOMER_REQUEST": [
+                9,
+                10,
+                0.5958
+              ],
+              "LOST": [
+                10,
+                14,
+                0.4535
+              ],
+              "STOLEN": [
+                8,
+                9,
+                0.565
+              ],
+              "SUSPICIOUS_ACTIVITY": [
+                9,
+                13,
+                0.4237
+              ],
+              "UNRECOGNIZED_CHARGE": [
+                3,
+                3,
+                0.4385
+              ]
+            },
+            "recall_test": {
+              "CUSTOMER_REQUEST": 0.9,
+              "LOST": 1.0,
+              "STOLEN": 0.8,
+              "SUSPICIOUS_ACTIVITY": 0.9,
+              "UNRECOGNIZED_CHARGE": 0.3
+            }
+          },
+          "es": {
+            "acted_coverage_test": 0.2467,
+            "certified": false,
+            "coverage_test": 0.2467,
+            "coverage_val": 0.3267,
+            "ece_post": 0.0496,
+            "ece_pre": 0.2041,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "CUSTOMER_REQUEST": [
+                7,
+                7,
+                0.6457
+              ],
+              "LOST": [
+                6,
+                6,
+                0.6097
+              ],
+              "STOLEN": [
+                10,
+                12,
+                0.552
+              ],
+              "SUSPICIOUS_ACTIVITY": [
+                8,
+                8,
+                0.6756
+              ],
+              "UNRECOGNIZED_CHARGE": [
+                4,
+                4,
+                0.5101
+              ]
+            },
+            "recall_test": {
+              "CUSTOMER_REQUEST": 0.7,
+              "LOST": 0.6,
+              "STOLEN": 1.0,
+              "SUSPICIOUS_ACTIVITY": 0.8,
+              "UNRECOGNIZED_CHARGE": 0.4
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.2933,
+            "certified": false,
+            "coverage_test": 0.2933,
+            "coverage_val": 0.2933,
+            "ece_post": 0.0559,
+            "ece_pre": 0.236,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "CUSTOMER_REQUEST": [
+                9,
+                12,
+                0.4677
+              ],
+              "LOST": [
+                8,
+                9,
+                0.565
+              ],
+              "STOLEN": [
+                9,
+                10,
+                0.5958
+              ],
+              "SUSPICIOUS_ACTIVITY": [
+                9,
+                10,
+                0.5958
+              ],
+              "UNRECOGNIZED_CHARGE": [
+                3,
+                3,
+                0.4385
+              ]
+            },
+            "recall_test": {
+              "CUSTOMER_REQUEST": 0.9,
+              "LOST": 0.8,
+              "STOLEN": 0.9,
+              "SUSPICIOUS_ACTIVITY": 0.9,
+              "UNRECOGNIZED_CHARGE": 0.3
+            }
+          }
+        },
+        "pooled_test": {
+          "CUSTOMER_REQUEST": [
+            25,
+            29,
+            0.6944,
+            "pooled (es, pt, en)"
+          ],
+          "LOST": [
+            24,
+            29,
+            0.6545,
+            "pooled (es, pt, en)"
+          ],
+          "STOLEN": [
+            27,
+            31,
+            0.7115,
+            "pooled (es, pt, en)"
+          ],
+          "SUSPICIOUS_ACTIVITY": [
+            26,
+            31,
+            0.6737,
+            "pooled (es, pt, en)"
+          ],
+          "UNRECOGNIZED_CHARGE": [
+            10,
+            10,
+            0.7225,
+            "pooled (es, pt, en)"
+          ]
+        },
+        "provenance": "synthetic-provisional",
+        "report": "reports/calibration-decision-points-2026-09-29.md",
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "*": {
+          "CUSTOMER_REQUEST": 0.061919,
+          "LOST": 0.601892,
+          "STOLEN": 0.520718,
+          "SUSPICIOUS_ACTIVITY": 0.236208,
+          "UNRECOGNIZED_CHARGE": 0.963534
+        },
+        "en": {
+          "CUSTOMER_REQUEST": 0.061919,
+          "LOST": 0.601892,
+          "STOLEN": 0.520718,
+          "SUSPICIOUS_ACTIVITY": 0.236208,
+          "UNRECOGNIZED_CHARGE": 0.963534
+        },
+        "es": {
+          "CUSTOMER_REQUEST": 0.061919,
+          "LOST": 0.601892,
+          "STOLEN": 0.520718,
+          "SUSPICIOUS_ACTIVITY": 0.236208,
+          "UNRECOGNIZED_CHARGE": 0.963534
+        },
+        "pt": {
+          "CUSTOMER_REQUEST": 0.061919,
+          "LOST": 0.601892,
+          "STOLEN": 0.520718,
+          "SUSPICIOUS_ACTIVITY": 0.236208,
+          "UNRECOGNIZED_CHARGE": 0.963534
+        }
+      },
+      "view": {
+        "groups": {
+          "CUSTOMER_REQUEST": [
+            "request_card_block"
+          ],
+          "LOST": [
+            "report_lost_card"
+          ],
+          "STOLEN": [
+            "report_stolen_card"
+          ],
+          "SUSPICIOUS_ACTIVITY": [
+            "report_suspicious_activity"
+          ],
+          "UNRECOGNIZED_CHARGE": [
+            "report_unrecognized_charge"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "confirm_gate": {
+      "always_on": true,
+      "backend": "gate_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.115797
+          },
+          "es": {
+            "T": 0.122404
+          },
+          "pt": {
+            "T": 0.148454
+          }
+        },
+        "kind": "temperature"
+      },
+      "constraint": {
+        "calibration_split": "validation",
+        "ci": "point",
+        "labels": [
+          "confirm",
+          "deny"
+        ],
+        "metric": "precision",
+        "n_min": 10,
+        "p_min": {
+          "confirm": 0.95,
+          "deny": 0.9
+        }
+      },
+      "enabled": true,
+      "evidence": {
+        "candidate": "gate_tfidf",
+        "certified": false,
+        "config": {
+          "path": "tools/calibrate/configs/decision_points.yaml",
+          "sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87"
+        },
+        "data": {
+          "test": {
+            "path": "data/eval/synthetic/decision.test.provisional.jsonl",
+            "sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7"
+          },
+          "train": {
+            "path": "data/eval/synthetic/decision.train.jsonl",
+            "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+          },
+          "validation": {
+            "path": "data/eval/synthetic/decision.validation.jsonl",
+            "sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+          }
+        },
+        "per_lang": {
+          "en": {
+            "acted_coverage_test": 0.0733,
+            "certified": false,
+            "coverage_test": 0.9733,
+            "coverage_val": 1.0,
+            "ece_post": 0.0359,
+            "ece_pre": 0.2096,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "confirm": [
+                7,
+                7,
+                0.6457
+              ],
+              "deny": [
+                4,
+                4,
+                0.5101
+              ]
+            },
+            "recall_test": {
+              "confirm": 0.7,
+              "deny": 0.4
+            }
+          },
+          "es": {
+            "acted_coverage_test": 0.12,
+            "certified": false,
+            "coverage_test": 1.0,
+            "coverage_val": 1.0,
+            "ece_post": 0.0406,
+            "ece_pre": 0.1845,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "confirm": [
+                7,
+                7,
+                0.6457
+              ],
+              "deny": [
+                9,
+                11,
+                0.523
+              ]
+            },
+            "recall_test": {
+              "confirm": 0.7,
+              "deny": 0.9
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.12,
+            "certified": false,
+            "coverage_test": 0.9933,
+            "coverage_val": 1.0,
+            "ece_post": 0.0394,
+            "ece_pre": 0.1989,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "confirm": [
+                7,
+                7,
+                0.6457
+              ],
+              "deny": [
+                9,
+                11,
+                0.523
+              ]
+            },
+            "recall_test": {
+              "confirm": 0.7,
+              "deny": 0.9
+            }
+          }
+        },
+        "provenance": "synthetic-provisional",
+        "report": "reports/calibration-decision-points-2026-09-29.md",
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "en": {
+          "confirm": 0.987937,
+          "deny": 0.999998,
+          "other": 0.0
+        },
+        "es": {
+          "confirm": 0.880956,
+          "deny": 0.742556,
+          "other": 0.0
+        },
+        "pt": {
+          "confirm": 0.869226,
+          "deny": 0.805281,
+          "other": 0.0
+        }
+      },
+      "view": {
+        "kind": "labels",
+        "labels": [
+          "confirm",
+          "deny",
+          "other"
+        ]
+      }
+    },
+    "handoff_route": {
+      "always_on": true,
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.183985
+          },
+          "es": {
+            "T": 0.191028
+          },
+          "pt": {
+            "T": 0.182655
+          }
+        },
+        "kind": "temperature"
+      },
+      "constraint": {
+        "calibration_split": "validation",
+        "ci": "point",
+        "labels": [
+          "DISPUTE",
+          "FRAUD",
+          "HUMAN_REQUEST",
+          "UNRECOGNIZED"
+        ],
+        "metric": "precision",
+        "n_min": 30,
+        "p_min": 0.9
+      },
+      "enabled": true,
+      "evidence": {
+        "candidate": "intent_tfidf",
+        "certified": false,
+        "config": {
+          "path": "tools/calibrate/configs/decision_points.yaml",
+          "sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87"
+        },
+        "data": {
+          "test": {
+            "path": "data/eval/synthetic/decision.test.provisional.jsonl",
+            "sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7"
+          },
+          "train": {
+            "path": "data/eval/synthetic/decision.train.jsonl",
+            "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+          },
+          "validation": {
+            "path": "data/eval/synthetic/decision.validation.jsonl",
+            "sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+          }
+        },
+        "per_lang": {
+          "en": {
+            "acted_coverage_test": 0.3267,
+            "certified": false,
+            "coverage_test": 0.3267,
+            "coverage_val": 0.34,
+            "ece_post": 0.0347,
+            "ece_pre": 0.1706,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "DISPUTE": [
+                7,
+                9,
+                0.4526
+              ],
+              "FRAUD": [
+                18,
+                21,
+                0.6536
+              ],
+              "HUMAN_REQUEST": [
+                10,
+                16,
+                0.3864
+              ],
+              "UNRECOGNIZED": [
+                3,
+                3,
+                0.4385
+              ]
+            },
+            "recall_test": {
+              "DISPUTE": 0.7,
+              "FRAUD": 0.9,
+              "HUMAN_REQUEST": 1.0,
+              "UNRECOGNIZED": 0.3
+            }
+          },
+          "es": {
+            "acted_coverage_test": 0.3467,
+            "certified": false,
+            "coverage_test": 0.3467,
+            "coverage_val": 0.3267,
+            "ece_post": 0.0575,
+            "ece_pre": 0.2168,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "DISPUTE": [
+                8,
+                8,
+                0.6756
+              ],
+              "FRAUD": [
+                19,
+                23,
+                0.6286
+              ],
+              "HUMAN_REQUEST": [
+                10,
+                17,
+                0.3601
+              ],
+              "UNRECOGNIZED": [
+                4,
+                4,
+                0.5101
+              ]
+            },
+            "recall_test": {
+              "DISPUTE": 0.8,
+              "FRAUD": 0.95,
+              "HUMAN_REQUEST": 1.0,
+              "UNRECOGNIZED": 0.4
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.3067,
+            "certified": false,
+            "coverage_test": 0.3067,
+            "coverage_val": 0.3,
+            "ece_post": 0.0451,
+            "ece_pre": 0.1614,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "DISPUTE": [
+                8,
+                8,
+                0.6756
+              ],
+              "FRAUD": [
+                17,
+                19,
+                0.6861
+              ],
+              "HUMAN_REQUEST": [
+                10,
+                16,
+                0.3864
+              ],
+              "UNRECOGNIZED": [
+                3,
+                3,
+                0.4385
+              ]
+            },
+            "recall_test": {
+              "DISPUTE": 0.8,
+              "FRAUD": 0.85,
+              "HUMAN_REQUEST": 1.0,
+              "UNRECOGNIZED": 0.3
+            }
+          }
+        },
+        "pooled_test": {
+          "DISPUTE": [
+            23,
+            25,
+            0.7503,
+            "pooled (es, pt, en)"
+          ],
+          "FRAUD": [
+            54,
+            63,
+            0.7503,
+            "pooled (es, pt, en)"
+          ],
+          "HUMAN_REQUEST": [
+            30,
+            49,
+            0.4725,
+            "pooled (es, pt, en)"
+          ],
+          "UNRECOGNIZED": [
+            10,
+            10,
+            0.7225,
+            "pooled (es, pt, en)"
+          ]
+        },
+        "provenance": "synthetic-provisional",
+        "report": "reports/calibration-decision-points-2026-09-29.md",
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "*": {
+          "DISPUTE": 0.247761,
+          "FRAUD": 0.466438,
+          "HUMAN_REQUEST": 0.093443,
+          "UNRECOGNIZED": 0.963534
+        },
+        "en": {
+          "DISPUTE": 0.247761,
+          "FRAUD": 0.466438,
+          "HUMAN_REQUEST": 0.093443,
+          "UNRECOGNIZED": 0.963534
+        },
+        "es": {
+          "DISPUTE": 0.247761,
+          "FRAUD": 0.466438,
+          "HUMAN_REQUEST": 0.093443,
+          "UNRECOGNIZED": 0.963534
+        },
+        "pt": {
+          "DISPUTE": 0.247761,
+          "FRAUD": 0.466438,
+          "HUMAN_REQUEST": 0.093443,
+          "UNRECOGNIZED": 0.963534
+        }
+      },
+      "view": {
+        "groups": {
+          "DISPUTE": [
+            "request_dispute"
+          ],
+          "FRAUD": [
+            "report_stolen_card",
+            "report_suspicious_activity"
+          ],
+          "HUMAN_REQUEST": [
+            "request_human_agent"
+          ],
+          "UNRECOGNIZED": [
+            "report_unrecognized_charge"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "smalltalk_route": {
+      "always_on": true,
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.183985
+          },
+          "es": {
+            "T": 0.191028
+          },
+          "pt": {
+            "T": 0.182655
+          }
+        },
+        "kind": "temperature"
+      },
+      "constraint": {
+        "calibration_split": "validation",
+        "ci": "point",
+        "labels": [
+          "greeting",
+          "out_of_scope"
+        ],
+        "metric": "precision",
+        "n_min": 10,
+        "p_min": 0.95
+      },
+      "enabled": true,
+      "evidence": {
+        "candidate": "intent_tfidf",
+        "certified": false,
+        "config": {
+          "path": "tools/calibrate/configs/decision_points.yaml",
+          "sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87"
+        },
+        "data": {
+          "test": {
+            "path": "data/eval/synthetic/decision.test.provisional.jsonl",
+            "sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7"
+          },
+          "train": {
+            "path": "data/eval/synthetic/decision.train.jsonl",
+            "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+          },
+          "validation": {
+            "path": "data/eval/synthetic/decision.validation.jsonl",
+            "sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+          }
+        },
+        "per_lang": {
+          "en": {
+            "acted_coverage_test": 0.1333,
+            "certified": false,
+            "coverage_test": 0.9467,
+            "coverage_val": 1.0,
+            "ece_post": 0.0566,
+            "ece_pre": 0.1112,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "greeting": [
+                9,
+                9,
+                0.7009
+              ],
+              "out_of_scope": [
+                7,
+                11,
+                0.3538
+              ]
+            },
+            "recall_test": {
+              "greeting": 0.9,
+              "out_of_scope": 0.7
+            }
+          },
+          "es": {
+            "acted_coverage_test": 0.0933,
+            "certified": false,
+            "coverage_test": 0.8333,
+            "coverage_val": 1.0,
+            "ece_post": 0.0338,
+            "ece_pre": 0.1191,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "greeting": [
+                6,
+                6,
+                0.6097
+              ],
+              "out_of_scope": [
+                5,
+                8,
+                0.3057
+              ]
+            },
+            "recall_test": {
+              "greeting": 0.6,
+              "out_of_scope": 0.5
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.12,
+            "certified": false,
+            "coverage_test": 0.9533,
+            "coverage_val": 1.0,
+            "ece_post": 0.0254,
+            "ece_pre": 0.1068,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "greeting": [
+                9,
+                10,
+                0.5958
+              ],
+              "out_of_scope": [
+                5,
+                8,
+                0.3057
+              ]
+            },
+            "recall_test": {
+              "greeting": 0.9,
+              "out_of_scope": 0.5
+            }
+          }
+        },
+        "provenance": "synthetic-provisional",
+        "report": "reports/calibration-decision-points-2026-09-29.md",
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "en": 0.575974,
+        "es": 0.902537,
+        "pt": 0.617591
+      },
+      "view": {
+        "groups": {
+          "greeting": [
+            "greeting"
+          ],
+          "other": [
+            "check_balance",
+            "check_recent_transactions",
+            "confirm",
+            "deny",
+            "provide_identity_data",
+            "provide_otp_code",
+            "report_lost_card",
+            "report_stolen_card",
+            "report_suspicious_activity",
+            "report_unrecognized_charge",
+            "request_card_block",
+            "request_dispute",
+            "request_human_agent"
+          ],
+          "out_of_scope": [
+            "out_of_scope"
+          ]
+        },
+        "kind": "groups"
+      }
+    },
+    "turn_intent": {
+      "always_on": true,
+      "backend": "intent_tfidf",
+      "calibrator": {
+        "by_lang": {
+          "en": {
+            "T": 0.183985
+          },
+          "es": {
+            "T": 0.191028
+          },
+          "pt": {
+            "T": 0.182655
+          }
+        },
+        "kind": "temperature"
+      },
+      "constraint": {
+        "calibration_split": "validation",
+        "ci": "point",
+        "labels": [
+          "report_lost_card",
+          "report_stolen_card",
+          "report_suspicious_activity",
+          "report_unrecognized_charge",
+          "request_card_block",
+          "request_dispute",
+          "request_human_agent"
+        ],
+        "metric": "precision",
+        "n_min": 10,
+        "p_min": 0.9
+      },
+      "enabled": true,
+      "evidence": {
+        "candidate": "intent_tfidf",
+        "certified": false,
+        "config": {
+          "path": "tools/calibrate/configs/decision_points.yaml",
+          "sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87"
+        },
+        "data": {
+          "test": {
+            "path": "data/eval/synthetic/decision.test.provisional.jsonl",
+            "sha256": "06c1226b79537b41945ef6fcec247942197d3d93259881fbe16f7a1de70c18f7"
+          },
+          "train": {
+            "path": "data/eval/synthetic/decision.train.jsonl",
+            "sha256": "a563c0c445d6450ed5a9800933508fa1931d5b616943a522852ef7409bfc3984"
+          },
+          "validation": {
+            "path": "data/eval/synthetic/decision.validation.jsonl",
+            "sha256": "50c79fedeb123dd803cc7968147014b606227a6c68b30769fa0c2f6e2627e699"
+          }
+        },
+        "per_lang": {
+          "en": {
+            "acted_coverage_test": 0.5,
+            "certified": false,
+            "coverage_test": 0.9933,
+            "coverage_val": 1.0,
+            "ece_post": 0.0852,
+            "ece_pre": 0.5117,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "report_lost_card": [
+                10,
+                15,
+                0.4171
+              ],
+              "report_stolen_card": [
+                8,
+                9,
+                0.565
+              ],
+              "report_suspicious_activity": [
+                9,
+                13,
+                0.4237
+              ],
+              "report_unrecognized_charge": [
+                5,
+                6,
+                0.4365
+              ],
+              "request_card_block": [
+                9,
+                9,
+                0.7009
+              ],
+              "request_dispute": [
+                7,
+                9,
+                0.4526
+              ],
+              "request_human_agent": [
+                10,
+                14,
+                0.4535
+              ]
+            },
+            "recall_test": {
+              "report_lost_card": 1.0,
+              "report_stolen_card": 0.8,
+              "report_suspicious_activity": 0.9,
+              "report_unrecognized_charge": 0.5,
+              "request_card_block": 0.9,
+              "request_dispute": 0.7,
+              "request_human_agent": 1.0
+            }
+          },
+          "es": {
+            "acted_coverage_test": 0.3667,
+            "certified": false,
+            "coverage_test": 0.7733,
+            "coverage_val": 0.9667,
+            "ece_post": 0.0862,
+            "ece_pre": 0.4909,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "report_lost_card": [
+                6,
+                6,
+                0.6097
+              ],
+              "report_stolen_card": [
+                10,
+                12,
+                0.552
+              ],
+              "report_suspicious_activity": [
+                8,
+                8,
+                0.6756
+              ],
+              "report_unrecognized_charge": [
+                7,
+                8,
+                0.5291
+              ],
+              "request_card_block": [
+                5,
+                5,
+                0.5655
+              ],
+              "request_dispute": [
+                7,
+                7,
+                0.6457
+              ],
+              "request_human_agent": [
+                9,
+                9,
+                0.7009
+              ]
+            },
+            "recall_test": {
+              "report_lost_card": 0.6,
+              "report_stolen_card": 1.0,
+              "report_suspicious_activity": 0.8,
+              "report_unrecognized_charge": 0.7,
+              "request_card_block": 0.5,
+              "request_dispute": 0.7,
+              "request_human_agent": 0.9
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.28,
+            "certified": false,
+            "coverage_test": 0.58,
+            "coverage_val": 0.74,
+            "ece_post": 0.0642,
+            "ece_pre": 0.5191,
+            "n_test": 150,
+            "n_val": 150,
+            "precision_test": {
+              "report_lost_card": [
+                5,
+                6,
+                0.4365
+              ],
+              "report_stolen_card": [
+                6,
+                6,
+                0.6097
+              ],
+              "report_suspicious_activity": [
+                6,
+                6,
+                0.6097
+              ],
+              "report_unrecognized_charge": [
+                3,
+                3,
+                0.4385
+              ],
+              "request_card_block": [
+                7,
+                7,
+                0.6457
+              ],
+              "request_dispute": [
+                5,
+                5,
+                0.5655
+              ],
+              "request_human_agent": [
+                9,
+                9,
+                0.7009
+              ]
+            },
+            "recall_test": {
+              "report_lost_card": 0.5,
+              "report_stolen_card": 0.6,
+              "report_suspicious_activity": 0.6,
+              "report_unrecognized_charge": 0.3,
+              "request_card_block": 0.7,
+              "request_dispute": 0.5,
+              "request_human_agent": 0.9
+            }
+          }
+        },
+        "provenance": "synthetic-provisional",
+        "report": "reports/calibration-decision-points-2026-09-29.md",
+        "run_id": "a38b3ffd3f05",
+        "split": "test",
+        "uncovered": []
+      },
+      "status": "calibrated",
+      "thresholds": {
+        "en": 0.274225,
+        "es": 0.700545,
+        "pt": 0.961811
+      },
+      "view": {
+        "kind": "labels",
+        "labels": [
+          "check_balance",
+          "check_recent_transactions",
+          "confirm",
+          "deny",
+          "greeting",
+          "out_of_scope",
+          "provide_identity_data",
+          "provide_otp_code",
+          "report_lost_card",
+          "report_stolen_card",
+          "report_suspicious_activity",
+          "report_unrecognized_charge",
+          "request_card_block",
+          "request_dispute",
+          "request_human_agent"
+        ]
+      }
+    }
+  },
+  "harness": {
+    "config_path": "tools/calibrate/configs/decision_points.yaml",
+    "config_sha256": "1da459a46de4df0d5ce7c8c5cad360b2c713c6316deb2de75bda8d718f54db87",
+    "git_sha": "e5f98ab44c5cb28f9160f5d3afcde8fd4b626262"
+  },
+  "schema_version": 1
+}

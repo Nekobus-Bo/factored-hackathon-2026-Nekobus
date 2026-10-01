@@ -1,0 +1,73 @@
+<!-- @dsCard group="Customer app" height=600 subtitle="Simulated email delivery for the demo" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OtpInboxNotice — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+  .stage { display: grid; gap: 24px; max-width: 440px; padding: 16px; }
+  .toast-row { display: grid; gap: 8px; }
+  .pb-toast .pb-btn--icon { align-self: start; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="toast-row">
+    <div class="pb-toast" role="status">
+      <span class="pb-toast__icon" aria-hidden="true"><i class="pb-ico pb-ico--mail"></i></span>
+      <div>
+        <p class="pb-toast__title">Tienes un correo nuevo</p>
+        <p class="pb-toast__text">Tu código de verificación ya llegó.</p>
+        <div class="pb-toast__actions"><a class="pb-action" href="#bandeja">Abrir bandeja<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a></div>
+      </div>
+      <button class="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label="Cerrar aviso"><i class="pb-ico pb-ico--x" aria-hidden="true"></i></button>
+    </div>
+  </div>
+
+  <section class="pb-card pb-inbox" id="bandeja" aria-labelledby="inbox-title">
+    <header class="pb-inbox__bar">
+      <h2 class="pb-chat__title" id="inbox-title" style="margin:0">Bandeja simulada</h2>
+      <span class="pb-tag">DEMO</span>
+    </header>
+    <div class="pb-inbox__body">
+      <dl class="pb-kv">
+        <dt>De</dt><dd class="pb-kv__text">Pattern Blue Seguridad</dd>
+        <dt>Para</dt><dd>d***@example.com</dd>
+        <dt>Asunto</dt><dd class="pb-kv__text">Tu código de verificación</dd>
+      </dl>
+      <p class="pb-t-body" style="margin:0">Escribe este código en el chat para verificar tu identidad.</p>
+      <div class="pb-code" role="img" aria-label="Código: 4 8 2 9 1 6">
+        <span class="pb-code__d" aria-hidden="true">4</span><span class="pb-code__d" aria-hidden="true">8</span><span class="pb-code__d" aria-hidden="true">2</span><span class="pb-code__d" aria-hidden="true">9</span><span class="pb-code__d" aria-hidden="true">1</span><span class="pb-code__d" aria-hidden="true">6</span>
+      </div>
+      <div class="pb-expiry">
+        <div class="pb-expiry__row">
+          <span class="pb-t-label">Vence en</span>
+          <span class="pb-expiry__time" id="otp-time" role="timer">04:32</span>
+        </div>
+        <div class="pb-gauge pb-gauge--sm" id="otp-bar" style="--n: 24; --on: 23" aria-hidden="true"><div class="pb-gauge__track"><div class="pb-gauge__fill"></div></div></div>
+      </div>
+      <p class="pb-inbox__note"><i class="pb-ico pb-ico--info" aria-hidden="true"></i><span>Entrega simulada para la demo: no se envió ningún correo real. En producción el código llega al canal registrado del cliente.</span></p>
+      <p class="pb-t-small" style="margin:0">Pattern Blue nunca te pedirá este código por teléfono ni por correo.</p>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    var left = 272, total = 300, time = document.getElementById('otp-time'), bar = document.getElementById('otp-bar');
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function tick() {
+      time.textContent = pad(Math.floor(left / 60)) + ':' + pad(left % 60);
+      bar.style.setProperty('--on', Math.round(left / total * 24));
+      bar.setAttribute('data-state', left < 60 ? 'abstained' : 'decided');
+      if (left > 0) left -= 1;
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>
+</body>
+</html>

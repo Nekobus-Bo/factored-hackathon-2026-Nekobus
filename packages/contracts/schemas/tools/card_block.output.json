@@ -11,6 +11,99 @@
       "title": "CardStatus",
       "type": "string"
     },
+    "Department": {
+      "description": "Bank back-office specialized queues.",
+      "enum": [
+        "FRAUD_OPERATIONS",
+        "CUSTOMER_SUPPORT",
+        "DISPUTES"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "HandoffPriority": {
+      "description": "Queue priority for agent assignment.",
+      "enum": [
+        "LOW",
+        "NORMAL",
+        "HIGH",
+        "URGENT"
+      ],
+      "title": "HandoffPriority",
+      "type": "string"
+    },
+    "HandoffReason": {
+      "description": "Reason for session escalation to a human agent.",
+      "enum": [
+        "SUSPECTED_FRAUD",
+        "DISPUTE_CLAIM",
+        "CUSTOMER_LOCKED",
+        "UNRECOGNIZED_TRANSACTION",
+        "CUSTOMER_REQUEST",
+        "VERIFICATION_FAILED"
+      ],
+      "title": "HandoffReason",
+      "type": "string"
+    },
+    "HandoffRequirement": {
+      "additionalProperties": false,
+      "description": "Policy outcome for a case, decided by banking-core and never by the model.\n\nWhen the level is NONE nothing else is set; otherwise the priority,\ndepartment and reason a handoff for this case must carry are all set.",
+      "properties": {
+        "department": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Department"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Department the handoff must be routed to; unset when level is NONE"
+        },
+        "level": {
+          "$ref": "#/$defs/HandoffRequirementLevel",
+          "default": "NONE",
+          "description": "NONE, RECOMMENDED (advisory) or REQUIRED (enforced)"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HandoffPriority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum queue priority of the handoff; unset when level is NONE"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HandoffReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Categorized reason the handoff must carry; unset when level is NONE"
+        }
+      },
+      "title": "HandoffRequirement",
+      "type": "object"
+    },
+    "HandoffRequirementLevel": {
+      "description": "How strongly banking-core policy asks for a human on this case (ADR-0003).\n\nRECOMMENDED is advisory. REQUIRED is enforced: the turn engine creates the\nhandoff itself when the model has not.",
+      "enum": [
+        "NONE",
+        "RECOMMENDED",
+        "REQUIRED"
+      ],
+      "title": "HandoffRequirementLevel",
+      "type": "string"
+    },
     "Receipt": {
       "additionalProperties": false,
       "description": "Database-verified receipt returned on state-mutating actions.",
@@ -94,6 +187,10 @@
       "description": "Opaque reference of the blocked card",
       "title": "Card Ref",
       "type": "string"
+    },
+    "handoff_requirement": {
+      "$ref": "#/$defs/HandoffRequirement",
+      "description": "Policy outcome for the case (NONE, RECOMMENDED or REQUIRED, with priority, department and reason), decided by banking-core from the disputed transaction in the database. Also returned on an idempotent replay. The default only lets a response stored before this field existed validate; banking-core always sets it"
     },
     "receipt": {
       "$ref": "#/$defs/Receipt",

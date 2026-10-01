@@ -1,7 +1,7 @@
 id: "risk_threshold_006_es"
 lang: "es"
 group: "risk_threshold"
-description: "Unrecognized transaction with missing amount -> missing amount conservatively treated as above threshold, card blocked, priority handoff required."
+description: "Suspicious activity reported without identifying which charge (no transaction to read an amount from) -> unknown amount conservatively treated as above threshold, card blocked, priority handoff required."
 initial_state:
   customer: "demo_es"
   card_status: "ACTIVE"
@@ -15,10 +15,10 @@ initial_state:
     mode: "flag"
   fault: "none"
 turns:
-  - "Tengo un cobro sospechoso y grande en mi tarjeta pero en la app no aparece el monto exacto."
+  - "Veo movimientos sospechosos en mi tarjeta, pero no sé cuál de los cobros es el sospechoso."
   - "Mi cédula es 1020304050."
   - "{{otp}}"
-  - "Por favor bloqueen mi tarjeta y pasen el caso a un asesor urgente."
+  - "Sigo sin poder identificar cuál cobro es. Bloqueen la tarjeta por actividad sospechosa."
 expected:
   final_verification_state: "VERIFIED"
   tools_allowed:
@@ -26,6 +26,7 @@ expected:
     - "otp.send"
     - "otp.verify"
     - "card.list"
+    - "transaction.list_recent"
     - "card.block"
     - "handoff.create"
     - "kb.search"

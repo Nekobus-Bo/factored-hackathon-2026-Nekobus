@@ -13,6 +13,7 @@ Verifies:
 - OTP resends do NOT reset failed_verifies; resend loop ends in LOCKED
 - OTP_PENDING -> VERIFIED on valid otp.verify (resets failures and resends)
 - OTP_PENDING -> LOCKED after N failed otp.verify attempts
+- IDENTIFIED / OTP_PENDING -> LOCKED when the customer is locked across sessions
 - Any state -> HANDED_OFF on handoff.create
 - N is configurable and never hardcoded
 - Illegal transitions raise InvalidFSMTransitionError
@@ -185,6 +186,88 @@ def test_otp_resend_increments_resends_and_locks_on_limit() -> None:
     assert session.otp_resends == 2
 
 
+@pytest.mark.parametrize(
+    ("state", "resends", "attempts", "would_lock"),
+    [
+        (VerificationState.IDENTIFIED, 0, 0, False),
+        # The first send never locks, whatever the counters say.
+        (VerificationState.IDENTIFIED, 5, 9, False),
+        (VerificationState.OTP_PENDING, 0, 0, False),
+        # max_otp_resends=3: the third resend locks, so two is the last free one.
+        (VerificationState.OTP_PENDING, 1, 1, False),
+        (VerificationState.OTP_PENDING, 2, 2, True),
+        # max_failed_matches=5: the fifth attempt locks even with resends to spare.
+        (VerificationState.OTP_PENDING, 0, 3, False),
+        (VerificationState.OTP_PENDING, 0, 4, True),
+    ],
+)
+def test_otp_send_would_lock_decides_before_delivery(
+    state: VerificationState, resends: int, attempts: int, would_lock: bool
+) -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=state,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_old",
+        otp_resends=resends,
+        attempts=attempts,
+    )
+    before = session.model_copy()
+
+    assert fsm.otp_send_would_lock(session) is would_lock
+
+    assert session == before  # a decision, not a transition
+
+
+@pytest.mark.parametrize(
+    ("resends", "attempts"),
+    [(2, 2), (0, 4)],
+)
+def test_on_otp_send_agrees_with_the_decision_and_keeps_the_old_challenge(
+    resends: int, attempts: int
+) -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=VerificationState.OTP_PENDING,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_old",
+        otp_resends=resends,
+        attempts=attempts,
+    )
+    assert fsm.otp_send_would_lock(session)
+
+    locked = fsm.on_otp_send_limit_exceeded(session.model_copy())
+    via_send = fsm.on_otp_send(session.model_copy(), challenge_id="chal_new")
+
+    assert locked == via_send
+    assert locked.state == VerificationState.LOCKED
+    assert locked.otp_challenge_id == "chal_old"
+    assert (locked.otp_resends, locked.attempts) == (resends + 1, attempts + 1)
+
+
+def test_on_otp_send_limit_exceeded_refuses_when_the_limit_is_not_reached() -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=VerificationState.OTP_PENDING,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_old",
+    )
+
+    with pytest.raises(InvalidFSMTransitionError, match="limit has not been reached"):
+        fsm.on_otp_send_limit_exceeded(session)
+
+    assert session.state == VerificationState.OTP_PENDING
+
+
 def test_otp_resend_probe_does_not_reset_failed_verifies() -> None:
     """Security probe: otp.send must NOT reset failed_verifies.
 
@@ -256,6 +339,88 @@ def test_otp_pending_to_locked_after_n_failed_verifies() -> None:
     fsm.on_otp_verify(session, valid=False)
     assert session.state == VerificationState.LOCKED
     assert session.failed_verifies == 2
+
+
+def test_a_failed_verify_that_locks_the_customer_locks_the_session() -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=VerificationState.OTP_PENDING,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_001",
+    )
+
+    fsm.on_otp_verify(session, valid=False, customer_locked=True)
+
+    # Well under the session's own limit, yet locked, and the failure counted.
+    assert session.state == VerificationState.LOCKED
+    assert session.failed_verifies == 1
+    assert session.attempts == 1
+
+
+def test_customer_lock_flag_never_hurts_a_valid_code() -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=VerificationState.OTP_PENDING,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_001",
+    )
+
+    fsm.on_otp_verify(session, valid=True, customer_locked=False)
+
+    assert session.state == VerificationState.VERIFIED
+
+
+@pytest.mark.parametrize(
+    "state", [VerificationState.IDENTIFIED, VerificationState.OTP_PENDING]
+)
+def test_on_customer_locked_locks_and_moves_no_counter(
+    state: VerificationState,
+) -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(
+        session_id="s1",
+        state=state,
+        pinned_holder_id="holder_123",
+        otp_challenge_id="chal_001",
+        attempts=1,
+        otp_resends=1,
+    )
+
+    fsm.on_customer_locked(session)
+
+    assert session.state == VerificationState.LOCKED
+    assert (session.attempts, session.otp_resends, session.failed_verifies) == (1, 1, 0)
+    assert session.otp_challenge_id == "chal_001"
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        VerificationState.ANONYMOUS,
+        VerificationState.VERIFIED,
+        VerificationState.LOCKED,
+        VerificationState.HANDED_OFF,
+    ],
+)
+def test_on_customer_locked_is_refused_outside_the_otp_states(
+    state: VerificationState,
+) -> None:
+    fsm = VerificationFSM(
+        max_failed_matches=5, max_failed_verifies=3, max_otp_resends=3
+    )
+    session = SessionState(session_id="s1", state=state)
+
+    with pytest.raises(InvalidFSMTransitionError):
+        fsm.on_customer_locked(session)
+    assert session.state == state
 
 
 @pytest.mark.parametrize(
