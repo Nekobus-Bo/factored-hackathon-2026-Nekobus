@@ -378,7 +378,7 @@ GitHub Environments are not used: nothing needs one, and a private repository on
 
 ### Status: not yet exercised
 
-⚠️ `deploy.yml`, the Terraform and the smoke script are checked offline only: `make gcp-check` (fmt, validate, tflint and 25 `terraform test` runs against a mocked provider), actionlint, shellcheck, and the smoke script against a fake `gcloud` and the local stack. **No apply and no deploy has run against a real project yet.** Until the first run is logged here, this section is a design, not a proven procedure.
+⚠️ `deploy.yml`, the Terraform and the smoke script are checked offline only: `make gcp-check` (fmt, validate, tflint and 28 `terraform test` runs against a mocked provider), actionlint, shellcheck, and the smoke script against a fake `gcloud` and the local stack. **No apply and no deploy has run against a real project yet.** Until the first run is logged here, this section is a design, not a proven procedure.
 
 ---
 
@@ -398,6 +398,7 @@ It stays `APP_ENV=production`, with **production-hardened defaults and each demo
 | `OTP_CHANNEL_MODE` | `simulated` | The only delivery that exists: the customer web client shows the code in its inbox notice; the dev OTP endpoint stays off |
 | `DEMO_SEED` | Repository variable | `true` reloads the demo customers on every deploy (it truncates the banking tables and empties the handoff queue); `make gcp-seed` does it once |
 | LLM | `LLM_MODE=live`, `llm_model` and `llm_reasoning_effort` in `variables.tf`; key by `make gcp-llm-key` | The key is added by hand and never enters the Terraform state. Replay recordings are not shipped |
+| Decision model | `decision_points_file` in `variables.tf`, the DistilBERT artifact by default | The encoder serves the pooled DistilBERT ([ADR-0014](adr/0014-distilbert-intent-backend.md)), the artifact `.env.example` names; a `terraform test` keeps them equal. `packages/encoder/calibration/decision_points.json` and `make gcp-apply` switch back to the `tfidf_lr` baseline, which is in the same image |
 | Per-address conversation limit | `trusted_proxy_hops = 0`, `rate_limit_conversations_per_ip_hour = 1000` | **Stopgap** ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)): behind Google's front end the web-client BFF cannot see the customer's address, so every customer counts as one; the limit is high until the BFF forwards the address ([limitations](limitations.md)) |
 | `warm` | `variables.tf`, `true` by default | One instance of the model server, `banking-core` and the orchestrator stays running; `false` scales everything to zero between presentations (about $3.5–4 a day instead of $8–11) |
 

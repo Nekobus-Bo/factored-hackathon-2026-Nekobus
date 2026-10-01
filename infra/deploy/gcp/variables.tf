@@ -143,6 +143,17 @@ variable "embedding_weights_sha256" {
   }
 }
 
+variable "decision_points_file" {
+  description = "Calibration artifact the encoder serves, relative to the image's /app. The pooled DistilBERT (ADR-0014), as in .env.example; packages/encoder/calibration/decision_points.json is the tfidf_lr kill switch, already in the image."
+  type        = string
+  default     = "packages/encoder/calibration/decision_points.distilbert.json"
+
+  validation {
+    condition     = can(regex("^packages/encoder/calibration/[a-z0-9_.]+\\.json$", var.decision_points_file))
+    error_message = "decision_points_file must be a .json artifact under packages/encoder/calibration/."
+  }
+}
+
 variable "github_repository" {
   description = "The repository whose deploy.yml may deploy, as owner/name, exactly as GitHub spells it."
   type        = string

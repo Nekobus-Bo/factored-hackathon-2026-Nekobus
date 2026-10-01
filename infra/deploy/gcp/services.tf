@@ -50,7 +50,10 @@ locals {
         ABSTENTION_THRESHOLD        = "0.37"
         EMBEDDING_WEIGHTS_SHA256    = var.embedding_weights_sha256
         EMBEDDING_MAX_BATCH         = "64"
+        DECISION_POINTS_FILE        = var.decision_points_file
         DECISION_POINTS_ALLOW_STALE = "false"
+        # A fixed thread count keeps decisions reproducible (ADR-0012 E.4), as in compose.
+        OMP_NUM_THREADS = "2"
         # The weights are baked into the image (apps/encoder/Dockerfile): never download.
         HF_HUB_OFFLINE = "1"
       })

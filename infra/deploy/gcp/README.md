@@ -17,7 +17,7 @@ Terraform for the presentation environment on Google Cloud Run ([ADR-0015](../..
 | `services.tf` | The five Cloud Run services, Identity-Aware Proxy on the back office |
 | `jobs.tf`, `netcheck.py` | The migrate, seed and netcheck jobs |
 | `ci.tf` | Workload Identity Federation for `deploy.yml` and the deployer service account |
-| `tests/` | `terraform test` against a mocked provider: trust boundary, ingress, network, sizing, CI identity, pins |
+| `tests/` | `terraform test` against a mocked provider: trust boundary, ingress, network, sizing, CI identity, pins, decision model |
 | `smoke.sh` | The check of a deployed environment from outside (`make gcp-smoke`) |
 
 Inputs: `presentation.tfvars` (versioned, non-secret) and `local.tfvars` (yours, not versioned; copy `local.tfvars.example`). Terraform owns the infrastructure and the service configuration; `deploy.yml` owns which image each service and job runs.
