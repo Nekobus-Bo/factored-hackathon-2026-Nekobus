@@ -133,6 +133,12 @@ class RegexMasker(Masker):
     SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
     DNI_DOTS_RE = re.compile(r"\b\d{1,3}(?:\.\d{3}){2,3}\b")
     PASSPORT_RE = re.compile(r"\b[A-Za-z]{1,2}\d{6,8}\b")
+    # Mexico and Argentina (ADR-0014): CURP (18), RFC (12 or 13), CUIT/CUIL (11 digits,
+    # usually dashed). Listed before the passport pattern so the whole token goes.
+    CURP_RE = re.compile(r"\b[A-Z]{4}\d{6}[HMX][A-Z]{5}[A-Z0-9]\d\b", re.IGNORECASE)
+    RFC_RE = re.compile(r"\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b", re.IGNORECASE)
+    CUIT_RE = re.compile(r"\b(?:20|23|24|27|30|33|34)-?\d{8}-?\d\b")
+    FORMATTED_DOC_RES = (CURP_RE, RFC_RE, CUIT_RE, CPF_RE, SSN_RE, PASSPORT_RE)
 
     # 4. Document labels followed by filler words and document number
     DOC_LABEL_RE = re.compile(
@@ -150,6 +156,11 @@ class RegexMasker(Masker):
         r"cpf|"
         r"rut|"
         r"nit|"
+        r"curp|"
+        r"rfc|"
+        r"cuit|"
+        r"cuil|"
+        r"ine|"
         r"id|"
         r"doc|"
         r"passport(?:\s+number)?|"
@@ -267,11 +278,11 @@ class RegexMasker(Masker):
     # 9. Unclassified sequence of >=7 digits (avoiding currency amounts)
     DIGITS_RUN_RE = re.compile(r"\b\d[\d\s.\-]{5,}\d\b")
     CURRENCY_PREFIX_RE = re.compile(
-        r"(?:[\$€£]|R\$|\b(?:USD|COP|BRL|EUR|valor(?:\s+de)?|cobro(?:\s+de)?|monto(?:\s+de)?|quantia(?:\s+de)?|débito(?:\s+de)?|debito(?:\s+de)?|transfer\s+of))\s*$",
+        r"(?:[\$€£]|R\$|\b(?:USD|COP|BRL|EUR|MXN|ARS|valor(?:\s+de)?|cobro(?:\s+de)?|monto(?:\s+de)?|quantia(?:\s+de)?|débito(?:\s+de)?|debito(?:\s+de)?|transfer\s+of))\s*$",
         re.IGNORECASE,
     )
     CURRENCY_SUFFIX_RE = re.compile(
-        r"^\s*(?:USD|COP|BRL|EUR|dólares|dolares|pesos|reais|euros|centavos)\b",
+        r"^\s*(?:USD|COP|BRL|EUR|MXN|ARS|dólares|dolares|pesos|reais|euros|centavos)\b",
         re.IGNORECASE,
     )
 
@@ -351,8 +362,8 @@ class RegexMasker(Masker):
                     placeholder = get_or_create_placeholder("EMAIL", raw_match)
                     masked = masked.replace(raw_match, placeholder)
 
-            # 3. Formatted documents (CPF, SSN, Passport)
-            for pat in (self.CPF_RE, self.SSN_RE, self.PASSPORT_RE):
+            # 3. Formatted documents (CURP, RFC, CUIT, CPF, SSN, passport)
+            for pat in self.FORMATTED_DOC_RES:
                 for m in list(pat.finditer(masked)):
                     raw_match = m.group(0)
                     if not raw_match.startswith("["):
@@ -508,8 +519,8 @@ class RegexMasker(Masker):
             if 13 <= len(digits) <= 19:
                 return False
 
-        # 3. Formatted documents (CPF, SSN, Passport)
-        for pat in (self.CPF_RE, self.SSN_RE, self.PASSPORT_RE):
+        # 3. Formatted documents (CURP, RFC, CUIT, CPF, SSN, passport)
+        for pat in self.FORMATTED_DOC_RES:
             for m in pat.finditer(text):
                 val = m.group(0)
                 if not (val.startswith("[") and val.endswith("]")):
