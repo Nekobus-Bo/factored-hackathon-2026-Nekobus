@@ -283,7 +283,7 @@ make clean                 # stop and drop volumes (destroys seeded data)
 
 ### Turning a decision point down (the mode kill switch)
 
-Each decision point of [ADR-0012](adr/0012-decision-points.md) has a mode in `apps/orchestrator/config/decision_effects.yaml`: `off` (ignored), `shadow` (computed and recorded, nothing changes) or `enforce` (applied). Every one ships in `shadow`. If one that was flipped to `enforce` misbehaves in a demo or on the presentation environment (a gate asking for a confirmation it should not, a block reason that looks wrong), turn it down with an environment change and no code:
+Each decision point of [ADR-0012](adr/0012-decision-points.md) has a mode in `apps/orchestrator/config/decision_effects.yaml`: `off` (ignored), `shadow` (computed and recorded, nothing changes) or `enforce` (applied). Every one ships in `shadow` except `intent_hint` and `clarify_route`, in `enforce` ([ADR-0014](adr/0014-distilbert-intent-backend.md), amendment 2026-10-01). If one that was flipped to `enforce` misbehaves in a demo or on the presentation environment (a gate asking for a confirmation it should not, a block reason that looks wrong), turn it down with an environment change and no code:
 
 ```bash
 # .env
@@ -291,6 +291,8 @@ DECISION_POINTS_MODES=confirm_gate=shadow,block_reason=off
 
 make up          # recreates the orchestrator with the new value
 ```
+
+The two enforced ones go back to `shadow` with `DECISION_POINTS_MODES=intent_hint=shadow,clarify_route=shadow`. On Cloud Run the same value is the `decision_points_modes` Terraform variable (in `infra/deploy/gcp/local.tfvars`), then `make gcp-apply`: no new image.
 
 `id=mode` pairs, separated by commas; the override wins over the file. An entry that cannot be read, or that names a decision point the file does not have, stops the orchestrator at startup instead of being skipped, so a typo cannot leave the decision point enforcing. Check it took effect in the turn metadata (`mode` of each decision record) or in the orchestrator log at startup (`Decision points from ...: confirm_gate=shadow, ...`). Emptying the variable restores the modes of the file. Turning `confirm_gate` down to `shadow` removes the confirmation question: `card.block` is again the LLM's proposal, authorized by banking-core as before.
 
