@@ -83,6 +83,11 @@ def services() -> Any:
         yield router
 
 
+# The two decision points the shipped file enforces (ADR-0014, amendment 2026-10-01),
+# pinned back to shadow where a test is about shadow, not about the shipped file.
+HINT_CLARIFY_SHADOW = {"intent_hint": "shadow", "clarify_route": "shadow"}
+
+
 class Rig:
     """Engine, fake encoder and fake banking-core wired together."""
 
@@ -140,7 +145,7 @@ async def test_shadow_changes_nothing_the_llm_or_banking_core_sees() -> None:
 
     script = [{"turn_intent": "report_lost_card", "block_reason": "STOLEN"}]
     with respx.mock(assert_all_called=False) as router:
-        with_dp = Rig(router, steps(), script=script)  # every DP ships in shadow
+        with_dp = Rig(router, steps(), modes=HINT_CLARIFY_SHADOW, script=script)
         result = await with_dp.say("Perdí mi tarjeta, bloquéala", "t1")
     with respx.mock(assert_all_called=False) as router:
         without = Rig(router, steps(), script=script, empty_runtime=True)
@@ -160,9 +165,9 @@ async def test_shadow_changes_nothing_the_llm_or_banking_core_sees() -> None:
     assert baseline.metadata.decisions == [] and baseline.metadata.effects == []
 
 
-async def test_the_shipped_configuration_is_all_shadow_and_the_first_card_block_goes(
-    services: Any,
-) -> None:
+async def test_the_shipped_modes_let_the_first_card_block_go(services: Any) -> None:
+    # Shipped: shadow, except intent_hint and clarify_route (ADR-0014, amendment
+    # 2026-10-01). Neither may hold back the main flow.
     rig = Rig(
         services,
         ScriptedLLM([block_step(), Step(content=DONE)]),
@@ -171,7 +176,15 @@ async def test_the_shipped_configuration_is_all_shadow_and_the_first_card_block_
 
     result = await rig.say("Perdí mi tarjeta", "t1")
 
-    assert {d.mode for d in result.metadata.decisions} == {Mode.SHADOW}
+    assert {d.dp_id: d.mode.value for d in result.metadata.decisions} == {
+        "turn_intent": "shadow",
+        "confirm_gate": "shadow",
+        "block_reason": "shadow",
+        "handoff_route": "shadow",
+        "smalltalk_route": "shadow",
+        "intent_hint": "enforce",
+        "clarify_route": "enforce",
+    }
     assert len(rig.blocks()) == 1
     assert any(isinstance(b, ReceiptBlock) for b in result.blocks)
 
@@ -825,7 +838,13 @@ async def test_hint_and_clarify_in_shadow_change_nothing_the_llm_sees() -> None:
         async def go() -> tuple[ScriptedLLM, Any]:
             llm = ScriptedLLM([Step(content=DONE)])
             with respx.mock(assert_all_called=False) as router:
-                rig = Rig(router, llm, script=script, empty_runtime=empty)
+                rig = Rig(
+                    router,
+                    llm,
+                    modes=HINT_CLARIFY_SHADOW,
+                    script=script,
+                    empty_runtime=empty,
+                )
                 result = await rig.say("ayuda con la tarjeta", "t1")
             return llm, result
 
@@ -850,6 +869,7 @@ async def test_shadow_records_what_hint_and_clarify_would_have_done(
     rig = Rig(
         services,
         ScriptedLLM([Step(content=DONE)]),
+        modes=HINT_CLARIFY_SHADOW,
         script=[{"intent_hint": ABSTAIN, "clarify_route": ABSTAIN}],
     )
     result = await rig.say("ayuda con la tarjeta", "t1")

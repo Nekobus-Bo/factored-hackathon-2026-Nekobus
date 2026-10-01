@@ -1,6 +1,7 @@
 """The effects file is validated at startup and fails loud (ADR-0012, B.4).
 
-The shipped file must load with every decision point in `shadow`; anything the
+The shipped file must load with every decision point in `shadow` except `intent_hint`
+and `clarify_route` (ADR-0014, amendment 2026-10-01); anything the
 loader cannot prove safe (an argument that is not an enum, a value the tool does
 not accept, `priority`, an effect the freeze does not build) stops the service.
 """
@@ -43,7 +44,7 @@ def mutated(change: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
 # ------------------------------------------------------------ the shipped file
 
 
-def test_the_shipped_file_loads_with_every_decision_point_in_shadow() -> None:
+def test_the_shipped_file_loads_with_the_shipped_modes() -> None:
     config = load_effects()
 
     assert list(config.decision_points) == [
@@ -55,7 +56,15 @@ def test_the_shipped_file_loads_with_every_decision_point_in_shadow() -> None:
         "intent_hint",
         "clarify_route",
     ]
-    assert {dp.mode for dp in config.decision_points.values()} == {Mode.SHADOW}
+    assert config.modes() == {
+        "turn_intent": "shadow",
+        "confirm_gate": "shadow",
+        "block_reason": "shadow",
+        "handoff_route": "shadow",
+        "smalltalk_route": "shadow",
+        "intent_hint": "enforce",
+        "clarify_route": "enforce",
+    }
     assert {dp.id: dp.effect for dp in config.decision_points.values()} == {
         "turn_intent": "record",
         "confirm_gate": "gate",

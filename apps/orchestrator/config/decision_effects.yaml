@@ -10,9 +10,10 @@
 #   shadow   computed and recorded in the turn metadata (what the effect WOULD do),
 #            and nothing else changes
 #   enforce  applied
-# Every decision point ships in `shadow`. Flipping one to `enforce` is its own PR,
-# after the calibration sign-off of ADR-0012 Appendix F, with the evaluation report
-# attached. In an emergency, DECISION_POINTS_MODES='confirm_gate=shadow' (an env
+# Every decision point ships in `shadow`, except `intent_hint` and `clarify_route`
+# (ADR-0014, amendment 2026-10-01: enforce without an evaluation run, declared in
+# docs/limitations.md). Flipping one to `enforce` is its own PR, after the
+# calibration sign-off of ADR-0012 Appendix F, with the evaluation report attached. In an emergency, DECISION_POINTS_MODES='confirm_gate=shadow' (an env
 # change, no redeploy of code) turns a decision point down; see docs/runbook.md.
 #
 # Failure rule (I2): when a decision point does not decide (abstains, is
@@ -92,7 +93,7 @@ decision_points:
   # system line with the decided intent, or "uncertain" when the model abstained.
   # Nothing on an outage. Advisory: banking-core still authorizes every call.
   intent_hint:
-    mode: shadow
+    mode: enforce
     effect: hint
     on_abstain: uncertain
     on_unavailable: omit
@@ -101,7 +102,7 @@ decision_points:
   # LLM guessing (ADR-0003: below tau, ask). Only before the LLM has answered the
   # conversation, at most once, never while a gate, an OTP or a tool is in flight.
   clarify_route:
-    mode: shadow
+    mode: enforce
     effect: canned_reply
     on_abstain: reply
     on_unavailable: fallback_llm
