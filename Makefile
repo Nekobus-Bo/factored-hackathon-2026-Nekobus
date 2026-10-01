@@ -65,7 +65,7 @@ gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) -
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
-	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-gh-vars gcp-migrate gcp-seed \
+	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-iap-oauth gcp-gh-vars gcp-migrate gcp-seed \
 	gcp-netcheck gcp-smoke
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -286,6 +286,17 @@ gcp-llm-key: ## GCP: add the LLM API key to Secret Manager (asks for it, input h
 		stty -echo 2>/dev/null; read -r key; stty echo 2>/dev/null; printf '\n' >&2; \
 		test -n "$$key" || { echo "gcp-llm-key: empty key, nothing stored" >&2; exit 1; }; \
 		printf '%s' "$$key" | $(GCLOUD) secrets versions add $(GCP_PREFIX)-llm-api-key --data-file=- --project $(GCP_PROJECT)
+
+gcp-iap-oauth: ## GCP, project with no organization only: give IAP the OAuth client created by hand (asks for its ID and secret, secret hidden); needs gcloud
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-iap-oauth: ' >&2; $(NO_GCLOUD); }
+	@test -n "$(GCP_PROJECT)" || { printf 'gcp-iap-oauth: ' >&2; $(NO_PROJECT); }
+	@printf 'OAuth client ID: ' >&2; read -r id; \
+		printf 'OAuth client secret (input hidden): ' >&2; \
+		stty -echo 2>/dev/null; read -r secret; stty echo 2>/dev/null; printf '\n' >&2; \
+		test -n "$$id" && test -n "$$secret" || { echo "gcp-iap-oauth: the client ID and secret are both required, nothing set" >&2; exit 1; }; \
+		f="$$(mktemp)"; trap 'rm -f "$$f"' EXIT; chmod 600 "$$f"; \
+		printf 'access_settings:\n  oauth_settings:\n    client_id: %s\n    client_secret: %s\n' "$$id" "$$secret" > "$$f"; \
+		$(GCLOUD) iap settings set "$$f" --project=$(GCP_PROJECT) | grep -v -i secret
 
 gcp-gh-vars: ## GCP: set deploy.yml's repository variables from the Terraform outputs (GH_REPO=owner/name, DEMO_SEED=true|false); needs gh
 	@command -v $(GH) >/dev/null 2>&1 || { echo "gcp-gh-vars: gh is not installed (GH=$(GH)): https://cli.github.com" >&2; exit 1; }

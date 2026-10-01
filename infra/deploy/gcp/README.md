@@ -39,11 +39,12 @@ make gcp-state                 # 1. the Terraform state bucket (once per project
 make gcp-init                  # 2. terraform init against it
 make gcp-apply SERVICES=false  # 3. everything but the Cloud Run services and jobs
 make gcp-llm-key               # 4. the LLM key, from a hidden prompt; it never enters the state
-                               # 5. no organization only: create an OAuth client for IAP, then
-                               #    gcloud iap settings set (see the Cloud Run IAP docs)
+make gcp-iap-oauth             # 5. no organization only: the OAuth client for IAP (below), ID and hidden secret
 make gcp-apply                 # 6. the services and jobs, on Google's placeholder image
 make gcp-gh-vars GH_REPO=owner/name DEMO_SEED=true   # 7. deploy.yml's repository variables
 ```
+
+Step 5 exists because a project with no organization cannot create IAP's OAuth client through the API ([Cloud Run IAP docs](https://docs.cloud.google.com/run/docs/securing/identity-aware-proxy-cloud-run)). In the console, under Google Auth Platform: **Branding**, create the brand with audience **External**; **Audience**, add every `iap_members` account as a test user while the app is in testing; **Clients**, create a **Web application** client with the authorized redirect URI `https://iap.googleapis.com/v1/oauth/clientIds/CLIENT_ID:handleRedirect` (its own ID in place of `CLIENT_ID`). `make gcp-iap-oauth` then sets it as the project's IAP OAuth client; the secret goes through a hidden prompt and a temporary file readable only by you, deleted afterwards. Terraform does the rest (IAP on the back office, its invoker, `iap_members`).
 
 8. Push to `main` of that repository (or `make deploy GH_REPO=owner/name`): `ci`, then `deploy`, build the images, run the migrations, seed the demo customers, roll every service out and run the smoke test.
 9. `make gcp-smoke NETCHECK=1`, then in a browser: the web client URL (`terraform -chdir=infra/deploy/gcp output service_urls`) for a lost-card conversation, and the back office through IAP with `agent@demo.local` and the password from `gcloud secrets versions access latest --secret pb-demo-agent-password`.
