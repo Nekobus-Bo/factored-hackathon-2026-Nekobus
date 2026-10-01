@@ -40,10 +40,33 @@ PORT_WEB_BACKOFFICE ?= 5174
 # `make -n`, and a dry run of `make demo` must not start a stack.
 SUBMAKE := $(MAKE) --no-print-directory
 
+# The presentation environment on Cloud Run (ADR-0015), Terraform in infra/deploy/gcp. The project
+# and the name prefix are read from the tfvars files, so nothing here repeats them; GCP_PROJECT=
+# overrides. The state bucket is created once by `make gcp-state`.
+TF ?= terraform
+GCLOUD ?= gcloud
+GH ?= gh
+TF_DIR := infra/deploy/gcp
+GCP_PROJECT ?= $(shell sed -n 's/^project_id *= *"\(.*\)"/\1/p' $(TF_DIR)/local.tfvars 2>/dev/null)
+GCP_PREFIX := $(shell sed -n 's/^name_prefix *= *"\(.*\)"/\1/p' $(TF_DIR)/presentation.tfvars)
+GCP_REGION := $(shell sed -n 's/^region *= *"\(.*\)"/\1/p' $(TF_DIR)/presentation.tfvars)
+GCP_STATE_BUCKET ?= $(GCP_PROJECT)-$(GCP_PREFIX)-tfstate
+GCP_STATE_PREFIX ?= pattern-blue/presentation
+# `make gcp-apply SERVICES=false` is the first apply: everything but the Cloud Run services and jobs.
+SERVICES ?= true
+TF_VARS = -var-file=presentation.tfvars $(if $(wildcard $(TF_DIR)/local.tfvars),-var-file=local.tfvars) -var services_enabled=$(SERVICES)
+NO_GCLOUD = { echo "gcloud is not installed (GCLOUD=$(GCLOUD)): brew install --cask google-cloud-sdk, or https://cloud.google.com/sdk/docs/install" >&2; exit 1; }
+NO_TF = { echo "terraform is not installed (TF=$(TF)): https://developer.hashicorp.com/terraform/install, 1.11 or later" >&2; exit 1; }
+NO_PROJECT = { echo "no GCP project: copy $(TF_DIR)/local.tfvars.example to $(TF_DIR)/local.tfvars and set project_id, or pass GCP_PROJECT=" >&2; exit 1; }
+# Runs a Cloud Run job of the environment and waits for it: $(call gcp_job,migrate).
+gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) --project $(GCP_PROJECT) --wait
+
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
-	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice
+	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
+	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-gh-vars gcp-migrate gcp-seed \
+	gcp-netcheck gcp-smoke
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -156,7 +179,7 @@ train-encoder: ## Fine-tune and pin a decision model (CONFIG=tools/calibrate/con
 	uv run $(UV_RUN_FLAGS) --package calibrate python -m calibrate.train --config $(or $(CONFIG),tools/calibrate/configs/train_intent_distilbert.yaml)
 
 WEIGHTS_DIR ?= packages/encoder/weights/distilbert-intent-pooled
-# Docker Hub repository of the seed image (public; ADR-0014). Set DOCKERHUB_NAMESPACE.
+# Docker Hub repository of the seed image (public; ADR-0015). Set DOCKERHUB_NAMESPACE.
 DOCKERHUB_NAMESPACE ?=
 WEIGHTS_IMAGE ?= docker.io/$(DOCKERHUB_NAMESPACE)/pattern_blue-encoder-weights
 
@@ -217,3 +240,73 @@ web-backoffice: ## Dev server of the back office on the host (hot reload; needs 
 	@echo "web-backoffice on http://localhost:$(PORT_WEB_BACKOFFICE), orchestrator at :$(PORT_ORCHESTRATOR), banking-core at :$(PORT_BANKING_CORE); tokens and login are the development defaults (if the compose container holds the port: docker compose stop web-backoffice)"
 	$(BUN) install --frozen-lockfile
 	PORT=$(PORT_WEB_BACKOFFICE) ORCHESTRATOR_URL=http://localhost:$(PORT_ORCHESTRATOR) BANKING_CORE_URL=http://localhost:$(PORT_BANKING_CORE) $(BUN) run --cwd apps/web-backoffice dev
+
+gcp-state: ## GCP: create the Terraform state bucket, once per project (private, versioned); needs gcloud
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-state: ' >&2; $(NO_GCLOUD); }
+	@test -n "$(GCP_PROJECT)" || { printf 'gcp-state: ' >&2; $(NO_PROJECT); }
+	$(GCLOUD) services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com storage.googleapis.com --project $(GCP_PROJECT)
+	@$(GCLOUD) storage buckets describe gs://$(GCP_STATE_BUCKET) --project $(GCP_PROJECT) >/dev/null 2>&1 || \
+		$(GCLOUD) storage buckets create gs://$(GCP_STATE_BUCKET) --project $(GCP_PROJECT) --location $(GCP_REGION) \
+			--uniform-bucket-level-access --public-access-prevention
+	$(GCLOUD) storage buckets update gs://$(GCP_STATE_BUCKET) --versioning
+
+gcp-init: ## GCP: terraform init against the state bucket
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-init: ' >&2; $(NO_TF); }
+	@test -n "$(GCP_PROJECT)" || { printf 'gcp-init: ' >&2; $(NO_PROJECT); }
+	$(TF) -chdir=$(TF_DIR) init -backend-config=bucket=$(GCP_STATE_BUCKET) -backend-config=prefix=$(GCP_STATE_PREFIX)
+
+gcp-check: ## GCP: offline gate, as CI runs it: fmt, validate, tflint and terraform test (mocked provider, no credentials)
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-check: ' >&2; $(NO_TF); }
+	$(TF) -chdir=$(TF_DIR) fmt -check -recursive
+	$(TF) -chdir=$(TF_DIR) init -backend=false -input=false >/dev/null
+	$(TF) -chdir=$(TF_DIR) validate
+	@if command -v tflint >/dev/null 2>&1; then \
+		(cd $(TF_DIR) && tflint --init >/dev/null && tflint); \
+	else echo "gcp-check: tflint is not installed, skipped (CI runs it)" >&2; fi
+	$(TF) -chdir=$(TF_DIR) test
+
+gcp-plan: ## GCP: terraform plan (SERVICES=false for the first apply)
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-plan: ' >&2; $(NO_TF); }
+	$(TF) -chdir=$(TF_DIR) plan $(TF_VARS)
+
+gcp-apply: ## GCP: terraform apply (SERVICES=false for the first apply, before the LLM key exists)
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-apply: ' >&2; $(NO_TF); }
+	$(TF) -chdir=$(TF_DIR) apply $(TF_VARS)
+
+gcp-destroy: ## GCP: terraform destroy (set data_deletion_protection = false first; deleting the project is cleaner)
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-destroy: ' >&2; $(NO_TF); }
+	@echo "WARNING: destroys the environment and its database. Cloud SQL keeps the network peering busy for days: 'gcloud projects delete' is the reliable teardown." >&2
+	$(TF) -chdir=$(TF_DIR) destroy $(TF_VARS)
+
+gcp-llm-key: ## GCP: add the LLM API key to Secret Manager (asks for it, input hidden; never enters the Terraform state)
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-llm-key: ' >&2; $(NO_GCLOUD); }
+	@test -n "$(GCP_PROJECT)" || { printf 'gcp-llm-key: ' >&2; $(NO_PROJECT); }
+	@printf 'LLM API key for %s (input hidden): ' "$(GCP_PREFIX)-llm-api-key" >&2; \
+		stty -echo 2>/dev/null; read -r key; stty echo 2>/dev/null; printf '\n' >&2; \
+		test -n "$$key" || { echo "gcp-llm-key: empty key, nothing stored" >&2; exit 1; }; \
+		printf '%s' "$$key" | $(GCLOUD) secrets versions add $(GCP_PREFIX)-llm-api-key --data-file=- --project $(GCP_PROJECT)
+
+gcp-gh-vars: ## GCP: set deploy.yml's repository variables from the Terraform outputs (GH_REPO=owner/name, DEMO_SEED=true|false); needs gh
+	@command -v $(GH) >/dev/null 2>&1 || { echo "gcp-gh-vars: gh is not installed (GH=$(GH)): https://cli.github.com" >&2; exit 1; }
+	@test -n "$(GH_REPO)" || { echo "gcp-gh-vars: set GH_REPO=owner/name" >&2; exit 1; }
+	@$(TF) -chdir=$(TF_DIR) output -json github_variables | python3 -c 'import json, sys; [print(k, v) for k, v in json.load(sys.stdin).items()]' | \
+		while read -r name value; do $(GH) variable set "$$name" --repo $(GH_REPO) --body "$$value" || exit 1; done
+	$(GH) variable set DEPLOY_ENABLED --repo $(GH_REPO) --body true
+	$(GH) variable set DEMO_SEED --repo $(GH_REPO) --body $(or $(DEMO_SEED),false)
+	$(GH) variable set CI_IMAGE_PLATFORMS --repo $(GH_REPO) --body $(or $(CI_IMAGE_PLATFORMS),linux/amd64)
+
+gcp-migrate: ## GCP: run the migrate job (alembic upgrade head) and wait; needs gcloud
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-migrate: ' >&2; $(NO_GCLOUD); }
+	$(call gcp_job,migrate)
+
+gcp-seed: ## GCP: run the seed job: TRUNCATES and reloads the banking tables with the synthetic demo customers; needs gcloud
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-seed: ' >&2; $(NO_GCLOUD); }
+	$(call gcp_job,seed)
+
+gcp-netcheck: ## GCP: run the netcheck job: from the edge zone, core data must be unreachable and redis-edge reachable; needs gcloud
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-netcheck: ' >&2; $(NO_GCLOUD); }
+	$(call gcp_job,netcheck)
+
+gcp-smoke: ## GCP: check the deployed environment from outside (NETCHECK=1 also runs the netcheck job); needs gcloud and curl
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-smoke: ' >&2; $(NO_GCLOUD); }
+	@GCP_PROJECT=$(GCP_PROJECT) GCP_REGION=$(GCP_REGION) GCP_PREFIX=$(GCP_PREFIX) NETCHECK=$(NETCHECK) bash $(TF_DIR)/smoke.sh

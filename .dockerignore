@@ -17,3 +17,8 @@ reports/
 *.safetensors
 *.onnx
 .DS_Store
+# Terraform working dirs, state and plans: never part of an image.
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
