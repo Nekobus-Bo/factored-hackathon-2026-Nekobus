@@ -785,3 +785,22 @@ def test_the_service_refuses_to_start_on_a_bad_configuration(
 ) -> None:
     with pytest.raises(EffectsConfigError):
         TurnEngine.from_settings(Settings(_env_file=None, **settings))
+
+
+# ------------------------------------------------------------ market (ADR-0014)
+
+
+async def test_the_market_reaches_the_encoder_only_while_it_matches_the_language(
+    services: Any,
+) -> None:
+    rig = Rig(services, ScriptedLLM([Step(content=DONE)] * 3))
+    await rig.say("hola", "t1")  # no market: the legacy body
+    rig.context.locale = "es-MX"
+    result = await rig.say("me robaron la tarjeta", "t2")
+    assert result.metadata.locale == "es-MX"
+    rig.context.locale = "pt-BR"  # contradicts the conversation's Spanish
+    stale = await rig.say("perdí mi tarjeta", "t3")
+    assert stale.metadata.locale is None
+    sent = [body.get("locale") for body in rig.encoder.requests]
+    assert sent == [None, "es-MX", None]
+    assert "locale" not in rig.encoder.requests[0]

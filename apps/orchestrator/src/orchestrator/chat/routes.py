@@ -33,8 +33,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from contracts import MESSAGE_BLOCK_ADAPTER
+from contracts.locale import Locale, lang_of
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from redis.exceptions import RedisError
 
 from orchestrator.chat.client_ip import client_ip
@@ -72,11 +73,23 @@ class CreateConversationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lang: Lang | None = None
+    # The customer's market (ADR-0014). Alone, it sets the language; with a `lang`
+    # that contradicts it, the request is a 422.
+    locale: Locale | None = None
+
+    @model_validator(mode="after")
+    def _locale_matches_lang(self) -> "CreateConversationRequest":
+        if self.locale and self.lang and lang_of(self.locale) != self.lang:
+            raise ValueError(
+                f"lang {self.lang!r} does not match locale {self.locale!r}"
+            )
+        return self
 
 
 class CreateConversationResponse(BaseModel):
     conversation_id: str
     language: Lang
+    locale: Locale | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -112,6 +125,7 @@ class TakeoverStatus(BaseModel):
 class TranscriptResponse(BaseModel):
     conversation_id: str
     language: Lang
+    locale: Locale | None = None
     messages: list[TranscriptMessage]
     takeover: TakeoverStatus
 
@@ -209,11 +223,20 @@ async def create_conversation(
             status.HTTP_502_BAD_GATEWAY, detail="Could not open a banking session"
         ) from exc
 
-    lang = (body.lang if body else None) or request.app.state.default_lang
-    state = ConversationState(banking_session_id=banking_session_id, language=lang)
+    locale = body.locale if body else None
+    lang = (
+        (body.lang if body else None)
+        or (lang_of(locale) if locale else None)
+        or request.app.state.default_lang
+    )
+    state = ConversationState(
+        banking_session_id=banking_session_id, language=lang, locale=locale
+    )
     await _store(request).save(state)
     return CreateConversationResponse(
-        conversation_id=state.conversation_id, language=state.language
+        conversation_id=state.conversation_id,
+        language=state.language,
+        locale=state.locale,
     )
 
 
@@ -263,6 +286,8 @@ async def send_message(
             )
         if body.lang:
             state.language = body.lang
+            if state.locale and lang_of(state.locale) != body.lang:
+                state.locale = None  # a market belongs to one language
         if state.takeover.active:
             # Read under the lock, so a takeover that just landed is seen. The
             # handler is never reached: no LLM, no encoder, no tool.
@@ -326,6 +351,7 @@ async def get_transcript(request: Request, conversation_id: str) -> TranscriptRe
     return TranscriptResponse(
         conversation_id=state.conversation_id,
         language=state.language,
+        locale=state.locale,
         messages=transcript_messages(state, store.encryptor),
         takeover=TakeoverStatus(
             active=state.takeover.active, since=state.takeover.since

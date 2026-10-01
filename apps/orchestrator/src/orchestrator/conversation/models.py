@@ -9,6 +9,7 @@ from contracts import (
     TextBlock,
     ToolResultStatus,
 )
+from contracts.locale import Locale
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.conversation.decisions.records import DecisionRecord, EffectRecord
@@ -38,6 +39,9 @@ class ConversationContext(BaseModel):
 
     session_id: str = Field(..., min_length=1, description="banking-core session id")
     language: Lang = Field(default="es")
+    locale: Locale | None = Field(
+        default=None, description="Market (ADR-0014): per-market thresholds, metrics"
+    )
     history: list[dict[str, Any]] = Field(default_factory=list)
     placeholder_map: dict[str, str] = Field(
         default_factory=dict,
@@ -86,6 +90,8 @@ class TurnMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     turn_id: str
+    # The market the encoder was asked for (ADR-0014); None: language only.
+    locale: Locale | None = None
     encoder: EncoderSignal | None = None
     encoder_unavailable: bool = False
     # The encoder was configured but gave no PII spans this turn (unavailable,

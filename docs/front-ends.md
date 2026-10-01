@@ -59,6 +59,7 @@ All JSON. Times are ISO 8601 UTC. Errors keep FastAPI's `{"detail": ...}`.
 ### Orchestrator chat API (exists; do not change its shapes except as marked NEW)
 
 - `POST /v1/conversations` `{lang?}` → 201 `{conversation_id, language}`; 429 with `Retry-After`.
+  - NEW (ADR-0014): optional `locale` (`pt-BR`, `es-MX`, `es-AR`, `es-CO`, `en-US`). Alone it sets `language`; a `lang` that contradicts it is a 422. The response and the transcript carry `locale` (null without a market). A later message with a different `lang` drops it.
 - `POST /v1/conversations/{id}/messages` `{text, lang?, client_message_id?}` → `{conversation_id, blocks[]}`; 503 `{detail:"replay_miss"}` or unavailable; 429.
 - `GET /v1/conversations/{id}` → `{conversation_id, language, messages[{role, content, blocks[], created_at}], takeover}`.
   - NEW: `role` may also be `"agent"`.

@@ -41,6 +41,7 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
+from contracts.locale import Locale, lang_of
 from contracts.tools.handoff_create import (
     HandoffCreateOutput,
     HandoffPriority,
@@ -189,6 +190,7 @@ class Analyzer(Protocol):
         text: str,
         lang: Lang | None = ...,
         decision_points: list[str] | None = ...,
+        locale: Locale | None = ...,
     ) -> AnalyzeResponse: ...
 
 
@@ -283,7 +285,16 @@ class TurnEngine:
         turn_decisions = self.decisions.begin_turn(
             context.decisions.model_copy(deep=True), metadata
         )
-        pii_spans = await self._analyze(user_text, lang, metadata, turn_decisions)
+        # The market rides along only while it agrees with the turn's language.
+        locale = (
+            context.locale
+            if context.locale and lang_of(context.locale) == lang
+            else None
+        )
+        metadata.locale = locale
+        pii_spans = await self._analyze(
+            user_text, lang, metadata, turn_decisions, locale
+        )
 
         # 2. Mask the user text: the union of the regexes and the encoder's spans
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
@@ -382,6 +393,7 @@ class TurnEngine:
         lang: Lang,
         metadata: TurnMetadata,
         decisions: TurnDecisions,
+        locale: Locale | None = None,
     ) -> list[PiiSpan]:
         """Record the encoder signal; return its PII spans (none if it failed).
 
@@ -394,7 +406,7 @@ class TurnEngine:
             return []
         plan = await self.decisions.plan(self.encoder)
         try:
-            analysis = await self._ask_encoder(text, lang, plan)
+            analysis = await self._ask_encoder(text, lang, plan, locale)
         except Exception as exc:
             # Any failure degrades the same way. Only the error type is logged
             # for an unexpected one: its message could quote the customer text.
@@ -423,19 +435,23 @@ class TurnEngine:
         return list(analysis.pii_spans)
 
     async def _ask_encoder(
-        self, text: str, lang: Lang, plan: RequestPlan
+        self, text: str, lang: Lang, plan: RequestPlan, locale: Locale | None = None
     ) -> AnalyzeResponse:
         assert self.encoder is not None
+        # Only when set: an analyzer that predates locales keeps working.
+        market: dict[str, Any] = {"locale": locale} if locale else {}
         if plan.ids is None:
-            return await self.encoder.analyze(text, lang)
+            return await self.encoder.analyze(text, lang, **market)
         try:
-            return await self.encoder.analyze(text, lang, decision_points=plan.ids)
+            return await self.encoder.analyze(
+                text, lang, decision_points=plan.ids, **market
+            )
         except EncoderUnavailableError as exc:
             if exc.status_code != 422:
                 raise
             logger.warning("Encoder refused the decision point ids; asking again")
             self.decisions.catalog.invalidate()
-            return await self.encoder.analyze(text, lang)
+            return await self.encoder.analyze(text, lang, **market)
 
     @staticmethod
     def _observe(
