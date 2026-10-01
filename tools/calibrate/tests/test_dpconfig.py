@@ -31,6 +31,8 @@ def test_the_seed_config_in_the_repo_parses() -> None:
         "block_reason",
         "handoff_route",
         "smalltalk_route",
+        "intent_hint",
+        "clarify_route",
     }
     # Nothing in the config is a threshold: the constraint is the question.
     assert all(dp.constraint.p_min for dp in config.dps.values())
