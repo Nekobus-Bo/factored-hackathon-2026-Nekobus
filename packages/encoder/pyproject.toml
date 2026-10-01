@@ -19,6 +19,12 @@ gliner = [
     "gliner>=0.2.0",
     "peft>=0.10.0",
 ]
+# The fine-tuned sequence classifier (registry kind hf_seqcls, ADR-0014).
+hf = [
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    "safetensors>=0.4.0",
+]
 
 [build-system]
 requires = ["hatchling"]

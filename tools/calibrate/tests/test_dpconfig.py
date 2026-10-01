@@ -31,6 +31,8 @@ def test_the_seed_config_in_the_repo_parses() -> None:
         "block_reason",
         "handoff_route",
         "smalltalk_route",
+        "intent_hint",
+        "clarify_route",
     }
     # Nothing in the config is a threshold: the constraint is the question.
     assert all(dp.constraint.p_min for dp in config.dps.values())
@@ -143,3 +145,30 @@ def test_select_dps_keeps_config_order_and_rejects_unknown(
     assert len(select_dps(config, None)) == 3
     with pytest.raises(ConfigError, match=r"unknown decision point \['nope'\]"):
         select_dps(config, ["nope"])
+
+
+# --- Locale groups (ADR-0014) ---
+
+
+def test_the_distilbert_config_adds_locale_groups_to_per_language_dps_only() -> None:
+    from calibrate.dpconfig import load_run_config
+
+    config = load_run_config("tools/calibrate/configs/decision_points_distilbert.yaml")
+    assert config.locales == ("pt-BR", "es-MX", "es-AR")
+    assert config.report_tag == "distilbert"
+    per_language = config.for_dp(config.dps["turn_intent"])
+    assert per_language.languages == ("es", "pt", "en", "pt-BR", "es-MX", "es-AR")
+    pooled = config.for_dp(config.dps["block_reason"])
+    assert pooled.languages == ("es", "pt", "en")  # no row counted twice
+
+
+def test_a_tagged_report_never_overwrites_the_default_one() -> None:
+    from calibrate.dp import _report_name
+
+    every = ["a", "b"]
+    assert _report_name("2026-09-30", every, every) == (
+        "calibration-decision-points-2026-09-30.md"
+    )
+    assert _report_name("2026-09-30", every, every, "distilbert") == (
+        "calibration-decision-points-2026-09-30-distilbert.md"
+    )

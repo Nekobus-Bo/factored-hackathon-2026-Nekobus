@@ -139,6 +139,12 @@ def _findings(results: Sequence[DpResult]) -> list[str]:
     return lines
 
 
+def _groups(config: RunConfig, c: Any) -> list[str]:
+    """Languages, then the locales this candidate was calibrated on (ADR-0014)."""
+    extra = [g for g in config.locales if g in c.val or g in c.test]
+    return list(config.languages) + extra
+
+
 def _summary_rows(results: Sequence[DpResult], config: RunConfig) -> list[str]:
     rows = [
         "| Decision point | Language | Status | tau | T | Coverage val | Coverage test "
@@ -147,7 +153,7 @@ def _summary_rows(results: Sequence[DpResult], config: RunConfig) -> list[str]:
     ]
     for r in results:
         c = r.chosen
-        for lang in config.languages:
+        for lang in _groups(config, c):
             test, val = c.test.get(lang), c.val.get(lang)
             fit = c.calibration.get(lang)
             temperature = getattr(fit, "temperature", None)
@@ -235,7 +241,7 @@ def _reliability(result: CandidateResult, langs: Sequence[str]) -> list[str]:
 def _dp_section(r: DpResult, config: RunConfig, embedded: str) -> str:
     c = r.chosen
     dp = r.dp
-    langs = list(config.languages)
+    langs = _groups(config, c)
     out: list[str] = [f"## `{dp.dp_id}`", ""]
     if dp.note:
         out += [dp.note.strip(), ""]

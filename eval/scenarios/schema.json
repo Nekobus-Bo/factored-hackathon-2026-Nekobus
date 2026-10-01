@@ -42,6 +42,11 @@
       "enum": ["es", "pt", "en"],
       "description": "Language locale of the customer interaction."
     },
+    "locale": {
+      "type": "string",
+      "enum": ["pt-BR", "es-MX", "es-AR", "es-CO", "en-US"],
+      "description": "Optional market (ADR-0014). Its language must be `lang`; the proposed system opens the conversation with it."
+    },
     "group": {
       "type": "string",
       "enum": [

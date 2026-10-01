@@ -28,6 +28,9 @@ class DecisionExample(BaseModel):
     id: str
     text: str
     lang: Literal["es", "pt"] | str
+    # Market (pt-BR, es-MX, es-AR, ...) when the row has one; thresholds may be
+    # calibrated per locale (ADR-0014).
+    locale: str | None = None
     intent: str
     slots: list[Slot] = Field(default_factory=list)
     split: Literal["train", "validation", "test"] | str

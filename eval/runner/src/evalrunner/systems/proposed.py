@@ -172,7 +172,10 @@ class ProposedSystem:
         watermark = self.evidence.audit_watermark()
         response = self.http.post(
             f"{self.config.orchestrator_url}/v1/conversations",
-            json={"lang": scenario.lang},
+            json={
+                "lang": scenario.lang,
+                **({"locale": scenario.locale} if scenario.locale else {}),
+            },
         )
         if response.status_code == 429:
             raise RuntimeError(

@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
+from contracts.locale import Locale
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orchestrator.conversation.decisions.state import DecisionState
@@ -148,6 +149,13 @@ class ConversationState(BaseModel):
     language: Lang = Field(
         default="es",
         description="Conversation language (es, pt, en), stored as given",
+    )
+    locale: Locale | None = Field(
+        default=None,
+        description=(
+            "Market (pt-BR, es-MX, es-AR, es-CO, en-US; ADR-0014); dropped when the "
+            "language switches away from it. States saved before it load as None"
+        ),
     )
     messages: list[Message] = Field(
         default_factory=list,

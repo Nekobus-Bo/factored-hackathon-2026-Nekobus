@@ -1,6 +1,7 @@
 """The effects, and the hooks the turn engine calls (ADR-0012, Appendix E).
 
-Effects are a closed set, implemented once: `record`, `select` and `gate`. Which
+Effects are a closed set, implemented once: `record`, `select`, `gate`, and (ADR-0014)
+`hint` and `canned_reply`. Which
 decision point uses which is data (the effects file). None of them can authorize
 anything (invariant I1): they record, choose among values banking-core already
 accepts, or withhold a write until the customer consents. When a decision point
@@ -11,6 +12,8 @@ The engine calls, per turn:
 
     turn = runtime.begin_turn(state_copy, metadata)
     turn.observe(plan, analysis, failure)   after the encoder answered (or not)
+    turn.canned_reply(lang, ...)            after masking, before the first LLM call
+    turn.hint()                             the line added to every completion
     turn.gate(tool)                         per proposed call, before banking-core
     turn.select(tool, args)                 per call that goes on, after rehydration
     turn.after_result(tool, result)         after banking-core answered
@@ -28,6 +31,7 @@ from typing import Any, Literal
 from contracts import (
     AnalyzeResponse,
     DecisionOutcome,
+    Intent,
     ReasonCode,
     ToolResult,
     ToolResultStatus,
@@ -40,6 +44,7 @@ from orchestrator.conversation.decisions.catalog import (
     plan_request,
 )
 from orchestrator.conversation.decisions.config import (
+    CannedReplyParams,
     DecisionPointConfig,
     EffectsConfig,
     GateParams,
@@ -60,7 +65,10 @@ from orchestrator.conversation.decisions.state import (
     GateState,
     GateStatus,
 )
-from orchestrator.conversation.models import TurnMetadata
+from orchestrator.conversation.models import Lang, TurnMetadata
+from orchestrator.conversation.prompt import HINT_TEMPLATE, HINT_UNCERTAIN
+
+_INTENTS = frozenset(intent.value for intent in Intent)
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +102,17 @@ class Effect:
     ) -> None:
         """banking-core answered a call that was sent."""
 
+    def canned_reply(
+        self, turn: "TurnDecisions", lang: Lang, blocked_by: list[str]
+    ) -> str | None:
+        """The reply that replaces the LLM this turn, or None."""
+        return None
+
     def _record(
         self,
         turn: "TurnDecisions",
-        effect: Literal["select", "gate"],
-        tool: str,
+        effect: Literal["select", "gate", "hint", "canned_reply"],
+        tool: str | None,
         would_apply: bool,
         detail: dict[str, Any],
     ) -> None:
@@ -343,6 +357,89 @@ class SelectEffect(Effect):
             turn.state.ledgers.pop(self.config.id, None)
 
 
+class HintEffect(Effect):
+    """Gives the LLM the classification as structured context (ADR-0001, ADR-0014).
+
+    One system line per turn: the decided intent, or `uncertain` when the decision
+    point abstained with a tau (`on_abstain: uncertain`). Nothing when it is
+    unavailable, infeasible or has no tau for the language: an outage or a missing
+    calibration is not ambiguity. Only an enum label enters the messages, never a
+    number or text, so replay keys depend on the label alone; in `shadow` nothing
+    enters them at all.
+    """
+
+    def observe(self, turn: "TurnDecisions") -> None:
+        own = turn.results.get(self.config.id)
+        outcome = own.outcome.value if own is not None else None
+        line: str | None = None
+        hint: str | None = None
+        if own is not None and own.decided and own.label in _INTENTS:
+            hint = own.label
+            line = HINT_TEMPLATE.format(label=own.label)
+        elif (
+            own is not None
+            and own.outcome is DecisionOutcome.ABSTAINED
+            and own.tau is not None
+            and self.config.on_abstain == "uncertain"
+        ):
+            hint = "uncertain"
+            line = HINT_UNCERTAIN
+        self._record(
+            turn, "hint", None, line is not None, {"hint": hint, "outcome": outcome}
+        )
+        if line is not None and self.config.enforcing:
+            turn.hint_line = line
+
+
+class CannedReplyEffect(Effect):
+    """Answers an ambiguous opening with a fixed question, no LLM (ADR-0014, App. B).
+
+    It fires only when every condition holds: the decision point abstained with a
+    tau (never on an outage), `on_abstain` is `reply`, the LLM has not answered
+    this conversation yet, fewer than `max_consecutive` canned replies were sent,
+    and nothing is in flight (no gate, no OTP challenge, no tool result). It never
+    calls a tool or widens what banking-core accepts: it only asks.
+    """
+
+    def __init__(self, config: DecisionPointConfig) -> None:
+        super().__init__(config)
+        assert isinstance(config.params, CannedReplyParams)
+        self.params: CannedReplyParams = config.params
+
+    def canned_reply(
+        self, turn: "TurnDecisions", lang: Lang, blocked_by: list[str]
+    ) -> str | None:
+        own = turn.results.get(self.config.id)
+        outcome = own.outcome.value if own is not None else None
+        reasons = list(blocked_by)
+        if not (
+            own is not None
+            and own.outcome is DecisionOutcome.ABSTAINED
+            and own.tau is not None
+            and self.config.on_abstain == "reply"
+        ):
+            reasons.append("not_abstained")
+        state = turn.state
+        if state.turn != state.canned_turns:
+            reasons.append("llm_engaged")
+        if state.canned_turns >= self.params.max_consecutive:
+            reasons.append("max_consecutive")
+        if state.gates:
+            reasons.append("gate_open")
+        would_apply = not reasons
+        self._record(
+            turn,
+            "canned_reply",
+            None,
+            would_apply,
+            {"outcome": outcome, "blocked_by": reasons},
+        )
+        if not (would_apply and self.config.enforcing):
+            return None
+        state.canned_turns += 1
+        return self.params.templates[lang]
+
+
 def _status(state: GateState | None) -> str:
     return state.status.value if state is not None else "none"
 
@@ -366,6 +463,8 @@ _EFFECTS: dict[str, type[Effect]] = {
     "record": RecordEffect,
     "gate": GateEffect,
     "select": SelectEffect,
+    "hint": HintEffect,
+    "canned_reply": CannedReplyEffect,
 }
 
 
@@ -383,6 +482,8 @@ class TurnDecisions:
         self.metadata = metadata
         self.number = state.turn
         self.results: dict[str, DecisionRecord] = {}
+        # Set by HintEffect in `enforce`; the same line for every completion.
+        self.hint_line: str | None = None
 
     def observe(
         self,
@@ -435,6 +536,32 @@ class TurnDecisions:
     def after_result(self, tool: str, result: ToolResult) -> None:
         for effect in self.runtime.effects:
             effect.after_result(self, tool, result)
+
+    def hint(self) -> str | None:
+        """The system line to add to this turn's completions, or None."""
+        return self.hint_line
+
+    def canned_reply(
+        self, lang: Lang, *, otp_pending: bool, tool_seen: bool
+    ) -> str | None:
+        """The text that answers this turn without the LLM, or None.
+
+        `otp_pending` and `tool_seen` are what the engine knows about the history:
+        either one means a flow is in progress, and a canned question would break it.
+        """
+        blocked_by = [
+            name
+            for name, present in (
+                ("otp_pending", otp_pending),
+                ("tool_seen", tool_seen),
+            )
+            if present
+        ]
+        for effect in self.runtime.effects:
+            reply = effect.canned_reply(self, lang, blocked_by)
+            if reply is not None:
+                return reply
+        return None
 
     def commit(self) -> DecisionState:
         """The state to keep, once the turn has completed."""

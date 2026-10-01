@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from contracts.locale import LOCALES, lang_of
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -45,7 +46,9 @@ DEFAULT_ARTIFACT_PATH = "packages/encoder/calibration/decision_points.json"
 LEGACY_KIND = "legacy_encoder"
 SEED_BACKEND_ID = "legacy"
 DP_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
-LANG_KEY_PATTERN = re.compile(r"^(\*|[a-z]{2})$")
+# A threshold or calibrator key: a language ("es"), a locale ("es-MX", ADR-0014) or
+# "*". Lookup goes locale -> language -> "*" (resolve_key).
+LANG_KEY_PATTERN = re.compile(r"^(\*|[a-z]{2}|[a-z]{2}-[A-Z]{2})$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 # A backend that says it returns a distribution must sum to 1 within this.
 SUM_TOLERANCE = 1e-3
@@ -196,10 +199,7 @@ class DecisionPointSpec(_Model):
                 "pending: isotonic calibrator is not implemented (ADR-0012)"
             )
         for lang in self.calibrator.by_lang:
-            if not LANG_KEY_PATTERN.match(lang):
-                raise ValueError(
-                    f"calibrator language key {lang!r} must be 'xx' or '*'"
-                )
+            _check_key(lang, "calibrator")
         if self.calibrator.kind == "temperature":
             for lang, params in self.calibrator.by_lang.items():
                 if set(params) != {"T"} or not 0 < params["T"] <= _MAX_TEMPERATURE:
@@ -209,8 +209,7 @@ class DecisionPointSpec(_Model):
                     )
         labels = set(view_labels(self))
         for lang, entry in self.thresholds.items():
-            if not LANG_KEY_PATTERN.match(lang):
-                raise ValueError(f"threshold language key {lang!r} must be 'xx' or '*'")
+            _check_key(lang, "threshold")
             if isinstance(entry, float) and not 0.0 <= entry <= 1.0:
                 raise ValueError(f"threshold for '{lang}' must be within [0, 1]")
             if isinstance(entry, dict):
@@ -223,7 +222,39 @@ class DecisionPointSpec(_Model):
                         raise ValueError(
                             f"threshold for '{lang}.{label}' must be within [0, 1]"
                         )
+        if self.calibrator.kind != "none":
+            # A locale tau was fitted on scores calibrated with that locale's T, so it
+            # never travels without it (ADR-0014).
+            cal = {k for k in self.calibrator.by_lang if k in LOCALES}
+            thr = {k for k in self.thresholds if k in LOCALES}
+            if not thr <= cal:
+                raise ValueError(
+                    f"threshold locale keys {sorted(thr - cal)} have no calibrator "
+                    "entry; a locale tau needs the locale's temperature"
+                )
         return self
+
+
+def _check_key(key: str, what: str) -> None:
+    if not LANG_KEY_PATTERN.match(key) or ("-" in key and key not in LOCALES):
+        raise ValueError(
+            f"{what} key {key!r} must be a language ('es'), one of the locales "
+            f"{list(LOCALES)} or '*'"
+        )
+
+
+def resolve_key(
+    keys: Mapping[str, Any], lang: str | None, locale: str | None = None
+) -> str | None:
+    """The first key present among ``locale``, ``lang`` and ``"*"`` (ADR-0014).
+
+    Presence is what counts: a key present with ``null`` is chosen, so an infeasible
+    locale abstains instead of falling back to its language.
+    """
+    for key in (locale, lang, "*"):
+        if key is not None and key in keys:
+            return key
+    return None
 
 
 class DecisionPointsArtifact(_Model):
@@ -416,19 +447,18 @@ def apply_temperature(
 
 
 def _calibrate(
-    dp: DecisionPointSpec, probabilities: Mapping[str, float], lang: str | None
+    dp: DecisionPointSpec,
+    probabilities: Mapping[str, float],
+    lang: str | None,
+    locale: str | None = None,
 ) -> tuple[dict[str, float], bool]:
     """Calibrated distribution, and whether the calibrator applies to this language."""
     if dp.calibrator.kind == "none":
         return dict(probabilities), True
-    params = None
-    if lang is not None:
-        params = dp.calibrator.by_lang.get(lang)
-    if params is None:
-        params = dp.calibrator.by_lang.get("*")
-    if params is None:
+    key = resolve_key(dp.calibrator.by_lang, lang, locale)
+    if key is None:
         return dict(probabilities), False
-    return apply_temperature(probabilities, params["T"]), True
+    return apply_temperature(probabilities, dp.calibrator.by_lang[key]["T"]), True
 
 
 def _aggregate(
@@ -450,19 +480,20 @@ def resolve_threshold(
     lang: str | None,
     label: str,
     raises: Mapping[tuple[str, str], float] | None = None,
+    locale: str | None = None,
 ) -> tuple[float | None, Literal["artifact", "override", "seed"] | None]:
-    """The tau for ``label`` in ``lang`` and its source; ``(None, None)`` if none.
+    """The tau for ``label`` in ``locale`` / ``lang`` and its source; ``(None, None)``
+    if none.
 
-    A language key that is present with ``null`` is infeasible and does not fall
-    back to ``"*"``; a key that is absent does. A per-label mapping without the
-    label (and without ``"*"``) has no tau for it.
+    Keys are tried locale, then language, then ``"*"`` (``resolve_key``). A key that
+    is present with ``null`` is infeasible and does not fall back; a key that is
+    absent does. A per-label mapping without the label (and without ``"*"``) has no
+    tau for it.
     """
-    if lang is not None and lang in dp.thresholds:
-        entry = dp.thresholds[lang]
-    elif "*" in dp.thresholds:
-        entry = dp.thresholds["*"]
-    else:
+    key = resolve_key(dp.thresholds, lang, locale)
+    if key is None:
         return None, None
+    entry = dp.thresholds[key]
     if isinstance(entry, dict):
         entry = entry.get(label, entry.get("*"))
     if entry is None:
@@ -472,9 +503,8 @@ def resolve_threshold(
         "seed" if dp.status == "uncalibrated_seed" else "artifact"
     )
     if raises:
-        wanted = [
-            raises[key] for key in ((dp_id, lang or ""), (dp_id, "*")) if key in raises
-        ]
+        keys = ((dp_id, locale or ""), (dp_id, lang or ""), (dp_id, "*"))
+        wanted = [raises[k] for k in keys if k in raises]
         if wanted and max(wanted) > tau:
             return max(wanted), "override"
     return tau, source
@@ -489,6 +519,7 @@ def decide(
     lang: str | None = None,
     raises: Mapping[tuple[str, str], float] | None = None,
     probability_kind: ProbabilityKind = "distribution",
+    locale: str | None = None,
 ) -> Decision:
     """One decision from one backend output. Pure.
 
@@ -519,7 +550,7 @@ def decide(
             raise ValueError("a distribution backend must supply probabilities")
         check_distribution(probabilities, view_members(dp))
         raw_scores = _aggregate(dp, probabilities)
-        calibrated, calibrated_ok = _calibrate(dp, probabilities, lang)
+        calibrated, calibrated_ok = _calibrate(dp, probabilities, lang, locale)
         scores = _aggregate(dp, calibrated)
 
     order = {name: index for index, name in enumerate(view_labels(dp))}
@@ -531,7 +562,7 @@ def decide(
 
     tau, tau_source = (None, None)
     if calibrated_ok:
-        tau, tau_source = resolve_threshold(dp_id, dp, lang, top, raises)
+        tau, tau_source = resolve_threshold(dp_id, dp, lang, top, raises, locale)
     if tau is None or confidence < tau:
         return Decision(
             outcome="abstained",
@@ -566,7 +597,8 @@ def parse_tau_raise(raw: str | None) -> dict[tuple[str, str], float]:
         if not DP_ID_PATTERN.match(dp_id) or not LANG_KEY_PATTERN.match(lang):
             raise ArtifactError(
                 f"DECISION_POINTS_TAU_RAISE entry {item.strip()!r} must look like "
-                "'<decision_point>.<lang>=<tau>' (lang is 'es', 'pt', 'en' or '*')"
+                "'<decision_point>.<key>=<tau>' (key is a language such as 'es', a "
+                "locale such as 'es-MX', or '*')"
             )
         try:
             tau = float(value)
@@ -593,8 +625,11 @@ def check_tau_raise(
             raise ArtifactError(
                 f"DECISION_POINTS_TAU_RAISE names unknown decision point '{dp_id}'"
             )
-        entry_lang = lang if lang in dp.thresholds else "*"
-        if entry_lang not in dp.thresholds:
+        locale = lang if lang in LOCALES else None
+        entry_lang = resolve_key(
+            dp.thresholds, lang_of(lang) if locale else lang, locale
+        )
+        if entry_lang is None:
             raise ArtifactError(
                 f"DECISION_POINTS_TAU_RAISE: '{dp_id}' has no '{lang}' tau to raise"
             )

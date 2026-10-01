@@ -1,0 +1,40 @@
+# Fine-tune the pooled pt-BR / es-MX / es-AR intent model (ADR-0014).
+#
+#   make pool-data-regional
+#   make train-encoder CONFIG=tools/calibrate/configs/train_intent_distilbert.yaml
+#
+# The recipe is the lab notebook's (lab/notebooks/finetune__decision-pooled.py), the
+# one reports/intent-models-regional-datasets.md measured: seed 0 of its two seeds.
+# The output directory is gitignored; `make encoder-weights-image` publishes it.
+name: distilbert-intent-pooled
+kind: hf_seqcls
+base_model: lxyuan/distilbert-base-multilingual-cased-sentiments-student
+# A full commit, never a branch: the base weights must not move under a retrain.
+base_revision: cf991100d706c13c0a080c097134c05b7f436c45
+schema: data/eval/synthetic/schema.yaml
+
+data:
+  train: data/staging/decision_pooled/decision.pooled.train.jsonl
+  validation: data/staging/decision_pooled/decision.pooled.validation.jsonl
+
+out: packages/encoder/weights/distilbert-intent-pooled
+
+hyperparameters:
+  epochs: 4
+  batch_size: 32
+  learning_rate: 5.0e-5
+  seed: 0
+
+# Training truncates at 128 tokens and scoring at 256, as in the report. Serving and
+# calibration use `max_length`, recorded in the manifest and checked by the loader.
+train_max_length: 128
+max_length: 256
+
+# Validation accuracy floors (CPU, max_length). The report's pooled model scored
+# 0.90-0.92 on the provisional tests; a run below these is not pinned. English is
+# not gated: the model never trains on it (its threshold decides whether it acts).
+gate:
+  min_accuracy:
+    pt-BR: 0.85
+    es-MX: 0.85
+    es-AR: 0.85

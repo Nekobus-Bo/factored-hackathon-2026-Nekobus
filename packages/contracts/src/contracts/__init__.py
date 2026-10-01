@@ -37,6 +37,7 @@ from contracts.labels import (
     PiiType,
     SlotType,
 )
+from contracts.locale import LOCALES, Locale, lang_of
 from contracts.tools import (
     CODE_FLOOR,
     TOOL_CATALOG,
@@ -62,6 +63,8 @@ __all__ = [
     "EmbedRequest",
     "EmbedResponse",
     "Intent",
+    "LOCALES",
+    "Locale",
     "PiiSpan",
     "PiiType",
     "Receipt",
@@ -80,4 +83,5 @@ __all__ = [
     "WRITE_TOOLS",
     "export_schemas",
     "get_effective_permitted_states",
+    "lang_of",
 ]

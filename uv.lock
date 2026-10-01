@@ -226,7 +226,7 @@ name = "calibrate"
 version = "0.1.0"
 source = { editable = "tools/calibrate" }
 dependencies = [
-    { name = "encoder", extra = ["gliner"] },
+    { name = "encoder", extra = ["gliner", "hf"] },
     { name = "numpy" },
     { name = "psutil" },
     { name = "pydantic" },
@@ -237,7 +237,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "encoder", extras = ["gliner"], editable = "packages/encoder" },
+    { name = "encoder", extras = ["gliner", "hf"], editable = "packages/encoder" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
@@ -468,6 +468,12 @@ gliner = [
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
     { name = "transformers" },
 ]
+hf = [
+    { name = "safetensors" },
+    { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -476,12 +482,16 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "peft", marker = "extra == 'gliner'", specifier = ">=0.10.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "safetensors", marker = "extra == 'hf'", specifier = ">=0.4.0" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'gliner'", specifier = ">=2.2.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform == 'linux' and extra == 'hf'", specifier = ">=2.2.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'gliner'", specifier = ">=2.2.0" },
+    { name = "torch", marker = "sys_platform != 'linux' and extra == 'hf'", specifier = ">=2.2.0" },
     { name = "transformers", marker = "extra == 'gliner'", specifier = ">=4.40.0" },
+    { name = "transformers", marker = "extra == 'hf'", specifier = ">=4.40.0" },
 ]
-provides-extras = ["gliner"]
+provides-extras = ["gliner", "hf"]
 
 [[package]]
 name = "encoder-service"
@@ -502,18 +512,22 @@ embed = [
 gliner = [
     { name = "encoder", extra = ["gliner"] },
 ]
+hf = [
+    { name = "encoder", extra = ["hf"] },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "contracts", editable = "packages/contracts" },
     { name = "encoder", editable = "packages/encoder" },
     { name = "encoder", extras = ["gliner"], marker = "extra == 'gliner'", editable = "packages/encoder" },
+    { name = "encoder", extras = ["hf"], marker = "extra == 'hf'", editable = "packages/encoder" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "retrieval", editable = "packages/retrieval" },
     { name = "retrieval", extras = ["vector"], marker = "extra == 'embed'", editable = "packages/retrieval" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
-provides-extras = ["gliner", "embed"]
+provides-extras = ["gliner", "embed", "hf"]
 
 [[package]]
 name = "evalrunner"
@@ -1949,13 +1963,13 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform != 'linux'" },
+    { name = "fsspec", marker = "sys_platform != 'linux'" },
+    { name = "jinja2", marker = "sys_platform != 'linux'" },
+    { name = "networkx", marker = "sys_platform != 'linux'" },
+    { name = "setuptools", marker = "sys_platform != 'linux'" },
+    { name = "sympy", marker = "sys_platform != 'linux'" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/17/76/bb4770f56cf6d8971671dbcbb7493e5a6a15ad2825f4e359b02c27c38297/torch-2.14.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:c1f844f1c750e87df4b68bc3afbc0e2b0c7ef19d7b8f666e48bdcf6a0c4f0056", size = 127303200, upload-time = "2026-09-02T13:43:20.311Z" },
@@ -1970,13 +1984,13 @@ resolution-markers = [
     "sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform == 'linux'" },
+    { name = "fsspec", marker = "sys_platform == 'linux'" },
+    { name = "jinja2", marker = "sys_platform == 'linux'" },
+    { name = "networkx", marker = "sys_platform == 'linux'" },
+    { name = "setuptools", marker = "sys_platform == 'linux'" },
+    { name = "sympy", marker = "sys_platform == 'linux'" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.0%2Bcpu-cp312-cp312-linux_s390x.whl", hash = "sha256:07aefe1a437b6f1b41b0cba15e16583e2f43549ec9d062fcea8e7981a78e014a", upload-time = "2026-09-02T18:31:32Z" },

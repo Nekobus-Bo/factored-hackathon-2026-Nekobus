@@ -11,11 +11,13 @@ Invalid config fails with the field that is wrong, before any model is trained.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from contracts.locale import LOCALES, lang_of
 from encoder.decision_points import DP_ID_PATTERN, GroupsView, LabelsView
 from pydantic import TypeAdapter, ValidationError
 
@@ -121,6 +123,19 @@ class RunConfig:
     data: DataPaths
     calibrator_min_rows: int
     dps: dict[str, DpConfig]
+    # Markets calibrated apart from their language (ADR-0014): a per_language DP gets
+    # one group per locale on top of the language groups. Pooled scopes never do, so
+    # no row counts twice in a pooled fit.
+    locales: tuple[str, ...] = ()
+    # Appended to the report name, so a second artifact's run cannot overwrite the
+    # default artifact's report of the same day.
+    report_tag: str | None = None
+
+    def for_dp(self, dp: DpConfig) -> RunConfig:
+        """This run as one DP sees it: its groups are the keys of its thresholds."""
+        if dp.scope != "per_language" or not self.locales:
+            return self
+        return replace(self, languages=self.languages + self.locales)
 
 
 # --- Parsing ---
@@ -327,6 +342,17 @@ def parse_run_config(text: str, path: str = "<config>") -> RunConfig:
         isinstance(lang, str) and len(lang) == 2 for lang in languages
     ):
         raise ConfigError(f"{path}: languages must be two-letter codes")
+    locales = tuple(loaded.get("locales") or ())
+    unknown = [loc for loc in locales if loc not in LOCALES]
+    if unknown:
+        raise ConfigError(f"{path}: locales {unknown} are not in {list(LOCALES)}")
+    if any(lang_of(loc) not in languages for loc in locales):
+        raise ConfigError(f"{path}: every locale's language must be in languages")
+    report_tag = loaded.get("report_tag")
+    if report_tag is not None and not re.fullmatch(
+        r"[a-z0-9][a-z0-9-]{0,31}", report_tag
+    ):
+        raise ConfigError(f"{path}: report_tag must be lowercase letters, digits, '-'")
     min_rows = loaded.get("calibrator_min_rows", 30)
     if not isinstance(min_rows, int) or min_rows < 2:
         raise ConfigError(
@@ -350,6 +376,8 @@ def parse_run_config(text: str, path: str = "<config>") -> RunConfig:
         data=run_data,
         calibrator_min_rows=min_rows,
         dps=dps,
+        locales=locales,
+        report_tag=report_tag,
     )
 
 

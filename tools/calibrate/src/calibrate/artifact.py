@@ -242,6 +242,8 @@ def write_artifact(path: Path | str, raw: Mapping[str, Any]) -> str:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as out:
             out.write(text)
+        # mkstemp creates 0600; the encoder image reads it as a non-root user.
+        os.chmod(temp_name, 0o644)
         os.replace(temp_name, target)
     except BaseException:
         Path(temp_name).unlink(missing_ok=True)

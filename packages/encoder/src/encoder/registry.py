@@ -190,6 +190,86 @@ def _load_gliner() -> Factory:
     return _build_gliner
 
 
+# --- hf_seqcls (ADR-0014) ---
+
+
+def hf_seqcls_model_id(name: str, weights_sha256: str) -> str:
+    """``hf_seqcls:<name>@sha256:<12 hex of the weights>``. The harness and the
+    loader both use this."""
+    return f"hf_seqcls:{name}@sha256:{weights_sha256[:12]}"
+
+
+def _build_hf_seqcls(spec: BackendSpec) -> DecisionAdapter:
+    from encoder.weights import verify_manifest
+
+    model = spec.params.get("model")
+    if not isinstance(model, str) or not model:
+        raise BackendBuildError(
+            "hf_seqcls: params.model must name the trained model directory"
+        )
+    if not Path(model).is_dir():
+        raise BackendBuildError(
+            f"hf_seqcls: {model!r} is not a directory; the encoder image carries it "
+            "(ENCODER_WEIGHTS_IMAGE), or `make train-encoder` writes it locally"
+        )
+    # Pin chain (ADR-0014, Appendix A): weights SHA-256 and revision label, then the
+    # manifest (every file hashed), then the label ids, all before the model loads.
+    resolved = resolve_pinned_model(
+        model, revision=spec.revision, expected_sha256=spec.weights_sha256
+    )
+    manifest = verify_manifest(resolved.path)
+    if spec.revision != manifest.revision_label():
+        raise PinMismatchError(
+            f"hf_seqcls: the artifact pins revision {spec.revision!r}, the directory's "
+            f"manifest gives {manifest.revision_label()!r}"
+        )
+    expected_id = hf_seqcls_model_id(manifest.name, resolved.weights_sha256)
+    if spec.model_id != expected_id:
+        raise PinMismatchError(
+            f"hf_seqcls: the artifact says model_id {spec.model_id!r}, "
+            f"the directory gives {expected_id!r}"
+        )
+    if manifest.kind != "hf_seqcls":
+        raise BackendBuildError(
+            f"hf_seqcls: {model!r} was trained as {manifest.kind!r}"
+        )
+    if spec.labels is not None and list(spec.labels) != manifest.labels:
+        raise BackendBuildError(
+            f"hf_seqcls: label drift: the artifact lists {spec.labels}, "
+            f"the model's head is {manifest.labels}"
+        )
+    max_length = int(spec.params.get("max_length", manifest.max_length))
+    if max_length != manifest.max_length:
+        raise BackendBuildError(
+            f"hf_seqcls: params.max_length {max_length} differs from the "
+            f"{manifest.max_length} the model was calibrated with"
+        )
+    try:
+        from encoder.adapters.hf_seqcls import HFSequenceClassifierAdapter
+    except ImportError as exc:
+        raise BackendBuildError(
+            "hf_seqcls: dependencies missing; install encoder-service with the `hf` "
+            'extra (Docker: --build-arg ENCODER_EXTRAS="embed hf")'
+        ) from exc
+    adapter = HFSequenceClassifierAdapter(
+        name=spec.model_id,
+        labels=manifest.labels,
+        max_length=max_length,
+        batch_size=int(spec.params.get("batch_size", 64)),
+    )
+    try:
+        adapter.load(resolved.path)
+    except Exception as exc:
+        raise BackendBuildError(
+            f"hf_seqcls: cannot load {model!r}: {type(exc).__name__}: {exc}"
+        ) from exc
+    return adapter
+
+
+def _load_hf_seqcls() -> Factory:
+    return _build_hf_seqcls
+
+
 # --- llm_sidecar (interface only; the container is post-freeze) ---
 
 
@@ -207,4 +287,5 @@ def _load_llm_sidecar() -> Factory:
 
 register("tfidf_lr", _load_tfidf)
 register("gliner", _load_gliner)
+register("hf_seqcls", _load_hf_seqcls)
 register("llm_sidecar", _load_llm_sidecar)

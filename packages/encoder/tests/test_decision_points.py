@@ -23,6 +23,7 @@ from encoder.decision_points import (
     load_artifact,
     parse_artifact,
     parse_tau_raise,
+    resolve_key,
     resolve_threshold,
     seed_backend_and_dp,
     view_labels,
@@ -197,7 +198,7 @@ def broken(mutate: Any) -> dict[str, Any]:
         ),
         (
             lambda r: r["decision_points"]["turn_intent"]["thresholds"].update(fra=0.5),
-            "language key",
+            "threshold key 'fra'",
         ),
         (
             lambda r: r["decision_points"]["confirm_gate"]["thresholds"]["es"].update(
@@ -354,6 +355,79 @@ def test_null_is_infeasible_and_does_not_fall_back_to_star() -> None:
         "d", spec, probabilities={"yes": 0.99, "no": 0.005, "other": 0.005}, lang="en"
     )
     assert result.outcome == "abstained" and result.tau is None
+
+
+def test_a_locale_key_wins_then_falls_back_to_its_language() -> None:
+    spec = dp(thresholds={"es-MX": 0.9, "es": 0.7, "*": 0.5})
+    assert resolve_threshold("d", spec, "es", "yes", locale="es-MX")[0] == 0.9
+    assert resolve_threshold("d", spec, "es", "yes", locale="es-AR")[0] == 0.7
+    assert resolve_threshold("d", spec, "es", "yes")[0] == 0.7
+    assert resolve_threshold("d", spec, "en", "yes", locale="en-US")[0] == 0.5
+
+
+def test_a_null_locale_abstains_instead_of_using_its_language() -> None:
+    spec = dp(thresholds={"es-AR": None, "es": 0.5})
+    probs = {"yes": 0.99, "no": 0.005, "other": 0.005}
+    assert resolve_threshold("d", spec, "es", "yes", locale="es-AR") == (None, None)
+    assert decide(
+        "d", spec, probabilities=probs, lang="es", locale="es-AR"
+    ).outcome == ("abstained")
+    assert decide(
+        "d", spec, probabilities=probs, lang="es", locale="es-MX"
+    ).outcome == ("decided")
+
+
+def test_resolve_key_order_and_presence() -> None:
+    keys = {"es-MX": None, "es": 0.5, "*": 0.1}
+    assert resolve_key(keys, "es", "es-MX") == "es-MX"  # present with null counts
+    assert resolve_key(keys, "es", "es-AR") == "es"
+    assert resolve_key(keys, "pt", None) == "*"
+    assert resolve_key({"es": 0.5}, "pt", "pt-BR") is None
+
+
+def test_the_locale_temperature_pairs_with_the_locale_tau() -> None:
+    spec = dp(
+        calibrator={
+            "kind": "temperature",
+            "by_lang": {"es-MX": {"T": 0.5}, "es": {"T": 2.0}},
+        },
+        thresholds={"es-MX": 0.6, "es": 0.6},
+    )
+    probs = {"yes": 0.5, "no": 0.3, "other": 0.2}
+    mx = decide("d", spec, probabilities=probs, lang="es", locale="es-MX")
+    ar = decide("d", spec, probabilities=probs, lang="es", locale="es-AR")
+    assert mx.outcome == "decided" and mx.confidence == pytest.approx(0.25 / 0.38)
+    assert ar.outcome == "abstained"  # flattened by the language's T=2
+
+
+def test_a_locale_tau_needs_the_locale_temperature() -> None:
+    with pytest.raises(ValueError, match="have no calibrator entry"):
+        dp(
+            calibrator={"kind": "temperature", "by_lang": {"es": {"T": 0.5}}},
+            thresholds={"es-MX": 0.6, "es": 0.6},
+        )
+    # A locale temperature under a pooled tau is how the harness scores at tau 0.
+    dp(
+        calibrator={"kind": "temperature", "by_lang": {"es-MX": {"T": 0.5}}},
+        thresholds={"*": 0.0},
+    )
+
+
+@pytest.mark.parametrize("key", ["es-ES", "pt-PT", "es_MX", "ES-mx"])
+def test_a_locale_outside_the_closed_set_is_refused(key: str) -> None:
+    with pytest.raises(ValueError, match="threshold key"):
+        dp(thresholds={key: 0.5})
+
+
+def test_an_override_can_target_a_locale() -> None:
+    spec = dp(thresholds={"es": 0.6})
+    raises = parse_tau_raise("turn_intent.es-MX=0.95")
+    assert raises == {("turn_intent", "es-MX"): 0.95}
+    check_tau_raise({"turn_intent": spec}, raises)  # raises the 'es' it falls back to
+    mx = resolve_threshold("turn_intent", spec, "es", "yes", raises, locale="es-MX")
+    ar = resolve_threshold("turn_intent", spec, "es", "yes", raises, locale="es-AR")
+    assert mx == (0.95, "override")
+    assert ar == (0.6, "artifact")
 
 
 def test_no_threshold_at_all_abstains() -> None:

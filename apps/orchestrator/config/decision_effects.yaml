@@ -87,3 +87,27 @@ decision_points:
   smalltalk_route:
     mode: shadow
     effect: record
+
+  # ADR-0014. The classification as structured context for the LLM (ADR-0001): one
+  # system line with the decided intent, or "uncertain" when the model abstained.
+  # Nothing on an outage. Advisory: banking-core still authorizes every call.
+  intent_hint:
+    mode: shadow
+    effect: hint
+    on_abstain: uncertain
+    on_unavailable: omit
+
+  # ADR-0014. An ambiguous opening is answered with a fixed question instead of the
+  # LLM guessing (ADR-0003: below tau, ask). Only before the LLM has answered the
+  # conversation, at most once, never while a gate, an OTP or a tool is in flight.
+  clarify_route:
+    mode: shadow
+    effect: canned_reply
+    on_abstain: reply
+    on_unavailable: fallback_llm
+    params:
+      max_consecutive: 1
+      templates:
+        es: "¿Me cuentas un poco más? Por ejemplo: ¿quieres bloquear tu tarjeta, reportar un cargo que no reconoces o consultar tu saldo?"
+        pt: "Pode me contar um pouco mais? Por exemplo: você quer bloquear seu cartão, contestar uma compra que não reconhece ou consultar seu saldo?"
+        en: "Could you tell me a bit more? For example: do you want to block your card, report a charge you don't recognize, or check your balance?"

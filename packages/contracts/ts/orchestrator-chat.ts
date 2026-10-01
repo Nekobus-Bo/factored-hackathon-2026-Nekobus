@@ -18,6 +18,10 @@ import { defineRoute } from "./route";
 export const LangSchema = z.enum(["es", "pt", "en"]);
 export type Lang = z.infer<typeof LangSchema>;
 
+/** contracts.locale.Locale: the customer's market (ADR-0014). Its language is the part before "-". */
+export const LocaleSchema = z.enum(["pt-BR", "es-MX", "es-AR", "es-CO", "en-US"]);
+export type Locale = z.infer<typeof LocaleSchema>;
+
 /**
  * The roles a transcript returns. `system` exists in the orchestrator but is never returned. `agent`
  * is NEW: a message a back-office agent wrote after taking the conversation over.
@@ -30,12 +34,16 @@ export type TranscriptRole = z.infer<typeof TranscriptRoleSchema>;
 /** The body may be left out altogether; it then means `{}`. */
 export const CreateConversationRequestSchema = z.strictObject({
   lang: LangSchema.optional(),
+  /** Alone, it sets the language; with a `lang` that contradicts it, the orchestrator answers 422. */
+  locale: LocaleSchema.optional(),
 });
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequestSchema>;
 
 export const CreateConversationResponseSchema = z.object({
   conversation_id: ConversationIdSchema,
   language: LangSchema,
+  /** Null when the conversation has no market; optional for orchestrators that predate it. */
+  locale: LocaleSchema.nullable().optional(),
 });
 export type CreateConversationResponse = z.infer<typeof CreateConversationResponseSchema>;
 
@@ -82,6 +90,8 @@ export type CustomerTakeover = z.infer<typeof CustomerTakeoverSchema>;
 export const TranscriptResponseSchema = z.object({
   conversation_id: ConversationIdSchema,
   language: LangSchema,
+  /** Dropped (null) when the customer switches to another language. */
+  locale: LocaleSchema.nullable().optional(),
   messages: z.array(TranscriptMessageSchema),
   takeover: CustomerTakeoverSchema,
 });

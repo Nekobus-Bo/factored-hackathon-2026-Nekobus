@@ -20,6 +20,7 @@ class EngineTurnHandler:
         context = ConversationContext(
             session_id=conversation.banking_session_id,
             language=conversation.language,
+            locale=conversation.locale,
             history=conversation.llm_history,
             placeholder_map=conversation.placeholder_map,
             decisions=conversation.decisions,

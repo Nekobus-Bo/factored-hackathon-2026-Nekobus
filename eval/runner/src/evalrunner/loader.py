@@ -38,6 +38,7 @@ def load_scenarios_from_directory(
     lang: str | None = None,
     group: str | None = None,
     scenario_ids: list[str] | None = None,
+    locale: str | None = None,
 ) -> list[Scenario]:
     """Recursively load and filter scenarios from a directory."""
     path = Path(dir_path)
@@ -64,6 +65,8 @@ def load_scenarios_from_directory(
                 ) from exc
 
             if lang and scenario.lang != lang:
+                continue
+            if locale and scenario.locale != locale:
                 continue
             if group and scenario.group != group:
                 continue

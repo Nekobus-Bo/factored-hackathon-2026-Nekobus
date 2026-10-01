@@ -44,6 +44,9 @@ FREEZE_DPS = {
     "block_reason",
     "handoff_route",
     "smalltalk_route",
+    # ADR-0014: the hint and the canned clarification, effects in shadow.
+    "intent_hint",
+    "clarify_route",
 }
 
 

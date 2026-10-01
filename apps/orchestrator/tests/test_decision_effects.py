@@ -136,6 +136,8 @@ def test_every_active_decision_point_is_recorded_with_what_decided_it() -> None:
         "block_reason",
         "handoff_route",
         "smalltalk_route",
+        "intent_hint",
+        "clarify_route",
     ]
     intent = records["turn_intent"]
     assert intent.model_dump(mode="json") == {
@@ -201,8 +203,10 @@ def test_a_decision_point_switched_off_is_not_recorded_and_changes_nothing() -> 
         "turn_intent",
         "handoff_route",
         "smalltalk_route",
+        "intent_hint",
+        "clarify_route",
     }
-    assert played.effects() == []
+    assert played.effects("gate") + played.effects("select") == []
     assert played.withheld == [None]
     assert played.sent == [BLOCK]
 
@@ -739,7 +743,7 @@ def test_selects_leave_other_tools_alone() -> None:
     )
 
     assert played.sent == [{"status": "ACTIVE"}]
-    assert played.effects() == []
+    assert played.effects("gate") + played.effects("select") == []
 
 
 # ----------------------------------------------------- state stays small, clean
@@ -755,6 +759,7 @@ def test_the_state_the_turn_hands_back_is_small_and_free_of_text() -> None:
         "turn": 1,
         "gates": {"card.block": {"status": "pending", "since_turn": 0, "source": None}},
         "ledgers": {"block_reason": "STOLEN"},
+        "canned_turns": 0,
     }
 
 
@@ -809,6 +814,8 @@ def test_only_served_ids_with_the_labels_the_effects_need_are_asked_for() -> Non
         "confirm_gate": "config_mismatch",
         "handoff_route": "not_served",
         "smalltalk_route": "not_served",
+        "intent_hint": "not_served",
+        "clarify_route": "not_served",
     }
     assert plan.mismatched == ["confirm_gate"]
 
