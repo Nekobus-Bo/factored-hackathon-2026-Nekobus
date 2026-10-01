@@ -6,7 +6,7 @@ change needs `make eval` before and after (AGENTS.md).
 
 from orchestrator.conversation.models import Lang
 
-PROMPT_VERSION = "turn-engine/2"
+PROMPT_VERSION = "turn-engine/3"
 
 SYSTEM_PROMPT = (
     "You are the customer service assistant of a bank. You help customers "
@@ -21,6 +21,18 @@ SYSTEM_PROMPT = (
     "- Never state that an action happened unless a tool result confirms it.\n"
     "- Reply in the customer's language (Spanish, Portuguese or English), "
     'as plain text or as JSON {"blocks": [{"type": "text", "text": ...}]}.'
+)
+
+# The `hint` effect (ADR-0001, ADR-0014): one system line after the prompt, only when
+# the decision point is in `enforce`. It names a category, never a number or text,
+# and says plainly that it is not an authorization.
+HINT_TEMPLATE = (
+    "Local intent classifier (advisory; banking-core decides what is allowed): "
+    "the customer's latest message most likely means `{label}`."
+)
+HINT_UNCERTAIN = (
+    "Local intent classifier (advisory; banking-core decides what is allowed): "
+    "the intent of the customer's latest message is uncertain."
 )
 
 FALLBACK_MESSAGES: dict[Lang, str] = {

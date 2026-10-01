@@ -202,6 +202,7 @@ class DecisionRuntime:
                 probabilities=score.probabilities,
                 top1=score.top1,
                 lang=request.lang,
+                locale=request.locale,
                 raises=self.tau_raise,
                 probability_kind=backend.spec.probability_kind,
             )

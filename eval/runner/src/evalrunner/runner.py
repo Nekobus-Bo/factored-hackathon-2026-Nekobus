@@ -39,6 +39,7 @@ def _not_run(
     return ScenarioRunResult(
         scenario_id=scenario.id,
         lang=scenario.lang,
+        locale=scenario.locale,
         group=scenario.group,
         passed=False,
         turns=turns or [],
@@ -76,6 +77,7 @@ def run_scenario(system: SystemUnderTest, scenario: Scenario) -> ScenarioRunResu
         return ScenarioRunResult(
             scenario_id=scenario.id,
             lang=scenario.lang,
+            locale=scenario.locale,
             group=scenario.group,
             passed=False,
             turns=turn_results,
@@ -138,6 +140,7 @@ def run_scenario(system: SystemUnderTest, scenario: Scenario) -> ScenarioRunResu
     return ScenarioRunResult(
         scenario_id=scenario.id,
         lang=scenario.lang,
+        locale=scenario.locale,
         group=scenario.group,
         passed=passed,
         checks=checks,

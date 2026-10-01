@@ -50,6 +50,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Filter evaluation to a specific language locale",
     )
     parser.add_argument(
+        "--locale",
+        choices=["pt-BR", "es-MX", "es-AR", "es-CO", "en-US"],
+        default=None,
+        help="Filter evaluation to one market (ADR-0014)",
+    )
+    parser.add_argument(
         "--group",
         type=str,
         default=None,
@@ -98,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         lang=args.lang,
         group=args.group,
         scenario_ids=scenario_ids,
+        locale=args.locale,
     )
 
     if not scenarios:

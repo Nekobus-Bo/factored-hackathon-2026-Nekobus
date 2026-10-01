@@ -55,16 +55,18 @@ class EffectRecord(BaseModel):
 
     `would_apply` is what the effect wants given this turn's decisions;
     `applied` is whether it did it (only in `enforce`). `detail` holds
-    `{event, state_before, state_after, consent_source}` for a gate and
-    `{arg, llm_value, dp_value}` for a select: enum values, never text.
+    `{event, state_before, state_after, consent_source}` for a gate,
+    `{arg, llm_value, dp_value}` for a select, `{hint, outcome}` for a hint and
+    `{outcome, blocked_by}` for a canned reply: enum values, never text. A hint or
+    a canned reply acts on the turn, not on a call, so it has no `tool`.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     dp_id: str
-    effect: Literal["select", "gate"]
+    effect: Literal["select", "gate", "hint", "canned_reply"]
     mode: Mode
-    tool: str
+    tool: str | None = None
     applied: bool
     would_apply: bool
     detail: dict[str, Any] = Field(default_factory=dict)

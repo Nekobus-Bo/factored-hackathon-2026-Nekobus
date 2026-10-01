@@ -52,6 +52,14 @@ class DecisionState(BaseModel):
     ledgers: dict[str, str] = Field(
         default_factory=dict, description="Decision point id -> sticky label"
     )
+    canned_turns: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Turns answered by the canned clarification (ADR-0014). While it equals "
+            "`turn`, the LLM has not answered this conversation yet"
+        ),
+    )
 
     @model_validator(mode="after")
     def _bounded(self) -> "DecisionState":

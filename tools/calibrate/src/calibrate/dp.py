@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import psutil
+from contracts.locale import LOCALES, lang_of
 from encoder import registry
 from encoder.decision_points import (
     BackendSpec,
@@ -113,10 +114,18 @@ class Row:
     raw: Raw
     backend_truth: str  # the label the backend is trained to predict
     view_truth: str  # the DP label of the row, or OUTSIDE
+    # The threshold key this row calibrates: its language, or its locale when the run
+    # calibrates locales apart (ADR-0014). A row may sit in both groups.
+    group: str | None = None
 
     @property
     def lang(self) -> str:
-        return self.example.lang
+        return self.group or self.example.lang
+
+
+def _lang_locale(key: str) -> tuple[str, str | None]:
+    """A group key as ``decide`` takes it: ``es-MX`` -> (``es``, ``es-MX``)."""
+    return (lang_of(key), key) if key in LOCALES else (key, None)
 
 
 @dataclass(frozen=True)
@@ -474,7 +483,8 @@ def _top(
             spec,
             probabilities=row.raw.probabilities,
             top1=row.raw.top1,
-            lang=row.lang,
+            lang=_lang_locale(row.lang)[0],
+            locale=_lang_locale(row.lang)[1],
             probability_kind=probability_kind,  # type: ignore[arg-type]
         )
     except ValueError as exc:
@@ -493,7 +503,8 @@ def _decision_label(
         spec,
         probabilities=row.raw.probabilities,
         top1=row.raw.top1,
-        lang=row.lang,
+        lang=_lang_locale(row.lang)[0],
+        locale=_lang_locale(row.lang)[1],
         probability_kind=probability_kind,  # type: ignore[arg-type]
     )
     return decision.label if decision.outcome == "decided" else None
@@ -969,9 +980,15 @@ class RunResult:
     text: str = ""
 
 
-def _report_name(date: str, selected: Sequence[str], every: Sequence[str]) -> str:
+def _report_name(
+    date: str,
+    selected: Sequence[str],
+    every: Sequence[str],
+    tag: str | None = None,
+) -> str:
     suffix = "" if set(selected) == set(every) else "-" + "+".join(sorted(selected))
-    return f"calibration-decision-points-{date}{suffix}.md"
+    tagged = f"-{tag}" if tag else ""
+    return f"calibration-decision-points-{date}{tagged}{suffix}.md"
 
 
 def under_reports(out_dir: Path, repo_root: Path) -> bool:
@@ -1049,7 +1066,9 @@ def run_decision_points_calibration(
 
     built_cache: dict[str, BuiltBackend] = {}
     results: list[DpResult] = []
+    run_config = config
     for dp in selected:
+        config = run_config.for_dp(dp)
         paths = dp.data or config.data
         data_hashes = {
             split: _file_sha(getattr(paths, split))
@@ -1096,6 +1115,7 @@ def run_decision_points_calibration(
             )
         )
 
+    config = run_config
     run_id = compute_run_id(
         {
             "config_sha256": config.sha256,
@@ -1109,7 +1129,9 @@ def run_decision_points_calibration(
         }
     )
     date = moment.strftime("%Y-%m-%d")
-    report_name = _report_name(date, [r.dp.dp_id for r in results], list(config.dps))
+    report_name = _report_name(
+        date, [r.dp.dp_id for r in results], list(config.dps), config.report_tag
+    )
     report_path = out / report_name
     report_ref = _report_reference(report_path, root)
     fragments = []
@@ -1190,16 +1212,18 @@ def _rows(
     raws = predict_all(built, [e.text for e in examples], probability_kind)
     by_lang: dict[str, list[Row]] = {lang: [] for lang in config.languages}
     for example, raw in zip(examples, raws, strict=True):
-        if example.lang not in by_lang:
-            continue
-        by_lang[example.lang].append(
-            Row(
-                example=example,
-                raw=raw,
-                backend_truth=backend_truth(built.spec, example.intent),
-                view_truth=view_truth(dp, example.intent),
+        for key in (example.lang, example.locale):
+            if key is None or key not in by_lang:
+                continue
+            by_lang[key].append(
+                Row(
+                    example=example,
+                    raw=raw,
+                    backend_truth=backend_truth(built.spec, example.intent),
+                    view_truth=view_truth(dp, example.intent),
+                    group=key,
+                )
             )
-        )
     return by_lang
 
 

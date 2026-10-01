@@ -1,14 +1,16 @@
 """The effects file: which decision point drives which engine effect (ADR-0012, B.4).
 
-The effects (`record`, `select`, `gate`) are code; this file is the data that
+The effects (`record`, `select`, `gate`, `hint`, `canned_reply`) are code; this
+file is the data that
 binds each decision point (DP) to one of them, with a `mode`, label-to-value
 maps and what to do when the DP does not decide. Validation is fail-loud, like
 `SESSION_SECRET`: an invalid file stops the orchestrator from starting, and
 nothing is guessed. The thresholds live in the encoder's calibration artifact,
 never here.
 
-Effects the freeze does not build (`route_tools`, `canned_reply`, `propose`,
-`hint`) are rejected with an explicit "pending" message (AGENTS rule 7).
+Effects not built (`route_tools`, `propose`) are rejected with an explicit
+"pending" message (AGENTS rule 7). `hint` and `canned_reply` ship in `shadow`
+(ADR-0014).
 """
 
 import re
@@ -34,17 +36,31 @@ DEFAULT_EFFECTS_FILE = (
     Path(__file__).resolve().parents[4] / "config" / "decision_effects.yaml"
 )
 
-IMPLEMENTED_EFFECTS = ("record", "select", "gate")
-PENDING_EFFECTS = ("route_tools", "canned_reply", "propose", "hint")
+IMPLEMENTED_EFFECTS = ("record", "select", "gate", "hint", "canned_reply")
+PENDING_EFFECTS = ("route_tools", "propose")
 
-# What a DP that does not decide may fall back to, per effect. `record` has no
-# fallback: it only records. Every fallback is toward the LLM's own argument or a
-# withheld write, never toward acting (invariant I2).
+# What a DP that abstains may fall back to, per effect (the first is the default).
+# `record` has no fallback: it only records. Every fallback is toward the LLM's own
+# argument, a withheld write, or a question; never toward acting (invariant I2).
 FALLBACKS: dict[str, tuple[str, ...]] = {
     "record": (),
     "select": ("fallback_llm",),
     "gate": ("withhold",),
+    # Tell the LLM the classifier was unsure, or say nothing.
+    "hint": ("uncertain", "omit"),
+    # Ask the canned clarification question, or leave the turn to the LLM.
+    "canned_reply": ("reply", "fallback_llm"),
 }
+# When the DP is unavailable (encoder down, not served): narrower where it matters.
+# An outage is not ambiguity, so it never produces a hint or a canned question.
+UNAVAILABLE_FALLBACKS: dict[str, tuple[str, ...]] = {
+    **FALLBACKS,
+    "hint": ("omit",),
+    "canned_reply": ("fallback_llm",),
+}
+# One hint and one canned reply per turn, at most.
+SINGLE_USE_EFFECTS = ("hint", "canned_reply")
+MAX_TEMPLATE_LENGTH = 500
 
 # Arguments no effect may set, even when they are enums: the priority is decided
 # by the policy engine, and the rest are identities and secrets.
@@ -108,6 +124,36 @@ class SelectParams(_Strict):
     targets: list[SelectTarget] = Field(min_length=1)
 
 
+class CannedReplyParams(_Strict):
+    """The fixed clarification question, per language (ADR-0014, Appendix B)."""
+
+    max_consecutive: int = Field(default=1, ge=1, le=3)
+    templates: dict[str, str]
+
+    @field_validator("templates")
+    @classmethod
+    def _every_language_asks(cls, value: dict[str, str]) -> dict[str, str]:
+        from orchestrator.privacy.masking import RegexMasker
+
+        missing = {"es", "pt", "en"} - set(value)
+        if missing:
+            raise ValueError(f"templates miss the language(s) {sorted(missing)}")
+        unknown = set(value) - {"es", "pt", "en"}
+        if unknown:
+            raise ValueError(f"templates name unknown language(s) {sorted(unknown)}")
+        masker = RegexMasker()
+        for lang, text in value.items():
+            if not text.strip() or len(text) > MAX_TEMPLATE_LENGTH:
+                raise ValueError(
+                    f"template {lang}: 1 to {MAX_TEMPLATE_LENGTH} characters"
+                )
+            if "?" not in text:
+                raise ValueError(f"template {lang}: a clarification is a question")
+            if not masker.verify_safe(text):
+                raise ValueError(f"template {lang}: looks like it holds PII")
+        return value
+
+
 class RawDecisionPoint(_Strict):
     mode: Mode
     effect: str
@@ -149,7 +195,7 @@ class DecisionPointConfig:
     effect: str
     on_abstain: str | None
     on_unavailable: str | None
-    params: GateParams | SelectParams | None
+    params: GateParams | SelectParams | CannedReplyParams | None
 
     @property
     def active(self) -> bool:
@@ -294,11 +340,10 @@ def _bind_one(
             f"{dp_id}: unknown effect {effect!r}; implemented: "
             f"{list(IMPLEMENTED_EFFECTS)}"
         )
-    allowed = FALLBACKS[effect]
     fallbacks: dict[str, str | None] = {}
-    for name, value in (
-        ("on_abstain", raw.on_abstain),
-        ("on_unavailable", raw.on_unavailable),
+    for name, value, allowed in (
+        ("on_abstain", raw.on_abstain, FALLBACKS[effect]),
+        ("on_unavailable", raw.on_unavailable, UNAVAILABLE_FALLBACKS[effect]),
     ):
         if value is None:
             value = allowed[0] if allowed else None
@@ -309,12 +354,14 @@ def _bind_one(
             )
         fallbacks[name] = value
 
-    params: GateParams | SelectParams | None
+    params: GateParams | SelectParams | CannedReplyParams | None
     try:
-        if effect == "record":
+        if effect in ("record", "hint"):
             if raw.params:
-                raise EffectsConfigError(f"{dp_id}: effect record takes no params")
+                raise EffectsConfigError(f"{dp_id}: effect {effect} takes no params")
             params = None
+        elif effect == "canned_reply":
+            params = CannedReplyParams.model_validate(raw.params)
         elif effect == "gate":
             params = _check_gate(dp_id, GateParams.model_validate(raw.params))
         else:
@@ -474,7 +521,15 @@ def _check_references(
     """
     gates: dict[str, str] = {}
     selected: dict[tuple[str, str], str] = {}
+    single: dict[str, str] = {}
     for dp in bound.values():
+        if dp.effect in SINGLE_USE_EFFECTS:
+            owner = single.setdefault(dp.effect, dp.id)
+            if owner != dp.id:
+                raise EffectsConfigError(
+                    f"{dp.id}: only one decision point may use {dp.effect} "
+                    f"({owner} already does)"
+                )
         if isinstance(dp.params, SelectParams):
             for target in dp.params.targets:
                 for arg in _args_of(_assignments(dp.id, target)):

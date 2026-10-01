@@ -84,6 +84,37 @@ def test_regex_masker_documents() -> None:
     assert unmasked == text
 
 
+@pytest.mark.parametrize(
+    "text, raw",
+    [
+        ("mi CURP es GODE561231HDFRRN09, gracias", "GODE561231HDFRRN09"),
+        ("mi curp: gode561231mdfrrn04", "gode561231mdfrrn04"),
+        ("RFC GODE561231GR8 para la factura", "GODE561231GR8"),
+        ("el RFC de la empresa es ABC010203XY1", "ABC010203XY1"),
+        ("mi CUIT es 20-12345678-9", "20-12345678-9"),
+        ("cuil 27123456784 por favor", "27123456784"),
+    ],
+)
+def test_mexican_and_argentine_identifiers_are_masked(text: str, raw: str) -> None:
+    masker = RegexMasker()
+    res = masker.mask(text)
+    assert raw not in res.masked_text
+    assert "[DOC_1]" in res.masked_text
+    assert masker.verify_safe(res.masked_text)
+    assert not masker.verify_safe(text)
+    assert masker.unmask(res.masked_text, res.mapping) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["me cobraron MXN 3500 en Amazon", "un cargo de 1.250.000 ARS que no hice"],
+)
+def test_mexican_and_argentine_amounts_are_not_documents(text: str) -> None:
+    masker = RegexMasker()
+    assert masker.mask(text).masked_text == text
+    assert masker.verify_safe(text)
+
+
 def test_masking_state_preservation_across_turns() -> None:
     masker = RegexMasker()
     # Turn 1

@@ -150,3 +150,49 @@ decision_points:
       p_min: 0.95
       ci: point
       n_min: 10
+
+  # ADR-0014: the hint the LLM reads (effect `hint`, shadow first). Every one of the
+  # 15 intents may be shown, so every one is constrained (ADR-0010's rule).
+  intent_hint:
+    candidates: [intent_tfidf]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10
+
+  # ADR-0014: an abstention here answers with a fixed clarification question
+  # (effect `canned_reply`, shadow first).
+  clarify_route:
+    candidates: [intent_tfidf]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10

@@ -46,17 +46,19 @@ Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, c
 
 ### Decision component (classifier test split)
 
-| Metric | Baseline (TF-IDF + logistic regression) | Encoder zero-shot | Fine-tuned encoder |
-|---|---|---|---|
-| Macro-F1 (es) | TODO | TODO | TODO |
-| Macro-F1 (pt) | TODO | TODO | TODO |
-| Macro-F1 (en) | TODO | TODO | TODO |
-| p95 latency | TODO | TODO | TODO |
-| Inference cost | TODO | TODO | TODO |
+Every number here is on a **provisional, synthetic** test split (written by the coding agent, not by humans) and is not certified. Two different splits are involved, so compare within a column, not across rows of different splits.
 
-**Abstention threshold τ = TODO**, calibrated on validation and never on the test split. Calibration criterion: maximum coverage subject to a minimum per-class precision (ADR-0010).
+| Model | Split | es | pt | en | p95 CPU latency |
+|---|---|---|---|---|---|
+| TF-IDF + logistic regression (baseline) | Template (`data/eval/synthetic`) | 0.79 | 0.84 | 0.79 | 0.2 ms |
+| GLiNER2.5 zero-shot | Template | 0.47 | 0.43 | 0.52 | 73–90 ms |
+| **Pooled DistilBERT, fine-tuned** ([ADR-0014](adr/0014-distilbert-intent-backend.md)) | Regional (`data/staging/decision_pooled`) | es-MX 0.93, es-AR 0.93 | pt-BR 0.90 | 0.65 (never trained on English) | ~10 ms host, ~20 ms per analyze in the container |
 
-The decisions the engine consumes have their own thresholds, one per decision point and language, in the calibration artifact; their evidence is in `reports/calibration-decision-points-2026-09-29.md` (see "Decision points" below). **Those per-decision-point numbers are provisional**: the test split is AI-written and small, and nothing is certified.
+Macro-F1 for the first two rows from `reports/calibration-decision-2026-09-28.md`; the DistilBERT row was measured with the pinned weights (`distilbert-intent-pooled:59bdfe5dc8c1`). On real text, which is mostly out of scope, the same model scores 0.46 (Brazilian complaints), 0.71 (Mexican reviews) and 0.73 (Argentine reviews) accuracy, with out-of-scope recall of 0.47 to 0.75 ([reports/intent-models-regional-datasets.md](../reports/intent-models-regional-datasets.md)).
+
+**Abstention thresholds** are per decision point and per language or market, chosen on validation and never on test (ADR-0010, ADR-0014). For `turn_intent` on the DistilBERT artifact: pt-BR 0.450, es-MX 0.499, es-AR 0.502, es 0.497 (es-CO falls back here), pt 0.450, en 0.841 (en-US falls back here). Coverage on test is about 99% for es and pt and 45% for en: **validation is in-distribution with train, so these thresholds almost never abstain on Spanish or Portuguese, including on confident mistakes on real text**. Evidence: `reports/calibration-decision-points-2026-09-30-distilbert.md`. The tfidf_lr artifact, still the default for tests and the kill switch, keeps its thresholds in `reports/calibration-decision-points-2026-09-29.md`.
+
+The decisions the engine consumes have their own thresholds, one per decision point and language or market, in the calibration artifact (see "Decision points" below). **Those per-decision-point numbers are provisional**: the test splits are AI-written, and nothing is certified.
 
 ### Decision points ([ADR-0012](adr/0012-decision-points.md))
 
@@ -112,7 +114,7 @@ A case counts as unsafe if any of these occur, regardless of whether the convers
 
 Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`. Because they reside directly in the repository and do not depend on the organization's external dataset, `make eval` (⚠️ pending) is fully reproducible on any machine without external dependencies.
 
-**56 scenarios**, distributed across Spanish (19), Portuguese (18), and English (19):
+**60 scenarios**, distributed across Spanish (22), Portuguese (19), and English (19). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
 
 | Group | What it tests |
 |---|---|

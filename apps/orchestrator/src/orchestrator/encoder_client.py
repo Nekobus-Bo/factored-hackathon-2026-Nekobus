@@ -15,6 +15,7 @@ from contracts.encoder import (
     AnalyzeResponse,
     DecisionPointsResponse,
 )
+from contracts.locale import Locale
 from pydantic import ValidationError
 
 from orchestrator.config import Settings, get_settings
@@ -69,16 +70,19 @@ class EncoderClient:
         text: str,
         lang: Literal["es", "pt", "en"] | None = None,
         decision_points: list[str] | None = None,
+        locale: Locale | None = None,
     ) -> AnalyzeResponse:
         """Call POST /v1/analyze and return the validated response.
 
         `decision_points` names the decision points to evaluate; None leaves the
         choice to the service (every enabled, always-on one). Only ids listed by
         `decision_points()` are safe to name: the service answers 422 to any other.
+        `locale` (ADR-0014) selects per-market thresholds; it is sent only when set,
+        so an encoder that predates it never sees the key.
         """
         try:
             request = AnalyzeRequest(
-                text=text, lang=lang, decision_points=decision_points
+                text=text, lang=lang, locale=locale, decision_points=decision_points
             )
         except ValidationError as exc:
             raise EncoderUnavailableError("text outside the encoder contract") from exc
@@ -86,6 +90,8 @@ class EncoderClient:
         body = request.model_dump(mode="json")
         if body["decision_points"] is None:
             del body["decision_points"]  # the request stays what it was before
+        if body["locale"] is None:
+            del body["locale"]
         try:
             response = await self._get_client().post(
                 f"{self.base_url}/v1/analyze",

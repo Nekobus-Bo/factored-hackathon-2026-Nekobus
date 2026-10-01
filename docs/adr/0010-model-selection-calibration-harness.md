@@ -1,6 +1,6 @@
 # ADR-0010: Model selection and calibration harness for decision and embedding models
 
-**Status:** Accepted · **Date:** 2026-09-26 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-09-30 ([ADR-0014](0014-distilbert-intent-backend.md): §5 weights are published as a digest-pinned Docker Hub seed image) · **Date:** 2026-09-26 · **Deciders:** TODO (team)
 
 ## Context
 
