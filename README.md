@@ -38,7 +38,7 @@ Full run guide, troubleshooting and demo walkthrough: **[docs/runbook.md](docs/r
 2. **[ADR-0001](docs/adr/0001-cheap-llm-specialized-encoder.md)**, **[ADR-0002](docs/adr/0002-config-code-boundary.md)**, **[ADR-0003](docs/adr/0003-deterministic-vs-ai.md)** — the three core architectural decisions.
 3. **[docs/evaluation.md](docs/evaluation.md)** — benchmark protocol, failure taxonomy, and metrics definitions written *before* measuring.
 4. **[docs/limitations.md](docs/limitations.md)** — explicit operational limits, known gaps, and future roadmap.
-5. **[docs/deployment.md](docs/deployment.md)** — deployment architecture, host Redis ACLs, scalability and operational limits.
+5. **[docs/deployment.md](docs/deployment.md)** — deployment architecture, the Cloud Run presentation environment and its pipeline, self-hosting with compose, scalability and operational limits.
 
 Full documentation index: **[docs/README.md](docs/README.md)**. Working conventions: **[AGENTS.md](AGENTS.md)**.
 
@@ -137,7 +137,7 @@ All project operations are exposed through `make`:
 | `make eval-baseline` | Baseline system evaluation execution | ⚠️ pending |
 | `make eval-adversarial` | Adversarial injection scenario suite execution | ⚠️ pending |
 | `make clean-models` | Drop cached model weights | ⚠️ pending |
-| `make deploy` | Deploy to target environment | ⚠️ pending |
+| `make deploy` | Run `deploy.yml`: build and roll out to the Cloud Run presentation environment ([ADR-0015](docs/adr/0015-gcp-cloud-run-terraform.md)) | ⚠️ not yet exercised |
 
 ---
 

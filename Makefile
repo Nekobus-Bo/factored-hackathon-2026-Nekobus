@@ -143,8 +143,9 @@ encoder-bench: ## Encoder p95 latency and peak RAM on CPU (ENCODER_BACKEND=tfidf
 clean-models: ## pending: drop cached model weights
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
-deploy: ## pending: deploy to the target environment
-	@echo "pending: $@ is not implemented yet" >&2; exit 1
+deploy: ## Run deploy.yml on main: build, migrate and roll out to Cloud Run (GH_REPO=owner/name if not this checkout's repository; needs gh)
+	@command -v $(GH) >/dev/null 2>&1 || { echo "deploy: gh is not installed (GH=$(GH)): https://cli.github.com" >&2; exit 1; }
+	$(GH) workflow run deploy.yml --ref main $(if $(GH_REPO),--repo $(GH_REPO))
 
 calibrate: ## Compare and calibrate models (TASK=decision|embedding|decision-points, DP=, CONFIG=, OUT=reports)
 	@test -n "$(TASK)" || { echo "calibrate: set TASK=decision, embedding or decision-points" >&2; exit 1; }
