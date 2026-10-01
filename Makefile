@@ -156,10 +156,13 @@ train-encoder: ## Fine-tune and pin a decision model (CONFIG=tools/calibrate/con
 	uv run $(UV_RUN_FLAGS) --package calibrate python -m calibrate.train --config $(or $(CONFIG),tools/calibrate/configs/train_intent_distilbert.yaml)
 
 WEIGHTS_DIR ?= packages/encoder/weights/distilbert-intent-pooled
-WEIGHTS_IMAGE ?= ghcr.io/nekobus-bo/pattern_blue-encoder-weights
+# Docker Hub repository of the seed image (public; ADR-0014). Set DOCKERHUB_NAMESPACE.
+DOCKERHUB_NAMESPACE ?=
+WEIGHTS_IMAGE ?= docker.io/$(DOCKERHUB_NAMESPACE)/pattern_blue-encoder-weights
 
 encoder-weights-image: ## Pack a trained model dir into the weights-only seed image (WEIGHTS=, IMAGE=); PUSH=1 pushes amd64+arm64 and prints the digest to pin
 	@set -e; dir="$(or $(WEIGHTS),$(WEIGHTS_DIR))"; repo="$(or $(IMAGE),$(WEIGHTS_IMAGE))"; \
+	case "$$repo" in docker.io//*) echo "encoder-weights-image: set DOCKERHUB_NAMESPACE=<your Docker Hub user or org> (or IMAGE=)" >&2; exit 1;; esac; \
 	uv run python -m encoder.weights verify "$$dir"; \
 	pins="$$(uv run python -m encoder.weights show "$$dir")"; \
 	rev="$$(printf '%s' "$$pins" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')"; \

@@ -30,7 +30,7 @@ Three things keep it out of the app today:
    - Slots and PII spans stay on the legacy `ENCODER_BACKEND` path (ADR-0012 C.1).
    - It classifies `es`, `pt` and `en`. English has no grounded training rows; its τ comes from the template English validation rows, and when that τ is infeasible the decision points abstain in English.
 2. **Weights ship inside the encoder image, from a weights-only seed image.**
-   - The trained directory (weights, tokenizer, and a manifest with per-file SHA-256) is packed once into a `FROM scratch` image. That image is published on GHCR, public and multi-platform (amd64 and arm64), and referenced by digest.
+   - The trained directory (weights, tokenizer, and a manifest with per-file SHA-256) is packed once into a `FROM scratch` image. That image is published on Docker Hub, public and multi-platform (amd64 and arm64), and referenced by digest. Anonymous Docker Hub pulls are rate-limited per IP; one pull per clean build is well inside the limit.
    - `apps/encoder/Dockerfile` copies it in a layer placed before the dependency and code layers. Code-only rebuilds reuse that layer, and only a retrain produces a new seed image.
    - At runtime the weights never need the network.
    - The pin chain is: the Dockerfile's digest → the manifest → the artifact's `revision` (`<name>:<12 hex of the manifest SHA-256>`) and `weights_sha256`.
@@ -64,7 +64,7 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 
 **The model.** The deciding axis is measured quality on real text at CPU cost. The pooled model is about 50× more costly than `tfidf_lr` in latency (10 ms against 0.2 ms), still well inside the turn budget. On real Brazilian complaints the template-trained models score 0.08, and on the provisional tests the pooled model gains 4 to 5 points over any single-country model.
 
-**The weights.** A seed image costs one public registry package. In return, a clean machine needs no cache, no token and no network at runtime.
+**The weights.** A seed image costs one public Docker Hub repository. In return, a clean machine needs no cache, no token and no network at runtime.
 
 **The effects.** Building them before the freeze adds orchestrator code in the last week. `shadow` keeps every outbound message and replay key unchanged until evidence exists, which was the reason for the cut.
 
@@ -115,7 +115,7 @@ packages/encoder/weights/distilbert-intent-pooled/      (gitignored, written by 
   config.json  model.safetensors  tokenizer.json  tokenizer_config.json  special_tokens_map.json  vocab.txt  manifest.json
         |  make encoder-weights-image: verify manifest -> buildx --platform linux/amd64,linux/arm64 -> push
         v
-ghcr.io/<owner>/…-encoder-weights@sha256:<digest>        (FROM scratch; context is the directory above)
+docker.io/<namespace>/pattern_blue-encoder-weights@sha256:<digest>   (FROM scratch; context is the directory above)
         |  apps/encoder/Dockerfile: ARG ENCODER_WEIGHTS_IMAGE (the single source of the digest)
         v
 /app/packages/encoder/weights/distilbert-intent-pooled/   (inside the encoder image)
