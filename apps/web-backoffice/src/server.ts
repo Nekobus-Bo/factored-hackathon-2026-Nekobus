@@ -13,12 +13,29 @@ import index from "./index.html";
 /** Requests are small JSON documents; the largest is an agent message of 2000 characters. */
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 
+/** The most upstream calls one route makes in a row: claiming a handoff (claim, conversation, takeover). */
+export const MAX_SEQUENTIAL_UPSTREAM_CALLS = 3;
+
+/** Bun's ceiling for `idleTimeout`, in seconds. */
+const BUN_MAX_IDLE_TIMEOUT_SECONDS = 255;
+
+/**
+ * How long the connection to the browser may wait for an answer. Bun's default (10 s) is no longer than one
+ * upstream call may take, so a slow upstream (a cold start) dropped the connection before the BFF answered.
+ * This covers the longest route at its upstream timeout, plus a margin, within Bun's ceiling.
+ */
+export function idleTimeoutSeconds(upstreamTimeoutMs: number): number {
+  const longestRouteSeconds = Math.ceil((upstreamTimeoutMs * MAX_SEQUENTIAL_UPSTREAM_CALLS) / 1000);
+  return Math.min(BUN_MAX_IDLE_TIMEOUT_SECONDS, longestRouteSeconds + 5);
+}
+
 export function startServer(config: Config, deps: BffDeps = {}) {
   const bff = createBff(config, deps);
   const api = (req: Request) => bff.handle(req);
 
   return Bun.serve({
     port: config.port,
+    idleTimeout: idleTimeoutSeconds(config.upstreamTimeoutMs),
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
     routes: {
       // Liveness only: it does not look at the upstreams, so the container is healthy as soon as it serves.

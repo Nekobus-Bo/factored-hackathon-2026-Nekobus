@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { startServer } from "../src/server";
+import { MAX_SEQUENTIAL_UPSTREAM_CALLS, idleTimeoutSeconds, startServer } from "../src/server";
 import { makeConfig } from "./support/harness";
 import { startFakeBankingCore, startFakeOrchestrator } from "./support/fake-upstreams";
 
@@ -128,5 +128,28 @@ describe("the server process", () => {
     expect(child.exitCode).toBeNull();
     child.kill();
     await child.exited;
+  });
+});
+
+describe("the idle timeout", () => {
+  // Bun's default (10 s) dropped a claim whose upstreams were slow: the connection must outlast the longest route.
+  test("covers the longest route at the upstream timeout, plus a margin", () => {
+    for (const upstreamMs of [100, 1_000, 10_000, 30_000, 60_000]) {
+      const idle = idleTimeoutSeconds(upstreamMs);
+      expect(idle * 1000).toBeGreaterThan(upstreamMs * MAX_SEQUENTIAL_UPSTREAM_CALLS);
+    }
+  });
+
+  test("35 s at the default upstream timeout, 95 s at the 30 s Cloud Run sets", () => {
+    expect(idleTimeoutSeconds(10_000)).toBe(35);
+    expect(idleTimeoutSeconds(30_000)).toBe(95);
+  });
+
+  test("never above Bun's ceiling of 255 s", () => {
+    expect(idleTimeoutSeconds(120_000)).toBe(255);
+  });
+
+  test("a claim is the longest route: claim, conversation, takeover", () => {
+    expect(MAX_SEQUENTIAL_UPSTREAM_CALLS).toBe(3);
   });
 });

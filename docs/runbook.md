@@ -235,13 +235,14 @@ Reports are written to `reports/` and versioned in the repository: you can compa
 
 **There is no hosted instance for judges.** You run the system on your own machine with `make demo` (section 1); that is the supported way to evaluate it, and nothing here depends on a server of ours being up.
 
-The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. What it is, how it is deployed and which demo features it switches on are described in **[deployment.md](deployment.md)**, section 7 (the platform is still to be decided, `⚠️ pending`). Production architecture, host Redis ACL configuration and scalability limits are in the same document.
+The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. It runs on Google Cloud Run, defined in Terraform under [`infra/deploy/gcp/`](../infra/deploy/gcp/) ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)); how it is deployed and which demo features it switches on are in **[deployment.md](deployment.md)**, sections 6 and 7, and the first-deploy steps in [infra/deploy/gcp/README.md](../infra/deploy/gcp/README.md). Self-hosting with compose and the scalability limits are in the same document.
 
 ```bash
-make deploy    # ⚠️ pending — the CD workflow deploys over SSH without calling it, see deployment.md
+make deploy       # runs deploy.yml on main: build, migrate, roll out, smoke (⚠️ not yet exercised)
+make gcp-smoke    # check the deployed environment from outside
 ```
 
-That environment runs the same images as `make demo`: there is no special path that only works in production.
+That environment runs the same code as `make demo`; its images differ only in what they carry: the model server bakes in the pinned embedding model, and `banking-core` is built without PyTorch.
 
 ---
 
@@ -282,7 +283,7 @@ make clean                 # stop and drop volumes (destroys seeded data)
 
 ### Turning a decision point down (the mode kill switch)
 
-Each decision point of [ADR-0012](adr/0012-decision-points.md) has a mode in `apps/orchestrator/config/decision_effects.yaml`: `off` (ignored), `shadow` (computed and recorded, nothing changes) or `enforce` (applied). Every one ships in `shadow`. If one that was flipped to `enforce` misbehaves in a demo or on the presentation environment (a gate asking for a confirmation it should not, a block reason that looks wrong), turn it down with an environment change and no code:
+Each decision point of [ADR-0012](adr/0012-decision-points.md) has a mode in `apps/orchestrator/config/decision_effects.yaml`: `off` (ignored), `shadow` (computed and recorded, nothing changes) or `enforce` (applied). Every one ships in `shadow` except `intent_hint` and `clarify_route`, in `enforce` ([ADR-0014](adr/0014-distilbert-intent-backend.md), amendment 2026-10-01). If one that was flipped to `enforce` misbehaves in a demo or on the presentation environment (a gate asking for a confirmation it should not, a block reason that looks wrong), turn it down with an environment change and no code:
 
 ```bash
 # .env
@@ -290,6 +291,8 @@ DECISION_POINTS_MODES=confirm_gate=shadow,block_reason=off
 
 make up          # recreates the orchestrator with the new value
 ```
+
+The two enforced ones go back to `shadow` with `DECISION_POINTS_MODES=intent_hint=shadow,clarify_route=shadow`. On Cloud Run the same value is the `decision_points_modes` Terraform variable (in `infra/deploy/gcp/local.tfvars`), then `make gcp-apply`: no new image.
 
 `id=mode` pairs, separated by commas; the override wins over the file. An entry that cannot be read, or that names a decision point the file does not have, stops the orchestrator at startup instead of being skipped, so a typo cannot leave the decision point enforcing. Check it took effect in the turn metadata (`mode` of each decision record) or in the orchestrator log at startup (`Decision points from ...: confirm_gate=shadow, ...`). Emptying the variable restores the modes of the file. Turning `confirm_gate` down to `shadow` removes the confirmation question: `card.block` is again the LLM's proposal, authorized by banking-core as before.
 

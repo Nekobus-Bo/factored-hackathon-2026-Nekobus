@@ -17,7 +17,7 @@
     - one-command `make demo`;
     - second workflow through the versioned tool policy;
     - simulated OTP inbox.
-  - ADR-0012 decision points (all in `shadow`), with their calibration harness and seed artifact.
+  - ADR-0012 decision points (in `shadow`, except `intent_hint` and `clarify_route` in `enforce` since 2026-10-01), with their calibration harness and seed artifact.
   - The model server for the decision and embedding models.
   - `packages/design-tokens`.
   - The PR description lists every change and the new settings.

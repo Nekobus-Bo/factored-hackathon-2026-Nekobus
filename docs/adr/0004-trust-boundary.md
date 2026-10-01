@@ -106,3 +106,7 @@ Rules that make the layers hold:
 The sentence "exposes the chat and the back office" therefore stays accurate only for the conversation. The orchestrator gains no route to `banking-core`'s administration. "Every takeover is recorded" is now the claim of the handoff in `banking-core`: one audited row with `actor_type='agent'` and the agent's email as `actor_ref`, written in the same transaction as the status change.
 
 **Consequences.** The identity of the agent is asserted by the back-office server, not proven to `banking-core`; the row is only as trustworthy as that server's session ([limitations](../limitations.md)).
+
+## Amendment 2026-09-29 (3): the client address behind Cloud Run
+
+On Cloud Run ([ADR-0015](0015-gcp-cloud-run-terraform.md)) the connection peer of every service is Google's front end, and the `web-client` BFF drops the incoming `X-Forwarded-For`, so no `TRUSTED_PROXY_HOPS` value finds the customer's address. The presentation environment therefore runs the per-address conversation limit as a stopgap (`TRUSTED_PROXY_HOPS=0`, a high limit) until the BFF forwards the address and the hop count is measured there ([limitations](../limitations.md)). The per-customer and per-document limits do not depend on the address and are unchanged.

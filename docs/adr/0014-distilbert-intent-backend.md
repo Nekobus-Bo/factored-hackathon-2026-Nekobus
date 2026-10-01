@@ -1,6 +1,6 @@
 # ADR-0014: Pooled DistilBERT as the decision backend, locale-keyed thresholds, and the hint and clarification effects
 
-**Status:** Accepted · **Date:** 2026-09-30 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-10-01 ([below](#amendment-2026-10-01-intent_hint-and-clarify_route-in-enforce-without-an-evaluation-run)) · **Date:** 2026-09-30 · **Deciders:** TODO (team)
 
 **Amends:** [ADR-0012](0012-decision-points.md) (`hf_seqcls` moves before the freeze; `hint` and `canned_reply` are built, in `shadow`; threshold keys may be locales), [ADR-0010](0010-model-selection-calibration-harness.md) §5 (how weights are published), [ADR-0008](0008-cpu-inference-deployment.md) (weights are baked into the encoder image), [ADR-0001](0001-cheap-llm-specialized-encoder.md) (the decision model and the "structured context").
 
@@ -58,7 +58,7 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 | Weights in Git LFS | The free quota (1 GB storage, 1 GB/month bandwidth) is spent by every clone and every CI run |
 | Build from the local weights directory only | A clean machine cannot build the image, which fails the runbook's clean-machine check |
 | `hint` and `canned_reply` after the freeze (ADR-0012 as written) | It leaves ADR-0001's "structured context" and ADR-0003's clarification unbuilt. `shadow` removes the risk that motivated the cut, because outbound messages stay byte-identical |
-| `enforce` before the freeze | `make eval` is still a stub, and the replays would need re-recording with live credits |
+| `enforce` before the freeze | `make eval` is still a stub, and the replays would need re-recording with live credits. Reversed for `intent_hint` and `clarify_route` on 2026-10-01 (amendment below) |
 
 ## Trade-off analysis
 
@@ -104,7 +104,7 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 | Seed image `docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:459d30a9…` (amd64, arm64), the `weights` stage of `apps/encoder/Dockerfile`, compose and deploy defaults (`embed hf`, the DistilBERT artifact), `make warmup-encoder` verifying the artifact's pins | landed |
 | `packages/encoder/calibration/decision_points.distilbert.json` and `reports/calibration-decision-points-2026-09-30-distilbert.md` | landed; nothing certified |
 | Locale keys (`resolve_key`), `locales:` and `report_tag` in the harness, `locale` in `AnalyzeRequest`, the chat API, the session, the Zod mirror and the eval runner | landed (the Zod tests were not run: no bun on the dev host) |
-| `hint` and `canned_reply` effects, `intent_hint` and `clarify_route` in both artifacts | landed, in `shadow` |
+| `hint` and `canned_reply` effects, `intent_hint` and `clarify_route` in both artifacts | landed; in `enforce` since 2026-10-01 (amendment below) |
 | CURP, RFC and CUIT/CUIL masking | landed |
 | The live evaluation before and after `enforce`, and replay recordings | pending (needs an LLM key) |
 
@@ -138,6 +138,36 @@ If it does pass:
 - `decision_points.distilbert.json` is recalibrated with `es-CO` as its own key ([report](../../reports/calibration-decision-points-2026-10-01-distilbert.md)), and `make calibration-verify` passes.
 - The new seed image is published (amd64, arm64) as `docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:65d2252019f3…` (tag `distilbert-intent-pooled-7fd8bff09544`), and `apps/encoder/Dockerfile` pins it. The previous image (`sha256:459d30a9c697…`) stays on Docker Hub for rollback.
 - The image is public although the terms of the tuquejasuma.com source have not been reviewed (see Consequences): the team's decision.
+- **Interaction with the enforce amendment above.** `intent_hint` and `clarify_route` are in `enforce`, so this retrain changes what the LLM sees with no evaluation run before and after. In Spanish their τ falls from 0.50 to 0.34 (es-CO 0.33, es-MX 0.49, es-AR 0.47), which means more hints and fewer clarifying questions. In English it rises from 0.84 to 0.90, which means fewer hints. The kill switch above still applies.
+
+---
+
+## Amendment 2026-10-01: `intent_hint` and `clarify_route` in `enforce`, without an evaluation run
+
+**Decision.** `intent_hint` (`hint`) and `clarify_route` (`canned_reply`) move from `shadow` to `enforce` in `apps/orchestrator/config/decision_effects.yaml`, the default every environment loads: the local stack, `make demo` and Cloud Run. The other five decision points stay in `shadow`. The team wants the DistilBERT to have a visible effect in the presentation, and these two are the least risky:
+
+- `hint` is context, not authority: one categorical line (the decided intent, or `uncertain`), never a number or customer text, never written to history.
+- `canned_reply` only asks: before the LLM has answered, at most once, never with a gate, an OTP challenge or a tool result in flight (Appendix B).
+- Neither calls a tool or widens what banking-core accepts. Invariants I1–I5 of ADR-0012 hold.
+
+**Not met, declared.** Two requirements of [ADR-0012](0012-decision-points.md) Appendix F are not met:
+
+- **No evaluation run is attached** (F.3 step 7). `make eval` is a stub, and the runner's `proposed` system replays the LLM and has no recordings.
+- **Neither decision point is certified** (F.5): 0 of 45 scopes of `intent_hint` and 0 of 21 of `clarify_route` clear the Wilson bound ([report](../../reports/calibration-decision-points-2026-10-01-clarify_route+intent_hint.md)); the test sets are too small to certify anything.
+
+This reverses the "`enforce` before the freeze" row of the options above, for these two only, and the gap is in [limitations.md](../limitations.md).
+
+**Consequences.**
+
+- What reaches the LLM changes: one more system line on every turn where `intent_hint` decides or abstains with a τ.
+- A vague opening can get the fixed localized question with no LLM call.
+- A wrong hint can steer the LLM's wording or its choice of the next step, but not an authorization: banking-core still decides every tool call.
+- A wrong abstention costs one unnecessary question.
+- Replays, once recorded, are bound to the (weights digest, `artifact_id`) pair, as above.
+
+**Kill switch.** `DECISION_POINTS_MODES=intent_hint=shadow,clarify_route=shadow` ([runbook](../runbook.md)): an environment change, no code change. On Cloud Run it is the `decision_points_modes` variable and `make gcp-apply`.
+
+**Action item.** The live evaluation of action item 6, `shadow` against `enforce` for these two, is still the evidence for keeping them on. A worse result reverts this amendment.
 
 ---
 

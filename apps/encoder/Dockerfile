@@ -47,14 +47,30 @@ RUN EXTRA_ARGS="$(for e in $(echo "$ENCODER_EXTRAS" | tr ',' ' '); do printf -- 
     && uv sync --frozen --no-dev --package encoder-service $EXTRA_ARGS \
     && uv cache clean
 
-# Hub models are not baked in: HF_HOME is a volume filled by `make warmup` (a gliner
-# decision backend) and `make warmup-retrieval` (the embedding model). The fine-tuned
-# DistilBERT above is the exception (ADR-0014).
+# By default Hub models are not baked in: compose mounts HF_HOME as a volume filled by
+# `make warmup` (a gliner decision backend) and `make warmup-retrieval` (the embedding
+# model). The fine-tuned DistilBERT above is always baked in (ADR-0014), and the Cloud
+# Run image bakes the embedding model too (below).
 ENV HF_HOME=/models/hf
 
 RUN useradd -m -u 1000 appuser && mkdir -p /models/hf && chown -R appuser /models
 
 USER appuser
+
+# The Cloud Run image has no volume, so it bakes the embedding model in (ADR-0015): set all
+# three and the build downloads exactly that revision into HF_HOME and fails unless the
+# weights match the hash. Needs `embed` in ENCODER_EXTRAS and network at build time. The
+# service still reads the same three variables at runtime, and banking-core checks them.
+ARG EMBEDDING_MODEL=""
+ARG EMBEDDING_REVISION=""
+ARG EMBEDDING_WEIGHTS_SHA256=""
+RUN if [ -n "$EMBEDDING_MODEL" ]; then \
+        if [ -z "$EMBEDDING_REVISION" ] || [ -z "$EMBEDDING_WEIGHTS_SHA256" ]; then \
+            echo "EMBEDDING_MODEL is set: EMBEDDING_REVISION and EMBEDDING_WEIGHTS_SHA256 are required" >&2; \
+            exit 1; \
+        fi; \
+        python -m encoder_service.warmup --only embedding; \
+    fi
 
 EXPOSE 8090
 

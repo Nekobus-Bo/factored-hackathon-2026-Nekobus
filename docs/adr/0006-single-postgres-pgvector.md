@@ -83,6 +83,10 @@ Measured with the calibration harness (`make calibrate TASK=embedding CONFIG=too
 
 **Why:** one place where the embedding and decision models are pinned and calibrated, and no ~1.3 GB model in every `banking-core` replica. **Cost:** a small request per `kb.search`, and a dependency of the trusted zone on the model server that is integrity-only and carries public data (a compromised server can only make `kb.search` pick a wrong public snippet). pgvector ingestion of the KB stays pending.
 
+## Amendment (2026-09-29): the two zones on Cloud Run
+
+On Cloud Run ([ADR-0015](0015-gcp-cloud-run-terraform.md)) the two Redis instances become two Memorystore instances, each with AUTH, and PostgreSQL becomes Cloud SQL with a private address only. "The orchestrator has no network path to `postgres` or `redis-core`" is kept by address and firewall instead of by Docker network: Cloud SQL and redis-core live in their own private-service-access range, and a firewall rule denies egress to it from every service tagged `pb-edge`; a network-check job verifies it on the real network. Cloud SQL supports pgvector; it is not created, because nothing uses it yet (the KB index is in `banking-core` memory, above).
+
 ## Action items
 
 1. [ ] Migrations with the three schemas

@@ -15,7 +15,6 @@ from orchestrator.config import Settings
 from orchestrator.conversation.decisions.catalog import ServedCatalog
 from orchestrator.conversation.decisions.config import DEFAULT_EFFECTS_FILE
 from orchestrator.conversation.decisions.effects import DecisionRuntime
-from orchestrator.conversation.decisions.records import Mode
 from orchestrator.encoder_client import EncoderUnavailableError
 
 from .fake_encoder import LEGACY_SEED, listing
@@ -152,7 +151,15 @@ def test_the_runtime_reads_the_shipped_file_by_default() -> None:
     runtime = DecisionRuntime.from_settings(Settings(_env_file=None))
 
     assert runtime.config.source == str(DEFAULT_EFFECTS_FILE)
-    assert {dp.mode for dp in runtime.config.decision_points.values()} == {Mode.SHADOW}
+    assert runtime.config.modes() == {
+        "turn_intent": "shadow",
+        "confirm_gate": "shadow",
+        "block_reason": "shadow",
+        "handoff_route": "shadow",
+        "smalltalk_route": "shadow",
+        "intent_hint": "enforce",
+        "clarify_route": "enforce",
+    }
 
 
 def test_the_mode_override_of_the_environment_reaches_the_runtime() -> None:

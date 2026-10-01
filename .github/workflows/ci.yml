@@ -83,12 +83,38 @@ jobs:
       - name: Web (contracts and apps, typecheck and tests)
         run: make web-check
 
+  # The Cloud Run environment's Terraform (ADR-0015), as `make gcp-check` runs it. No GCP
+  # credentials: the tests run against a mocked provider.
+  terraform:
+    name: terraform (infra/deploy/gcp)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.x
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+
+      - name: fmt, validate, tflint and terraform test
+        run: make gcp-check
+        env:
+          # tflint --init downloads the google ruleset through the GitHub API.
+          GITHUB_TOKEN: ${{ github.token }}
+
   # Every app builds from the repository root with its own Dockerfile. The two web apps have a
   # Dockerfile.dockerignore next to it (BuildKit reads it instead of the root .dockerignore, which
   # the three Python images keep using), and pin their build stage to the runner's platform, so
   # their arm64 image is not built under emulation.
+  #
+  # The platforms are the repository variable CI_IMAGE_PLATFORMS, both by default. A copy that
+  # pays for its Actions minutes (a private sandbox) can set linux/amd64: arm64 builds under
+  # emulation and takes most of the job's time.
   images:
-    name: image (${{ matrix.service }}, amd64 + arm64)
+    name: image (${{ matrix.service }}, ${{ vars.CI_IMAGE_PLATFORMS || 'amd64 + arm64' }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -99,15 +125,16 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: docker/setup-qemu-action@v4
+        if: contains(vars.CI_IMAGE_PLATFORMS || 'linux/amd64,linux/arm64', 'arm64')
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build for linux/amd64 and linux/arm64 (no push)
+      - name: Build for ${{ vars.CI_IMAGE_PLATFORMS || 'linux/amd64,linux/arm64' }} (no push)
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/${{ matrix.service }}/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ vars.CI_IMAGE_PLATFORMS || 'linux/amd64,linux/arm64' }}
           push: false
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}

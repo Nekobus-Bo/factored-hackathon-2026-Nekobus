@@ -11,14 +11,14 @@ Generates:
 import json
 import random
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import NAMESPACE_DNS, uuid5
 
 from faker import Faker
 
 from banking_core.models.enums import BlockReason, DocumentType
-from banking_core.seed.fixtures import create_scenario_fixtures
+from banking_core.seed.fixtures import create_scenario_fixtures, default_base_time
 
 MCC_CODES = [
     ("5411", "Grocery Stores, Supermarkets"),
@@ -96,7 +96,7 @@ def generate_synthetic_dataset(
     out_path.mkdir(parents=True, exist_ok=True)
 
     rng = random.Random(seed)
-    now = base_time or datetime(2026, 9, 26, 12, 0, 0, tzinfo=UTC)
+    now = base_time or default_base_time()
 
     fakers = {
         "es": Faker("es_CO"),
