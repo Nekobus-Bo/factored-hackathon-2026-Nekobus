@@ -1,4 +1,4 @@
-"""Everything that differs between pt-BR, es-MX and es-AR, in one place.
+"""Everything that differs between pt-BR, es-MX, es-AR and es-CO, in one place.
 
 The pipeline modules (mine, generate, fill, build_test, checks) are locale-agnostic and read
 their data, patterns, wording and fictitious values from a `Locale`. The pt-BR values are the
@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 @dataclass(frozen=True)
 class Locale:
-    code: str  # "pt-BR", "es-MX", "es-AR"
+    code: str  # "pt-BR", "es-MX", "es-AR", "es-CO"
     lang: str  # the dataset's `lang` field
     record_locale: bool  # write a `locale` field on every row (pt-BR rows predate it)
     out_dir: Path
@@ -497,7 +497,111 @@ ES_AR = Locale(
     **_ES_SHARED,
 )
 
-LOCALES = {loc.code: loc for loc in (PT_BR, ES_MX, ES_AR)}
+# ---------------------------------------------------------------- es-CO: tuquejasuma.com complaint threads
+# The source is a complaint forum, not app reviews, and it has no rejected LLM rows: the prompt keeps the
+# lessons of the MX/AR rejects in words but shows no anti-examples (like pt-BR). es-MX and es-AR above
+# stay byte-identical, so their prompts keep hitting the LLM cache.
+
+_CO_PROMPT = _ES_PROMPT.replace(
+    "Style evidence mined from real, masked app-store reviews written by {people}. They are reviews, not chats: "
+    "borrow their words and their way of writing, not the review format.",
+    "Style evidence mined from real, masked complaints that {people} posted on a consumer complaint forum. They are "
+    "forum complaints, not chats: borrow their words and their way of writing, not the complaint format.",
+).replace(
+    "Do NOT write like these earlier synthetic messages, which were rejected as fake:\n{anti_examples}\nThey failed because",
+    "Earlier synthetic messages for other countries were rejected as fake because",
+).replace(
+    "and punctuation and accents were perfect. Real customers",
+    "and punctuation and accents were perfect. Avoid all four. Real customers",
+)
+
+# Colombia shares antier, ahorita, mande, plata and lucas with Mexico or Argentina: they are not foreign here
+_CO_FOREIGN_MX = r"\b(checar|chequen|chafa|neta|g[uü]ey|wey|lana|varo|padr[ií]simo|platicar|chido|no mames|qu[eé] onda|ocupo|spei|clabe|oxxo|codi|dimo|bur[oó] de cr[eé]dito)\b"
+_CO_FOREIGN_AR = r"\b(tenés|podés|querés|sabés|sos|decís|hacés|fijate|fíjate|decime|avisame|mirá|andá|poné|vos|che|guita|quilombo|laburo|posta|homebanking|home banking|cbu|cvu|chanta|trucho|al pedo|podrido|garca|boludo|mangos|celu)\b"
+
+ES_CO = Locale(
+    code="es-CO", out_dir=REPO / "data" / "staging" / "decision_es_co", stem="decision.es_co", id_prefix="synthco",
+    raw_file=REPO / "data" / "staging" / "complaints" / "complaints_co.parquet",
+    # Mexican bank threads from the same site: same genre and sector, so log-odds pick dialect, not genre
+    contrast_raw_file=REPO / "data" / "staging" / "complaints" / "complaints_mx_tqs.parquet",
+    slang=["parce", "parcero", "qué pena", "sumercé", "bacano", "chévere", "berraco", "lucas", "luca", "vaina",
+           "chimba", "camellar", "mamera", "jartera", "embarrada", "ñero"],
+    bank_country="a Colombian", people="Colombian bank customers", account_numbers="account, Nequi or DaviPlata",
+    variety_rule="Write in Colombian Spanish as Colombians write in a chat: usted is very common, even between peers, and tú is fine; never vos or vosotros, no Mexican, Argentine or Spain words (checar, ocupo, che, guita, laburo, ordenador), and no Portuguese.",
+    boundaries=_es_boundaries("cédula, NIT or passport", "extracto"),
+    oos_topics={
+        "oos_app": "problems with the bank app or the Nequi or DaviPlata wallet: errors, crashes, updates, login, clave dinámica or facial-recognition failures",
+        "oos_transfer": "a transfer (also Transfiya, Bre-B llaves, Nequi or DaviPlata) or a PSE payment that does not show up or was rejected",
+        "oos_credit": "loans, libranza, credit card limit, cuotas and interest, refinancing, reports to Datacrédito",
+        "oos_account": "opening or closing an account, an account blocked or cancelled by the bank, paz y salvo and bank certificates",
+        "oos_cash": "ATM withdrawals, retiro sin tarjeta, corresponsales bancarios, branch visits and lines",
+        "oos_payments": "paying utility bills (servicios públicos), phone top-ups (recargas), QR payments, débito automático",
+        "oos_rewards": "points, promotions, cashback, and the cuota de manejo or other fees the customer finds too high",
+        "general": "topics unrelated to banking: weather, football, recipes, jokes, general knowledge, small talk",
+    },
+    personas=[
+        "a young customer, very informal, abbreviations (q, xq, porfa, tmb), no final punctuation",
+        "an older customer, formal and very polite, uses usted, complete sentences",
+        "an angry customer, some words in CAPITALS, exclamation marks",
+        "a customer in a hurry, very short sentences",
+        "a polite customer who starts with a greeting (buenas tardes, buen día, cordial saludo)",
+        "a small-business owner (cuenta empresarial, datáfono, cobros con QR, Nequi Negocios)",
+        "a customer typing on the phone without accents (aplicacion, tambien, credito) and with small typos",
+        "a customer from a region of Colombia outside Bogotá, with light regional expressions; never name the city or region",
+    ],
+    fillers={
+        "amount": ["9.900", "15.000", "35.900", "45.000", "50.000", "89.900", "120.000", "150.000", "249.900",
+                   "350.000", "480.000", "750.000", "1.200.000", "1.250.000", "2.500.000", "3.800.000"],
+        "currency": ["$"],
+        "merchant": ["Éxito", "Rappi", "Falabella", "Olímpica", "D1", "Ara", "Jumbo", "Alkosto", "Ktronix",
+                     "Homecenter", "Mercado Libre", "Amazon", "Temu", "Shein", "Claro", "Movistar", "Tigo",
+                     "Avianca", "Uber", "DiDi", "Netflix", "Spotify", "Terpel", "Juan Valdez", "Crepes & Waffles",
+                     "Cinemark", "Steam"],
+        "transaction_date": ["ayer", "hoy", "antier", "12/09/2026", "03/09/2026", "28/08/2026", "21/09/2026",
+                             "15/09/2026", "el 7 de septiembre"],
+        "birth_date": ["12/04/1985", "24/11/1992", "08/07/1978", "30/09/1983", "19/01/1995", "05/12/1980",
+                       "17/03/1990", "22/06/1975"],
+        "phone": ["300 010 2345", "310 010 7788", "315 010 4411", "320 010 9010", "+57 301 010 3456",
+                  "+57 318 010 6789", "3000102468", "601 010 1357"],
+    },
+    document_profiles=[
+        {"normalized": "NATIONAL_ID", "surface": "cédula", "number": "1.020.345.678"},
+        {"normalized": "NATIONAL_ID", "surface": "cédula", "number": "79.456.123"},
+        {"normalized": "NATIONAL_ID", "surface": "cédula de ciudadanía", "number": "52.987.654"},
+        {"normalized": "NATIONAL_ID", "surface": "cédula de ciudadanía", "number": "1032456789"},
+        {"normalized": "TAX_ID", "surface": "NIT", "number": "900.123.456-7"},
+        {"normalized": "TAX_ID", "surface": "NIT", "number": "800.987.654-3"},
+        {"normalized": "PASSPORT", "surface": "pasaporte", "number": "AQ123456"},
+        {"normalized": "FOREIGN_ID", "surface": "cédula de extranjería", "number": "456789"},
+        {"normalized": "FOREIGN_ID", "surface": "PPT", "number": "1234567"},
+    ],
+    # Surfaces exactly as in document_profiles (fill.py looks the match up by surface); longest first
+    document_word_rx=r"(?i)\b(cédula de extranjería|cédula de ciudadanía|cédula|nit|pasaporte|ppt)\b", default_document="cédula",
+    local_markers=r"(?i)\b(qu[eé] pena|sumerc[eé]|plata|c[eé]dula|pse|nequi|daviplata|extracto|cuota de manejo|paz y salvo|corresponsal|celular|transfiya|datacr[eé]dito|reg[aá]l[ae]me|me regala|listo|porfa)\b",
+    foreign_markers="(?i)" + "|".join([_CO_FOREIGN_MX, _CO_FOREIGN_AR, _PT_MARKERS, _SPAIN_MARKERS]),
+    **{
+        **_ES_SHARED,
+        "raw_source": "tqs_thread",
+        "bad_source": None,
+        "prompt": _CO_PROMPT,
+        # The site masks part of the text itself; map its labels first, then the shared es masks
+        "masks": [
+            (r"\[n[uú]meros\]", "[NUMERO]"),
+            (r"\[nombre\]", "[NOMBRE]"),
+            (r"\[email.?protected\]", "[EMAIL]"),
+            *_ES_SHARED["masks"],
+        ],
+        "allowed_caps": _ES_ALLOWED_CAPS | set("""bancolombia davivienda daviplata nequi agrario popular colombia
+            bogotá bogota medellín medellin cali barranquilla bucaramanga pse transfiya bre-b efecty baloto movii
+            datacrédito datacredito cifin superfinanciera superintendencia financiera dian rut nit cédula cedula
+            sisbén sisben icetex colpensiones éxito exito falabella rappi claro tigo movistar avianca cop""".split()),
+        "money_rx": r"\$ ?\d[\d.,]*|\d[\d.,]* (?:pesos|cop|mil)|\d+ ?mil pesos|\d+ ?millones",
+        # Cédulas written with dots (1.020.345.678) and NITs (900.123.456-7) on top of the shared es patterns
+        "pii_rx": _ES_SHARED["pii_rx"] + r"|\b\d{1,3}(?:\.\d{3}){2,3}\b|\b\d{3}\.\d{3}\.\d{3}-\d\b",
+    },
+)
+
+LOCALES = {loc.code: loc for loc in (PT_BR, ES_MX, ES_AR, ES_CO)}
 
 
 def get_locale(code: str) -> Locale:

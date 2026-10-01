@@ -53,6 +53,13 @@ def locales(tmp_path):
             {"train": 3, "validation": 1, "test": 1},
             with_locale=True,
         ),
+        "es-CO": _locale(
+            tmp_path,
+            "es-CO",
+            "co",
+            {"train": 2, "validation": 1, "test": 1},
+            with_locale=True,
+        ),
     }
 
 
@@ -78,7 +85,7 @@ def template_dir(tmp_path):
 
 def test_pt_rows_get_their_locale_and_order_is_kept(locales, template_dir):
     rows = pooled_split("train", locales, template_dir)
-    assert [r["locale"] for r in rows] == ["pt-BR"] * 2 + ["es-MX"] * 3
+    assert [r["locale"] for r in rows] == ["pt-BR"] * 2 + ["es-MX"] * 3 + ["es-CO"] * 2
     assert rows[0]["id"] == "pt-train-0"
 
 

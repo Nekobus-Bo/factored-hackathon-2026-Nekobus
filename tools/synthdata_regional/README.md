@@ -1,6 +1,6 @@
 # tools/synthdata_regional
 
-Builds intent datasets grounded in real regional customer text for pt-BR, es-MX and es-AR. Each covers the
+Builds intent datasets grounded in real regional customer text for pt-BR, es-MX, es-AR and es-CO. Each covers the
 15 runtime intents with full slots, at 100 train, 50 validation and 50 test rows per intent. Real text is
 mined locally into style cards. An LLM writes train and validation from those cards. The test split is
 written by hand from the other half of the companies, and a quality gate checks all three splits.
@@ -10,10 +10,17 @@ written by hand from the other half of the companies, and a quality gate checks 
 | `pt-BR` | `data/raw/complaints_br/db_reclamacoes_clean.parquet` (Reclame Aqui) | none |
 | `es-MX` | `data/staging/complaints/complaints_mx.parquet` (Google Play reviews) | `source = 'llm-synthetic'` rows |
 | `es-AR` | `data/staging/complaints/complaints_ar.parquet` (Google Play reviews) | `source = 'llm-synthetic'` rows |
+| `es-CO` | `data/staging/complaints/complaints_co.parquet` (tuquejasuma.com bank complaint threads, `make stage-data-co`) | none |
+
+es-CO is small (618 consumer texts from 5 banks) and comes from a complaint forum, not app reviews. Its
+regional terms are contrasted with Mexican bank threads from the same site (`complaints_mx_tqs.parquet`), so
+they reflect dialect rather than genre. With no rejected rows, its prompt states the lessons of the MX/AR
+rejects in words, and its register check gates only the slang cap.
 
 ## Pipeline
 
 ```bash
+make stage-data-co                      # es-CO only: stage the tuquejasuma bank threads first
 make synth-data-regional LOCALE=es-MX   # mine (skipped if cards exist) → generate → check
 make build-test-regional LOCALE=es-MX   # fill test_templates.*.{txt,tsv} into the provisional test split
 make check-data-regional LOCALE=es-MX   # quality gate only; writes checks.md, exits 1 on failure

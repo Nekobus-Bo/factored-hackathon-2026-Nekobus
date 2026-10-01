@@ -8,10 +8,12 @@ import pytest
 
 from tools.synthdata_regional import register
 from tools.synthdata_regional.build_test import load_templates
-from tools.synthdata_regional.checks import check_pii, check_purity
+from tools.synthdata_regional.checks import check_pii, check_purity, check_register
 from tools.synthdata_regional.fill import fill, placeholder_problem
 from tools.synthdata_regional.locales import (
+    _ES_PROMPT,
     ES_AR,
+    ES_CO,
     ES_MX,
     LOCALES,
     PLACEHOLDERS,
@@ -36,6 +38,10 @@ def test_fill_offsets_are_exact(loc):
     (ES_MX, "mi CURP es {document_number}", "curp"),
     (ES_MX, "mi RFC: {document_number}", "rfc"),
     (PT_BR, "meu cpf é {document_number}", "cpf"),
+    (ES_CO, "mi cédula es {document_number}", "cédula"),
+    (ES_CO, "Cédula de ciudadanía {document_number}", "cédula de ciudadanía"),
+    (ES_CO, "mi NIT {document_number}", "nit"),
+    (ES_CO, "cédula de extranjería {document_number}", "cédula de extranjería"),
 ])
 def test_named_document_gets_a_matching_number(loc, template, surface):
     numbers = {d["number"] for d in document_profiles(loc) if d["surface"].lower() == surface}
@@ -44,7 +50,7 @@ def test_named_document_gets_a_matching_number(loc, template, surface):
         assert slots[0]["value"] in numbers
 
 
-@pytest.mark.parametrize("loc", [ES_MX, ES_AR], ids=["es-MX", "es-AR"])
+@pytest.mark.parametrize("loc", [ES_MX, ES_AR, ES_CO], ids=["es-MX", "es-AR", "es-CO"])
 def test_document_type_and_number_come_as_a_pair(loc):
     pairs = {(d["surface"], d["number"]) for d in document_profiles(loc)}
     for seed in range(30):
@@ -54,7 +60,7 @@ def test_document_type_and_number_come_as_a_pair(loc):
         assert values["document_type"]["normalized"] in {"NATIONAL_ID", "PASSPORT", "FOREIGN_ID", "TAX_ID"}
 
 
-@pytest.mark.parametrize("loc", [ES_MX, ES_AR], ids=["es-MX", "es-AR"])
+@pytest.mark.parametrize("loc", [ES_MX, ES_AR, ES_CO], ids=["es-MX", "es-AR", "es-CO"])
 def test_relative_date_never_follows_an_article(loc):
     for seed in range(40):
         text, _ = fill(loc, "vi un cargo del {transaction_date}", "report_unrecognized_charge", random.Random(seed))
@@ -71,7 +77,7 @@ def test_placeholder_problems():
                                  "provide_otp_code", "check_balance", "check_recent_transactions"}
 
 
-@pytest.mark.parametrize("loc", [ES_MX, ES_AR], ids=["es-MX", "es-AR"])
+@pytest.mark.parametrize("loc", [ES_MX, ES_AR, ES_CO], ids=["es-MX", "es-AR", "es-CO"])
 def test_fictitious_pii_would_be_caught_outside_slots(loc):
     """Every document number and phone the locale fills in matches its own PII pattern,
     so the same value written without a slot is rejected by check_pii."""
@@ -129,3 +135,37 @@ def test_load_templates_reads_both_formats(tmp_path):
     (tmp_path / "test_templates.3.txt").write_text("hola sin cabecera\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_templates(tmp_path)
+
+
+def test_colombian_purity_keeps_shared_words_and_flags_foreign_ones():
+    colombiano = "buenas, qué pena, antier me descontaron plata y ahorita no me aparece"
+    assert not re.search(ES_CO.foreign_markers, colombiano)
+    assert re.search(ES_CO.foreign_markers, "che, ¿me podés decir el saldo?")
+    assert re.search(ES_CO.foreign_markers, "oye, ¿me puedes checar el saldo?")
+    assert re.search(ES_CO.local_markers, colombiano)
+
+
+def test_colombian_prompt_has_no_anti_examples_and_the_others_are_unchanged():
+    assert ES_MX.prompt == _ES_PROMPT and ES_AR.prompt == _ES_PROMPT
+    assert "{anti_examples}" not in ES_CO.prompt and "consumer complaint forum" in ES_CO.prompt
+    assert ES_CO.bad_source is None and ES_CO.raw_source == "tqs_thread"
+
+
+def test_site_masks_map_to_mining_labels():
+    from tools.synthdata_regional.mine import mask
+
+    df = pl.DataFrame({"ask": ["me cobraron [números] mil y llamé a [nombre], correo [email\u00a0protected]"]})
+    masked = df.select(mask(ES_CO))["ask"][0]
+    assert masked == "me cobraron [NUMERO] mil y llamé a [NOMBRE], correo [EMAIL]"
+
+
+def test_register_check_without_rejected_rows_gates_only_slang(tmp_path):
+    raw = tmp_path / "raw.parquet"
+    pl.DataFrame({"source": ["tqs_thread"] * 3, "ask": ["no me llegó la plata", "hice una transacción por pse", "buenas tardes"]}).write_parquet(raw)
+    df = pl.DataFrame({"text": ["parce, el saldo"] * 5 + ["quiero ver mi saldo"] * 93 + ["hola, quiero ver el saldo de la cuenta de ahorros antes de pagar el arriendo",
+                                                                     "buenas tardes, me dice cuánto me queda en la cuenta, es que tengo que pagar el colegio"],
+                       "length": ["short"] * 98 + ["long"] * 2})
+    errors, table, summary = check_register(df, ES_CO, raw)
+    assert set(errors) == {"slang cap"} and errors["slang cap"]  # 'parce' in 5% of rows
+    assert "rejected LLM rows" not in table["set"].to_list()
+    assert "register distance to rejected rows" not in summary
