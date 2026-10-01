@@ -108,6 +108,29 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 | CURP, RFC and CUIT/CUIL masking | landed |
 | The live evaluation before and after `enforce`, and replay recordings | pending (needs an LLM key) |
 
+## Amendment, 2026-10-01: es-CO joins the pooled model
+
+**Context.** Decision 3 left es-CO on the `es` keys because it had no grounded data. A tuquejasuma.com snapshot now provides real Colombian banking complaints (Bancolombia, Davivienda, DaviPlata, Banco Agrario, Banco Popular).
+
+**Options.**
+- Keep es-CO on `es`.
+- Build an es-CO dataset the same way as es-MX and es-AR, and retrain the pooled model on four locales.
+- Train a Colombia-only model.
+
+**Decision.** Build the es-CO dataset with `tools/synthdata_regional` (locale `es-CO`) and retrain the pooled model on pt-BR, es-MX, es-AR and es-CO. The retrained model replaces the pinned one only if a comparison decided in advance passes. Its rules are written in `lab/notebooks/compare__decision-pooled-co.py`:
+- the retrained model wins on the Colombian sets;
+- no other set drops beyond its seed spread;
+- out-of-scope recall on real text does not drop beyond its seed spread.
+
+If it does pass:
+- `es-CO` gets its own τ and calibrator keys;
+- a new seed image and digest are published, following the pin chain above.
+
+**Consequences.**
+- The Colombian source text is a complaint forum, not app reviews, and it is small (643 consumer texts). It has no earlier rejected LLM rows, so the generation prompt for es-CO has no anti-examples, as for pt-BR.
+- Masking needs no change: labelled cédula and NIT numbers are already masked (decision 5 holds).
+- Until the new seed image is published, the calibration artifact on the branch pins weights the image does not ship, so that branch is not merged before the publish.
+
 ---
 
 ## Appendix A — Seed image and pin chain
