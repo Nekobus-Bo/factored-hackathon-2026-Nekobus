@@ -107,3 +107,49 @@ The last two rules are stricter than the complaint rules above, which counted fe
 Of about 90 random reviews per country, only 1 is in scope, so the theme stratum carries nearly all the
 in-scope rows. With 19 (MX) and 23 (AR) in-scope rows, per-intent scores on these sets are anecdotal. Read
 the out-of-scope recall and the overall accuracy.
+
+# Complaint threads, Colombia
+
+Real-world check set for the es-CO dataset: `complaints_co_sample_150.parquet`, with labels in
+`complaints_co_sample_150.labels.parquet` (same columns as above), both in `data/staging/complaints/` and not
+versioned. Built by `make stage-data-co` (`tools/synthdata_regional/stage_tqs.py`).
+
+## Provenance
+
+- **Source:** consumer turns of tuquejasuma.com complaint threads about Colombian banks
+  (`data/raw/apple_store_reviews/snapshot_co_1000`, despite the folder name). Only company **half B**
+  (DaviPlata, Banco Agrario) is sampled, so no row overlaps the half-A text that mining shows the LLM. Texts
+  over 120 words are excluded.
+- **Draw:** up to 6 texts per in-scope theme (23 drawn), the rest random. Seed 11. Half B has few texts, so
+  the 150 rows are most of it.
+- **Masking:** the site's own masks (`[números]`, `[nombre]`, email), the staging name scrub and the mining
+  masks were applied first. The labeller (Claude Opus 5.5, one pass, no second annotator) saw only the masked
+  text. Two misses remain: a lowercase name after a phone mask (row 61) and a partial email with a masked
+  number (row 136). Neither pattern occurs in the half-A phrases sent to the generator.
+- **Status:** silver labels, not a test set (rubric §1).
+
+## Rule added for transfers
+
+Most Colombian texts are PSE or Transfiya transfers that were rejected but debited. The complaint rules
+above make a transfer that did not arrive `out_of_scope`, and a refund owed `request_dispute`. To keep the
+line mechanical:
+
+| Situation | Label |
+|---|---|
+| A transfer rejected, pending or not credited, with no refund wording | `out_of_scope` |
+| The same, when the text asks for or says a refund is still owed (*reembolso*, *devolución*, *devuelto*, *reintegro*, *regresar* or *rebotar la plata*), or a claim was already filed | `request_dispute` |
+| Someone else opened or took over a DaviPlata in the customer's name | `report_suspicious_activity` |
+| Money missing from the balance with no matching transaction | `report_unrecognized_charge` |
+| Registration problems (the RappiPay email loop), blocked wallets, follow-ups ("ya me solucionaron") | `out_of_scope` |
+
+## Result
+
+| Intent | CO |
+|---|---:|
+| `out_of_scope` | 115 |
+| `request_dispute` | 27 |
+| `report_suspicious_activity` | 6 |
+| `report_unrecognized_charge` | 2 |
+
+35 in-scope rows, more than MX (19) or AR (23), but nearly all of them are disputes about transfers, a
+pattern the synthetic test splits barely contain. Per-intent scores beyond `request_dispute` are anecdotal.
