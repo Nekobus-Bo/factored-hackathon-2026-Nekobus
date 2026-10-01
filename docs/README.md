@@ -41,8 +41,10 @@ In this order, about 15 minutes:
 | [0008](adr/0008-cpu-inference-deployment.md) | CPU inference and private-environment deployment | Accepted |
 | [0009](adr/0009-monorepo-structure.md) | Monorepo structure and service names | Accepted |
 | [0010](adr/0010-model-selection-calibration-harness.md) | Model selection and calibration harness | Accepted |
+| [0011](adr/0011-hybrid-seed-dataset-ingest.md) | Hybrid seed: synthetic demo identities plus the delivered dataset through a pluggable ingest | Accepted |
 | [0012](adr/0012-decision-points.md) | Decision points: calibrated local models decide, the engine applies, banking-core disposes; the model server | Accepted (minimum freeze scope) |
 | [0013](adr/0013-front-ends-bff-takeover.md) | Front ends, their BFFs and the human takeover | Accepted |
 | [0014](adr/0014-distilbert-intent-backend.md) | Pooled DistilBERT as the decision backend, locale-keyed thresholds, hint and clarification effects | Accepted |
+| [0015](adr/0015-gcp-cloud-run-terraform.md) | The presentation environment on Google Cloud Run, defined in Terraform | Accepted |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.
