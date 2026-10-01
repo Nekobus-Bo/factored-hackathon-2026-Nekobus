@@ -25,7 +25,7 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 | `packages/design-tokens` | Design tokens and `pb-*` component CSS, synced from the design-system artifact. Bun workspace package; generated `dist/` is committed |
 | `data/` | `raw → staging → curated`, plus `eval` |
 | `eval/` | Scenarios, replay recordings, runner |
-| `infra/` | Compose, database init, deployment |
+| `infra/` | Compose, database init, deployment (`infra/deploy/gcp`: Terraform for the Cloud Run presentation environment, ADR-0015) |
 | `tools/` | Development utilities |
 | `demo/` | Walkthrough scripts and prerecorded sessions for replay mode |
 | `reports/` | Versioned evaluation, calibration, and data quality evidence |

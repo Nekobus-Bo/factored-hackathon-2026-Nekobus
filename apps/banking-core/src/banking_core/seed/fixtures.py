@@ -46,9 +46,20 @@ class FixtureBundle:
     transactions: list[dict]
 
 
+def default_base_time() -> datetime:
+    """The seed's reference time: the start of the current UTC day.
+
+    Every seeded date is at or before it, so nothing is in the future, and the
+    oldest generated transaction (about 120 days back) stays inside the staging
+    check's 125-day window on any day the seed runs. A fixed date aged out of
+    that window. Two runs on the same day produce the same data.
+    """
+    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def create_scenario_fixtures(base_time: datetime | None = None) -> FixtureBundle:
     """Create all 9 scenario fixtures (3 per locale: es, pt, en)."""
-    now = base_time or datetime(2026, 9, 26, 12, 0, 0, tzinfo=UTC)
+    now = base_time or default_base_time()
 
     customers: list[dict] = []
     accounts: list[dict] = []

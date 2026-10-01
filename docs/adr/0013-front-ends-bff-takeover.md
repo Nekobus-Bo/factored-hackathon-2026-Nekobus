@@ -87,3 +87,9 @@ Polling costs up to 3 s of latency and steady small requests against a push chan
 - *Given up:* "the transcript never holds raw PII" no longer holds for everything the orchestrator returns. PII an agent types is shown to the customer and stored, encrypted, in redis-edge until the session TTL. Every field stored in clear is still masked. Whoever holds `SESSION_SECRET` and a dump can read the text, as they already can read the placeholder map.
 - *Becomes harder:* the ciphertext is one more thing a rotated `SESSION_SECRET` orphans (the placeholder map already is). An orchestrator version without the field (`extra="forbid"` on the message) cannot read a conversation that has an agent message with it, so a rollback within the session TTL loses those conversations.
 - *Not changed:* the customer app still renders a full card number as `•••• 1234`, whoever wrote it, so a card number typed by an agent reaches the browser as written and is shown masked ([limitations](../limitations.md)).
+
+## Amendment 2026-09-29 (2): the front ends on Cloud Run
+
+**Context.** Two sentences of the decision rely on the compose host: the orchestrator's port "stays published on `127.0.0.1` only", and the back office is "not published". On Cloud Run ([ADR-0015](0015-gcp-cloud-run-terraform.md)) there is no host and every service has a URL.
+
+**Decision.** The orchestrator, `banking-core` and the model server accept internal traffic only, which is what `127.0.0.1` stood for. The back office has a public URL behind Identity-Aware Proxy: only the team's accounts reach it, and its own login still applies after that. Behind Google's front end the `web-client` BFF sees Google's proxy, not the customer, so `TRUSTED_PROXY_HOPS=1` would count every customer as one address. Until the BFF forwards the client address, the presentation environment runs with `TRUSTED_PROXY_HOPS=0` and a high per-address limit ([limitations](../limitations.md)).

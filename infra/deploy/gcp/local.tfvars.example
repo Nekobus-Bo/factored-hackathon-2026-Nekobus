@@ -1,0 +1,13 @@
+# Copy to local.tfvars (not versioned) and fill in. `make gcp-*` passes it after
+# presentation.tfvars, so a value here wins.
+
+# The GCP project, created by hand with billing.
+project_id = "my-pattern-blue-project"
+
+# The repository whose deploy.yml may deploy (owner/name, exactly as GitHub spells it)
+# and its numeric id: gh api repos/OWNER/NAME --jq .id
+github_repository    = "someone/pattern-blue-gcp"
+github_repository_id = "123456789"
+
+# Who passes Identity-Aware Proxy to the back office.
+iap_members = ["user:someone@example.com"]

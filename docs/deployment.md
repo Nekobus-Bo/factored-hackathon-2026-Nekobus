@@ -81,7 +81,7 @@ flowchart TD
    - In production compose, `banking-core`, `encoder` and `web-backoffice` expose no host ports. Two are published, both bound to `127.0.0.1` for an ingress reverse proxy on the same host: the `web-client` (`5173`, the customers' door) and the `orchestrator` (`8080`, which the web client calls and the deploy smoke checks). Nothing outside the compose networks reaches the back office (see "The front ends" in section 3).
    - **Model server (`encoder`):** it serves the decision model (`POST /v1/analyze`, `GET /v1/decision-points`) and the embedding model of `kb.search` (`POST /v1/embed`) ([ADR-0012](adr/0012-decision-points.md), Appendix J). It receives **raw customer text**, so it must run inside your private network and never be a third-party or public service. It can share the host with the rest of the stack or run on its own host: set `ENCODER_URL` (orchestrator) and `MODEL_SERVER_URL` (banking-core) to its address, publish its port only to those two services (firewall or security group), and fill its `hf-cache` volume there (`make warmup-retrieval`, with network once). **There is no authentication or TLS between the services and the model server yet**: the network is the control (declared in [limitations.md](limitations.md)). banking-core depends on it only for `kb.search`; if it is down or serves another model than `EMBEDDING_MODEL`/`EMBEDDING_REVISION`, `kb.search` is unavailable and every other tool is unaffected.
    - **Decision model weights ([ADR-0014](adr/0014-distilbert-intent-backend.md)):** the encoder image carries the pooled DistilBERT. `apps/encoder/Dockerfile` copies it from a public, multi-platform (amd64 and arm64) seed image on Docker Hub, pinned by digest, so building the image needs Docker Hub reachable once (about 0.55 GB) and the running container needs no network for it. The artifact pins the same weights by SHA-256 and the encoder refuses to start on a mismatch. An air-gapped build can pass `--build-context weights=<a local model directory>` instead.
-   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the orchestrator's own default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. **The compose files and `deploy.yml` set `1`**, because the customer path is now the web-client BFF: it puts the address of its own connection in `X-Forwarded-For`, and with `0` every customer would share the BFF's address and budget, and once it is spent nobody can open a conversation until the hour ends. Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. With `1` a request that reaches the orchestrator directly could carry a forged header and pick its own bucket, which is why the orchestrator's port is published on `127.0.0.1` only: that can happen only from the host itself, so an ingress must send customers to the web client (`5173`), never to the orchestrator. **Known limit:** the BFF sees only the address of the connection to it, so behind an ingress proxy in front of the web client every customer still shares that proxy's address and budget, until the BFF is taught to trust that proxy ([limitations.md](limitations.md), the customer app row). The orchestrator stores only a keyed hash of the address.
+   - **Client addresses behind a reverse proxy:** `POST /v1/conversations` is limited per client address (`RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`; 30 per hour in production, 1000 in the development compose). The address is the connection peer unless `TRUSTED_PROXY_HOPS` says how many reverse proxies stand in front; the orchestrator's own default, `0`, ignores `X-Forwarded-For` so a client cannot pick its own bucket. **The compose files set `1`** (Cloud Run runs `0` as a stopgap, section 7), because the customer path is now the web-client BFF: it puts the address of its own connection in `X-Forwarded-For`, and with `0` every customer would share the BFF's address and budget, and once it is spent nobody can open a conversation until the hour ends. Set it higher than the real number and the extra entries are client-supplied, so the limit can be evaded. With `1` a request that reaches the orchestrator directly could carry a forged header and pick its own bucket, which is why the orchestrator's port is published on `127.0.0.1` only: that can happen only from the host itself, so an ingress must send customers to the web client (`5173`), never to the orchestrator. **Known limit:** the BFF sees only the address of the connection to it, so behind an ingress proxy in front of the web client every customer still shares that proxy's address and budget, until the BFF is taught to trust that proxy ([limitations.md](limitations.md), the customer app row). The orchestrator stores only a keyed hash of the address.
    - **Agent API (human takeover):** the orchestrator serves `/v1/agent` on its own port (`8080`), next to the customer chat, so a back-office server can read a conversation's transcript, take it over and write to the customer. It is **off unless `AGENT_API_ENABLED=true`** (the router is then not mounted: its paths answer 404) and every route needs `Authorization: Bearer <AGENT_API_TOKEN>`, compared in constant time. The development compose turns it on with the public token `dev-only-agent-token`; **the orchestrator refuses to start under `APP_ENV=production` with that token or an empty one**, and `docker-compose.prod.yml` pins the API back to off and the token to empty, so production enables it only with a secret of its own (`openssl rand -hex 32`). The token is its only protection: **no ingress should forward `/v1/agent`** (customers go to the web client, not to the orchestrator), and only the back-office server should hold the token. Design: [ADR-0013](adr/0013-front-ends-bff-takeover.md). `AGENT_LOCK_WAIT_SECONDS` (default `10`) is how long a takeover or an agent message waits for a customer turn in flight before answering `503 turn_in_progress`.
 
 ---
@@ -130,7 +130,7 @@ Ensure the key prefix variables in `.env` match these patterns:
 
 ## 3. Production Compose Configuration
 
-Production deployment layers `infra/compose/docker-compose.prod.yml` over `infra/compose/docker-compose.yml`, and — for bundled data only — `infra/compose/docker-compose.bundled.yml` on top of that.
+Self-hosting on a Docker host layers `infra/compose/docker-compose.prod.yml` over `infra/compose/docker-compose.yml`, and — for bundled data only — `infra/compose/docker-compose.bundled.yml` on top of that. The team's presentation environment does not use these files: it runs on Cloud Run (section 6).
 
 ### Deployment Modes
 
@@ -332,203 +332,76 @@ make smoke
 make verify-audit
 ```
 
-Automated production deployment automation via `make deploy` is currently `⚠️ pending`
-(the CD workflow below deploys over SSH directly; it does not call `make deploy`).
+`make deploy` runs `.github/workflows/deploy.yml` on `main`, which deploys to Cloud Run (section 6). The commands above are for a self-hosted Docker host; the Cloud Run environment has its own under `make gcp-*`.
 
 ---
 
 ## 6. Continuous Deployment
 
-`.github/workflows/deploy.yml` builds the five application images (`banking-core`,
-`orchestrator`, `encoder`, `web-client`, `web-backoffice`), pushes them to
-GHCR, and deploys to a target host over SSH. The target is a Docker host (VM) on the
-chosen cloud platform (AWS, Google Cloud Platform or Microsoft Azure; decision pending),
-reached over SSH. It runs on GitHub-hosted `ubuntu-latest` runners only — no
-self-hosted runner, because this repository is public.
+The presentation environment runs on **Google Cloud Run** in `us-east1` ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)). Two pieces, with a strict split:
 
-Deploying to a managed container service (e.g. ECS, Cloud Run, Azure Container Apps)
-instead of a VM would need a different deploy job; this remains pending the platform
-decision and is not implemented.
+- **Terraform** in [`infra/deploy/gcp/`](../infra/deploy/gcp/) owns the infrastructure and the service configuration: the VPC and its three subnets, Cloud SQL, the two Memorystore instances, Secret Manager, one service account per service, the five services, the three jobs, Identity-Aware Proxy and the GitHub login. The runbook of a first deploy is in its [README](../infra/deploy/gcp/README.md).
+- **`.github/workflows/deploy.yml`** owns the image: it builds the five images, pushes them to Artifact Registry and rolls every service and job out to them. Terraform ignores image changes after it creates a service.
 
-**Triggers:** automatically after `ci` succeeds on `main` (`workflow_run`), or manually
-via `workflow_dispatch` (pick an environment, optionally an existing image tag for a
-rollback). It never runs for `pull_request` events. The default GitHub Environment is
-`production`.
+How each compose guarantee of sections 1–3 is kept on Cloud Run (the `core` network, one Redis per zone, backends not published, the back office hidden, per-service secrets) is the table in ADR-0015. The compose production overlay of section 3 remains the way to self-host on a Docker host; nothing deploys it automatically.
 
-**Fork PRs never reach `build` or `deploy`, by construction, not just by omitting
-`pull_request`.** `on.workflow_run.branches: [main]` matches on the *head branch name*
-of the completed run, regardless of which repository that branch lives in — so a fork
-PR opened from a branch literally named `main` would otherwise satisfy that filter and
-fire `workflow_run` in *this* repository, with this repository's secrets and
-`packages: write`. Both the `build` and `deploy` jobs additionally require, in their own
-`if:` (re-derived independently in `deploy`, not inherited from `build`'s result), that
-`github.event.workflow_run.event == 'push'` and
-`github.event.workflow_run.head_repository.full_name == github.repository` and
-`github.event.workflow_run.head_branch == 'main'` — none of which a fork's pull_request
-can satisfy, since its head repository is the fork, not this repository, no matter what
-it names its branch. `workflow_dispatch` is additionally pinned to
-`github.ref == 'refs/heads/main'`.
+**Triggers:** automatically after `ci` succeeds on `main` (`workflow_run`), or by hand with `make deploy` (`workflow_dispatch`, optionally with an existing `image_tag` for a rollback). It never runs for `pull_request` events.
 
-### Creating a GitHub Environment
+**Fork PRs never reach `build` or `deploy`, by construction, not just by omitting `pull_request`.** `on.workflow_run.branches: [main]` matches on the *head branch name* of the completed run, regardless of which repository that branch lives in, so a fork PR opened from a branch literally named `main` would otherwise satisfy that filter. Both jobs additionally require, in their own `if:` (re-derived independently in `deploy`, not inherited from `build`'s result), that `github.event.workflow_run.event == 'push'`, `github.event.workflow_run.head_repository.full_name == github.repository` and `github.event.workflow_run.head_branch == 'main'`. `workflow_dispatch` is pinned to `github.ref == 'refs/heads/main'`. Both jobs also need the repository variable `DEPLOY_ENABLED=true`, so a fork or a copy without a GCP environment does nothing.
 
-`Settings → Environments → New environment`, named to match what
-`vars.DEPLOY_ENVIRONMENT` (repository variable) or the `workflow_dispatch` input
-resolves to — `production` if neither is set. Add the secrets and variables from the
-table below to that environment. Optionally add required reviewers or a wait timer;
-the workflow's `concurrency: deploy-<environment>` group already prevents two deploys
-to the same environment from overlapping.
+**GitHub holds no GCP secret.** The jobs log in with GitHub's OIDC token through Workload Identity Federation; the provider accepts a token only from one repository id, on `refs/heads/main`, from `deploy.yml` (`infra/deploy/gcp/ci.tf`). The deployer service account can push images, update and run the services and jobs, act as their runtime accounts and read logs; nothing else.
 
-### Repository-level configuration (not environment-scoped)
+### Repository variables
 
-| Name | Kind | Purpose | Default |
-|---|---|---|---|
-| `DEPLOY_PLATFORMS` | variable | Build target(s): `linux/amd64`, `linux/arm64`, or both comma-separated | `linux/amd64` |
-| `BANKING_CORE_SYNC_ARGS` | variable | Build arg forwarded to `apps/banking-core/Dockerfile` | `--extra vector` |
-| `ENCODER_EXTRAS` | variable | Build arg forwarded to `apps/encoder/Dockerfile`: `embed` (PyTorch and sentence-transformers for `/v1/embed`, needed by `kb.search`), `gliner`, or several separated by a space; empty builds the decision baseline only, and then `EMBEDDING_MODEL` must be empty or the model server refuses to start | `embed` |
-| `DEPLOY_ENABLED` | variable | Must be `"true"` or the `deploy` job no-ops cleanly (this is what lets a fork exist without a working deploy). **Must be set at the repository level, not inside a GitHub Environment**: the `deploy` job's `if:` is evaluated before the job's `environment:` binds, so an environment-scoped variable of the same name would never be visible there and the job would silently skip forever | unset |
+All non-secret; `make gcp-gh-vars GH_REPO=owner/name` sets them from the Terraform outputs.
 
-### Per-environment configuration
+| Variable | Purpose |
+|---|---|
+| `DEPLOY_ENABLED` | `true` or both jobs are skipped |
+| `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_NAME_PREFIX` | Where the environment is, and the prefix of its resource names |
+| `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA` | The Workload Identity provider and the service account the jobs log in as |
+| `GCP_REGISTRY` | Artifact Registry path the images are pushed to |
+| `DEMO_SEED` | `true` runs the seed job on every deploy: it **truncates** the banking tables and reloads the synthetic demo customers (section 7) |
+| `CI_IMAGE_PLATFORMS` | Platforms of the `ci` images job; `linux/amd64` in a copy whose Actions minutes are billed |
 
-| Name | Kind | Required when | Purpose |
-|---|---|---|---|
-| `DEPLOY_SSH_KEY` | secret | always | Private key for `DEPLOY_USER@DEPLOY_HOST`; the matching public key must be authorized on the target host |
-| `DEPLOY_KNOWN_HOSTS` | secret | always | Output of `ssh-keyscan <host>`, captured and pinned once by hand. Never `StrictHostKeyChecking=no` |
-| `DEPLOY_HOST` | secret | always | Target host (hostname or IP) |
-| `DEPLOY_USER` | secret | always | SSH user on the target host |
-| `DEPLOY_PATH` | variable | always | Absolute path on the target host for the compose files and `.env` (e.g. `/opt/pattern-blue`) |
-| `DATA_MODE` | variable | always | `host` (default: use the target's own Postgres/Redis, see §1–§3 above) or `bundled` (adds `--profile bundled-data` and `-f docker-compose.bundled.yml`: a dedicated server gets Postgres/Redis containers from zero, no host prep) |
-| `DATABASE_URL` | secret | always | See §3 table above |
-| `REDIS_CORE_URL` | secret | always | See §3 table above |
-| `REDIS_EDGE_URL` | secret | always | See §3 table above |
-| `SESSION_SECRET` | secret | always | See §3 table above |
-| `MASTER_KEY` | secret | always | See §3 table above |
-| `BLIND_INDEX_SALT` | secret | always | See §3 table above |
-| `ADMIN_API_ENABLED` | variable | optional | `true` to enable the admin API on `banking-core` (the back office needs it) |
-| `ADMIN_API_TOKEN` | secret | always (the back office holds it) | Bearer token for the admin API. A real random secret: `banking-core` refuses to start under `APP_ENV=production` with an empty token or the public development token, and the production overlay does not let `web-backoffice` start without it |
-| `AGENT_API_ENABLED` | variable | optional | `true` to enable the agent API (`/v1/agent`, the human takeover) on the `orchestrator` (the back office needs it). `deploy.yml` writes `false` unless it is set |
-| `AGENT_API_TOKEN` | secret | always (the back office holds it) | Bearer token for the agent API. A real random secret: the `orchestrator` refuses to start under `APP_ENV=production` with an empty token or the public development token, and the production overlay does not let `web-backoffice` start without it |
-| `BACKOFFICE_SESSION_SECRET` | secret | always | HMAC key of the back office's session cookie. The server refuses the development default under `APP_ENV=production` |
-| `DEMO_AGENT_PASSWORD` | secret | always | The back office's one demo login. The server refuses the development password under `APP_ENV=production` |
-| `DEMO_AGENT_EMAIL` | variable | optional | The back office's login and the `agent_ref` of every claim; `deploy.yml` writes `agent@demo.local` unless it is set |
-| `DEMO_RESET_ENABLED` | variable | optional | `true` to allow `POST /v1/admin/demo/reset-fixtures` under `APP_ENV=production` (it also needs the admin API). See §7 |
-| `OTP_CHANNEL_MODE` | variable | optional | `simulated`, the default and the only delivery that exists. See §7 |
-| `DEMO_SEED` | variable | optional | `true` to load the synthetic demo customers after `up`, with the seed's `--force`. It **deletes the banking tables' contents**: set it on the presentation Environment only. See §7 |
-| `LLM_MODE`, `LLM_BASE_URL`, `LLM_MODEL` | variable | optional | Defaults to `replay` (no external calls, no key needed) |
-| `LLM_API_KEY` | secret | when `LLM_MODE=live` | Provider API key |
-| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR`, `TRUSTED_PROXY_HOPS` | variable | optional | Conversations one client address may open per hour (`30` unless set; the development compose defaults to `1000`), and how many reverse proxies stand in front of the orchestrator (`deploy.yml` writes `1` unless set: the web-client BFF is that hop; the orchestrator's own default is `0`, `X-Forwarded-For` ignored). Set it to the real number if a proxy also stands directly in front of the orchestrator, see §1 |
-| `ENCODER_BACKEND`, `ABSTENTION_THRESHOLD` | variable | optional | Default to the calibrated seed in `.env.example` (`tfidf_lr`, `0.37`). `ENCODER_BACKEND=gliner` also needs the `ENCODER_EXTRAS` build variable and about 4 GB of memory |
-| `POSTGRES_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `postgres` container |
-| `REDIS_CORE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-core` container |
-| `REDIS_EDGE_PASSWORD` | secret | when `DATA_MODE=bundled` | Password for the bundled `redis-edge` container |
-
-`DATA_MODE=host` needs the one-time host preparation described in §1 (PostgreSQL role,
-database, `pgvector`, `pg_hba.conf`) and §2 (Redis ACL users) above, done once by
-whoever administers that host. `DATA_MODE=bundled` needs none of that: the compose
-`bundled-data` profile starts `postgres`, `redis-core`, and `redis-edge` as containers
-on the target itself.
+GitHub Environments are not used: nothing needs one, and a private repository on GitHub Free has none.
 
 ### What a deploy runs
 
-In order, over SSH on the target: create `$DEPLOY_PATH/infra/compose` and `$DEPLOY_PATH/eval/replay`
-(the orchestrator's read-only recordings mount) and copy the compose files; write
-`$DEPLOY_PATH/.env` (mode 600); `pull`; `run --rm migrate`; `up -d --wait`; when
-`DEMO_SEED=true`, `run --rm seed ... seed --force`; then a `/health` smoke check on the
-orchestrator and a `/healthz` one on the web client, both on their `127.0.0.1` ports. The
-images already contain the code; nothing is built on the server.
-
-### Forking this repository
-
-A fork gets the workflow file as-is and does nothing on its own: `vars.DEPLOY_ENABLED`
-is unset on a fresh fork, so the `deploy` job's `if:` condition is false and it is
-skipped, not failed. The `build` job still runs and pushes to the fork owner's own
-`ghcr.io/<fork-owner>/pattern_blue-*` packages (`github.repository_owner` is always
-resolved from the repository the workflow runs in). To deploy from a fork, its owner
-creates their own GitHub Environment and secrets exactly as described above — nothing
-in the workflow needs editing.
-
-### GitHub secret limits
-
-Each secret is capped at 48 KB, and a job's combined secrets must stay under 64 KB.
-None of the values above approach that. If a future need requires a large blob (a TLS
-certificate bundle, for instance — not needed today, since Redis/Postgres access from
-the app containers is not encrypted at the ADR-0004 trust-boundary hop), base64-encode
-it into a secret and `base64 -d` it back into a file inside the job. GitHub Actions has
-no "secure files" feature comparable to Azure DevOps; a base64 secret decoded at
-deploy time is the equivalent.
-
-### Where images live
-
-The five images (`ghcr.io/<owner>/pattern_blue-banking-core`,
-`pattern_blue-orchestrator`, `pattern_blue-encoder`, `pattern_blue-web-client`,
-`pattern_blue-web-backoffice`) are **GHCR public packages** by
-intent. GHCR packages are **private by default on first push** regardless of the
-repository's own visibility, so after the first successful `build` job, go to
-`https://github.com/users/<owner>/packages/container/<package>/settings` (or the org
-equivalent) for each of the five and set visibility to Public once. Public packages
-need no authentication to `docker pull`, which is why the `deploy` job does not log in
-to GHCR before pulling — if a package is kept private instead, add a `docker login`
-step there with a token that has at least `read:packages`.
+1. **build** (matrix of five, `linux/amd64`, tagged `sha-<commit>`): `banking-core` without extras (its embeddings come from the model server, so PyTorch stays out of the trusted zone); the encoder with the `embed` and `hf` extras, the fine-tuned DistilBERT copied in by digest (ADR-0014) and the embedding model pinned in `.env.example` baked in, the build failing if the weights do not match the hash.
+2. **deploy**, in dependency order: the model server; the `migrate` job, run and awaited; the `seed` job when `DEMO_SEED=true`; `banking-core`; the orchestrator; the two front ends. Each `gcloud run services update` waits for the new revision's startup probe; if it fails, the command fails and traffic stays on the previous revision.
+3. **smoke**: [`infra/deploy/gcp/smoke.sh`](../infra/deploy/gcp/smoke.sh) with the network check. Positive: every service ready on a real image; the web client opens a conversation through the orchestrator and banking-core. Negative: the orchestrator, banking-core and the model server do not answer from the internet; the back office does not answer without IAP; from the edge zone, Cloud SQL and redis-core are unreachable while redis-edge is reachable. `make gcp-smoke NETCHECK=1` runs the same from a laptop.
 
 ### Rollback
 
-Re-run the workflow via `workflow_dispatch` with the same `environment` and an
-`image_tag` from a previous successful run (visible in the Actions run log, or as a
-GHCR package version, e.g. `sha-abc1234`). The `build` job is skipped in that case —
-nothing is rebuilt — and `deploy` runs the SSH steps against the given tag.
+`make deploy` runs the latest `main`. To go back, dispatch `deploy.yml` with the `image_tag` of a previous run (`sha-abc1234`, in the Actions log or in Artifact Registry): `build` is skipped and `deploy` rolls every service and job to that tag. Migrations only move forward; a rollback across a migration keeps the newer schema.
 
 ### Status: not yet exercised
 
-`deploy.yml` has been designed and syntax/render-validated locally (`config` against
-both `DATA_MODE` values, the trust-boundary check, YAML parsing) but **no deploy has
-actually run** against any target — no Environment has been created yet, and no
-`DEPLOY_*` secret exists anywhere. The two front-end services in the production overlay
-are render-validated (`config`, the published-ports check of §3) and their images were
-built and started with the overlay's hardening (read-only root, no capabilities) on a
-development machine, but they have never run from a registry image in production. Treat this section as a design, not a proven
-procedure, until a first real run against the platform is logged here.
+⚠️ `deploy.yml`, the Terraform and the smoke script are checked offline only: `make gcp-check` (fmt, validate, tflint and 28 `terraform test` runs against a mocked provider), actionlint, shellcheck, and the smoke script against a fake `gcloud` and the local stack. **No apply and no deploy has run against a real project yet.** Until the first run is logged here, this section is a design, not a proven procedure.
 
 ---
 
 ## 7. Presentation environment
 
-The team's own environment for presentations. There is **no separate environment for
-judges**: they clone the repository and run `make demo` on their machine
-([runbook](runbook.md)), with at most an LLM API key in `.env`.
+The team's own environment for presentations: the Cloud Run environment of section 6. There is **no separate environment for judges**: they clone the repository and run `make demo` on their machine ([runbook](runbook.md)), with at most an LLM API key in `.env`.
 
-The presentation environment is an ordinary deployment (§6, same images, same
-`deploy.yml`) that stays `APP_ENV=production`, with **production-hardened defaults and
-each demo feature switched on explicitly**. The development defaults of
-`docker-compose.yml` (admin API and agent API on, each with a public token) never reach
-it: `docker-compose.prod.yml` pins them back to off, and `banking-core`, the
-`orchestrator` and the back office refuse to start with their development token when
-`APP_ENV=production`.
-
-**The hosting platform is still to be decided** (AWS, Google Cloud Platform or Microsoft
-Azure, §6). Nothing below depends on which one it is.
+It stays `APP_ENV=production`, with **production-hardened defaults and each demo feature switched on explicitly** in `infra/deploy/gcp/services.tf`. The development defaults of `docker-compose.yml` (admin API and agent API on, each with a public token) never reach it: every token is generated by Terraform, and `banking-core`, the orchestrator and the back office refuse to start with a development value under `APP_ENV=production`.
 
 ### The switches
 
-| Switch | Set it to | What it turns on | Notes |
-|---|---|---|---|
-| `ADMIN_API_ENABLED` + `ADMIN_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | What the back office calls, and back-office actions over HTTP: `GET`/`PUT /v1/admin/policy-config` and `/v1/admin/tool-policy`; `GET /v1/admin/handoffs` (the queue, `?status=` to filter) and `/v1/admin/handoffs/{handoff_ref}` (with the stored summary); `POST /v1/admin/handoffs/{handoff_ref}/claim` (an agent takes a case: audited as `admin.handoff.claimed`, needs migration `0008`); `GET /v1/admin/metrics?hours=` (counts from the audit log and the queue) | Startup fails on an empty token or the development token. Keep the token out of the repository: it is a GitHub secret. The back office holds the same token, and the production overlay needs it set whatever the switch says |
-| `AGENT_API_ENABLED` + `AGENT_API_TOKEN` | `true` + a random secret (`openssl rand -hex 32`) | The human takeover in the orchestrator: `GET /v1/agent/sessions/{session_ref}/conversation`, `GET /v1/agent/conversations/{id}`, `POST .../takeover` and `POST .../messages` | Startup fails on an empty token or the development token. It is a GitHub secret. It shares the orchestrator's port, so keep `/v1/agent` off any ingress. The back office holds the same token, and the production overlay needs it set whatever the switch says. While a conversation is taken over the LLM never sees it again and there is no hand-back to the assistant ([limitations](limitations.md)) |
-| `BACKOFFICE_SESSION_SECRET`, `DEMO_AGENT_PASSWORD` (secrets), `DEMO_AGENT_EMAIL` (variable) | Random values, and the agent's address | The back office (`web-backoffice`): the agent's login, the queue, taking a case and replying, guardrails, metrics | It is part of the production stack but **not published** (section 3, "The front ends", says how to reach it). It needs the two APIs above switched on. One demo credential, no user directory ([limitations](limitations.md)). The server refuses the development password and secret |
-| `DEMO_RESET_ENABLED` | `true` | `POST /v1/admin/demo/reset-fixtures`: puts the fixture customers' cards back to their seed state between demo runs | Without it the endpoint answers 403 in production. It also needs the admin API |
-| `OTP_CHANNEL_MODE` | `simulated` (the default) | The simulated OTP delivery: no code leaves the system | Today this is the only delivery that exists; `banking-core` does not read the variable yet, and the real channel is an open decision ([limitations](limitations.md)). The customer web client shows the simulated code in its inbox notice, and the dev OTP endpoint stays off (`deploy.yml` never sets `ALLOW_DEV_OTP_HOOK`) |
-| `DEMO_SEED` | `true` | After `up`, `deploy.yml` runs `python -m banking_core.seed.cli seed --force` in the `seed` service | The seed refuses to run under `APP_ENV=production` without `--force`. It **truncates and reloads** the banking tables with the synthetic demo customers (es/pt/en), so every deploy with the variable set resets the demo data and empties the handoff queue: leave it on only for a deploy that should do that. Set it on the presentation GitHub Environment, never at repository level and never on an environment that holds real customer data: it would wipe it |
-| `TRUSTED_PROXY_HOPS` | leave at `1` | Which client address the per-address limit counts | `deploy.yml` writes `1` unless the variable is set: the web-client BFF is that hop. `0` ignores `X-Forwarded-For` and counts the connection peer, which would be the BFF for every customer. Never set more than the real number: the extra entries come from the client. The orchestrator's port stays on `127.0.0.1`, so a forged header can come only from the host; behind an ingress in front of the web client all customers still share the ingress's address ([limitations](limitations.md)) |
-| `RATE_LIMIT_CONVERSATIONS_PER_IP_HOUR` | leave at `30` | Conversations one client address may open per hour | `deploy.yml` writes `30` unless the variable is set, and `docker-compose.prod.yml` pins the same default; the development compose defaults to `1000` so local runs and evaluation runs from one address are not limited. It must be at least `1`: `0` is not "unlimited", the orchestrator refuses to start |
-| `LLM_MODE` + `LLM_API_KEY` | `live` + the key (secret) | Real model calls | With `replay` the orchestrator answers 503 on a message that has no recording, and `deploy.yml` does not ship `eval/replay` yet |
-
-Everything else keeps its production default: `APP_ENV=production`, only the orchestrator
-and the customer web client publish a port (on `127.0.0.1`), the back office publishes none,
-the dev OTP endpoint is off, `EVAL_EXPOSE_TURN` is refused, and the
-secrets (`MASTER_KEY`, `BLIND_INDEX_SALT`, `SESSION_SECRET`, database and Redis URLs) come
-from the GitHub Environment.
+| Switch | Where | What it does |
+|---|---|---|
+| Admin API and agent API | On in `services.tf`; tokens generated by Terraform | What the back office calls: the queue, claims, guardrails, metrics, and the human takeover. Neither API is reachable from the internet: both services accept internal traffic only |
+| Back office | IAP (`iap_members` in `local.tfvars`), then its own login | Only the listed accounts pass IAP; the demo login is `DEMO_AGENT_EMAIL` with the password Terraform generated (`gcloud secrets versions access latest --secret pb-demo-agent-password`) |
+| `DEMO_RESET_ENABLED` | On in `services.tf` | `POST /v1/admin/demo/reset-fixtures` puts the fixture customers' cards back between runs |
+| `OTP_CHANNEL_MODE` | `simulated` | The only delivery that exists: the customer web client shows the code in its inbox notice; the dev OTP endpoint stays off |
+| `DEMO_SEED` | Repository variable | `true` reloads the demo customers on every deploy (it truncates the banking tables and empties the handoff queue); `make gcp-seed` does it once |
+| LLM | `LLM_MODE=live`, `llm_model` and `llm_reasoning_effort` in `variables.tf`; key by `make gcp-llm-key` | The key is added by hand and never enters the Terraform state. Replay recordings are not shipped |
+| Decision model | `decision_points_file` in `variables.tf`, the DistilBERT artifact by default | The encoder serves the pooled DistilBERT ([ADR-0014](adr/0014-distilbert-intent-backend.md)), the artifact `.env.example` names; a `terraform test` keeps them equal. `packages/encoder/calibration/decision_points.json` and `make gcp-apply` switch back to the `tfidf_lr` baseline, which is in the same image |
+| Per-address conversation limit | `trusted_proxy_hops = 0`, `rate_limit_conversations_per_ip_hour = 1000` | **Stopgap** ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)): behind Google's front end the web-client BFF cannot see the customer's address, so every customer counts as one; the limit is high until the BFF forwards the address ([limitations](limitations.md)) |
+| `warm` | `variables.tf`, `true` by default | One instance of the model server, `banking-core` and the orchestrator stays running; `false` scales everything to zero between presentations (about $3.5–4 a day instead of $8–11) |
 
 ### Not yet exercised
 
-The seed service runs from the registry image with `/app/data` as scratch space (the base
-file's bind mounts of `data/` and `reports/` would be root-owned empty directories on a
-server). Like the rest of §6, this has been render-validated but never run against a real
-target.
+Like section 6: checked offline, never run against a real project.

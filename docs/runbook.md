@@ -235,13 +235,14 @@ Reports are written to `reports/` and versioned in the repository: you can compa
 
 **There is no hosted instance for judges.** You run the system on your own machine with `make demo` (section 1); that is the supported way to evaluate it, and nothing here depends on a server of ours being up.
 
-The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. What it is, how it is deployed and which demo features it switches on are described in **[deployment.md](deployment.md)**, section 7 (the platform is still to be decided, `⚠️ pending`). Production architecture, host Redis ACL configuration and scalability limits are in the same document.
+The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. It runs on Google Cloud Run, defined in Terraform under [`infra/deploy/gcp/`](../infra/deploy/gcp/) ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)); how it is deployed and which demo features it switches on are in **[deployment.md](deployment.md)**, sections 6 and 7, and the first-deploy steps in [infra/deploy/gcp/README.md](../infra/deploy/gcp/README.md). Self-hosting with compose and the scalability limits are in the same document.
 
 ```bash
-make deploy    # ⚠️ pending — the CD workflow deploys over SSH without calling it, see deployment.md
+make deploy       # runs deploy.yml on main: build, migrate, roll out, smoke (⚠️ not yet exercised)
+make gcp-smoke    # check the deployed environment from outside
 ```
 
-That environment runs the same images as `make demo`: there is no special path that only works in production.
+That environment runs the same code as `make demo`; its images differ only in what they carry: the model server bakes in the pinned embedding model, and `banking-core` is built without PyTorch.
 
 ---
 
