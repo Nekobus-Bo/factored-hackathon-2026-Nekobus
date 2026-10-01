@@ -325,9 +325,12 @@ services:
       dockerfile: apps/encoder/Dockerfile
       args:
         # `embed` adds PyTorch and sentence-transformers for POST /v1/embed; `gliner` adds
-        # PyTorch for ENCODER_BACKEND=gliner (several: "embed gliner"). Empty builds the
-        # decision baseline only, and then EMBEDDING_MODEL must be empty too.
-        ENCODER_EXTRAS: ${ENCODER_EXTRAS-embed}
+        # PyTorch for ENCODER_BACKEND=gliner (several: "embed gliner"); `hf` adds the
+        # fine-tuned DistilBERT decision backend (ADR-0014), whose weights the image
+        # copies from its digest-pinned seed image. Empty builds the decision baseline
+        # only, and then EMBEDDING_MODEL must be empty and DECISION_POINTS_FILE must name
+        # the tfidf_lr artifact.
+        ENCODER_EXTRAS: ${ENCODER_EXTRAS-embed hf}
     image: ${COMPOSE_PROJECT_NAME:-pattern-blue}/encoder:dev
     environment:
       PORT: "8090"
@@ -350,9 +353,12 @@ services:
       EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
       EMBEDDING_WEIGHTS_SHA256: ${EMBEDDING_WEIGHTS_SHA256:-}
       EMBEDDING_MAX_BATCH: ${EMBEDDING_MAX_BATCH:-64}
-      # Decision points (ADR-0012). The committed seed artifact is used; legacy seed mode
-      # (ABSTENTION_THRESHOLD) only if no artifact file exists.
-      DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-}
+      # Decision points (ADR-0012). Default: the pooled DistilBERT artifact (ADR-0014);
+      # packages/encoder/calibration/decision_points.json is the tfidf_lr one. Legacy seed
+      # mode (ABSTENTION_THRESHOLD) only if no artifact file exists.
+      DECISION_POINTS_FILE: ${DECISION_POINTS_FILE:-packages/encoder/calibration/decision_points.distilbert.json}
+      # A fixed thread count keeps decisions reproducible (ADR-0012 E.4).
+      OMP_NUM_THREADS: ${ENCODER_THREADS:-2}
       DECISION_POINTS_ALLOW_STALE: ${DECISION_POINTS_ALLOW_STALE:-false}
       DECISION_POINTS_TAU_RAISE: ${DECISION_POINTS_TAU_RAISE:-}
     volumes:
