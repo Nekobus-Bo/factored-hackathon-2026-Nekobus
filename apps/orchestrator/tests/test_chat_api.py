@@ -573,7 +573,8 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "effects",
         }
         # The shipped effects file is loaded, the encoder is off in this test: every
-        # decision point is unavailable and, in shadow, nothing was applied.
+        # decision point is unavailable, so nothing is applied, not even by the two
+        # in enforce (ADR-0014, amendment 2026-10-01): no hint, the LLM answers.
         assert [d["dp_id"] for d in evaluation["decisions"]] == [
             "turn_intent",
             "confirm_gate",
@@ -583,9 +584,16 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "intent_hint",
             "clarify_route",
         ]
-        assert {(d["mode"], d["outcome"]) for d in evaluation["decisions"]} == {
-            ("shadow", "unavailable")
+        assert {d["dp_id"]: d["mode"] for d in evaluation["decisions"]} == {
+            "turn_intent": "shadow",
+            "confirm_gate": "shadow",
+            "block_reason": "shadow",
+            "handoff_route": "shadow",
+            "smalltalk_route": "shadow",
+            "intent_hint": "enforce",
+            "clarify_route": "enforce",
         }
+        assert {d["outcome"] for d in evaluation["decisions"]} == {"unavailable"}
         assert not any(e["applied"] for e in evaluation["effects"])
         assert len(evaluation["masked_outbound"]) == expected_calls
         assert len(evaluation["recording_keys"]) == expected_calls

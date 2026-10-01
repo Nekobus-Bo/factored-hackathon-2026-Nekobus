@@ -136,6 +136,7 @@ locals {
         ENCODER_URL                          = local.service_url["encoder"]
         ENCODER_ENABLED                      = "true"
         ENCODER_TIMEOUT_SECONDS              = "2"
+        DECISION_POINTS_MODES                = var.decision_points_modes
         MAX_TOOL_ROUNDS                      = "5"
         REDIS_EDGE_KEY_PREFIX                = "orch:conv:"
         REDIS_EDGE_RATE_LIMIT_KEY_PREFIX     = "orch:ratelimit:"

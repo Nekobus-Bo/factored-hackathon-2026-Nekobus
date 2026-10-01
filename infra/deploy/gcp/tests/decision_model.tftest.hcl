@@ -60,6 +60,42 @@ run "the_kill_switch_is_a_variable" {
   }
 }
 
+run "the_shipped_modes_apply_unless_overridden" {
+  command = apply
+
+  assert {
+    condition = one([
+      for env in google_cloud_run_v2_service.svc["orchestrator"].template[0].containers[0].env : env.value if env.name == "DECISION_POINTS_MODES"
+    ]) == ""
+    error_message = "By default the orchestrator must run the modes of decision_effects.yaml."
+  }
+}
+
+run "the_mode_kill_switch_reaches_the_orchestrator" {
+  command = apply
+
+  variables {
+    decision_points_modes = "intent_hint=shadow,clarify_route=shadow"
+  }
+
+  assert {
+    condition = one([
+      for env in google_cloud_run_v2_service.svc["orchestrator"].template[0].containers[0].env : env.value if env.name == "DECISION_POINTS_MODES"
+    ]) == "intent_hint=shadow,clarify_route=shadow"
+    error_message = "decision_points_modes must reach the orchestrator unchanged."
+  }
+}
+
+run "a_malformed_mode_override_is_rejected" {
+  command = plan
+
+  variables {
+    decision_points_modes = "intent_hint=on"
+  }
+
+  expect_failures = [var.decision_points_modes]
+}
+
 run "only_artifacts_under_calibration" {
   command = plan
 
