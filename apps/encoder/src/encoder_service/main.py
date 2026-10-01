@@ -281,6 +281,7 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     scores = RequestScores(
         text=request.text,
         lang=request.lang,
+        locale=request.locale,
         legacy=raw_result,
         legacy_latency_ms=legacy_ms,
     )

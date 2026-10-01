@@ -172,6 +172,9 @@ def _check_backend(
             f"{label}: pending: llm_sidecar is not implemented (ADR-0012)"
         )
         return
+    if backend.kind == "hf_seqcls":
+        _check_hf_seqcls(result, root, label, backend)
+        return
     # Hub models: only the shape of the pin is checkable offline.
     if not is_commit(backend.revision):
         result.errors.append(
@@ -182,6 +185,49 @@ def _check_backend(
     result.notes.append(
         f"{label}: {backend.kind} weights are verified by the service at startup"
     )
+
+
+def _check_hf_seqcls(
+    result: VerifyResult, root: Path, label: str, backend: Any
+) -> None:
+    """A trained directory (ADR-0014): the pins must be well formed; when the
+    directory is here (a dev machine, the image), its manifest must match them."""
+    from encoder.registry import hf_seqcls_model_id
+    from encoder.weights import ManifestError, verify_manifest
+
+    model = backend.params.get("model")
+    if not isinstance(model, str) or not model:
+        result.errors.append(f"{label}: params.model must name the model directory")
+        return
+    if backend.weights_sha256 is None or not backend.revision:
+        result.errors.append(f"{label}: needs weights_sha256 and a revision label")
+        return
+    directory = _resolve(root, model)
+    if not directory.is_dir():
+        result.warnings.append(
+            f"{label}: {model} is not here (it ships in the encoder image, "
+            "ENCODER_WEIGHTS_IMAGE); pins checked by the service at startup"
+        )
+        return
+    try:
+        manifest = verify_manifest(directory)
+    except ManifestError as exc:
+        result.errors.append(f"{label}: {exc}")
+        return
+    if manifest.revision_label() != backend.revision:
+        result.errors.append(
+            f"{label}: revision {backend.revision!r}, the directory's manifest gives "
+            f"{manifest.revision_label()!r}"
+        )
+    if manifest.files["model.safetensors"] != backend.weights_sha256:
+        result.errors.append(f"{label}: weights_sha256 differs from {model}")
+    expected = hf_seqcls_model_id(manifest.name, manifest.files["model.safetensors"])
+    if backend.model_id != expected:
+        result.errors.append(f"{label}: model_id should be {expected!r}")
+
+
+# Data that is not versioned (ADR-0014): absent on CI and clean machines by design.
+_UNVERSIONED = ("data/staging/", "data/raw/", "data/curated/")
 
 
 # --- Decision points ---
@@ -284,7 +330,13 @@ def _check_data(
             continue
         file = _resolve(root, str(block["path"]))
         if not file.is_file():
-            result.errors.append(f"{label}: {split} data {block['path']} not found")
+            if str(block["path"]).startswith(_UNVERSIONED):
+                result.warnings.append(
+                    f"{label}: {split} data {block['path']} is not versioned and not "
+                    "here; its hash is recorded, not checked"
+                )
+            else:
+                result.errors.append(f"{label}: {split} data {block['path']} not found")
         elif file_sha256(file) != block.get("sha256"):
             result.errors.append(
                 f"{label}: {split} data {block['path']} changed since calibration "

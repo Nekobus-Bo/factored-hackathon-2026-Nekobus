@@ -33,6 +33,8 @@ class RequestScores:
 
     text: str
     lang: str | None
+    # Market for locale-keyed thresholds (ADR-0014); None looks up the language.
+    locale: str | None = None
     # The legacy backend's result for this text, already computed by /v1/analyze.
     legacy: RawAnalysisResult | None = None
     legacy_latency_ms: float = 0.0

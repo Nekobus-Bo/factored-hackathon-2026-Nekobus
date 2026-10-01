@@ -1,0 +1,199 @@
+# Decision-point calibration of the pooled pt-BR / es-MX / es-AR DistilBERT (ADR-0014).
+#
+#   make pool-data-regional && make train-encoder        # the pinned model directory
+#   make calibrate TASK=decision-points CONFIG=tools/calibrate/configs/decision_points_distilbert.yaml OUT=/tmp/calib
+#   make calibrate TASK=decision-points CONFIG=tools/calibrate/configs/decision_points_distilbert.yaml OUT=reports
+#   make calibration-verify ARTIFACT=packages/encoder/calibration/decision_points.distilbert.json
+#
+# A second artifact, selected by DECISION_POINTS_FILE (ADR-0012 B.1); the committed
+# tfidf_lr artifact stays the default for tests and for a host without the weights.
+#
+# DATA: the pooled regional splits (data/staging/decision_pooled, not versioned) plus
+# the English template rows in validation and test only (the model never trains on
+# English). Train and validation are LLM-written, test is agent-written and
+# provisional: nothing here certifies, as with the seed artifact. Validation holds
+# 50 rows per intent and locale but 10 per intent in English, so `n_min` stays at the
+# 10 the English split can meet and `ci` stays `point` (see decision_points.yaml).
+task: decision-points
+
+languages: [es, pt, en]
+# Markets calibrated apart from their language, for per_language decision points:
+# thresholds.es-MX next to thresholds.es. es-CO and en-US have no rows and fall back
+# to es and en at runtime (locale -> language -> '*').
+locales: [pt-BR, es-MX, es-AR]
+report_tag: distilbert
+
+artifact: packages/encoder/calibration/decision_points.distilbert.json
+
+calibrator_min_rows: 30
+
+data:
+  train: data/staging/decision_pooled/decision.pooled.train.jsonl
+  validation: data/staging/decision_pooled/decision.pooled.validation.jsonl
+  test: data/staging/decision_pooled/decision.pooled.test.jsonl
+
+backends:
+  # Pins printed by `make train-encoder`. The directory ships in the encoder image
+  # (ENCODER_WEIGHTS_IMAGE); the loader checks weights, manifest and label order.
+  intent_distilbert:
+    kind: hf_seqcls
+    model_id: "hf_seqcls:distilbert-intent-pooled@sha256:f43063c6d82e"
+    revision: "distilbert-intent-pooled:59bdfe5dc8c1"
+    weights_sha256: f43063c6d82e28180adf288a39ebe2f7131c245e48d40469908c7755fbcd62ce
+    # The head's id order (the contract's Intent order).
+    labels: [report_unrecognized_charge, report_lost_card, report_stolen_card,
+             report_suspicious_activity, request_card_block, request_dispute,
+             request_human_agent, provide_identity_data, provide_otp_code, confirm,
+             deny, check_balance, check_recent_transactions, greeting, out_of_scope]
+    timeout_ms: 1000
+    cost_class: low
+    params:
+      model: packages/encoder/weights/distilbert-intent-pooled
+      max_length: 256
+      batch_size: 64
+  # The same backend as the default artifact: the confirm/deny gate keeps its own
+  # label space, trained on the versioned template split (it ships in the image).
+  gate_tfidf:
+    kind: tfidf_lr
+    train: data/eval/synthetic/decision.train.jsonl
+    timeout_ms: 200
+
+decision_points:
+  turn_intent:
+    candidates: [intent_distilbert]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10
+
+  confirm_gate:
+    candidates: [gate_tfidf]
+    data:
+      train: data/eval/synthetic/decision.train.jsonl
+      validation: data/eval/synthetic/decision.validation.jsonl
+      test: data/eval/synthetic/decision.test.provisional.jsonl
+    label_map: {confirm: confirm, deny: deny, "*": other}
+    view: {kind: labels, labels: [confirm, deny, other]}
+    calibrator: temperature
+    threshold_scope: per_language_per_label
+    constraint:
+      metric: precision
+      p_min: {confirm: 0.95, deny: 0.90}
+      ci: point
+      n_min: 10
+    unconstrained_tau: 0.0
+
+  block_reason:
+    candidates: [intent_distilbert]
+    view:
+      kind: groups
+      groups:
+        LOST: [report_lost_card]
+        STOLEN: [report_stolen_card]
+        UNRECOGNIZED_CHARGE: [report_unrecognized_charge]
+        SUSPICIOUS_ACTIVITY: [report_suspicious_activity]
+        CUSTOMER_REQUEST: [request_card_block]
+    calibrator: temperature
+    threshold_scope: per_label_pooled
+    constraint:
+      metric: precision
+      p_min: 0.90
+      ci: point
+      n_min: 30
+
+  handoff_route:
+    candidates: [intent_distilbert]
+    view:
+      kind: groups
+      groups:
+        DISPUTE: [request_dispute]
+        FRAUD: [report_stolen_card, report_suspicious_activity]
+        UNRECOGNIZED: [report_unrecognized_charge]
+        HUMAN_REQUEST: [request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_label_pooled
+    constraint:
+      metric: precision
+      p_min: 0.90
+      ci: point
+      n_min: 30
+
+  smalltalk_route:
+    candidates: [intent_distilbert]
+    view:
+      kind: groups
+      groups:
+        greeting: [greeting]
+        out_of_scope: [out_of_scope]
+        other: [check_balance, check_recent_transactions, confirm, deny,
+                provide_identity_data, provide_otp_code, report_lost_card,
+                report_stolen_card, report_suspicious_activity,
+                report_unrecognized_charge, request_card_block, request_dispute,
+                request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [greeting, out_of_scope]
+      p_min: 0.95
+      ci: point
+      n_min: 10
+
+  # The hint the LLM reads (ADR-0014, effect `hint`, shadow first). Every one of the
+  # 15 intents may be shown, so every one is constrained (ADR-0010's rule).
+  intent_hint:
+    candidates: [intent_distilbert]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10
+
+  # Abstention here answers with a fixed clarification question (effect
+  # `canned_reply`, shadow first). Its own entry so its tau can move without the hint.
+  clarify_route:
+    candidates: [intent_distilbert]
+    view:
+      kind: labels
+      labels: [check_balance, check_recent_transactions, confirm, deny, greeting,
+               out_of_scope, provide_identity_data, provide_otp_code,
+               report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+    calibrator: temperature
+    threshold_scope: per_language
+    constraint:
+      metric: precision
+      labels: [report_lost_card, report_stolen_card, report_suspicious_activity,
+               report_unrecognized_charge, request_card_block, request_dispute,
+               request_human_agent]
+      p_min: 0.90
+      ci: point
+      n_min: 10

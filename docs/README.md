@@ -43,5 +43,6 @@ In this order, about 15 minutes:
 | [0010](adr/0010-model-selection-calibration-harness.md) | Model selection and calibration harness | Accepted |
 | [0012](adr/0012-decision-points.md) | Decision points: calibrated local models decide, the engine applies, banking-core disposes; the model server | Accepted (minimum freeze scope) |
 | [0013](adr/0013-front-ends-bff-takeover.md) | Front ends, their BFFs and the human takeover | Accepted |
+| [0014](adr/0014-distilbert-intent-backend.md) | Pooled DistilBERT as the decision backend, locale-keyed thresholds, hint and clarification effects | Accepted |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.

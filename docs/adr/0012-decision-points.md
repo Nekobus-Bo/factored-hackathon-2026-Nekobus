@@ -51,6 +51,8 @@ The team approved the **minimum freeze scope** on 2026-09-29: WP1 (contracts), W
 
 **Out of scope at the freeze, on purpose:** the `route_tools`, `canned_reply`, `propose` and `hint` effects; the ~4B sidecar container, prompt and calibration (only the interface, the conformance test and a stub that fails as `pending` ship); candidate adapters beyond `tfidf_lr` and `gliner` (`embedding_lr`, `hf_seqcls`, a GLiNER fine-tune); card-scoped consent; consent provenance in the audit chain; back-office editing of the effects file; quick-reply buttons; authentication between the services and the model server.
 
+**Amended 2026-09-30 by [ADR-0014](0014-distilbert-intent-backend.md):** the `hf_seqcls` adapter (the pooled DistilBERT) and the `hint` and `canned_reply` effects move before the freeze, the two effects in `shadow` only; threshold and calibrator keys may be locales (`es-MX`), with the fallback locale → language → `*`.
+
 ## Options considered
 
 | Option | Complexity | Calibration and evidence | Verdict |
@@ -119,7 +121,7 @@ Everything named here and in the appendices is **pending** until its work packag
 | The evalrunner "Decision Points by Language" section (decided / abstained / unavailable per decision point, gate would-withhold, select agreement) | WP6 | landed |
 | The 9 new scenarios, `gate_breach` / `gate_false_consent` / `gate_extra_turns`, `eval/replay/DECISION_CONFIG` | WP6 | pending: the scenario schema cannot switch orchestrator modes per scenario, so there are no `enforce` scenarios yet |
 | `data/eval/synthetic/dp/`, the "gate labels" section of `docs/labeling-rubric.md`, calibration runs, `shadow` to `enforce` flips | WP9 | pending (teammate) |
-| Candidate adapters (`embedding_lr`, `hf_seqcls`), the `llm-local` compose profile, `packages/encoder/prompts/`, `DECISION_BACKEND_HOSTS`, cascading (`escalate_to`) | WP10 | pending (teammate, post-freeze) |
+| Candidate adapters (`embedding_lr`, `hf_seqcls`), the `llm-local` compose profile, `packages/encoder/prompts/`, `DECISION_BACKEND_HOSTS`, cascading (`escalate_to`) | WP10 | pending (teammate, post-freeze); `hf_seqcls` moved before the freeze by ADR-0014 |
 | `EmbedRequest` and `EmbedResponse` in `packages/contracts/src/contracts/encoder.py`, with exported schemas | WP12 | landed |
 | `SentenceTransformersAdapter.embed` and `RemoteEmbeddingAdapter` in `packages/retrieval` | WP12 | landed |
 | `POST /v1/embed`, `EMBEDDING_MODEL`, `EMBEDDING_REVISION`, `EMBEDDING_WEIGHTS_SHA256`, `EMBEDDING_MAX_BATCH`, the `embed` extra and the embedding part of `warmup` in `apps/encoder` | WP12 | landed |

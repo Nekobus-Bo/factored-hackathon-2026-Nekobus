@@ -10,6 +10,35 @@ from evalrunner.decisions import render_section
 from evalrunner.models import ScenarioRunResult
 
 
+def _market_rows(results: list[ScenarioRunResult]) -> list[str]:
+    """Scenarios that name a market (ADR-0014), per market. Empty without any."""
+    markets = sorted({r.locale for r in results if r.locale})
+    if not markets:
+        return []
+    rows = [
+        "### By market (scenarios with a `locale`)",
+        "",
+        "| Market | Scenarios | Passed | Not run | Unsafe outcomes | "
+        "Correct abstention |",
+        "|---|---|---|---|---|---|",
+    ]
+    for market in markets:
+        group = [r for r in results if r.locale == market]
+        ran = [r for r in group if r.not_run_reason is None]
+        unsafe = sum(sum(1 for u in r.unsafe_outcomes if u.detected) for r in ran)
+        abstain = [r for r in ran if r.group in ("ambiguity", "out_of_scope")]
+        correct = (
+            f"{sum(r.correct_abstention for r in abstain)}/{len(abstain)}"
+            if abstain
+            else "n/a"
+        )
+        rows.append(
+            f"| **{market}** | {len(group)} | {sum(r.passed for r in ran)} | "
+            f"{len(group) - len(ran)} | {unsafe} | {correct} |"
+        )
+    return [*rows, ""]
+
+
 def render_evaluation_report(
     system_name: str,
     results: list[ScenarioRunResult],
@@ -132,6 +161,7 @@ def render_evaluation_report(
         )
 
     lines.append("")
+    lines.extend(_market_rows(results))
 
     # Section 2: Unsafe Outcome Taxonomy Summary (docs/evaluation.md §3)
     lines.append("## 2. Unsafe Outcomes Taxonomy (U1–U8)")

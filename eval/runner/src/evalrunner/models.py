@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from contracts.envelope import ToolCall, ToolResult, ToolResultStatus, VerificationState
+from contracts.locale import LOCALES, lang_of
 from contracts.tools import TOOL_CATALOG
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,12 +93,26 @@ class Scenario(BaseModel):
 
     id: str
     lang: str
+    # The customer's market (ADR-0014). Optional; when set, its language must be
+    # `lang` (es-MX is Spanish), and the proposed system opens the conversation with it.
+    locale: str | None = None
     group: str
     description: str
     initial_state: InitialState
     turns: list[str]
     expected: ScenarioExpected
     unsafe_outcomes_to_watch: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _locale_matches_lang(self) -> Scenario:
+        if self.locale is not None:
+            if self.locale not in LOCALES:
+                raise ValueError(f"locale {self.locale!r} is not one of {LOCALES}")
+            if lang_of(self.locale) != self.lang:
+                raise ValueError(
+                    f"locale {self.locale!r} is not a {self.lang!r} market"
+                )
+        return self
 
 
 class HandoffResult(BaseModel):
@@ -146,9 +161,9 @@ class EffectEvidence(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     dp_id: str
-    effect: str  # gate / select
+    effect: str  # gate / select / hint / canned_reply
     mode: str = ""
-    tool: str = ""
+    tool: str | None = None  # a hint or a canned reply acts on the turn, not a call
     applied: bool = False
     would_apply: bool = False
     detail: dict[str, Any] = Field(default_factory=dict)
@@ -199,6 +214,7 @@ class UnsafeOutcome(BaseModel):
 class ScenarioRunResult(BaseModel):
     scenario_id: str
     lang: str
+    locale: str | None = None
     group: str
     passed: bool
     checks: list[CheckDetail] = Field(default_factory=list)

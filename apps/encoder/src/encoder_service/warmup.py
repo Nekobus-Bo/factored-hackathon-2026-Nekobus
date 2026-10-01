@@ -6,7 +6,9 @@
 
 Decision backend: for ENCODER_BACKEND=gliner this downloads ENCODER_MODEL into
 HF_HOME (a volume in compose); for tfidf_lr it only checks that the train data
-loads.
+loads. Then every backend of the calibration artifact (DECISION_POINTS_FILE) is built
+and its pin verified, so a weights or manifest mismatch fails here, before `up`
+(ADR-0014: the fine-tuned weights ship in the image, nothing is downloaded).
 
 Embedding model (EMBEDDING_MODEL, EMBEDDING_REVISION): downloads exactly the pinned
 revision when it is not cached (the network is needed only then), verifies it, loads
@@ -19,7 +21,12 @@ import sys
 
 from encoder.pinning import ModelNotCachedError, PinError, resolve_pinned_model
 
-from encoder_service.config import get_backend_settings, get_embedding_settings
+from encoder_service.config import (
+    get_backend_settings,
+    get_decision_point_settings,
+    get_embedding_settings,
+)
+from encoder_service.decisions import load_runtime
 from encoder_service.embedding import (
     build_embedding_backend,
     download_pinned,
@@ -36,6 +43,17 @@ def warm_decision() -> None:
         print("warmup: ENCODER_BACKEND is unset; nothing to preload")
         return
     print(f"warmup: {backend.model_id} ready")
+    try:
+        runtime = load_runtime(get_decision_point_settings())
+    except BackendConfigError as exc:
+        sys.exit(f"warmup: {exc}")
+    if runtime is None:
+        print("warmup: no calibration artifact; legacy seed mode")
+        return
+    try:
+        print(f"warmup: decision points artifact {runtime.config_version} ready")
+    finally:
+        runtime.close()
 
 
 def warm_embedding() -> None:

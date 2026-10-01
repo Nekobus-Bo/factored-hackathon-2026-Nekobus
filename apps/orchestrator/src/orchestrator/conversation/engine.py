@@ -41,6 +41,7 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
+from contracts.locale import Locale, lang_of
 from contracts.tools.handoff_create import (
     HandoffCreateOutput,
     HandoffPriority,
@@ -189,6 +190,7 @@ class Analyzer(Protocol):
         text: str,
         lang: Lang | None = ...,
         decision_points: list[str] | None = ...,
+        locale: Locale | None = ...,
     ) -> AnalyzeResponse: ...
 
 
@@ -283,13 +285,23 @@ class TurnEngine:
         turn_decisions = self.decisions.begin_turn(
             context.decisions.model_copy(deep=True), metadata
         )
-        pii_spans = await self._analyze(user_text, lang, metadata, turn_decisions)
+        # The market rides along only while it agrees with the turn's language.
+        locale = (
+            context.locale
+            if context.locale and lang_of(context.locale) == lang
+            else None
+        )
+        metadata.locale = locale
+        pii_spans = await self._analyze(
+            user_text, lang, metadata, turn_decisions, locale
+        )
 
         # 2. Mask the user text: the union of the regexes and the encoder's spans
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
         # pending, a bare digit run is the code.
         text_to_mask = user_text
-        if otp_challenge_pending(history):
+        otp_pending = otp_challenge_pending(history)
+        if otp_pending:
             text_to_mask = self._mask_bare_otps(user_text, mapping)
         try:
             masked_user = self._mask_user_text(
@@ -307,7 +319,31 @@ class TurnEngine:
 
         history.append({"role": "user", "content": masked_user})
 
-        # 3-4. LLM <-> tools loop, bounded
+        # 3. An ambiguous opening may be answered by the canned clarification instead
+        # of the LLM (ADR-0014): only in `enforce`, only before the LLM has answered
+        # this conversation, never while a flow is in progress. In `shadow` it only
+        # records what it would have done.
+        canned = turn_decisions.canned_reply(
+            lang,
+            otp_pending=otp_pending,
+            tool_seen=any(message.get("role") == "tool" for message in history),
+        )
+        if canned is not None:
+            history.append({"role": "assistant", "content": canned})
+            metadata.canned_reply = True
+            context.history = history
+            context.placeholder_map = mapping
+            context.decisions = turn_decisions.commit()
+            self._copy_decisions(eval_data, metadata)
+            return TurnResult(
+                blocks=[TextBlock(text=canned)], metadata=metadata, eval=eval_data
+            )
+        # The classification as context for every completion of the turn; None in
+        # `shadow`, so the messages (and the replay keys) stay as they were.
+        hint = turn_decisions.hint()
+        hint_messages = [{"role": "system", "content": hint}] if hint else []
+
+        # 4-5. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
         handoffs: list[HandoffBlock] = []
         guard = _TurnGuard(decisions=turn_decisions)
@@ -318,7 +354,11 @@ class TurnEngine:
             await self._enforce_required_handoff(
                 context.session_id, history, mapping, metadata, handoffs, guard
             )
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *hint_messages,
+                *history,
+            ]
             response = await self.llm.complete(
                 messages=messages,
                 prompt_version=PROMPT_VERSION,
@@ -359,7 +399,7 @@ class TurnEngine:
                 lang,
             )
 
-        # 5. Final reply through the block allowlist
+        # 6. Final reply through the block allowlist
         blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = self._final_blocks(
             final, history, mapping, metadata, lang
         )
@@ -382,6 +422,7 @@ class TurnEngine:
         lang: Lang,
         metadata: TurnMetadata,
         decisions: TurnDecisions,
+        locale: Locale | None = None,
     ) -> list[PiiSpan]:
         """Record the encoder signal; return its PII spans (none if it failed).
 
@@ -394,7 +435,7 @@ class TurnEngine:
             return []
         plan = await self.decisions.plan(self.encoder)
         try:
-            analysis = await self._ask_encoder(text, lang, plan)
+            analysis = await self._ask_encoder(text, lang, plan, locale)
         except Exception as exc:
             # Any failure degrades the same way. Only the error type is logged
             # for an unexpected one: its message could quote the customer text.
@@ -423,19 +464,23 @@ class TurnEngine:
         return list(analysis.pii_spans)
 
     async def _ask_encoder(
-        self, text: str, lang: Lang, plan: RequestPlan
+        self, text: str, lang: Lang, plan: RequestPlan, locale: Locale | None = None
     ) -> AnalyzeResponse:
         assert self.encoder is not None
+        # Only when set: an analyzer that predates locales keeps working.
+        market: dict[str, Any] = {"locale": locale} if locale else {}
         if plan.ids is None:
-            return await self.encoder.analyze(text, lang)
+            return await self.encoder.analyze(text, lang, **market)
         try:
-            return await self.encoder.analyze(text, lang, decision_points=plan.ids)
+            return await self.encoder.analyze(
+                text, lang, decision_points=plan.ids, **market
+            )
         except EncoderUnavailableError as exc:
             if exc.status_code != 422:
                 raise
             logger.warning("Encoder refused the decision point ids; asking again")
             self.decisions.catalog.invalidate()
-            return await self.encoder.analyze(text, lang)
+            return await self.encoder.analyze(text, lang, **market)
 
     @staticmethod
     def _observe(

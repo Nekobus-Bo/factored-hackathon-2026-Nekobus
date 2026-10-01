@@ -47,6 +47,8 @@ def test_first_run_creates_a_valid_artifact(make_backend, make_entry, tmp_path) 
     assert list(loaded.decision_points) == ["alpha"]
     assert loaded.harness and loaded.harness.git_sha == "abc123"
     assert loaded.created_at == "2026-09-29T12:00:00Z"
+    # The encoder image reads it as a non-root user: never the 0600 of mkstemp.
+    assert path.stat().st_mode & 0o777 == 0o644
 
 
 def test_a_second_decision_point_does_not_touch_the_first(

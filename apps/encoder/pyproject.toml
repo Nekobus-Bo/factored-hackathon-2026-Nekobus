@@ -17,6 +17,8 @@ gliner = ["encoder[gliner]"]
 # The embedding model of kb.search (POST /v1/embed, EMBEDDING_MODEL): PyTorch and
 # sentence-transformers. Without it the service still serves decisions.
 embed = ["retrieval[vector]"]
+# The fine-tuned DistilBERT decision backend (hf_seqcls, ADR-0014).
+hf = ["encoder[hf]"]
 
 [build-system]
 requires = ["hatchling"]

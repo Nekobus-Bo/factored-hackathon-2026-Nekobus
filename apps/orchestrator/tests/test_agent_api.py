@@ -1344,6 +1344,7 @@ async def test_the_customer_transcript_shape_before_and_after_a_takeover(
     assert before == {
         "conversation_id": conversation_id,
         "language": "es",
+        "locale": None,
         "messages": [],
         "takeover": {"active": False, "since": None},
     }
@@ -1357,7 +1358,13 @@ async def test_the_customer_transcript_shape_before_and_after_a_takeover(
     await client.post(f"{customer_url}/messages", json={"text": "Hola Ana"})
     after = (await client.get(customer_url)).json()
 
-    assert set(after) == {"conversation_id", "language", "messages", "takeover"}
+    assert set(after) == {
+        "conversation_id",
+        "language",
+        "locale",
+        "messages",
+        "takeover",
+    }
     assert set(after["takeover"]) == {"active", "since"}
     assert after["takeover"]["active"] is True
     assert after["takeover"]["since"] is not None

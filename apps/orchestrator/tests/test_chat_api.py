@@ -110,7 +110,11 @@ async def test_create_message_transcript_round_trip(
     assert created.status_code == 201
     body = created.json()
     conversation_id = body["conversation_id"]
-    assert body == {"conversation_id": conversation_id, "language": "pt"}
+    assert body == {
+        "conversation_id": conversation_id,
+        "language": "pt",
+        "locale": None,
+    }
     assert conversation_id.startswith("conv_")
 
     user_text = f"Me llamo {RAW_NAME}, mi cédula es {RAW_DOCUMENT}"
@@ -576,6 +580,8 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "block_reason",
             "handoff_route",
             "smalltalk_route",
+            "intent_hint",
+            "clarify_route",
         ]
         assert {(d["mode"], d["outcome"]) for d in evaluation["decisions"]} == {
             ("shadow", "unavailable")
@@ -1052,3 +1058,39 @@ def test_turn_ids_derived_from_message_ids_are_deterministic() -> None:
     assert turn_id == derive_turn_id("conv_1", "msg-0001-abcd")
     assert turn_id != derive_turn_id("conv_2", "msg-0001-abcd")
     assert turn_id != derive_turn_id("conv_1", "msg-0002-abcd")
+
+
+# --- Market (ADR-0014) ---
+
+
+async def test_a_locale_sets_the_language_and_is_kept(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    client = make_client(build_app(redis, FakeTurnHandler(reply="ok")))
+    created = (await client.post("/v1/conversations", json={"locale": "es-MX"})).json()
+    assert created["language"] == "es" and created["locale"] == "es-MX"
+    transcript = await client.get(f"/v1/conversations/{created['conversation_id']}")
+    assert transcript.json()["locale"] == "es-MX"
+
+
+@pytest.mark.parametrize(
+    "body", [{"lang": "pt", "locale": "es-AR"}, {"locale": "es-ES"}, {"locale": "MX"}]
+)
+async def test_a_contradicting_or_unknown_locale_is_a_422(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any, body: dict
+) -> None:
+    client = make_client(build_app(redis, FakeTurnHandler(reply="ok")))
+    assert (await client.post("/v1/conversations", json=body)).status_code == 422
+
+
+async def test_switching_language_drops_the_market(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: Any
+) -> None:
+    client = make_client(build_app(redis, FakeTurnHandler(reply="ok")))
+    conv = (await client.post("/v1/conversations", json={"locale": "pt-BR"})).json()
+    url = f"/v1/conversations/{conv['conversation_id']}"
+    await client.post(f"{url}/messages", json={"text": "olá", "lang": "pt"})
+    assert (await client.get(url)).json()["locale"] == "pt-BR"
+    await client.post(f"{url}/messages", json={"text": "hola", "lang": "es"})
+    after = (await client.get(url)).json()
+    assert after["language"] == "es" and after["locale"] is None

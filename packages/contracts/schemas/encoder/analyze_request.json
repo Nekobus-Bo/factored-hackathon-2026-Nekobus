@@ -37,6 +37,26 @@
       "description": "Optional language code (es, pt, en)",
       "title": "Lang"
     },
+    "locale": {
+      "anyOf": [
+        {
+          "enum": [
+            "pt-BR",
+            "es-MX",
+            "es-AR",
+            "es-CO",
+            "en-US"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional market (ADR-0014). Thresholds are looked up by locale, then language, then '*'. When given alone, lang is derived from it",
+      "title": "Locale"
+    },
     "text": {
       "description": "Customer input text to analyze",
       "maxLength": 2000,

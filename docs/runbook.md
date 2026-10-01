@@ -293,6 +293,43 @@ make up          # recreates the orchestrator with the new value
 
 `id=mode` pairs, separated by commas; the override wins over the file. An entry that cannot be read, or that names a decision point the file does not have, stops the orchestrator at startup instead of being skipped, so a typo cannot leave the decision point enforcing. Check it took effect in the turn metadata (`mode` of each decision record) or in the orchestrator log at startup (`Decision points from ...: confirm_gate=shadow, ...`). Emptying the variable restores the modes of the file. Turning `confirm_gate` down to `shadow` removes the confirmation question: `card.block` is again the LLM's proposal, authorized by banking-core as before.
 
+### Switching the decision model back to the baseline
+
+The encoder serves the pooled DistilBERT by default ([ADR-0014](adr/0014-distilbert-intent-backend.md)). If it misbehaves, go back to the `tfidf_lr` artifact with an environment change; the weights stay in the image, unused:
+
+```bash
+# .env
+DECISION_POINTS_FILE=packages/encoder/calibration/decision_points.json
+
+make up          # recreates the encoder; /v1/decision-points shows the other config_version
+```
+
+To make one market stricter without recalibrating, raise its threshold (raise-only; a value at or below the calibrated one stops the encoder at startup):
+
+```bash
+DECISION_POINTS_TAU_RAISE=turn_intent.es-MX=0.9,intent_hint.pt-BR=0.95
+```
+
+### Retraining and publishing the decision model
+
+Needs the local regional datasets (`data/staging/`, not versioned), Apple Silicon or CPU, Docker with buildx, and a Docker Hub login with write access to the seed repository.
+
+```bash
+make pool-data-regional                       # pt-BR + es-MX + es-AR (+ English validation/test)
+make train-encoder                            # ~3 min on MPS; gates per locale, writes a pinned dir
+make encoder-weights-image DOCKERHUB_NAMESPACE=<namespace> PUSH=1
+#   prints: pin in apps/encoder/Dockerfile: docker.io/<namespace>/pattern_blue-encoder-weights@sha256:<digest>
+```
+
+Then, in one pull request:
+
+1. Put the printed digest in the `ENCODER_WEIGHTS_IMAGE` default of `apps/encoder/Dockerfile`.
+2. Put the pins `make train-encoder` printed (`model_id`, `revision`, `weights_sha256`) in `tools/calibrate/configs/decision_points_distilbert.yaml`.
+3. Recalibrate and verify: `make calibrate TASK=decision-points CONFIG=tools/calibrate/configs/decision_points_distilbert.yaml OUT=reports`, then `make calibration-verify ARTIFACT=packages/encoder/calibration/decision_points.distilbert.json`.
+4. Rebuild and check: `make up && make warmup-encoder` (fails loud if the image's weights and the artifact's pins disagree).
+
+A new digest invalidates nothing that is enforced today; once `intent_hint` is in `enforce`, it also means re-recording the replays.
+
 ---
 
 ## 11. Contact
