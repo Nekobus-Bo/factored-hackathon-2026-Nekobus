@@ -53,3 +53,6 @@ packages/retrieval/weights/
 
 # Terraform: per-person inputs (project, repository, IAP accounts); local.tfvars.example lists them.
 infra/deploy/gcp/local.tfvars
+
+# OAuth client files downloaded from the GCP console (gcp-iap-oauth reads the values by hand).
+client_secret_*.json
