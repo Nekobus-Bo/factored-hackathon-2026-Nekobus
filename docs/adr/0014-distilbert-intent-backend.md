@@ -108,6 +108,38 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 | CURP, RFC and CUIT/CUIL masking | landed |
 | The live evaluation before and after `enforce`, and replay recordings | pending (needs an LLM key) |
 
+## Amendment, 2026-10-01: es-CO joins the pooled model
+
+**Context.** Decision 3 left es-CO on the `es` keys because it had no grounded data. A tuquejasuma.com snapshot now provides real Colombian banking complaints (Bancolombia, Davivienda, DaviPlata, Banco Agrario, Banco Popular).
+
+**Options.**
+- Keep es-CO on `es`.
+- Build an es-CO dataset the same way as es-MX and es-AR, and retrain the pooled model on four locales.
+- Train a Colombia-only model.
+
+**Decision.** Build the es-CO dataset with `tools/synthdata_regional` (locale `es-CO`) and retrain the pooled model on pt-BR, es-MX, es-AR and es-CO. The retrained model replaces the pinned one only if a comparison decided in advance passes. Its rules are written in `lab/notebooks/compare__decision-pooled-co.py`:
+- the retrained model wins on the Colombian sets;
+- no other set drops beyond its seed spread;
+- out-of-scope recall on real text does not drop beyond its seed spread.
+
+If it does pass:
+- `es-CO` gets its own τ and calibrator keys;
+- a new seed image and digest are published, following the pin chain above.
+
+**Consequences.**
+- The Colombian source text is a complaint forum, not app reviews, and it is small (643 consumer texts). It has no earlier rejected LLM rows, so the generation prompt for es-CO has no anti-examples, as for pt-BR.
+- Masking needs no change: labelled cédula and NIT numbers are already masked (decision 5 holds).
+- Until the new seed image is published, the calibration artifact on the branch pins weights the image does not ship, so that branch is not merged before the publish.
+
+**Outcome (2026-10-01).** The rule failed on one set: the four-locale model gained on Colombia (CO real +0.076, CO test +0.022) and on every synthetic test, but MX real dropped 0.023 against a 0.02 tolerance ([report](../../reports/intent-models-regional-datasets.md) §10). The shipped weights, digest and calibration are unchanged, and es-CO stays on the `es` keys. The es-CO dataset is kept for a later retrain.
+
+**Override (2026-10-01, the team's decision).** The team accepted the MX real drop (about 3.5 of 150 silver rows) against the Colombian gain and replaced the model anyway:
+- `make train-encoder` on the four-locale pool (6,000 rows, seed 0) gives `distilbert-intent-pooled:7fd8bff09544` (weights `sha256:56b52ec70460…`), with validation accuracy 0.98–0.99 per market.
+- `decision_points.distilbert.json` is recalibrated with `es-CO` as its own key ([report](../../reports/calibration-decision-points-2026-10-01-distilbert.md)), and `make calibration-verify` passes.
+- The new seed image is published (amd64, arm64) as `docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:65d2252019f3…` (tag `distilbert-intent-pooled-7fd8bff09544`), and `apps/encoder/Dockerfile` pins it. The previous image (`sha256:459d30a9c697…`) stays on Docker Hub for rollback.
+- The image is public although the terms of the tuquejasuma.com source have not been reviewed (see Consequences): the team's decision.
+- **Interaction with the enforce amendment above.** `intent_hint` and `clarify_route` are in `enforce`, so this retrain changes what the LLM sees with no evaluation run before and after. In Spanish their τ falls from 0.50 to 0.34 (es-CO 0.33, es-MX 0.49, es-AR 0.47), which means more hints and fewer clarifying questions. In English it rises from 0.84 to 0.90, which means fewer hints. The kill switch above still applies.
+
 ---
 
 ## Amendment 2026-10-01: `intent_hint` and `clarify_route` in `enforce`, without an evaluation run

@@ -174,28 +174,36 @@ def check_purity(df: pl.DataFrame, loc: Locale) -> tuple[list[str], pl.DataFrame
 
 
 def check_register(df: pl.DataFrame, loc: Locale, raw_file: Path) -> tuple[dict[str, list[str]], pl.DataFrame, dict]:
-    """Compare the dataset with the real reviews and with the rejected LLM rows of the same source."""
+    """Compare the dataset with the real reviews and, where the source has them, with its rejected LLM rows.
+
+    Without rejected rows (es-CO) only the slang cap gates; the profiles are still reported."""
     raw = pl.read_parquet(raw_file, columns=["source", "ask"])
     real = raw.filter(pl.col("source") == loc.raw_source)["ask"].unique().to_list()
-    bad = raw.filter(pl.col("source") == loc.bad_source)["ask"].unique().to_list()
+    bad = raw.filter(pl.col("source") == loc.bad_source)["ask"].unique().to_list() if loc.bad_source else []
     texts = df["text"].to_list()
     long_texts = df.filter(pl.col("length") == "long")["text"].to_list()
-    profiles = {"real reviews": register.profile(real, loc), "rejected LLM rows": register.profile(bad, loc),
+    profiles = {"real reviews": register.profile(real, loc), **({"rejected LLM rows": register.profile(bad, loc)} if bad else {}),
                 "dataset": register.profile(texts, loc), "dataset, long rows": register.profile(long_texts, loc)}
-    ours, r, b = profiles["dataset"], profiles["real reviews"], profiles["rejected LLM rows"]
-    d_real, d_bad = register.distance(ours, r), register.distance(ours, b)
-    errors: dict[str, list[str]] = {"length spread": [], "register": [], "slang cap": []}
+    ours, r = profiles["dataset"], profiles["real reviews"]
+    d_real = register.distance(ours, r)
+    errors: dict[str, list[str]] = {"slang cap": []} if not bad else {"length spread": [], "register": [], "slang cap": []}
+    shares = register.slang_shares(texts, loc)
+    errors["slang cap"] = [f"'{w}' in {s:.1%} of rows" for w, s in shares.items() if s > MAX_SLANG_TERM_RATE]
+    slang_summary = ", ".join(f"{w} {s:.1%}" for w, s in list(shares.items())[:5] if s > 0) or "none"
+    table_rows = [{"set": name, **{k: v for k, v in p.items() if k != "messages"}, "rows": int(p["messages"])} for name, p in profiles.items()]
+    if not bad:
+        summary = {"register distance to real reviews": d_real, "most frequent slang terms": slang_summary}
+        return errors, pl.DataFrame(table_rows), summary
+    b = profiles["rejected LLM rows"]
+    d_bad = register.distance(ours, b)
     if ours["words_cv"] < MIN_CV_RATIO * b["words_cv"]:
         errors["length spread"].append(f"word-count CV {ours['words_cv']} below {MIN_CV_RATIO}× the rejects' {b['words_cv']}")
     if profiles["dataset, long rows"]["ends_request"] >= b["ends_request"]:
         errors["length spread"].append(f"long rows end in a request as often as the rejects ({profiles['dataset, long rows']['ends_request']} ≥ {b['ends_request']})")
     if d_real >= d_bad:
         errors["register"].append(f"register distance to real reviews {d_real} is not below the distance to the rejects {d_bad}")
-    shares = register.slang_shares(texts, loc)
-    errors["slang cap"] = [f"'{w}' in {s:.1%} of rows" for w, s in shares.items() if s > MAX_SLANG_TERM_RATE]
-    table_rows = [{"set": name, **{k: v for k, v in p.items() if k != "messages"}, "rows": int(p["messages"])} for name, p in profiles.items()]
     summary = {"register distance to real reviews": d_real, "register distance to rejected rows": d_bad,
-               "most frequent slang terms": ", ".join(f"{w} {s:.1%}" for w, s in list(shares.items())[:5] if s > 0) or "none"}
+               "most frequent slang terms": slang_summary}
     return errors, pl.DataFrame(table_rows), summary
 
 
@@ -257,7 +265,7 @@ def main() -> None:
     hard["PII outside slots"] = check_pii(df, loc)
     hard["regional purity"], purity = check_purity(df, loc)
     register_table = None
-    if loc.bad_source and raw_file.exists():
+    if loc.lang == "es" and raw_file.exists():
         register_errors, register_table, register_summary = check_register(df, loc, raw_file)
         hard.update(register_errors)
     per_intent, summary = label_report(df)
@@ -273,7 +281,8 @@ def main() -> None:
     lines += [f"- {k}: {v}\n" for k, v in dup_report.items()]
     lines += ["\n## Regional purity\n\n", table(purity)]
     if register_table is not None:
-        lines += ["\n## Register: dataset vs real reviews vs rejected LLM rows\n\n", table(register_table), "\n"]
+        title = "dataset vs real reviews vs rejected LLM rows" if loc.bad_source else "dataset vs real source text"
+        lines += [f"\n## Register: {title}\n\n", table(register_table), "\n"]
         lines += [f"- {k}: {v}\n" for k, v in register_summary.items()]
     lines += ["\n## Label consistency (5-fold out-of-fold TF-IDF + LR on train + validation)\n\n", table(per_intent), "\n"]
     lines += [f"- {k}: {v}\n" for k, v in summary.items()]

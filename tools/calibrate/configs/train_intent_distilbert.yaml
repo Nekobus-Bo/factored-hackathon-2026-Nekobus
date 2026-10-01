@@ -1,4 +1,4 @@
-# Fine-tune the pooled pt-BR / es-MX / es-AR intent model (ADR-0014).
+# Fine-tune the pooled pt-BR / es-MX / es-AR / es-CO intent model (ADR-0014, amendment 2026-10-01).
 #
 #   make pool-data-regional
 #   make train-encoder CONFIG=tools/calibrate/configs/train_intent_distilbert.yaml
@@ -38,3 +38,4 @@ gate:
     pt-BR: 0.85
     es-MX: 0.85
     es-AR: 0.85
+    es-CO: 0.85

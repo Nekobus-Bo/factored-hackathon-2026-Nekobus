@@ -1,4 +1,4 @@
-# Decision-point calibration of the pooled pt-BR / es-MX / es-AR DistilBERT (ADR-0014).
+# Decision-point calibration of the pooled pt-BR / es-MX / es-AR / es-CO DistilBERT (ADR-0014).
 #
 #   make pool-data-regional && make train-encoder        # the pinned model directory
 #   make calibrate TASK=decision-points CONFIG=tools/calibrate/configs/decision_points_distilbert.yaml OUT=/tmp/calib
@@ -18,9 +18,9 @@ task: decision-points
 
 languages: [es, pt, en]
 # Markets calibrated apart from their language, for per_language decision points:
-# thresholds.es-MX next to thresholds.es. es-CO and en-US have no rows and fall back
-# to es and en at runtime (locale -> language -> '*').
-locales: [pt-BR, es-MX, es-AR]
+# thresholds.es-MX next to thresholds.es. en-US has no rows and falls back to en at
+# runtime (locale -> language -> '*'); es-CO has rows since the 2026-10-01 amendment.
+locales: [pt-BR, es-MX, es-AR, es-CO]
 report_tag: distilbert
 
 artifact: packages/encoder/calibration/decision_points.distilbert.json
@@ -37,9 +37,9 @@ backends:
   # (ENCODER_WEIGHTS_IMAGE); the loader checks weights, manifest and label order.
   intent_distilbert:
     kind: hf_seqcls
-    model_id: "hf_seqcls:distilbert-intent-pooled@sha256:f43063c6d82e"
-    revision: "distilbert-intent-pooled:59bdfe5dc8c1"
-    weights_sha256: f43063c6d82e28180adf288a39ebe2f7131c245e48d40469908c7755fbcd62ce
+    model_id: "hf_seqcls:distilbert-intent-pooled@sha256:56b52ec70460"
+    revision: "distilbert-intent-pooled:7fd8bff09544"
+    weights_sha256: 56b52ec704608093974f0389147dcee6b29a5b54744d40ef116963d587512cc2
     # The head's id order (the contract's Intent order).
     labels: [report_unrecognized_charge, report_lost_card, report_stolen_card,
              report_suspicious_activity, request_card_block, request_dispute,

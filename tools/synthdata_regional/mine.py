@@ -130,7 +130,7 @@ def register_stats(loc: Locale, texts: pl.DataFrame) -> dict[str, dict]:
             "all_caps_share": round(float(d["ask"].str.contains(r"\b[A-ZÀ-Ú]{4,}(?:\s+[A-ZÀ-Ú]{4,}){3,}").mean()), 4),
             loc.no_accent_key: round(float(d["t"].str.contains(loc.no_accent_rx).mean()), 4),
         }
-        if loc.bad_source:
+        if loc.lang == "es":  # every es locale, with or without rejected rows
             stats[half]["typing"] = register.profile(d["ask"].to_list(), loc)
     return stats
 
