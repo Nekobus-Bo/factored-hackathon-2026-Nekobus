@@ -52,6 +52,8 @@ def test_the_shipped_file_loads_with_every_decision_point_in_shadow() -> None:
         "block_reason",
         "handoff_route",
         "smalltalk_route",
+        "intent_hint",
+        "clarify_route",
     ]
     assert {dp.mode for dp in config.decision_points.values()} == {Mode.SHADOW}
     assert {dp.id: dp.effect for dp in config.decision_points.values()} == {
@@ -60,6 +62,8 @@ def test_the_shipped_file_loads_with_every_decision_point_in_shadow() -> None:
         "block_reason": "select",
         "handoff_route": "select",
         "smalltalk_route": "record",
+        "intent_hint": "hint",
+        "clarify_route": "canned_reply",
     }
 
 
@@ -165,7 +169,7 @@ def test_turning_off_the_decision_point_a_gate_reads_still_starts() -> None:
 # ------------------------------------------------------------ what is rejected
 
 
-@pytest.mark.parametrize("effect", ["route_tools", "canned_reply", "propose", "hint"])
+@pytest.mark.parametrize("effect", ["route_tools", "propose"])
 def test_effects_the_freeze_does_not_build_are_rejected_as_pending(
     tmp_path: Path, effect: str
 ) -> None:
@@ -429,3 +433,61 @@ def test_an_unquoted_on_is_not_a_mode(tmp_path: Path) -> None:
 
     with pytest.raises(EffectsConfigError, match="smalltalk_route.mode"):
         load_effects(write(tmp_path, text))
+
+
+# ------------------------------------------------ hint and canned_reply (ADR-0014)
+
+
+def _clarify(d: dict[str, Any]) -> dict[str, Any]:
+    return d["decision_points"]["clarify_route"]
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        (lambda d: _clarify(d).update(on_unavailable="reply"), "on_unavailable"),
+        (
+            lambda d: d["decision_points"]["intent_hint"].update(
+                on_unavailable="uncertain"
+            ),
+            "on_unavailable",
+        ),
+        (lambda d: _clarify(d)["params"]["templates"].pop("pt"), "miss the language"),
+        (
+            lambda d: _clarify(d)["params"]["templates"].update(en="Tell me more."),
+            "is a question",
+        ),
+        (
+            lambda d: _clarify(d)["params"]["templates"].update(
+                es="¿Tu correo es ana@example.com?"
+            ),
+            "holds PII",
+        ),
+        (
+            lambda d: _clarify(d)["params"]["templates"].update(es="¿" + "a" * 600),
+            "characters",
+        ),
+        (lambda d: _clarify(d)["params"].update(max_consecutive=5), "max_consecutive"),
+        (
+            lambda d: d["decision_points"]["intent_hint"].update(params={"x": 1}),
+            "takes no params",
+        ),
+        (
+            lambda d: d["decision_points"]["smalltalk_route"].update(effect="hint"),
+            "only one decision point may use hint",
+        ),
+    ],
+)
+def test_hint_and_canned_reply_are_validated_at_load(
+    tmp_path: Path, change: Callable[[dict[str, Any]], None], message: str
+) -> None:
+    with pytest.raises(EffectsConfigError, match=message):
+        load_effects(write(tmp_path, mutated(change)))
+
+
+def test_the_shipped_clarification_is_a_question_in_every_language() -> None:
+    params = load_effects().decision_points["clarify_route"].params
+    assert params is not None
+    templates = params.templates  # type: ignore[union-attr]
+    assert set(templates) == {"es", "pt", "en"}
+    assert all("?" in text for text in templates.values())

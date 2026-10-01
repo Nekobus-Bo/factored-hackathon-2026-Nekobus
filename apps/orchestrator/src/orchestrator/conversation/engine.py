@@ -300,7 +300,8 @@ class TurnEngine:
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
         # pending, a bare digit run is the code.
         text_to_mask = user_text
-        if otp_challenge_pending(history):
+        otp_pending = otp_challenge_pending(history)
+        if otp_pending:
             text_to_mask = self._mask_bare_otps(user_text, mapping)
         try:
             masked_user = self._mask_user_text(
@@ -318,7 +319,31 @@ class TurnEngine:
 
         history.append({"role": "user", "content": masked_user})
 
-        # 3-4. LLM <-> tools loop, bounded
+        # 3. An ambiguous opening may be answered by the canned clarification instead
+        # of the LLM (ADR-0014): only in `enforce`, only before the LLM has answered
+        # this conversation, never while a flow is in progress. In `shadow` it only
+        # records what it would have done.
+        canned = turn_decisions.canned_reply(
+            lang,
+            otp_pending=otp_pending,
+            tool_seen=any(message.get("role") == "tool" for message in history),
+        )
+        if canned is not None:
+            history.append({"role": "assistant", "content": canned})
+            metadata.canned_reply = True
+            context.history = history
+            context.placeholder_map = mapping
+            context.decisions = turn_decisions.commit()
+            self._copy_decisions(eval_data, metadata)
+            return TurnResult(
+                blocks=[TextBlock(text=canned)], metadata=metadata, eval=eval_data
+            )
+        # The classification as context for every completion of the turn; None in
+        # `shadow`, so the messages (and the replay keys) stay as they were.
+        hint = turn_decisions.hint()
+        hint_messages = [{"role": "system", "content": hint}] if hint else []
+
+        # 4-5. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
         handoffs: list[HandoffBlock] = []
         guard = _TurnGuard(decisions=turn_decisions)
@@ -329,7 +354,11 @@ class TurnEngine:
             await self._enforce_required_handoff(
                 context.session_id, history, mapping, metadata, handoffs, guard
             )
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *hint_messages,
+                *history,
+            ]
             response = await self.llm.complete(
                 messages=messages,
                 prompt_version=PROMPT_VERSION,
@@ -370,7 +399,7 @@ class TurnEngine:
                 lang,
             )
 
-        # 5. Final reply through the block allowlist
+        # 6. Final reply through the block allowlist
         blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = self._final_blocks(
             final, history, mapping, metadata, lang
         )

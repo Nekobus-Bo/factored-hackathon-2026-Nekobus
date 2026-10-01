@@ -580,6 +580,8 @@ async def test_replay_turns_work_through_chat_api_without_provider_pii(
             "block_reason",
             "handoff_route",
             "smalltalk_route",
+            "intent_hint",
+            "clarify_route",
         ]
         assert {(d["mode"], d["outcome"]) for d in evaluation["decisions"]} == {
             ("shadow", "unavailable")

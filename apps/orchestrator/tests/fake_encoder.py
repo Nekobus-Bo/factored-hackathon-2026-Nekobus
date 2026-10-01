@@ -21,6 +21,8 @@ ABSTAIN = "<abstain>"
 UNAVAILABLE = "<unavailable>"
 INFEASIBLE = "<infeasible>"
 OFF = "<off>"
+# Abstained with no tau for the language (infeasible there): never a question.
+ABSTAIN_NO_TAU = "<abstain-no-tau>"
 
 INTENTS = [
     "report_lost_card",
@@ -49,6 +51,8 @@ FULL_VIEWS: dict[str, list[str]] = {
     ],
     "handoff_route": ["DISPUTE", "FRAUD", "UNRECOGNIZED", "HUMAN_REQUEST"],
     "smalltalk_route": ["greeting", "out_of_scope", "other"],
+    "intent_hint": INTENTS,
+    "clarify_route": INTENTS,
 }
 
 
@@ -68,6 +72,10 @@ def decision(dp_id: str, label: str) -> DecisionResult:
             tau=0.9,
             tau_source=TauSource.ARTIFACT,
             **common,
+        )
+    if label == ABSTAIN_NO_TAU:
+        return DecisionResult(
+            outcome=DecisionOutcome.ABSTAINED, confidence=0.31, **common
         )
     special = {
         UNAVAILABLE: DecisionOutcome.UNAVAILABLE,

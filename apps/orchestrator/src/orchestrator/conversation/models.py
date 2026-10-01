@@ -92,6 +92,8 @@ class TurnMetadata(BaseModel):
     turn_id: str
     # The market the encoder was asked for (ADR-0014); None: language only.
     locale: Locale | None = None
+    # The turn was answered by the canned clarification, without the LLM (ADR-0014).
+    canned_reply: bool = False
     encoder: EncoderSignal | None = None
     encoder_unavailable: bool = False
     # The encoder was configured but gave no PII spans this turn (unavailable,

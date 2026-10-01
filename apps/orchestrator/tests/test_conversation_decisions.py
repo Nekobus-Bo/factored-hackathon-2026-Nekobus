@@ -27,15 +27,22 @@ from orchestrator.conversation.decisions.state import (
     GateState,
     GateStatus,
 )
-from orchestrator.conversation.prompt import PROMPT_VERSION, SYSTEM_PROMPT
+from orchestrator.conversation.prompt import (
+    HINT_TEMPLATE,
+    HINT_UNCERTAIN,
+    PROMPT_VERSION,
+    SYSTEM_PROMPT,
+)
 from orchestrator.encoder_client import EncoderClient
 from orchestrator.session.models import ConversationState
 from orchestrator.tools_client import BankingCoreClient
 
 from .fake_encoder import (
     ABSTAIN,
+    ABSTAIN_NO_TAU,
     ENCODER_URL,
     LEGACY_SEED,
+    UNAVAILABLE,
     FakeEncoder,
 )
 from .fake_llm import ScriptedLLM, Step, tool_call
@@ -763,12 +770,14 @@ async def test_the_eval_hook_carries_the_decision_records(services: Any) -> None
 
 
 def test_the_prompt_explains_the_refusal_and_holds_no_policy() -> None:
-    assert PROMPT_VERSION == "turn-engine/2"
+    assert PROMPT_VERSION == "turn-engine/3"
     assert "CONFIRMATION_REQUIRED" in SYSTEM_PROMPT
     assert "one short question" in SYSTEM_PROMPT
     # explanatory only: the gate is code, and no threshold or mode is in the text
-    for word in ("threshold", "shadow", "enforce", "confirm_gate", "tau"):
-        assert word not in SYSTEM_PROMPT.lower()
+    for text in (SYSTEM_PROMPT, HINT_TEMPLATE, HINT_UNCERTAIN):
+        for word in ("threshold", "shadow", "enforce", "confirm_gate", "tau"):
+            assert word not in text.lower()
+    assert "advisory" in HINT_TEMPLATE and "banking-core decides" in HINT_TEMPLATE
 
 
 @pytest.mark.parametrize(
@@ -804,3 +813,157 @@ async def test_the_market_reaches_the_encoder_only_while_it_matches_the_language
     sent = [body.get("locale") for body in rig.encoder.requests]
     assert sent == [None, "es-MX", None]
     assert "locale" not in rig.encoder.requests[0]
+
+
+# ------------------------------------------------ hint and clarify (ADR-0014)
+
+CLARIFY_ES = "¿Me cuentas un poco más?"
+
+
+async def test_hint_and_clarify_in_shadow_change_nothing_the_llm_sees() -> None:
+    def run(empty: bool, script: list[dict[str, str]]) -> Any:
+        async def go() -> tuple[ScriptedLLM, Any]:
+            llm = ScriptedLLM([Step(content=DONE)])
+            with respx.mock(assert_all_called=False) as router:
+                rig = Rig(router, llm, script=script, empty_runtime=empty)
+                result = await rig.say("ayuda con la tarjeta", "t1")
+            return llm, result
+
+        return go()
+
+    for script in (
+        [{"intent_hint": "report_lost_card", "clarify_route": "report_lost_card"}],
+        [{"intent_hint": ABSTAIN, "clarify_route": ABSTAIN}],
+    ):
+        shadow_llm, shadow = await run(False, script)
+        plain_llm, _ = await run(True, script)
+        assert shadow_llm.calls == plain_llm.calls  # same messages, same keys
+        assert not shadow.metadata.canned_reply
+        records = {e.effect: e for e in shadow.metadata.effects}
+        assert records["hint"].applied is False
+        assert records["canned_reply"].applied is False
+
+
+async def test_shadow_records_what_hint_and_clarify_would_have_done(
+    services: Any,
+) -> None:
+    rig = Rig(
+        services,
+        ScriptedLLM([Step(content=DONE)]),
+        script=[{"intent_hint": ABSTAIN, "clarify_route": ABSTAIN}],
+    )
+    result = await rig.say("ayuda con la tarjeta", "t1")
+    records = {e.effect: e for e in result.metadata.effects}
+    assert records["hint"].would_apply and records["hint"].detail["hint"] == "uncertain"
+    assert records["canned_reply"].would_apply
+    assert records["canned_reply"].detail["blocked_by"] == []
+    assert rig.context.decisions.canned_turns == 0  # shadow sent nothing
+
+
+async def test_an_enforced_hint_is_one_system_line_after_the_prompt(
+    services: Any,
+) -> None:
+    llm = ScriptedLLM([Step(content=DONE)])
+    rig = Rig(
+        services,
+        llm,
+        modes={"intent_hint": "enforce"},
+        script=[{"intent_hint": "report_unrecognized_charge"}],
+    )
+    await rig.say("no reconozco un cargo", "t1")
+    messages = llm.calls[0]["messages"]
+    assert [m["role"] for m in messages[:3]] == ["system", "system", "user"]
+    assert "`report_unrecognized_charge`" in messages[1]["content"]
+    assert "advisory" in messages[1]["content"]
+    # never persisted: the next turn starts from the plain history
+    assert all(m["role"] != "system" for m in rig.context.history)
+
+
+@pytest.mark.parametrize("outcome", [UNAVAILABLE, ABSTAIN_NO_TAU])
+async def test_no_hint_without_a_decision_or_a_tau(services: Any, outcome: str) -> None:
+    llm = ScriptedLLM([Step(content=DONE)])
+    rig = Rig(
+        services,
+        llm,
+        modes={"intent_hint": "enforce"},
+        script=[{"intent_hint": outcome}],
+    )
+    await rig.say("hola", "t1")
+    assert [m["role"] for m in llm.calls[0]["messages"]][:2] == ["system", "user"]
+
+
+async def test_an_enforced_clarify_answers_an_ambiguous_opening_without_the_llm(
+    services: Any,
+) -> None:
+    llm = ScriptedLLM([Step(content=DONE)])
+    rig = Rig(
+        services,
+        llm,
+        modes={"clarify_route": "enforce"},
+        script=[{"clarify_route": ABSTAIN}],
+    )
+    first = await rig.say("ayuda con lo de la tarjeta, no sé", "t1")
+    assert llm.calls == []  # zero tokens, no recording key
+    assert first.metadata.canned_reply is True
+    assert first.blocks[0].text.startswith(CLARIFY_ES)
+    assert rig.context.history[-1] == {
+        "role": "assistant",
+        "content": first.blocks[0].text,
+    }
+    assert rig.context.decisions.canned_turns == 1
+
+    # Still ambiguous: asked once already, so the LLM takes over (max_consecutive 1).
+    second = await rig.say("no sé, algo raro", "t2")
+    assert len(llm.calls) == 1 and second.metadata.canned_reply is False
+    blocked = [e for e in second.metadata.effects if e.effect == "canned_reply"]
+    assert (
+        "llm_engaged" in blocked[0].detail["blocked_by"]
+        or "max_consecutive" in (blocked[0].detail["blocked_by"])
+    )
+
+
+@pytest.mark.parametrize("outcome", [UNAVAILABLE, ABSTAIN_NO_TAU, "report_lost_card"])
+async def test_clarify_never_answers_an_outage_a_missing_tau_or_a_decision(
+    services: Any, outcome: str
+) -> None:
+    llm = ScriptedLLM([Step(content=DONE)])
+    rig = Rig(
+        services,
+        llm,
+        modes={"clarify_route": "enforce"},
+        script=[{"clarify_route": outcome}],
+    )
+    result = await rig.say("perdí mi tarjeta", "t1")
+    assert len(llm.calls) == 1 and result.metadata.canned_reply is False
+
+
+async def test_clarify_never_interrupts_a_conversation_the_llm_already_answered(
+    services: Any,
+) -> None:
+    llm = ScriptedLLM([Step(content=DONE)] * 2)
+    rig = Rig(
+        services,
+        llm,
+        modes={"clarify_route": "enforce"},
+        script=[{"clarify_route": "report_lost_card"}, {"clarify_route": ABSTAIN}],
+    )
+    await rig.say("perdí mi tarjeta", "t1")  # the LLM answers
+    result = await rig.say("mmm no sé", "t2")  # ambiguous, but mid-conversation
+    assert len(llm.calls) == 2 and result.metadata.canned_reply is False
+
+
+async def test_clarify_never_fires_after_a_tool_ran(services: Any) -> None:
+    llm = ScriptedLLM([Step(content=DONE)])
+    rig = Rig(
+        services,
+        llm,
+        modes={"clarify_route": "enforce"},
+        script=[{"clarify_route": ABSTAIN}],
+    )
+    rig.context.history = [
+        {"role": "tool", "tool_call_id": "c1", "content": "{}"},
+    ]
+    result = await rig.say("ok", "t1")
+    assert len(llm.calls) == 1 and result.metadata.canned_reply is False
+    records = [e for e in result.metadata.effects if e.effect == "canned_reply"]
+    assert "tool_seen" in records[0].detail["blocked_by"]

@@ -146,9 +146,9 @@ class EffectEvidence(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     dp_id: str
-    effect: str  # gate / select
+    effect: str  # gate / select / hint / canned_reply
     mode: str = ""
-    tool: str = ""
+    tool: str | None = None  # a hint or a canned reply acts on the turn, not a call
     applied: bool = False
     would_apply: bool = False
     detail: dict[str, Any] = Field(default_factory=dict)
