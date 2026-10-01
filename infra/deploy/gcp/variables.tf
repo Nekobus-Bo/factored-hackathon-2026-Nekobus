@@ -154,6 +154,17 @@ variable "decision_points_file" {
   }
 }
 
+variable "decision_points_modes" {
+  description = "DECISION_POINTS_MODES for the orchestrator: id=mode pairs that override decision_effects.yaml, e.g. \"intent_hint=shadow,clarify_route=shadow\" (the kill switch of ADR-0014, amendment 2026-10-01). Empty keeps the shipped modes."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^([a-z][a-z0-9_]{2,40}=(off|shadow|enforce)(,[a-z][a-z0-9_]{2,40}=(off|shadow|enforce))*)?$", var.decision_points_modes))
+    error_message = "decision_points_modes must be empty or id=mode pairs separated by commas, mode one of off, shadow, enforce."
+  }
+}
+
 variable "github_repository" {
   description = "The repository whose deploy.yml may deploy, as owner/name, exactly as GitHub spells it."
   type        = string
