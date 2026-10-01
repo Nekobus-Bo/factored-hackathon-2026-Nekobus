@@ -1,7 +1,7 @@
 import json
 import re
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
@@ -22,6 +22,7 @@ from banking_core.seed.fixtures import (
     NO_OTP_DOCUMENT_ES,
     NO_OTP_DOCUMENT_PT,
     create_scenario_fixtures,
+    default_base_time,
 )
 from banking_core.seed.generator import generate_synthetic_dataset
 from banking_core.seed.quality import generate_quality_report
@@ -149,6 +150,28 @@ def test_staging_validation_and_quality_report() -> None:
         assert "core_bank.transaction" in report_text
         assert "Intentionally Not Cleaned" in report_text
         assert report_path.exists()
+
+
+def test_seed_dates_follow_the_run_day() -> None:
+    """Generated dates sit inside the staging window on any day the seed runs.
+
+    The anchor used to be a fixed date: 125 days later the oldest transactions
+    fell out of the window and every seed failed. Now it is today's UTC midnight.
+    """
+    anchor = default_base_time()
+    now = datetime.now(UTC)
+    assert anchor == now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    with TemporaryDirectory() as tmp_dir:
+        raw_path = Path(tmp_dir)
+        generate_synthetic_dataset(raw_path, seed=42)
+        occurred = [
+            datetime.fromisoformat(json.loads(line)["occurred_at"])
+            for line in (raw_path / "transactions.jsonl").read_text().splitlines()
+        ]
+
+    assert max(occurred) <= now
+    assert min(occurred) >= now - timedelta(days=125)
 
 
 def test_demo_customers_get_the_code_by_email_and_others_keep_their_channel() -> None:
