@@ -131,6 +131,8 @@ If it does pass:
 - Masking needs no change: labelled cédula and NIT numbers are already masked (decision 5 holds).
 - Until the new seed image is published, the calibration artifact on the branch pins weights the image does not ship, so that branch is not merged before the publish.
 
+**Outcome (2026-10-01).** The rule failed on one set: the four-locale model gained on Colombia (CO real +0.076, CO test +0.022) and on every synthetic test, but MX real dropped 0.023 against a 0.02 tolerance ([report](../../reports/intent-models-regional-datasets.md) §10). The shipped weights, digest and calibration are unchanged, and es-CO stays on the `es` keys. The es-CO dataset is kept for a later retrain.
+
 ---
 
 ## Appendix A — Seed image and pin chain
