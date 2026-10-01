@@ -88,23 +88,25 @@ Invariants I1–I5 of ADR-0012 hold unchanged. The hint is context, not authorit
 
 ## Action items
 
-1. [ ] Training script, `hf_seqcls` adapter, manifest and registry entry, with a conformance test on a tiny model
-2. [ ] Seed image build and push (`make encoder-weights-image`), Dockerfile stage, compose defaults
-3. [ ] Locale keys in the artifact, the harness and `decide`; the DistilBERT artifact and its report
-4. [ ] `locale` through the contracts, the orchestrator and the eval runner
-5. [ ] CURP, RFC and CUIT/CUIL masking
-6. [ ] `hint` and `canned_reply` effects in `shadow`, scenarios, and an evaluation run
-7. [ ] `limitations.md`, `evaluation.md`, `runbook.md`, `deployment.md`
+1. [x] Training script, `hf_seqcls` adapter, manifest and registry entry, with a conformance test on a tiny model
+2. [x] Seed image build and push (`make encoder-weights-image`), Dockerfile stage, compose defaults
+3. [x] Locale keys in the artifact, the harness and `decide`; the DistilBERT artifact and its report
+4. [x] `locale` through the contracts, the orchestrator and the eval runner
+5. [x] CURP, RFC and CUIT/CUIL masking
+6. [ ] `hint` and `canned_reply` effects in `shadow` and scenarios (done); **the live evaluation run is pending** (no LLM key: dry run only)
+7. [x] `limitations.md`, `evaluation.md`, `runbook.md`, `deployment.md`
 
 ### Implementation status (rule 7)
 
 | What this ADR names | Status |
 |---|---|
-| `hf_seqcls` kind, `encoder.weights` manifest, `make train-encoder`, `make encoder-weights-image` | pending |
-| `packages/encoder/calibration/decision_points.distilbert.json` and its report | pending |
-| Locale keys (`resolve_key`), `locale` in `AnalyzeRequest` and the chat API | pending |
-| `hint` and `canned_reply` effects, `intent_hint` and `clarify_route` | pending (the loader still refuses both effects as `pending`) |
-| CURP, RFC and CUIT/CUIL masking | pending |
+| `hf_seqcls` kind, `encoder.weights` manifest, `make pool-data-regional`, `make train-encoder`, `make encoder-weights-image` | landed. The trained model reproduces the report (mean accuracy 0.777 over its six sets against 0.761) |
+| Seed image `docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:459d30a9…` (amd64, arm64), the `weights` stage of `apps/encoder/Dockerfile`, compose and deploy defaults (`embed hf`, the DistilBERT artifact), `make warmup-encoder` verifying the artifact's pins | landed |
+| `packages/encoder/calibration/decision_points.distilbert.json` and `reports/calibration-decision-points-2026-09-30-distilbert.md` | landed; nothing certified |
+| Locale keys (`resolve_key`), `locales:` and `report_tag` in the harness, `locale` in `AnalyzeRequest`, the chat API, the session, the Zod mirror and the eval runner | landed (the Zod tests were not run: no bun on the dev host) |
+| `hint` and `canned_reply` effects, `intent_hint` and `clarify_route` in both artifacts | landed, in `shadow` |
+| CURP, RFC and CUIT/CUIL masking | landed |
+| The live evaluation before and after `enforce`, and replay recordings | pending (needs an LLM key) |
 
 ---
 
