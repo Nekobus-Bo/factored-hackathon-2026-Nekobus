@@ -94,3 +94,14 @@ The accepted cost is vocabulary: JavaScript-flavored names in a repository with 
 - *Easier:* both front ends share one look and one theme mechanism (`data-theme` on `<html>`), and a token that a component needs but nobody defined is a failing test, not a visual bug found in the demo.
 - *Harder:* CI has a second toolchain, the sync from the artifact is manual, and the fonts come from Google Fonts, a network dependency of the demo ([limitations](../limitations.md)).
 - *Unchanged:* the "to revisit" note above. If the two front ends merge, the package can be inlined; nothing here depends on there being two.
+
+## Amendment 2026-09-30: `lab/`, the exploratory sandbox
+
+**Context.** Dataset exploration and model comparisons (zero-shot, fine-tuned, LLM-generated data) are written as marimo notebooks. They neither deploy nor are imported, so neither `apps/` nor `packages/` fits, and `tools/` holds runnable utilities with tests, which notebooks are not.
+
+**Decision.** A top-level `lab/` holds the notebooks (`lab/notebooks/<type>__<subject>.py`) and their written findings. It is its own uv project (`lab/pyproject.toml`), so its heavy, fast-moving dependencies stay out of the workspace lock. `make lab` opens it. Notebooks read the organization's dataset from `data/raw/factored/` (or `DATA_DIR`), store no outputs, and write anything derived from the data or from LLM calls to ignored paths only (`data/staging/`, `lab/.cache/`, `lab/profiling/out/`).
+
+**Consequences.**
+
+- *Easier:* exploration has a home that does not dilute what deploys, and its findings sit next to the notebooks that produced them.
+- *Harder:* the root gains one more directory, and `lab/` is excluded from ruff and CI, so a notebook can break unnoticed. Nothing under `apps/` or `packages/` may import from it. A result that matters moves out: to `tools/` with a `make` target and tests, and its evidence to `reports/`.
