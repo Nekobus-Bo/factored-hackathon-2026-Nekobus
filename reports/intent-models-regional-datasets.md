@@ -11,7 +11,7 @@ human-labelled, so read every number as a comparison between models, not as a pr
   - Mean accuracy 0.76 over six evaluation sets, at about 10 ms per message on CPU.
   - The zero-shot models (Laya, bge reranker) are not viable on real text.
 - The main open problem is **out-of-scope recall on real text** (0.47–0.75).
-- **es-CO (2026-10-01, §10):** a grounded Colombian dataset lifts CO real accuracy from 0.50 to 0.57. The four-locale model drops MX real by 0.023, just past the pre-set tolerance; the team overrode the rule and replaced the weights (publish pending).
+- **es-CO (2026-10-01, §10):** a grounded Colombian dataset lifts CO real accuracy from 0.50 to 0.57. The four-locale model drops MX real by 0.023, just past the pre-set tolerance; the team overrode the rule and replaced the weights.
 
 ---
 
@@ -296,7 +296,7 @@ The replacement rule was fixed before running:
   - test macro-F1 is 0.926 for es-CO and 0.921 / 0.920 for es-MX / es-AR (was 0.932 / 0.929);
   - English coverage drops from 45% to 27% of messages, because its τ rose from 0.84 to 0.90.
 
-  The new seed image is not published yet (ADR-0014 amendment).
+  The new seed image is published and pinned in `apps/encoder/Dockerfile` (`sha256:65d2252019f3…`).
 
 ---
 

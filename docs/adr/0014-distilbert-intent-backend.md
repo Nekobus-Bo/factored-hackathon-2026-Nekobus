@@ -136,7 +136,8 @@ If it does pass:
 **Override (2026-10-01, the team's decision).** The team accepted the MX real drop (about 3.5 of 150 silver rows) against the Colombian gain and replaced the model anyway:
 - `make train-encoder` on the four-locale pool (6,000 rows, seed 0) gives `distilbert-intent-pooled:7fd8bff09544` (weights `sha256:56b52ec70460…`), with validation accuracy 0.98–0.99 per market.
 - `decision_points.distilbert.json` is recalibrated with `es-CO` as its own key ([report](../../reports/calibration-decision-points-2026-10-01-distilbert.md)), and `make calibration-verify` passes.
-- **Pending:** the new seed image is not published, so `apps/encoder/Dockerfile` still pins the old digest. An encoder built from the Dockerfile ships the old weights and refuses the new artifact at startup. This branch must not merge before `make encoder-weights-image PUSH=1` and the digest bump.
+- The new seed image is published (amd64, arm64) as `docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:65d2252019f3…` (tag `distilbert-intent-pooled-7fd8bff09544`), and `apps/encoder/Dockerfile` pins it. The previous image (`sha256:459d30a9c697…`) stays on Docker Hub for rollback.
+- The image is public although the terms of the tuquejasuma.com source have not been reviewed (see Consequences): the team's decision.
 
 ---
 

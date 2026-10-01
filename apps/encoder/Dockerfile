@@ -3,7 +3,7 @@
 # image (`make encoder-weights-image PUSH=1`) and changes only this digest. To build
 # from a local, unpublished directory instead:
 #   docker buildx build --build-context weights=packages/encoder/weights/distilbert-intent-pooled ...
-ARG ENCODER_WEIGHTS_IMAGE=docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:459d30a9c697e66455377700f1cd019e3b265be7bf53a53a691caf942dc17107
+ARG ENCODER_WEIGHTS_IMAGE=docker.io/paodanchacon/pattern_blue-encoder-weights@sha256:65d2252019f397a3060f011d2c9fa900cbd5ceef31e4dd45cfa421e1ee982eee
 FROM ${ENCODER_WEIGHTS_IMAGE} AS weights
 
 FROM python:3.12-slim
