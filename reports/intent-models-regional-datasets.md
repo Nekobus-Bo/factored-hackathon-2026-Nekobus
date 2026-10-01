@@ -11,7 +11,7 @@ human-labelled, so read every number as a comparison between models, not as a pr
   - Mean accuracy 0.76 over six evaluation sets, at about 10 ms per message on CPU.
   - The zero-shot models (Laya, bge reranker) are not viable on real text.
 - The main open problem is **out-of-scope recall on real text** (0.47–0.75).
-- **es-CO (2026-10-01, §10):** a grounded Colombian dataset lifts CO real accuracy from 0.50 to 0.57, but the four-locale model drops MX real by 0.023, just past the pre-set tolerance, so the shipped three-locale weights stay.
+- **es-CO (2026-10-01, §10):** a grounded Colombian dataset lifts CO real accuracy from 0.50 to 0.57. The four-locale model drops MX real by 0.023, just past the pre-set tolerance; the team overrode the rule and replaced the weights (publish pending).
 
 ---
 
@@ -292,7 +292,11 @@ The replacement rule was fixed before running:
 - **CO data helps Colombia** (+7.6 points on CO real) and every synthetic test (+1.4 to +2.8), and raises dispute F1 on all eight sets.
 - **The cost is small but measured on real text:** MX real drops just past the tolerance, and BR real drops within noise. With 150 silver-labelled rows per country, the rule cannot tell a 3-row change from noise any better than this.
 - **Retrained Pooled-3 already beats the shipped weights** on five of eight sets (mean 0.766 against 0.758): MPS training is not deterministic, so a retrain alone moves the numbers.
-- es-CO keeps falling back to the `es` thresholds at runtime (ADR-0014 decision 3).
+- **Override:** the team chose to replace the weights anyway, trading the MX real drop for the Colombian gain. The four-locale model was retrained (seed 0, `distilbert-intent-pooled:7fd8bff09544`) and recalibrated with `es-CO` as its own key (`reports/calibration-decision-points-2026-10-01-distilbert.md`):
+  - test macro-F1 is 0.926 for es-CO and 0.921 / 0.920 for es-MX / es-AR (was 0.932 / 0.929);
+  - English coverage drops from 45% to 27% of messages, because its τ rose from 0.84 to 0.90.
+
+  The new seed image is not published yet (ADR-0014 amendment).
 
 ---
 

@@ -1,5 +1,5 @@
 {
-  "artifact_id": "1697e0f1c15e",
+  "artifact_id": "7738f0b6047f",
   "backends": {
     "gate_tfidf": {
       "cost_class": "low",
@@ -45,19 +45,19 @@
         "out_of_scope"
       ],
       "local_only": true,
-      "model_id": "hf_seqcls:distilbert-intent-pooled@sha256:f43063c6d82e",
+      "model_id": "hf_seqcls:distilbert-intent-pooled@sha256:56b52ec70460",
       "params": {
         "batch_size": 64,
         "max_length": 256,
         "model": "packages/encoder/weights/distilbert-intent-pooled"
       },
       "probability_kind": "distribution",
-      "revision": "distilbert-intent-pooled:59bdfe5dc8c1",
+      "revision": "distilbert-intent-pooled:7fd8bff09544",
       "timeout_ms": 1000,
-      "weights_sha256": "f43063c6d82e28180adf288a39ebe2f7131c245e48d40469908c7755fbcd62ce"
+      "weights_sha256": "56b52ec704608093974f0389147dcee6b29a5b54744d40ef116963d587512cc2"
     }
   },
-  "created_at": "2026-09-30T23:56:44Z",
+  "created_at": "2026-10-01T19:17:51Z",
   "data": {
     "test_provenance": "synthetic-provisional"
   },
@@ -68,13 +68,13 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -99,223 +99,223 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.4667,
+            "acted_coverage_test": 0.5467,
             "certified": false,
-            "coverage_test": 0.4667,
-            "coverage_val": 0.48,
-            "ece_post": 0.049,
-            "ece_pre": 0.0872,
+            "coverage_test": 0.5467,
+            "coverage_val": 0.4867,
+            "ece_post": 0.0636,
+            "ece_pre": 0.0778,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
               "CUSTOMER_REQUEST": [
                 5,
-                9,
-                0.2667
-              ],
-              "LOST": [
-                4,
-                10,
-                0.1682
-              ],
-              "STOLEN": [
-                5,
                 12,
                 0.1933
               ],
+              "LOST": [
+                4,
+                13,
+                0.1268
+              ],
+              "STOLEN": [
+                10,
+                20,
+                0.2993
+              ],
               "SUSPICIOUS_ACTIVITY": [
-                9,
-                30,
-                0.1666
+                10,
+                19,
+                0.3171
               ],
               "UNRECOGNIZED_CHARGE": [
                 6,
-                9,
-                0.3542
+                18,
+                0.1628
               ]
             },
             "recall_test": {
               "CUSTOMER_REQUEST": 0.5,
               "LOST": 0.4,
-              "STOLEN": 0.5,
-              "SUSPICIOUS_ACTIVITY": 0.9,
+              "STOLEN": 1.0,
+              "SUSPICIOUS_ACTIVITY": 1.0,
               "UNRECOGNIZED_CHARGE": 0.6
             }
           },
           "es": {
-            "acted_coverage_test": 0.41,
+            "acted_coverage_test": 0.3969,
             "certified": false,
-            "coverage_test": 0.41,
-            "coverage_val": 0.366,
-            "ece_post": 0.0171,
-            "ece_pre": 0.0174,
-            "n_test": 1500,
-            "n_val": 1500,
+            "coverage_test": 0.3969,
+            "coverage_val": 0.3667,
+            "ece_post": 0.023,
+            "ece_pre": 0.0227,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "CUSTOMER_REQUEST": [
-                92,
-                114,
-                0.7251
+                139,
+                157,
+                0.8261
               ],
               "LOST": [
-                96,
-                122,
-                0.706
+                132,
+                181,
+                0.6603
               ],
               "STOLEN": [
-                100,
-                115,
-                0.7959
+                149,
+                188,
+                0.729
               ],
               "SUSPICIOUS_ACTIVITY": [
-                95,
-                153,
-                0.542
+                148,
+                191,
+                0.7106
               ],
               "UNRECOGNIZED_CHARGE": [
-                96,
-                111,
-                0.789
+                141,
+                176,
+                0.736
               ]
             },
             "recall_test": {
-              "CUSTOMER_REQUEST": 0.92,
-              "LOST": 0.96,
-              "STOLEN": 1.0,
-              "SUSPICIOUS_ACTIVITY": 0.95,
-              "UNRECOGNIZED_CHARGE": 0.96
+              "CUSTOMER_REQUEST": 0.9267,
+              "LOST": 0.88,
+              "STOLEN": 0.9933,
+              "SUSPICIOUS_ACTIVITY": 0.9867,
+              "UNRECOGNIZED_CHARGE": 0.94
             }
           },
           "pt": {
-            "acted_coverage_test": 0.3867,
+            "acted_coverage_test": 0.42,
             "certified": false,
-            "coverage_test": 0.3867,
-            "coverage_val": 0.3627,
-            "ece_post": 0.0278,
-            "ece_pre": 0.0293,
+            "coverage_test": 0.42,
+            "coverage_val": 0.3653,
+            "ece_post": 0.0285,
+            "ece_pre": 0.0287,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "CUSTOMER_REQUEST": [
-                48,
-                67,
-                0.5991
+                47,
+                62,
+                0.6385
               ],
               "LOST": [
-                46,
-                61,
-                0.6332
+                48,
+                58,
+                0.7109
               ],
               "STOLEN": [
                 47,
-                56,
-                0.7219
+                64,
+                0.6152
               ],
               "SUSPICIOUS_ACTIVITY": [
-                41,
-                44,
-                0.8177
+                48,
+                63,
+                0.6436
               ],
               "UNRECOGNIZED_CHARGE": [
-                45,
-                62,
-                0.6041
+                44,
+                68,
+                0.5284
               ]
             },
             "recall_test": {
-              "CUSTOMER_REQUEST": 0.96,
-              "LOST": 0.92,
+              "CUSTOMER_REQUEST": 0.94,
+              "LOST": 0.96,
               "STOLEN": 0.94,
-              "SUSPICIOUS_ACTIVITY": 0.82,
-              "UNRECOGNIZED_CHARGE": 0.9
+              "SUSPICIOUS_ACTIVITY": 0.96,
+              "UNRECOGNIZED_CHARGE": 0.88
             }
           }
         },
         "pooled_test": {
           "CUSTOMER_REQUEST": [
             5,
-            9,
-            0.2667,
-            "pooled (en)"
-          ],
-          "LOST": [
-            4,
-            10,
-            0.1682,
-            "pooled (en)"
-          ],
-          "STOLEN": [
-            5,
             12,
             0.1933,
             "pooled (en)"
           ],
+          "LOST": [
+            4,
+            13,
+            0.1268,
+            "pooled (en)"
+          ],
+          "STOLEN": [
+            10,
+            20,
+            0.2993,
+            "pooled (en)"
+          ],
           "SUSPICIOUS_ACTIVITY": [
-            9,
-            30,
-            0.1666,
+            10,
+            19,
+            0.3171,
             "pooled (en)"
           ],
           "UNRECOGNIZED_CHARGE": [
             6,
-            9,
-            0.3542,
+            18,
+            0.1628,
             "pooled (en)"
           ]
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
         "*": {
-          "CUSTOMER_REQUEST": 0.029937,
-          "LOST": 0.01318,
-          "STOLEN": 0.00091,
-          "SUSPICIOUS_ACTIVITY": 0.0201,
-          "UNRECOGNIZED_CHARGE": 0.289093
+          "CUSTOMER_REQUEST": 0.007881,
+          "LOST": 0.002689,
+          "STOLEN": 0.000924,
+          "SUSPICIOUS_ACTIVITY": 0.305145,
+          "UNRECOGNIZED_CHARGE": 0.006524
         },
         "en": {
-          "CUSTOMER_REQUEST": 0.029937,
-          "LOST": 0.01318,
-          "STOLEN": 0.00091,
-          "SUSPICIOUS_ACTIVITY": 0.0201,
-          "UNRECOGNIZED_CHARGE": 0.289093
+          "CUSTOMER_REQUEST": 0.007881,
+          "LOST": 0.002689,
+          "STOLEN": 0.000924,
+          "SUSPICIOUS_ACTIVITY": 0.305145,
+          "UNRECOGNIZED_CHARGE": 0.006524
         },
         "es": {
-          "CUSTOMER_REQUEST": 0.005726,
-          "LOST": 0.004574,
-          "STOLEN": 0.000661,
-          "SUSPICIOUS_ACTIVITY": 0.001761,
-          "UNRECOGNIZED_CHARGE": 0.331689
+          "CUSTOMER_REQUEST": 0.000883,
+          "LOST": 0.000459,
+          "STOLEN": 0.000302,
+          "SUSPICIOUS_ACTIVITY": 0.178279,
+          "UNRECOGNIZED_CHARGE": 0.00566
         },
         "pt": {
-          "CUSTOMER_REQUEST": 0.008131,
-          "LOST": 0.015591,
-          "STOLEN": 0.000796,
-          "SUSPICIOUS_ACTIVITY": 0.002756,
-          "UNRECOGNIZED_CHARGE": 0.028379
+          "CUSTOMER_REQUEST": 0.001723,
+          "LOST": 0.004535,
+          "STOLEN": 0.000609,
+          "SUSPICIOUS_ACTIVITY": 0.412844,
+          "UNRECOGNIZED_CHARGE": 0.001307
         }
       },
       "view": {
@@ -345,22 +345,25 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "es-AR": {
-            "T": 1.075648
+            "T": 0.88783
+          },
+          "es-CO": {
+            "T": 0.950337
           },
           "es-MX": {
-            "T": 0.994325
+            "T": 0.894171
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           },
           "pt-BR": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -387,374 +390,431 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.16,
+            "acted_coverage_test": 0.0533,
             "certified": false,
-            "coverage_test": 0.4533,
-            "coverage_val": 0.5133,
-            "ece_post": 0.112,
-            "ece_pre": 0.2056,
+            "coverage_test": 0.2733,
+            "coverage_val": 0.34,
+            "ece_post": 0.1055,
+            "ece_pre": 0.219,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
               "report_lost_card": [
-                0,
-                0,
-                null
-              ],
-              "report_stolen_card": [
-                3,
-                3,
-                0.4385
-              ],
-              "report_suspicious_activity": [
-                6,
-                7,
-                0.4869
-              ],
-              "report_unrecognized_charge": [
-                5,
-                5,
-                0.5655
-              ],
-              "request_card_block": [
-                0,
-                0,
-                null
-              ],
-              "request_dispute": [
                 1,
                 1,
                 0.2065
               ],
+              "report_stolen_card": [
+                0,
+                0,
+                null
+              ],
+              "report_suspicious_activity": [
+                4,
+                4,
+                0.5101
+              ],
+              "report_unrecognized_charge": [
+                0,
+                0,
+                null
+              ],
+              "request_card_block": [
+                0,
+                0,
+                null
+              ],
+              "request_dispute": [
+                0,
+                0,
+                null
+              ],
               "request_human_agent": [
-                8,
-                8,
-                0.6756
+                3,
+                3,
+                0.4385
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.0,
-              "report_stolen_card": 0.3,
-              "report_suspicious_activity": 0.6,
-              "report_unrecognized_charge": 0.5,
+              "report_lost_card": 0.1,
+              "report_stolen_card": 0.0,
+              "report_suspicious_activity": 0.4,
+              "report_unrecognized_charge": 0.0,
               "request_card_block": 0.0,
-              "request_dispute": 0.1,
-              "request_human_agent": 0.8
+              "request_dispute": 0.0,
+              "request_human_agent": 0.3
             }
           },
           "es": {
-            "acted_coverage_test": 0.462,
+            "acted_coverage_test": 0.4693,
             "certified": false,
-            "coverage_test": 0.9887,
+            "coverage_test": 1.0,
             "coverage_val": 1.0,
-            "ece_post": 0.0313,
-            "ece_pre": 0.0343,
-            "n_test": 1500,
-            "n_val": 1500,
+            "ece_post": 0.0522,
+            "ece_pre": 0.0473,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "report_lost_card": [
-                96,
-                100,
-                0.9016
+                132,
+                138,
+                0.9084
               ],
               "report_stolen_card": [
-                100,
-                108,
-                0.8606
+                149,
+                163,
+                0.861
               ],
               "report_suspicious_activity": [
-                90,
-                99,
-                0.8362
+                146,
+                183,
+                0.7338
               ],
               "report_unrecognized_charge": [
-                96,
-                109,
-                0.8066
+                138,
+                147,
+                0.8877
               ],
               "request_card_block": [
-                91,
-                91,
-                0.9595
+                139,
+                141,
+                0.9498
               ],
               "request_dispute": [
-                84,
-                85,
-                0.9363
+                134,
+                140,
+                0.9097
               ],
               "request_human_agent": [
-                95,
-                101,
-                0.8764
+                141,
+                144,
+                0.9405
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.91,
-              "request_dispute": 0.84,
-              "request_human_agent": 0.95
+              "report_lost_card": 0.88,
+              "report_stolen_card": 0.9933,
+              "report_suspicious_activity": 0.9733,
+              "report_unrecognized_charge": 0.92,
+              "request_card_block": 0.9267,
+              "request_dispute": 0.8933,
+              "request_human_agent": 0.94
             }
           },
           "es-AR": {
-            "acted_coverage_test": 0.4587,
+            "acted_coverage_test": 0.4613,
             "certified": false,
-            "coverage_test": 0.9867,
+            "coverage_test": 0.9947,
             "coverage_val": 1.0,
-            "ece_post": 0.0298,
-            "ece_pre": 0.0365,
+            "ece_post": 0.0604,
+            "ece_pre": 0.0515,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                48,
-                50,
-                0.8654
+                45,
+                46,
+                0.8866
               ],
               "report_stolen_card": [
                 50,
-                55,
-                0.8042
+                54,
+                0.8245
               ],
               "report_suspicious_activity": [
-                45,
-                51,
-                0.7662
+                50,
+                64,
+                0.6657
               ],
               "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
+                44,
+                46,
+                0.8547
               ],
               "request_card_block": [
-                44,
-                44,
-                0.9197
+                46,
+                46,
+                0.9229
               ],
               "request_dispute": [
-                41,
-                42,
-                0.8768
+                44,
+                45,
+                0.8843
               ],
               "request_human_agent": [
+                44,
                 45,
-                48,
-                0.8316
+                0.8843
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
+              "report_lost_card": 0.9,
               "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.88,
-              "request_dispute": 0.82,
-              "request_human_agent": 0.9
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.88,
+              "request_card_block": 0.92,
+              "request_dispute": 0.88,
+              "request_human_agent": 0.88
             }
           },
-          "es-MX": {
-            "acted_coverage_test": 0.464,
+          "es-CO": {
+            "acted_coverage_test": 0.4747,
             "certified": false,
-            "coverage_test": 0.988,
+            "coverage_test": 1.0,
             "coverage_val": 1.0,
-            "ece_post": 0.033,
-            "ece_pre": 0.0326,
+            "ece_post": 0.0444,
+            "ece_pre": 0.0416,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                48,
-                50,
-                0.8654
+                42,
+                46,
+                0.7968
               ],
               "report_stolen_card": [
-                50,
-                53,
-                0.8463
+                49,
+                55,
+                0.7817
               ],
               "report_suspicious_activity": [
-                45,
-                48,
-                0.8316
+                46,
+                58,
+                0.6723
               ],
               "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
+                47,
+                51,
+                0.815
               ],
               "request_card_block": [
                 47,
-                47,
-                0.9244
+                49,
+                0.8629
               ],
               "request_dispute": [
-                43,
-                43,
-                0.918
+                44,
+                46,
+                0.8547
               ],
               "request_human_agent": [
                 50,
-                53,
-                0.8463
+                51,
+                0.897
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
+              "report_lost_card": 0.84,
+              "report_stolen_card": 0.98,
+              "report_suspicious_activity": 0.92,
+              "report_unrecognized_charge": 0.94,
               "request_card_block": 0.94,
-              "request_dispute": 0.86,
+              "request_dispute": 0.88,
               "request_human_agent": 1.0
             }
           },
-          "pt": {
-            "acted_coverage_test": 0.4573,
+          "es-MX": {
+            "acted_coverage_test": 0.4693,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9973,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0567,
+            "ece_pre": 0.0509,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
+                45,
                 46,
-                54,
-                0.734
+                0.8866
               ],
               "report_stolen_card": [
-                47,
-                53,
-                0.7742
+                50,
+                54,
+                0.8245
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                50,
+                61,
+                0.7053
               ],
               "report_unrecognized_charge": [
-                44,
-                52,
-                0.7248
+                47,
+                50,
+                0.8378
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                46,
+                46,
+                0.9229
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
-              ],
-              "request_human_agent": [
                 46,
                 47,
                 0.8889
+              ],
+              "request_human_agent": [
+                47,
+                48,
+                0.891
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.9,
+              "report_stolen_card": 1.0,
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.94,
+              "request_card_block": 0.92,
+              "request_dispute": 0.92,
+              "request_human_agent": 0.94
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.464,
+            "certified": false,
+            "coverage_test": 0.9853,
+            "coverage_val": 1.0,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
+            "n_test": 750,
+            "n_val": 750,
+            "precision_test": {
+              "report_lost_card": [
+                48,
+                51,
+                0.8408
+              ],
+              "report_stolen_card": [
+                47,
+                54,
+                0.7558
+              ],
+              "report_suspicious_activity": [
+                48,
+                59,
+                0.6962
+              ],
+              "report_unrecognized_charge": [
+                42,
+                44,
+                0.8487
+              ],
+              "request_card_block": [
+                47,
+                49,
+                0.8629
+              ],
+              "request_dispute": [
+                40,
+                44,
+                0.7884
+              ],
+              "request_human_agent": [
+                47,
+                47,
+                0.9244
+              ]
+            },
+            "recall_test": {
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           },
           "pt-BR": {
-            "acted_coverage_test": 0.4573,
+            "acted_coverage_test": 0.464,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9853,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                46,
-                54,
-                0.734
+                48,
+                51,
+                0.8408
               ],
               "report_stolen_card": [
                 47,
-                53,
-                0.7742
+                54,
+                0.7558
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                48,
+                59,
+                0.6962
               ],
               "report_unrecognized_charge": [
+                42,
                 44,
-                52,
-                0.7248
+                0.8487
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                47,
+                49,
+                0.8629
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
+                40,
+                44,
+                0.7884
               ],
               "request_human_agent": [
-                46,
                 47,
-                0.8889
+                47,
+                0.9244
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           }
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
-        "en": 0.841088,
-        "es": 0.496802,
-        "es-AR": 0.502128,
-        "es-MX": 0.498938,
-        "pt": 0.449888,
-        "pt-BR": 0.449888
+        "en": 0.904958,
+        "es": 0.339856,
+        "es-AR": 0.471282,
+        "es-CO": 0.331145,
+        "es-MX": 0.487,
+        "pt": 0.530052,
+        "pt-BR": 0.530052
       },
       "view": {
         "kind": "labels",
@@ -814,7 +874,7 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
@@ -911,8 +971,8 @@
           }
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
@@ -949,13 +1009,13 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -979,195 +1039,195 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.5533,
+            "acted_coverage_test": 0.6267,
             "certified": false,
-            "coverage_test": 0.5533,
-            "coverage_val": 0.58,
-            "ece_post": 0.0401,
-            "ece_pre": 0.0577,
+            "coverage_test": 0.6267,
+            "coverage_val": 0.5267,
+            "ece_post": 0.0623,
+            "ece_pre": 0.0786,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
               "DISPUTE": [
-                7,
-                12,
-                0.3195
+                6,
+                10,
+                0.3127
               ],
               "FRAUD": [
-                19,
-                46,
-                0.2829
+                20,
+                37,
+                0.3838
               ],
               "HUMAN_REQUEST": [
                 10,
-                16,
-                0.3864
+                33,
+                0.1738
               ],
               "UNRECOGNIZED": [
                 6,
-                9,
-                0.3542
+                14,
+                0.2138
               ]
             },
             "recall_test": {
-              "DISPUTE": 0.7,
-              "FRAUD": 0.95,
+              "DISPUTE": 0.6,
+              "FRAUD": 1.0,
               "HUMAN_REQUEST": 1.0,
               "UNRECOGNIZED": 0.6
             }
           },
           "es": {
-            "acted_coverage_test": 0.4393,
+            "acted_coverage_test": 0.4147,
             "certified": false,
-            "coverage_test": 0.4393,
-            "coverage_val": 0.364,
-            "ece_post": 0.0167,
-            "ece_pre": 0.0164,
-            "n_test": 1500,
-            "n_val": 1500,
+            "coverage_test": 0.4147,
+            "coverage_val": 0.3671,
+            "ece_post": 0.0255,
+            "ece_pre": 0.0255,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "DISPUTE": [
-                87,
-                115,
-                0.6706
+                138,
+                185,
+                0.6787
               ],
               "FRAUD": [
-                199,
-                264,
-                0.6984
+                298,
+                382,
+                0.7359
               ],
               "HUMAN_REQUEST": [
-                98,
-                169,
-                0.5045
+                144,
+                195,
+                0.6726
               ],
               "UNRECOGNIZED": [
-                96,
-                111,
-                0.789
+                141,
+                171,
+                0.7606
               ]
             },
             "recall_test": {
-              "DISPUTE": 0.87,
-              "FRAUD": 0.995,
-              "HUMAN_REQUEST": 0.98,
-              "UNRECOGNIZED": 0.96
+              "DISPUTE": 0.92,
+              "FRAUD": 0.9933,
+              "HUMAN_REQUEST": 0.96,
+              "UNRECOGNIZED": 0.94
             }
           },
           "pt": {
-            "acted_coverage_test": 0.38,
+            "acted_coverage_test": 0.4213,
             "certified": false,
-            "coverage_test": 0.38,
-            "coverage_val": 0.3627,
-            "ece_post": 0.0237,
-            "ece_pre": 0.0255,
+            "coverage_test": 0.4213,
+            "coverage_val": 0.3667,
+            "ece_post": 0.0231,
+            "ece_pre": 0.0234,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "DISPUTE": [
-                45,
-                52,
-                0.7473
+                44,
+                67,
+                0.5373
               ],
               "FRAUD": [
-                95,
-                122,
-                0.6972
+                98,
+                125,
+                0.704
               ],
               "HUMAN_REQUEST": [
-                47,
-                49,
-                0.8629
+                48,
+                62,
+                0.6559
               ],
               "UNRECOGNIZED": [
-                46,
+                42,
                 62,
-                0.6212
+                0.5537
               ]
             },
             "recall_test": {
-              "DISPUTE": 0.9,
-              "FRAUD": 0.95,
-              "HUMAN_REQUEST": 0.94,
-              "UNRECOGNIZED": 0.92
+              "DISPUTE": 0.88,
+              "FRAUD": 0.98,
+              "HUMAN_REQUEST": 0.96,
+              "UNRECOGNIZED": 0.84
             }
           }
         },
         "pooled_test": {
           "DISPUTE": [
-            7,
-            12,
-            0.3195,
+            6,
+            10,
+            0.3127,
             "pooled (en)"
           ],
           "FRAUD": [
-            19,
-            46,
-            0.2829,
+            20,
+            37,
+            0.3838,
             "pooled (en)"
           ],
           "HUMAN_REQUEST": [
             10,
-            16,
-            0.3864,
+            33,
+            0.1738,
             "pooled (en)"
           ],
           "UNRECOGNIZED": [
             6,
-            9,
-            0.3542,
+            14,
+            0.2138,
             "pooled (en)"
           ]
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
         "*": {
-          "DISPUTE": 0.023572,
-          "FRAUD": 0.015406,
-          "HUMAN_REQUEST": 0.058411,
-          "UNRECOGNIZED": 0.246887
+          "DISPUTE": 0.001013,
+          "FRAUD": 0.153112,
+          "HUMAN_REQUEST": 0.006383,
+          "UNRECOGNIZED": 0.001955
         },
         "en": {
-          "DISPUTE": 0.023572,
-          "FRAUD": 0.015406,
-          "HUMAN_REQUEST": 0.058411,
-          "UNRECOGNIZED": 0.246887
+          "DISPUTE": 0.001013,
+          "FRAUD": 0.153112,
+          "HUMAN_REQUEST": 0.006383,
+          "UNRECOGNIZED": 0.001955
         },
         "es": {
-          "DISPUTE": 0.001697,
-          "FRAUD": 0.004285,
-          "HUMAN_REQUEST": 0.002508,
-          "UNRECOGNIZED": 0.289093
+          "DISPUTE": 0.000841,
+          "FRAUD": 0.069169,
+          "HUMAN_REQUEST": 0.000222,
+          "UNRECOGNIZED": 0.001256
         },
         "pt": {
-          "DISPUTE": 0.051414,
-          "FRAUD": 0.003069,
-          "HUMAN_REQUEST": 0.15497,
-          "UNRECOGNIZED": 0.028379
+          "DISPUTE": 0.00086,
+          "FRAUD": 0.076438,
+          "HUMAN_REQUEST": 0.001195,
+          "UNRECOGNIZED": 0.001054
         }
       },
       "view": {
@@ -1195,22 +1255,25 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "es-AR": {
-            "T": 1.075648
+            "T": 0.88783
+          },
+          "es-CO": {
+            "T": 0.950337
           },
           "es-MX": {
-            "T": 0.994325
+            "T": 0.894171
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           },
           "pt-BR": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -1245,30 +1308,30 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.24,
+            "acted_coverage_test": 0.0,
             "certified": false,
-            "coverage_test": 0.24,
-            "coverage_val": 0.2267,
-            "ece_post": 0.112,
-            "ece_pre": 0.2056,
+            "coverage_test": 0.0,
+            "coverage_val": 0.0067,
+            "ece_post": 0.1055,
+            "ece_pre": 0.219,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
@@ -1283,19 +1346,19 @@
                 null
               ],
               "confirm": [
-                4,
-                4,
-                0.5101
+                0,
+                0,
+                null
               ],
               "deny": [
-                5,
-                5,
-                0.5655
+                0,
+                0,
+                null
               ],
               "greeting": [
-                3,
-                3,
-                0.4385
+                0,
+                0,
+                null
               ],
               "out_of_scope": [
                 0,
@@ -1303,14 +1366,14 @@
                 null
               ],
               "provide_identity_data": [
-                7,
-                7,
-                0.6457
+                0,
+                0,
+                null
               ],
               "provide_otp_code": [
-                10,
-                10,
-                0.7225
+                0,
+                0,
+                null
               ],
               "report_lost_card": [
                 0,
@@ -1318,9 +1381,9 @@
                 null
               ],
               "report_stolen_card": [
-                1,
-                1,
-                0.2065
+                0,
+                0,
+                null
               ],
               "report_suspicious_activity": [
                 0,
@@ -1343,380 +1406,380 @@
                 null
               ],
               "request_human_agent": [
-                6,
-                6,
-                0.6097
+                0,
+                0,
+                null
               ]
             },
             "recall_test": {
               "check_balance": 0.0,
               "check_recent_transactions": 0.0,
-              "confirm": 0.4,
-              "deny": 0.5,
-              "greeting": 0.3,
+              "confirm": 0.0,
+              "deny": 0.0,
+              "greeting": 0.0,
               "out_of_scope": 0.0,
-              "provide_identity_data": 0.7,
-              "provide_otp_code": 1.0,
+              "provide_identity_data": 0.0,
+              "provide_otp_code": 0.0,
               "report_lost_card": 0.0,
-              "report_stolen_card": 0.1,
+              "report_stolen_card": 0.0,
               "report_suspicious_activity": 0.0,
               "report_unrecognized_charge": 0.0,
               "request_card_block": 0.0,
               "request_dispute": 0.0,
-              "request_human_agent": 0.6
+              "request_human_agent": 0.0
             }
           },
           "es": {
-            "acted_coverage_test": 0.9887,
+            "acted_coverage_test": 1.0,
             "certified": false,
-            "coverage_test": 0.9887,
+            "coverage_test": 1.0,
             "coverage_val": 1.0,
-            "ece_post": 0.0313,
-            "ece_pre": 0.0343,
-            "n_test": 1500,
-            "n_val": 1500,
+            "ece_post": 0.0522,
+            "ece_pre": 0.0473,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "check_balance": [
-                96,
-                101,
-                0.8893
+                131,
+                131,
+                0.9715
               ],
               "check_recent_transactions": [
-                84,
-                88,
-                0.8889
+                122,
+                124,
+                0.9431
               ],
               "confirm": [
-                91,
-                95,
-                0.8967
+                141,
+                164,
+                0.7983
               ],
               "deny": [
-                91,
-                95,
-                0.8967
+                139,
+                146,
+                0.9043
               ],
               "greeting": [
-                88,
-                92,
-                0.8935
+                140,
+                159,
+                0.8209
               ],
               "out_of_scope": [
-                88,
-                119,
-                0.654
+                123,
+                167,
+                0.6649
               ],
               "provide_identity_data": [
-                100,
-                100,
-                0.963
+                148,
+                151,
+                0.9432
               ],
               "provide_otp_code": [
-                100,
-                100,
-                0.963
+                150,
+                152,
+                0.9533
               ],
               "report_lost_card": [
-                96,
-                100,
-                0.9016
+                132,
+                138,
+                0.9084
               ],
               "report_stolen_card": [
-                100,
-                108,
-                0.8606
+                149,
+                163,
+                0.861
               ],
               "report_suspicious_activity": [
-                90,
-                99,
-                0.8362
+                146,
+                183,
+                0.7338
               ],
               "report_unrecognized_charge": [
-                96,
-                109,
-                0.8066
+                138,
+                147,
+                0.8877
               ],
               "request_card_block": [
-                91,
-                91,
-                0.9595
+                139,
+                141,
+                0.9498
               ],
               "request_dispute": [
-                84,
-                85,
-                0.9363
+                134,
+                140,
+                0.9097
               ],
               "request_human_agent": [
-                95,
-                101,
-                0.8764
+                141,
+                144,
+                0.9405
               ]
             },
             "recall_test": {
-              "check_balance": 0.96,
-              "check_recent_transactions": 0.84,
-              "confirm": 0.91,
-              "deny": 0.91,
-              "greeting": 0.88,
-              "out_of_scope": 0.88,
-              "provide_identity_data": 1.0,
+              "check_balance": 0.8733,
+              "check_recent_transactions": 0.8133,
+              "confirm": 0.94,
+              "deny": 0.9267,
+              "greeting": 0.9333,
+              "out_of_scope": 0.82,
+              "provide_identity_data": 0.9867,
               "provide_otp_code": 1.0,
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.91,
-              "request_dispute": 0.84,
-              "request_human_agent": 0.95
+              "report_lost_card": 0.88,
+              "report_stolen_card": 0.9933,
+              "report_suspicious_activity": 0.9733,
+              "report_unrecognized_charge": 0.92,
+              "request_card_block": 0.9267,
+              "request_dispute": 0.8933,
+              "request_human_agent": 0.94
             }
           },
           "es-AR": {
-            "acted_coverage_test": 0.9867,
+            "acted_coverage_test": 0.9947,
             "certified": false,
-            "coverage_test": 0.9867,
+            "coverage_test": 0.9947,
             "coverage_val": 1.0,
-            "ece_post": 0.0298,
-            "ece_pre": 0.0365,
+            "ece_post": 0.0604,
+            "ece_pre": 0.0515,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "check_balance": [
-                48,
-                49,
-                0.8931
-              ],
-              "check_recent_transactions": [
-                44,
-                46,
-                0.8547
-              ],
-              "confirm": [
-                45,
-                46,
-                0.8866
-              ],
-              "deny": [
-                46,
-                48,
-                0.8602
-              ],
-              "greeting": [
-                45,
-                47,
-                0.8575
-              ],
-              "out_of_scope": [
-                44,
-                60,
-                0.6099
-              ],
-              "provide_identity_data": [
-                50,
-                50,
-                0.9287
-              ],
-              "provide_otp_code": [
-                50,
-                50,
-                0.9287
-              ],
-              "report_lost_card": [
-                48,
-                50,
-                0.8654
-              ],
-              "report_stolen_card": [
-                50,
-                55,
-                0.8042
-              ],
-              "report_suspicious_activity": [
-                45,
-                51,
-                0.7662
-              ],
-              "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
-              ],
-              "request_card_block": [
-                44,
-                44,
-                0.9197
-              ],
-              "request_dispute": [
-                41,
-                42,
-                0.8768
-              ],
-              "request_human_agent": [
-                45,
-                48,
-                0.8316
-              ]
-            },
-            "recall_test": {
-              "check_balance": 0.96,
-              "check_recent_transactions": 0.88,
-              "confirm": 0.9,
-              "deny": 0.92,
-              "greeting": 0.9,
-              "out_of_scope": 0.88,
-              "provide_identity_data": 1.0,
-              "provide_otp_code": 1.0,
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.88,
-              "request_dispute": 0.82,
-              "request_human_agent": 0.9
-            }
-          },
-          "es-MX": {
-            "acted_coverage_test": 0.988,
-            "certified": false,
-            "coverage_test": 0.988,
-            "coverage_val": 1.0,
-            "ece_post": 0.033,
-            "ece_pre": 0.0326,
-            "n_test": 750,
-            "n_val": 750,
-            "precision_test": {
-              "check_balance": [
-                48,
-                52,
-                0.8183
-              ],
-              "check_recent_transactions": [
-                40,
-                42,
-                0.8421
-              ],
-              "confirm": [
-                46,
-                48,
-                0.8602
-              ],
-              "deny": [
-                45,
-                47,
-                0.8575
-              ],
-              "greeting": [
-                43,
-                45,
-                0.8517
-              ],
-              "out_of_scope": [
-                44,
-                59,
-                0.622
-              ],
-              "provide_identity_data": [
-                50,
-                50,
-                0.9287
-              ],
-              "provide_otp_code": [
-                50,
-                50,
-                0.9287
-              ],
-              "report_lost_card": [
-                48,
-                50,
-                0.8654
-              ],
-              "report_stolen_card": [
-                50,
-                53,
-                0.8463
-              ],
-              "report_suspicious_activity": [
-                45,
-                48,
-                0.8316
-              ],
-              "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
-              ],
-              "request_card_block": [
-                47,
-                47,
-                0.9244
-              ],
-              "request_dispute": [
                 43,
                 43,
                 0.918
               ],
-              "request_human_agent": [
+              "check_recent_transactions": [
+                44,
+                44,
+                0.9197
+              ],
+              "confirm": [
+                45,
+                55,
+                0.6967
+              ],
+              "deny": [
+                46,
+                49,
+                0.8348
+              ],
+              "greeting": [
+                45,
+                51,
+                0.7662
+              ],
+              "out_of_scope": [
+                43,
+                56,
+                0.6423
+              ],
+              "provide_identity_data": [
                 50,
-                53,
-                0.8463
+                52,
+                0.8702
+              ],
+              "provide_otp_code": [
+                50,
+                50,
+                0.9287
+              ],
+              "report_lost_card": [
+                45,
+                46,
+                0.8866
+              ],
+              "report_stolen_card": [
+                50,
+                54,
+                0.8245
+              ],
+              "report_suspicious_activity": [
+                50,
+                64,
+                0.6657
+              ],
+              "report_unrecognized_charge": [
+                44,
+                46,
+                0.8547
+              ],
+              "request_card_block": [
+                46,
+                46,
+                0.9229
+              ],
+              "request_dispute": [
+                44,
+                45,
+                0.8843
+              ],
+              "request_human_agent": [
+                44,
+                45,
+                0.8843
               ]
             },
             "recall_test": {
-              "check_balance": 0.96,
-              "check_recent_transactions": 0.8,
-              "confirm": 0.92,
-              "deny": 0.9,
-              "greeting": 0.86,
-              "out_of_scope": 0.88,
+              "check_balance": 0.86,
+              "check_recent_transactions": 0.88,
+              "confirm": 0.9,
+              "deny": 0.92,
+              "greeting": 0.9,
+              "out_of_scope": 0.86,
               "provide_identity_data": 1.0,
               "provide_otp_code": 1.0,
-              "report_lost_card": 0.96,
+              "report_lost_card": 0.9,
               "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.88,
+              "request_card_block": 0.92,
+              "request_dispute": 0.88,
+              "request_human_agent": 0.88
+            }
+          },
+          "es-CO": {
+            "acted_coverage_test": 1.0,
+            "certified": false,
+            "coverage_test": 1.0,
+            "coverage_val": 1.0,
+            "ece_post": 0.0444,
+            "ece_pre": 0.0416,
+            "n_test": 750,
+            "n_val": 750,
+            "precision_test": {
+              "check_balance": [
+                45,
+                45,
+                0.9213
+              ],
+              "check_recent_transactions": [
+                41,
+                42,
+                0.8768
+              ],
+              "confirm": [
+                48,
+                51,
+                0.8408
+              ],
+              "deny": [
+                48,
+                48,
+                0.9259
+              ],
+              "greeting": [
+                50,
+                56,
+                0.7853
+              ],
+              "out_of_scope": [
+                39,
+                52,
+                0.6179
+              ],
+              "provide_identity_data": [
+                48,
+                48,
+                0.9259
+              ],
+              "provide_otp_code": [
+                50,
+                52,
+                0.8702
+              ],
+              "report_lost_card": [
+                42,
+                46,
+                0.7968
+              ],
+              "report_stolen_card": [
+                49,
+                55,
+                0.7817
+              ],
+              "report_suspicious_activity": [
+                46,
+                58,
+                0.6723
+              ],
+              "report_unrecognized_charge": [
+                47,
+                51,
+                0.815
+              ],
+              "request_card_block": [
+                47,
+                49,
+                0.8629
+              ],
+              "request_dispute": [
+                44,
+                46,
+                0.8547
+              ],
+              "request_human_agent": [
+                50,
+                51,
+                0.897
+              ]
+            },
+            "recall_test": {
+              "check_balance": 0.9,
+              "check_recent_transactions": 0.82,
+              "confirm": 0.96,
+              "deny": 0.96,
+              "greeting": 1.0,
+              "out_of_scope": 0.78,
+              "provide_identity_data": 0.96,
+              "provide_otp_code": 1.0,
+              "report_lost_card": 0.84,
+              "report_stolen_card": 0.98,
+              "report_suspicious_activity": 0.92,
+              "report_unrecognized_charge": 0.94,
               "request_card_block": 0.94,
-              "request_dispute": 0.86,
+              "request_dispute": 0.88,
               "request_human_agent": 1.0
             }
           },
-          "pt": {
-            "acted_coverage_test": 0.992,
+          "es-MX": {
+            "acted_coverage_test": 0.9973,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9973,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0567,
+            "ece_pre": 0.0509,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "check_balance": [
-                46,
-                49,
-                0.8348
+                43,
+                43,
+                0.918
               ],
               "check_recent_transactions": [
-                47,
-                48,
-                0.891
+                37,
+                38,
+                0.8651
               ],
               "confirm": [
-                44,
-                54,
-                0.6916
+                48,
+                57,
+                0.7264
               ],
               "deny": [
-                44,
-                49,
-                0.7824
+                45,
+                48,
+                0.8316
               ],
               "greeting": [
-                40,
-                43,
-                0.8139
+                45,
+                51,
+                0.7662
               ],
               "out_of_scope": [
                 41,
-                57,
-                0.5917
+                58,
+                0.5799
               ],
               "provide_identity_data": [
                 50,
@@ -1729,103 +1792,207 @@
                 0.9287
               ],
               "report_lost_card": [
+                45,
                 46,
-                54,
-                0.734
+                0.8866
               ],
               "report_stolen_card": [
-                47,
-                53,
-                0.7742
+                50,
+                54,
+                0.8245
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                50,
+                61,
+                0.7053
               ],
               "report_unrecognized_charge": [
-                44,
-                52,
-                0.7248
+                47,
+                50,
+                0.8378
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                46,
+                46,
+                0.9229
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
-              ],
-              "request_human_agent": [
                 46,
                 47,
                 0.8889
+              ],
+              "request_human_agent": [
+                47,
+                48,
+                0.891
               ]
             },
             "recall_test": {
-              "check_balance": 0.92,
-              "check_recent_transactions": 0.94,
-              "confirm": 0.88,
-              "deny": 0.88,
-              "greeting": 0.8,
+              "check_balance": 0.86,
+              "check_recent_transactions": 0.74,
+              "confirm": 0.96,
+              "deny": 0.9,
+              "greeting": 0.9,
               "out_of_scope": 0.82,
               "provide_identity_data": 1.0,
               "provide_otp_code": 1.0,
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.9,
+              "report_stolen_card": 1.0,
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.94,
+              "request_card_block": 0.92,
+              "request_dispute": 0.92,
+              "request_human_agent": 0.94
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.9853,
+            "certified": false,
+            "coverage_test": 0.9853,
+            "coverage_val": 1.0,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
+            "n_test": 750,
+            "n_val": 750,
+            "precision_test": {
+              "check_balance": [
+                42,
+                44,
+                0.8487
+              ],
+              "check_recent_transactions": [
+                45,
+                46,
+                0.8866
+              ],
+              "confirm": [
+                47,
+                61,
+                0.6509
+              ],
+              "deny": [
+                43,
+                50,
+                0.7381
+              ],
+              "greeting": [
+                44,
+                51,
+                0.7428
+              ],
+              "out_of_scope": [
+                31,
+                39,
+                0.6447
+              ],
+              "provide_identity_data": [
+                50,
+                50,
+                0.9287
+              ],
+              "provide_otp_code": [
+                50,
+                50,
+                0.9287
+              ],
+              "report_lost_card": [
+                48,
+                51,
+                0.8408
+              ],
+              "report_stolen_card": [
+                47,
+                54,
+                0.7558
+              ],
+              "report_suspicious_activity": [
+                48,
+                59,
+                0.6962
+              ],
+              "report_unrecognized_charge": [
+                42,
+                44,
+                0.8487
+              ],
+              "request_card_block": [
+                47,
+                49,
+                0.8629
+              ],
+              "request_dispute": [
+                40,
+                44,
+                0.7884
+              ],
+              "request_human_agent": [
+                47,
+                47,
+                0.9244
+              ]
+            },
+            "recall_test": {
+              "check_balance": 0.84,
+              "check_recent_transactions": 0.9,
+              "confirm": 0.94,
+              "deny": 0.86,
+              "greeting": 0.88,
+              "out_of_scope": 0.62,
+              "provide_identity_data": 1.0,
+              "provide_otp_code": 1.0,
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           },
           "pt-BR": {
-            "acted_coverage_test": 0.992,
+            "acted_coverage_test": 0.9853,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9853,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "check_balance": [
-                46,
-                49,
-                0.8348
+                42,
+                44,
+                0.8487
               ],
               "check_recent_transactions": [
-                47,
-                48,
-                0.891
+                45,
+                46,
+                0.8866
               ],
               "confirm": [
-                44,
-                54,
-                0.6916
+                47,
+                61,
+                0.6509
               ],
               "deny": [
-                44,
-                49,
-                0.7824
+                43,
+                50,
+                0.7381
               ],
               "greeting": [
-                40,
-                43,
-                0.8139
+                44,
+                51,
+                0.7428
               ],
               "out_of_scope": [
-                41,
-                57,
-                0.5917
+                31,
+                39,
+                0.6447
               ],
               "provide_identity_data": [
                 50,
-                51,
-                0.897
+                50,
+                0.9287
               ],
               "provide_otp_code": [
                 50,
@@ -1833,74 +2000,75 @@
                 0.9287
               ],
               "report_lost_card": [
-                46,
-                54,
-                0.734
+                48,
+                51,
+                0.8408
               ],
               "report_stolen_card": [
                 47,
-                53,
-                0.7742
+                54,
+                0.7558
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                48,
+                59,
+                0.6962
               ],
               "report_unrecognized_charge": [
+                42,
                 44,
-                52,
-                0.7248
+                0.8487
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                47,
+                49,
+                0.8629
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
+                40,
+                44,
+                0.7884
               ],
               "request_human_agent": [
-                46,
                 47,
-                0.8889
+                47,
+                0.9244
               ]
             },
             "recall_test": {
-              "check_balance": 0.92,
-              "check_recent_transactions": 0.94,
-              "confirm": 0.88,
-              "deny": 0.88,
-              "greeting": 0.8,
-              "out_of_scope": 0.82,
+              "check_balance": 0.84,
+              "check_recent_transactions": 0.9,
+              "confirm": 0.94,
+              "deny": 0.86,
+              "greeting": 0.88,
+              "out_of_scope": 0.62,
               "provide_identity_data": 1.0,
               "provide_otp_code": 1.0,
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           }
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
-        "en": 0.930547,
-        "es": 0.496802,
-        "es-AR": 0.502128,
-        "es-MX": 0.498938,
-        "pt": 0.449888,
-        "pt-BR": 0.449888
+        "en": 0.948382,
+        "es": 0.339856,
+        "es-AR": 0.471282,
+        "es-CO": 0.331145,
+        "es-MX": 0.487,
+        "pt": 0.530052,
+        "pt-BR": 0.530052
       },
       "view": {
         "kind": "labels",
@@ -1929,22 +2097,25 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "es-AR": {
-            "T": 1.075648
+            "T": 0.88783
+          },
+          "es-CO": {
+            "T": 0.950337
           },
           "es-MX": {
-            "T": 0.994325
+            "T": 0.894171
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           },
           "pt-BR": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -1966,194 +2137,221 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.0867,
+            "acted_coverage_test": 0.08,
             "certified": false,
-            "coverage_test": 0.7867,
-            "coverage_val": 0.84,
-            "ece_post": 0.0645,
-            "ece_pre": 0.1209,
+            "coverage_test": 0.74,
+            "coverage_val": 0.7733,
+            "ece_post": 0.0292,
+            "ece_pre": 0.1348,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
               "greeting": [
-                4,
-                4,
-                0.5101
+                6,
+                7,
+                0.4869
               ],
               "out_of_scope": [
-                4,
-                9,
-                0.1888
+                3,
+                5,
+                0.2307
               ]
             },
             "recall_test": {
-              "greeting": 0.4,
-              "out_of_scope": 0.4
+              "greeting": 0.6,
+              "out_of_scope": 0.3
             }
           },
           "es": {
-            "acted_coverage_test": 0.1407,
+            "acted_coverage_test": 0.1431,
             "certified": false,
-            "coverage_test": 0.998,
+            "coverage_test": 0.9991,
             "coverage_val": 1.0,
-            "ece_post": 0.0216,
-            "ece_pre": 0.0218,
-            "n_test": 1500,
-            "n_val": 1500,
+            "ece_post": 0.0266,
+            "ece_pre": 0.0232,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "greeting": [
-                88,
-                92,
-                0.8935
+                140,
+                157,
+                0.8334
               ],
               "out_of_scope": [
-                88,
-                119,
-                0.654
+                123,
+                165,
+                0.6739
               ]
             },
             "recall_test": {
-              "greeting": 0.88,
-              "out_of_scope": 0.88
+              "greeting": 0.9333,
+              "out_of_scope": 0.82
             }
           },
           "es-AR": {
             "acted_coverage_test": 0.1427,
             "certified": false,
-            "coverage_test": 0.9987,
-            "coverage_val": 0.9987,
-            "ece_post": 0.0199,
-            "ece_pre": 0.0225,
+            "coverage_test": 0.9973,
+            "coverage_val": 1.0,
+            "ece_post": 0.0294,
+            "ece_pre": 0.0271,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "greeting": [
                 45,
-                47,
-                0.8575
+                51,
+                0.7662
               ],
               "out_of_scope": [
-                44,
-                60,
-                0.6099
+                43,
+                56,
+                0.6423
               ]
             },
             "recall_test": {
               "greeting": 0.9,
-              "out_of_scope": 0.88
+              "out_of_scope": 0.86
+            }
+          },
+          "es-CO": {
+            "acted_coverage_test": 0.1413,
+            "certified": false,
+            "coverage_test": 0.9987,
+            "coverage_val": 1.0,
+            "ece_post": 0.0242,
+            "ece_pre": 0.023,
+            "n_test": 750,
+            "n_val": 750,
+            "precision_test": {
+              "greeting": [
+                50,
+                55,
+                0.8042
+              ],
+              "out_of_scope": [
+                39,
+                51,
+                0.6324
+              ]
+            },
+            "recall_test": {
+              "greeting": 1.0,
+              "out_of_scope": 0.78
             }
           },
           "es-MX": {
-            "acted_coverage_test": 0.1387,
+            "acted_coverage_test": 0.144,
             "certified": false,
-            "coverage_test": 0.9973,
+            "coverage_test": 0.9987,
             "coverage_val": 1.0,
-            "ece_post": 0.0219,
-            "ece_pre": 0.0218,
+            "ece_post": 0.0328,
+            "ece_pre": 0.0282,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "greeting": [
-                43,
                 45,
-                0.8517
+                51,
+                0.7662
               ],
               "out_of_scope": [
-                44,
-                59,
-                0.622
+                41,
+                57,
+                0.5917
               ]
             },
             "recall_test": {
-              "greeting": 0.86,
-              "out_of_scope": 0.88
+              "greeting": 0.9,
+              "out_of_scope": 0.82
             }
           },
           "pt": {
-            "acted_coverage_test": 0.1147,
+            "acted_coverage_test": 0.1187,
             "certified": false,
-            "coverage_test": 0.964,
-            "coverage_val": 0.9947,
-            "ece_post": 0.0274,
-            "ece_pre": 0.0282,
+            "coverage_test": 0.992,
+            "coverage_val": 1.0,
+            "ece_post": 0.0283,
+            "ece_pre": 0.0285,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "greeting": [
-                35,
-                37,
-                0.823
+                44,
+                51,
+                0.7428
               ],
               "out_of_scope": [
+                30,
                 38,
-                49,
-                0.6412
+                0.6365
               ]
             },
             "recall_test": {
-              "greeting": 0.7,
-              "out_of_scope": 0.76
+              "greeting": 0.88,
+              "out_of_scope": 0.6
             }
           },
           "pt-BR": {
-            "acted_coverage_test": 0.1147,
+            "acted_coverage_test": 0.1187,
             "certified": false,
-            "coverage_test": 0.964,
-            "coverage_val": 0.9947,
-            "ece_post": 0.0274,
-            "ece_pre": 0.0282,
+            "coverage_test": 0.992,
+            "coverage_val": 1.0,
+            "ece_post": 0.0283,
+            "ece_pre": 0.0285,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "greeting": [
-                35,
-                37,
-                0.823
+                44,
+                51,
+                0.7428
               ],
               "out_of_scope": [
+                30,
                 38,
-                49,
-                0.6412
+                0.6365
               ]
             },
             "recall_test": {
-              "greeting": 0.7,
-              "out_of_scope": 0.76
+              "greeting": 0.88,
+              "out_of_scope": 0.6
             }
           }
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
-        "en": 0.78318,
-        "es": 0.502214,
-        "es-AR": 0.531993,
-        "es-MX": 0.509892,
-        "pt": 0.721955,
-        "pt-BR": 0.721955
+        "en": 0.779321,
+        "es": 0.50215,
+        "es-AR": 0.538168,
+        "es-CO": 0.502779,
+        "es-MX": 0.512674,
+        "pt": 0.562066,
+        "pt-BR": 0.562066
       },
       "view": {
         "groups": {
@@ -2188,22 +2386,25 @@
       "calibrator": {
         "by_lang": {
           "en": {
-            "T": 1.525664
+            "T": 1.666988
           },
           "es": {
-            "T": 1.039443
+            "T": 0.91377
           },
           "es-AR": {
-            "T": 1.075648
+            "T": 0.88783
+          },
+          "es-CO": {
+            "T": 0.950337
           },
           "es-MX": {
-            "T": 0.994325
+            "T": 0.894171
           },
           "pt": {
-            "T": 1.03712
+            "T": 1.010123
           },
           "pt-BR": {
-            "T": 1.03712
+            "T": 1.010123
           }
         },
         "kind": "temperature"
@@ -2230,374 +2431,431 @@
         "certified": false,
         "config": {
           "path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-          "sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046"
+          "sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901"
         },
         "data": {
           "test": {
             "path": "data/staging/decision_pooled/decision.pooled.test.jsonl",
-            "sha256": "e955802c1bd39bdbe7f6cd4e0b2fd7591f1c1079589595b637c885be3b8e32b6"
+            "sha256": "ede4a2ea431afdd95b28a94c4fddf0d670c7b3258f63c523cc9ed7015ca80c3c"
           },
           "train": {
             "path": "data/staging/decision_pooled/decision.pooled.train.jsonl",
-            "sha256": "7d137d689ea40f5001a6892cf7b0ca6a1e3a367cccabd785620b49294244da49"
+            "sha256": "7bf0412b479c0c2b83ff306daeb078a72a74c769a7c56d5388ec4d71ef63567f"
           },
           "validation": {
             "path": "data/staging/decision_pooled/decision.pooled.validation.jsonl",
-            "sha256": "28fb448a4a54643cc65f323d267d090191ebd3f016750f94840664e26132a07e"
+            "sha256": "c08804e29dee46fc052c64baf031a759961c9abb7342d2088f6cf35200eb28a7"
           }
         },
         "per_lang": {
           "en": {
-            "acted_coverage_test": 0.16,
+            "acted_coverage_test": 0.0533,
             "certified": false,
-            "coverage_test": 0.4533,
-            "coverage_val": 0.5133,
-            "ece_post": 0.112,
-            "ece_pre": 0.2056,
+            "coverage_test": 0.2733,
+            "coverage_val": 0.34,
+            "ece_post": 0.1055,
+            "ece_pre": 0.219,
             "n_test": 150,
             "n_val": 150,
             "precision_test": {
               "report_lost_card": [
-                0,
-                0,
-                null
-              ],
-              "report_stolen_card": [
-                3,
-                3,
-                0.4385
-              ],
-              "report_suspicious_activity": [
-                6,
-                7,
-                0.4869
-              ],
-              "report_unrecognized_charge": [
-                5,
-                5,
-                0.5655
-              ],
-              "request_card_block": [
-                0,
-                0,
-                null
-              ],
-              "request_dispute": [
                 1,
                 1,
                 0.2065
               ],
+              "report_stolen_card": [
+                0,
+                0,
+                null
+              ],
+              "report_suspicious_activity": [
+                4,
+                4,
+                0.5101
+              ],
+              "report_unrecognized_charge": [
+                0,
+                0,
+                null
+              ],
+              "request_card_block": [
+                0,
+                0,
+                null
+              ],
+              "request_dispute": [
+                0,
+                0,
+                null
+              ],
               "request_human_agent": [
-                8,
-                8,
-                0.6756
+                3,
+                3,
+                0.4385
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.0,
-              "report_stolen_card": 0.3,
-              "report_suspicious_activity": 0.6,
-              "report_unrecognized_charge": 0.5,
+              "report_lost_card": 0.1,
+              "report_stolen_card": 0.0,
+              "report_suspicious_activity": 0.4,
+              "report_unrecognized_charge": 0.0,
               "request_card_block": 0.0,
-              "request_dispute": 0.1,
-              "request_human_agent": 0.8
+              "request_dispute": 0.0,
+              "request_human_agent": 0.3
             }
           },
           "es": {
-            "acted_coverage_test": 0.462,
+            "acted_coverage_test": 0.4693,
             "certified": false,
-            "coverage_test": 0.9887,
+            "coverage_test": 1.0,
             "coverage_val": 1.0,
-            "ece_post": 0.0313,
-            "ece_pre": 0.0343,
-            "n_test": 1500,
-            "n_val": 1500,
+            "ece_post": 0.0522,
+            "ece_pre": 0.0473,
+            "n_test": 2250,
+            "n_val": 2250,
             "precision_test": {
               "report_lost_card": [
-                96,
-                100,
-                0.9016
+                132,
+                138,
+                0.9084
               ],
               "report_stolen_card": [
-                100,
-                108,
-                0.8606
+                149,
+                163,
+                0.861
               ],
               "report_suspicious_activity": [
-                90,
-                99,
-                0.8362
+                146,
+                183,
+                0.7338
               ],
               "report_unrecognized_charge": [
-                96,
-                109,
-                0.8066
+                138,
+                147,
+                0.8877
               ],
               "request_card_block": [
-                91,
-                91,
-                0.9595
+                139,
+                141,
+                0.9498
               ],
               "request_dispute": [
-                84,
-                85,
-                0.9363
+                134,
+                140,
+                0.9097
               ],
               "request_human_agent": [
-                95,
-                101,
-                0.8764
+                141,
+                144,
+                0.9405
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.91,
-              "request_dispute": 0.84,
-              "request_human_agent": 0.95
+              "report_lost_card": 0.88,
+              "report_stolen_card": 0.9933,
+              "report_suspicious_activity": 0.9733,
+              "report_unrecognized_charge": 0.92,
+              "request_card_block": 0.9267,
+              "request_dispute": 0.8933,
+              "request_human_agent": 0.94
             }
           },
           "es-AR": {
-            "acted_coverage_test": 0.4587,
+            "acted_coverage_test": 0.4613,
             "certified": false,
-            "coverage_test": 0.9867,
+            "coverage_test": 0.9947,
             "coverage_val": 1.0,
-            "ece_post": 0.0298,
-            "ece_pre": 0.0365,
+            "ece_post": 0.0604,
+            "ece_pre": 0.0515,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                48,
-                50,
-                0.8654
+                45,
+                46,
+                0.8866
               ],
               "report_stolen_card": [
                 50,
-                55,
-                0.8042
+                54,
+                0.8245
               ],
               "report_suspicious_activity": [
-                45,
-                51,
-                0.7662
+                50,
+                64,
+                0.6657
               ],
               "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
+                44,
+                46,
+                0.8547
               ],
               "request_card_block": [
-                44,
-                44,
-                0.9197
+                46,
+                46,
+                0.9229
               ],
               "request_dispute": [
-                41,
-                42,
-                0.8768
+                44,
+                45,
+                0.8843
               ],
               "request_human_agent": [
+                44,
                 45,
-                48,
-                0.8316
+                0.8843
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
+              "report_lost_card": 0.9,
               "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
-              "request_card_block": 0.88,
-              "request_dispute": 0.82,
-              "request_human_agent": 0.9
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.88,
+              "request_card_block": 0.92,
+              "request_dispute": 0.88,
+              "request_human_agent": 0.88
             }
           },
-          "es-MX": {
-            "acted_coverage_test": 0.464,
+          "es-CO": {
+            "acted_coverage_test": 0.4747,
             "certified": false,
-            "coverage_test": 0.988,
+            "coverage_test": 1.0,
             "coverage_val": 1.0,
-            "ece_post": 0.033,
-            "ece_pre": 0.0326,
+            "ece_post": 0.0444,
+            "ece_pre": 0.0416,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                48,
-                50,
-                0.8654
+                42,
+                46,
+                0.7968
               ],
               "report_stolen_card": [
-                50,
-                53,
-                0.8463
+                49,
+                55,
+                0.7817
               ],
               "report_suspicious_activity": [
-                45,
-                48,
-                0.8316
+                46,
+                58,
+                0.6723
               ],
               "report_unrecognized_charge": [
-                48,
-                54,
-                0.7781
+                47,
+                51,
+                0.815
               ],
               "request_card_block": [
                 47,
-                47,
-                0.9244
+                49,
+                0.8629
               ],
               "request_dispute": [
-                43,
-                43,
-                0.918
+                44,
+                46,
+                0.8547
               ],
               "request_human_agent": [
                 50,
-                53,
-                0.8463
+                51,
+                0.897
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.96,
-              "report_stolen_card": 1.0,
-              "report_suspicious_activity": 0.9,
-              "report_unrecognized_charge": 0.96,
+              "report_lost_card": 0.84,
+              "report_stolen_card": 0.98,
+              "report_suspicious_activity": 0.92,
+              "report_unrecognized_charge": 0.94,
               "request_card_block": 0.94,
-              "request_dispute": 0.86,
+              "request_dispute": 0.88,
               "request_human_agent": 1.0
             }
           },
-          "pt": {
-            "acted_coverage_test": 0.4573,
+          "es-MX": {
+            "acted_coverage_test": 0.4693,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9973,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0567,
+            "ece_pre": 0.0509,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
+                45,
                 46,
-                54,
-                0.734
+                0.8866
               ],
               "report_stolen_card": [
-                47,
-                53,
-                0.7742
+                50,
+                54,
+                0.8245
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                50,
+                61,
+                0.7053
               ],
               "report_unrecognized_charge": [
-                44,
-                52,
-                0.7248
+                47,
+                50,
+                0.8378
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                46,
+                46,
+                0.9229
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
-              ],
-              "request_human_agent": [
                 46,
                 47,
                 0.8889
+              ],
+              "request_human_agent": [
+                47,
+                48,
+                0.891
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.9,
+              "report_stolen_card": 1.0,
+              "report_suspicious_activity": 1.0,
+              "report_unrecognized_charge": 0.94,
+              "request_card_block": 0.92,
+              "request_dispute": 0.92,
+              "request_human_agent": 0.94
+            }
+          },
+          "pt": {
+            "acted_coverage_test": 0.464,
+            "certified": false,
+            "coverage_test": 0.9853,
+            "coverage_val": 1.0,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
+            "n_test": 750,
+            "n_val": 750,
+            "precision_test": {
+              "report_lost_card": [
+                48,
+                51,
+                0.8408
+              ],
+              "report_stolen_card": [
+                47,
+                54,
+                0.7558
+              ],
+              "report_suspicious_activity": [
+                48,
+                59,
+                0.6962
+              ],
+              "report_unrecognized_charge": [
+                42,
+                44,
+                0.8487
+              ],
+              "request_card_block": [
+                47,
+                49,
+                0.8629
+              ],
+              "request_dispute": [
+                40,
+                44,
+                0.7884
+              ],
+              "request_human_agent": [
+                47,
+                47,
+                0.9244
+              ]
+            },
+            "recall_test": {
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           },
           "pt-BR": {
-            "acted_coverage_test": 0.4573,
+            "acted_coverage_test": 0.464,
             "certified": false,
-            "coverage_test": 0.992,
+            "coverage_test": 0.9853,
             "coverage_val": 1.0,
-            "ece_post": 0.0526,
-            "ece_pre": 0.0558,
+            "ece_post": 0.0613,
+            "ece_pre": 0.0621,
             "n_test": 750,
             "n_val": 750,
             "precision_test": {
               "report_lost_card": [
-                46,
-                54,
-                0.734
+                48,
+                51,
+                0.8408
               ],
               "report_stolen_card": [
                 47,
-                53,
-                0.7742
+                54,
+                0.7558
               ],
               "report_suspicious_activity": [
-                36,
-                37,
-                0.8618
+                48,
+                59,
+                0.6962
               ],
               "report_unrecognized_charge": [
+                42,
                 44,
-                52,
-                0.7248
+                0.8487
               ],
               "request_card_block": [
-                48,
-                52,
-                0.8183
+                47,
+                49,
+                0.8629
               ],
               "request_dispute": [
-                45,
-                48,
-                0.8316
+                40,
+                44,
+                0.7884
               ],
               "request_human_agent": [
-                46,
                 47,
-                0.8889
+                47,
+                0.9244
               ]
             },
             "recall_test": {
-              "report_lost_card": 0.92,
+              "report_lost_card": 0.96,
               "report_stolen_card": 0.94,
-              "report_suspicious_activity": 0.72,
-              "report_unrecognized_charge": 0.88,
-              "request_card_block": 0.96,
-              "request_dispute": 0.9,
-              "request_human_agent": 0.92
+              "report_suspicious_activity": 0.96,
+              "report_unrecognized_charge": 0.84,
+              "request_card_block": 0.94,
+              "request_dispute": 0.8,
+              "request_human_agent": 0.94
             }
           }
         },
         "provenance": "synthetic-provisional",
-        "report": "reports/calibration-decision-points-2026-09-30-distilbert.md",
-        "run_id": "aa9fde2d56f3",
+        "report": "reports/calibration-decision-points-2026-10-01-distilbert.md",
+        "run_id": "6601ebbc444e",
         "split": "test",
         "uncovered": []
       },
       "status": "calibrated",
       "thresholds": {
-        "en": 0.841088,
-        "es": 0.496802,
-        "es-AR": 0.502128,
-        "es-MX": 0.498938,
-        "pt": 0.449888,
-        "pt-BR": 0.449888
+        "en": 0.904958,
+        "es": 0.339856,
+        "es-AR": 0.471282,
+        "es-CO": 0.331145,
+        "es-MX": 0.487,
+        "pt": 0.530052,
+        "pt-BR": 0.530052
       },
       "view": {
         "kind": "labels",
@@ -2623,8 +2881,8 @@
   },
   "harness": {
     "config_path": "tools/calibrate/configs/decision_points_distilbert.yaml",
-    "config_sha256": "d7c56048a3342a73e9c0547aa1a5b5f6950c161b76aa31e5429ae5cbb696d046",
-    "git_sha": "ba963292725bebc0b8d988f79993325230db4ee5-dirty"
+    "config_sha256": "a7bf673fc652a3c0aac494d083a9f7d56a08242ae46d407fd3c82a9f67f58901",
+    "git_sha": "92a2242a408c699d3872bc55e06a284c716b2f74-dirty"
   },
   "schema_version": 1
 }

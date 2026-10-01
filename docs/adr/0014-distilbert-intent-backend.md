@@ -133,6 +133,11 @@ If it does pass:
 
 **Outcome (2026-10-01).** The rule failed on one set: the four-locale model gained on Colombia (CO real +0.076, CO test +0.022) and on every synthetic test, but MX real dropped 0.023 against a 0.02 tolerance ([report](../../reports/intent-models-regional-datasets.md) §10). The shipped weights, digest and calibration are unchanged, and es-CO stays on the `es` keys. The es-CO dataset is kept for a later retrain.
 
+**Override (2026-10-01, the team's decision).** The team accepted the MX real drop (about 3.5 of 150 silver rows) against the Colombian gain and replaced the model anyway:
+- `make train-encoder` on the four-locale pool (6,000 rows, seed 0) gives `distilbert-intent-pooled:7fd8bff09544` (weights `sha256:56b52ec70460…`), with validation accuracy 0.98–0.99 per market.
+- `decision_points.distilbert.json` is recalibrated with `es-CO` as its own key ([report](../../reports/calibration-decision-points-2026-10-01-distilbert.md)), and `make calibration-verify` passes.
+- **Pending:** the new seed image is not published, so `apps/encoder/Dockerfile` still pins the old digest. An encoder built from the Dockerfile ships the old weights and refuses the new artifact at startup. This branch must not merge before `make encoder-weights-image PUSH=1` and the digest bump.
+
 ---
 
 ## Appendix A — Seed image and pin chain

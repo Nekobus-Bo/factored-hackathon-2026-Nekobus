@@ -154,10 +154,18 @@ def test_the_distilbert_config_adds_locale_groups_to_per_language_dps_only() -> 
     from calibrate.dpconfig import load_run_config
 
     config = load_run_config("tools/calibrate/configs/decision_points_distilbert.yaml")
-    assert config.locales == ("pt-BR", "es-MX", "es-AR")
+    assert config.locales == ("pt-BR", "es-MX", "es-AR", "es-CO")
     assert config.report_tag == "distilbert"
     per_language = config.for_dp(config.dps["turn_intent"])
-    assert per_language.languages == ("es", "pt", "en", "pt-BR", "es-MX", "es-AR")
+    assert per_language.languages == (
+        "es",
+        "pt",
+        "en",
+        "pt-BR",
+        "es-MX",
+        "es-AR",
+        "es-CO",
+    )
     pooled = config.for_dp(config.dps["block_reason"])
     assert pooled.languages == ("es", "pt", "en")  # no row counted twice
 
