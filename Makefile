@@ -42,7 +42,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
@@ -135,21 +135,24 @@ synth-data: ## Generate reproducible synthetic train and validation datasets
 
 SYNTH_REGIONAL = uv run --with polars --with pyyaml --with scikit-learn --with litellm python -m tools.synthdata_regional
 
-synth-data-regional: ## Mine real text, generate train/validation with an LLM, then check (LOCALE=pt-BR|es-MX|es-AR; LLM_API_KEY unless cached)
-	@test -n "$(LOCALE)" || { echo "synth-data-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+stage-data-co: ## Stage the Colombian and Mexican bank threads from data/raw/apple_store_reviews (tuquejasuma.com) for es-CO
+	$(SYNTH_REGIONAL).stage_tqs
+
+synth-data-regional: ## Mine real text, generate train/validation with an LLM, then check (LOCALE=pt-BR|es-MX|es-AR|es-CO; LLM_API_KEY unless cached)
+	@test -n "$(LOCALE)" || { echo "synth-data-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
 	$(SYNTH_REGIONAL).mine --locale $(LOCALE) --if-missing
 	$(SYNTH_REGIONAL).generate --locale $(LOCALE) --mode full
 	$(MAKE) check-data-regional LOCALE=$(LOCALE)
 
-build-test-regional: ## Fill the hand-written test templates into the provisional test split (LOCALE=pt-BR|es-MX|es-AR)
-	@test -n "$(LOCALE)" || { echo "build-test-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+build-test-regional: ## Fill the hand-written test templates into the provisional test split (LOCALE=pt-BR|es-MX|es-AR|es-CO)
+	@test -n "$(LOCALE)" || { echo "build-test-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
 	$(SYNTH_REGIONAL).build_test --locale $(LOCALE)
 
-check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR)
-	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX or es-AR" >&2; exit 1; }
+check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR|es-CO)
+	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
 	$(SYNTH_REGIONAL).checks --locale $(LOCALE)
 
-pool-data-regional: ## Pool the pt-BR, es-MX and es-AR splits (+ English template validation/test) into data/staging/decision_pooled
+pool-data-regional: ## Pool the pt-BR, es-MX, es-AR and es-CO splits (+ English template validation/test) into data/staging/decision_pooled
 	uv run python -m tools.synthdata_regional.pool
 
 train-encoder: ## Fine-tune and pin a decision model (CONFIG=tools/calibrate/configs/train_intent_distilbert.yaml); MPS when available
