@@ -14,6 +14,10 @@ __pycache__/
 # marimo session cache
 __marimo__/
 
+# lab outputs derived from the dataset or from LLM calls: never versioned
+lab/.cache/
+lab/profiling/out/
+
 # JavaScript
 node_modules/
 dist/
