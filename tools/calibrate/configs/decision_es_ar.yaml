@@ -1,0 +1,17 @@
+# Zero-shot decision calibration on the es-AR dataset grounded in Argentine app reviews
+# (tools/synthdata_regional). The splits are local only (data/staging is not versioned):
+# build them with `make synth-data-regional LOCALE=...` and `make build-test-regional LOCALE=...`.
+# Train/validation are LLM-generated and the test split is provisional synthetic (not human).
+task: decision
+mode: zeroshot
+data_paths:
+  - data/staging/decision_es_ar/decision.es_ar.train.jsonl
+  - data/staging/decision_es_ar/decision.es_ar.validation.jsonl
+  - data/staging/decision_es_ar/decision.es_ar.test.provisional.jsonl
+p_min: 0.9
+languages:
+  - es
+candidates:
+  - name: tfidf_lr_baseline
+    type: tfidf_lr
+    model_id: tfidf_lr

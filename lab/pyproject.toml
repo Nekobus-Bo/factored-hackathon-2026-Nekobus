@@ -1,0 +1,16 @@
+[project]
+name = "lab"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "altair>=6.3.0",
+    "duckdb>=1.5.5",
+    "ipython>=9.17.1",
+    "laya>=0.3.21",
+    "marimo>=0.25.0",
+    "mlflow>=3.16.1",
+    "polars>=1.44.2",
+    "pyarrow>=25.0.1",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
+]
