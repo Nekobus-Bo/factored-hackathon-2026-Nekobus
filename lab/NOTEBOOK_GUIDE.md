@@ -167,7 +167,7 @@ Notebooks on external data only (`text-classifier`, the LLM types) drop `DATA_DI
 
 ### 6.3 Data rules (raw CSV)
 
-- **Paths:** `DATA_DIR` from the environment, else `<repo>/data/raw/latam_bank`, resolved from `mo.notebook_dir()`.
+- **Paths:** `DATA_DIR` from the environment, else `<repo>/data/raw/factored`, resolved from `mo.notebook_dir()`.
 - **Fact tables:** read one year by default, using the partition path, so only those files are opened:
   `read_csv('{DATA_DIR}/transactions/year={YEAR}/*/*/*.csv', hive_partitioning = true)`. `YEAR = "*"` reads everything.
 - **Dimension tables:** `read_csv('{DATA_DIR}/customers.csv')`.
@@ -186,9 +186,9 @@ Notebooks on external data only (`text-classifier`, the LLM types) drop `DATA_DI
 | What | Path | Versioned |
 |---|---|---|
 | Notebooks | `lab/notebooks/<type>__<subject>.py` (e.g. `ml-target__was_resolved.py`, `join__call_transcripts-call_center_interactions.py`) | yes |
-| Raw data (read only) | `data/raw/latam_bank/` | no |
+| Raw data (read only) | `data/raw/factored/` | no |
 | LLM response cache | `lab/.cache/llm/` | no |
-| Synthetic outputs | `data/eval/synthetic/<name>.parquet` | no |
+| Synthetic outputs | `data/staging/lab/<name>.parquet` | no |
 
 Nothing else is written to disk.
 
@@ -258,7 +258,7 @@ def _():
 @app.cell
 def _(mo, os):
     # Settings: change these, the rest of the notebook follows
-    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[1] / "data" / "raw" / "latam_bank"))
+    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[1] / "data" / "raw" / "factored"))
     YEAR = "2025"  # fact-table partitions to read; "*" for all years
     return DATA_DIR, YEAR
 
@@ -267,7 +267,7 @@ def _(mo, os):
 def _(DATA_DIR, YEAR, duckdb, mo, os):
     mo.stop(
         not os.path.isdir(DATA_DIR),
-        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Link it into `data/raw/latam_bank` or set `DATA_DIR`."),
+        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Copy it to `data/raw/factored` or set `DATA_DIR`."),
     )
     con = duckdb.connect()
     con.sql(f"""
@@ -619,10 +619,10 @@ Double the braces in the prompt (`{{ }}`) wherever a literal `{` must survive `.
 Settings cell additions: as in §8.6, plus
 
 ```python
-    NAME = "<set name>"  # output file: data/eval/synthetic/<NAME>.parquet
+    NAME = "<set name>"  # output file: data/staging/lab/<NAME>.parquet
     N_PER_CELL = 10
     LANGUAGES = ["es", "pt"]
-    OUTPUT = mo.notebook_dir().parents[1] / "data" / "eval" / "synthetic" / f"{NAME}.parquet"
+    OUTPUT = mo.notebook_dir().parents[1] / "data" / "staging" / "lab" / f"{NAME}.parquet"
 ```
 
 Cells (plus the `ask`/`parse` cell from §8.6):

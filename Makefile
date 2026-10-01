@@ -43,7 +43,7 @@ SUBMAKE := $(MAKE) --no-print-directory
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
-	profile-factored ingest design-tokens design-tokens-check web-check web-client web-backoffice
+	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -180,6 +180,9 @@ encoder-weights-image: ## Pack a trained model dir into the weights-only seed im
 
 profile-factored: ## Profile the Factored dataset and print aggregate statistics
 	uv run --package profile-factored python -m profile_factored.cli $(if $(DATA_DIR),--data-dir $(DATA_DIR)) $(if $(OUT),--markdown-out $(OUT))
+
+lab: ## Open the exploratory marimo notebooks in lab/ (NB=<file> opens one; DATA_DIR overrides data/raw/factored)
+	uv run --project lab marimo edit lab/notebooks$(if $(NB),/$(NB))
 
 design-tokens: ## Generate packages/design-tokens/dist (tokens.css, tokens.ts, fonts.html) from src/tokens.json; needs Bun
 	@command -v $(BUN) >/dev/null 2>&1 || { printf 'design-tokens: ' >&2; $(NO_BUN); }

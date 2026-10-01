@@ -29,6 +29,7 @@ AI-first customer service system for banking. Main workflow: **compromised card*
 | `tools/` | Development utilities |
 | `demo/` | Walkthrough scripts and prerecorded sessions for replay mode |
 | `reports/` | Versioned evaluation, calibration, and data quality evidence |
+| `lab/` | Exploratory marimo notebooks and dataset findings. Its own uv project, not shipped, not imported, excluded from ruff. `make lab` |
 
 Every app has the same internal shape: `src/`, `tests/`, `Dockerfile`. **Symmetry is half of readability**: an app that looks different inside has to be learned separately.
 

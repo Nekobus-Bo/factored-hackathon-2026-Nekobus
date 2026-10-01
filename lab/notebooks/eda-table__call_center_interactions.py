@@ -30,7 +30,7 @@ def _():
 @app.cell
 def _(mo, os):
     # Settings: change these, the rest of the notebook follows
-    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[1] / "data" / "raw" / "latam_bank"))
+    DATA_DIR = os.environ.get("DATA_DIR", str(mo.notebook_dir().parents[1] / "data" / "raw" / "factored"))
     YEAR = "2025"  # fact-table partitions to read; "*" for all years
     return DATA_DIR, YEAR
 
@@ -39,7 +39,7 @@ def _(mo, os):
 def _(DATA_DIR, YEAR, duckdb, mo, os):
     mo.stop(
         not os.path.isdir(DATA_DIR),
-        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Link it into `data/raw/latam_bank` or set `DATA_DIR`."),
+        mo.md(f"**Dataset not found at `{DATA_DIR}`.** Copy it to `data/raw/factored` or set `DATA_DIR`."),
     )
     con = duckdb.connect()
     con.sql(f"""

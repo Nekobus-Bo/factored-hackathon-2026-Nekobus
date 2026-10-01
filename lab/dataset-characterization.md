@@ -1,10 +1,12 @@
 # LATAM Bank dataset — characterization
 
-**Date:** 2026-09-27 · **Snapshot:** organizer S3 `data/` prefix (identical to the local copy) plus `data_backup_20260831/` for comparison · **Scripts:** [`lab/profiling/`](profiling/README.md)
+**Date:** 2026-09-27 · **Snapshot:** organizer S3 `data/` prefix (identical to the local copy) plus `data_backup_20260831/` for comparison · **Scripts:** `lab/profiling/` (**pending**, not in the repository yet)
 
 What the supplied dataset contains, how it was generated as far as can be inferred, and where it carries learnable signal. This document records findings only. What they mean for the system design goes in a separate document.
 
-Every number below comes from the scripts in `lab/profiling/`, run on the full tables (no sampling unless stated). Signal is measured with a gradient-boosted model trained before 2025-06-01 and tested after, reported as ROC-AUC (0.5 = no signal) or R², plus group-rate spreads (`max/min` of the target rate across groups with ≥ 200 rows).
+> **Pending: the numbers cannot be reproduced yet.** The profiling scripts that produced them (`lab/profiling/`) are not committed, and marimo notebooks store no outputs. Until they land, treat every figure here as a recorded observation, not a checkable result. See [Reproduce](#reproduce).
+
+Every number below came from the profiling scripts, run on the full tables (no sampling unless stated). Signal is measured with a gradient-boosted model trained before 2025-06-01 and tested after, reported as ROC-AUC (0.5 = no signal) or R², plus group-rate spreads (`max/min` of the target rate across groups with ≥ 200 rows).
 
 ---
 
@@ -292,6 +294,8 @@ These relationships are few and simple, so a well-specified rule or a linear mod
 - The fraud feature set did not include merchant history or cross-customer features.
 
 ## Reproduce
+
+**Pending.** The scripts below are not in the repository yet, so these commands fail today. They are kept as the intended procedure. Once the scripts land they get a `make` target.
 
 ```bash
 cd lab && uv sync
