@@ -58,3 +58,22 @@ def test_selection_keeps_two_short_and_one_long_per_topic():
 def test_pt_br_gets_its_own_prompt_wording():
     assert retrieval.wording(get_locale("pt-BR"))["bank_country"] == "a Brazilian"
     assert retrieval.wording(get_locale("es-AR"))["bank_country"] == "an Argentine"
+
+
+def test_hand_written_messages_get_the_same_gold_rules(tmp_path):
+    loc = get_locale("es-AR")
+    path = tmp_path / "es-AR.jsonl"
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in [
+        {"kind": "in_scope", "topic_id": "disputes.02", "length": "short", "text": " ¿Quién analiza mi caso? "},
+        {"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "Quiero un préstamo"},
+        {"kind": "off_topic", "topic_id": "", "length": "short", "text": "¿Va a llover?"},
+    ]))
+    rows = retrieval.read_written(loc, path)
+    assert [r["relevant_ids"] for r in rows] == [["disputes.02.es"], [f"{retrieval.SCOPE_TOPIC}.es"], []]
+    assert rows[0]["text"] == "¿Quién analiza mi caso?"
+    assert rows[1]["topic_id"] == retrieval.SCOPE_TOPIC
+
+
+def test_the_two_generators_never_share_files():
+    gpt, claude = retrieval.GENERATORS["gpt-sol"], retrieval.GENERATORS["claude"]
+    assert gpt["out_dir"] != claude["out_dir"] and gpt["pooled"] != claude["pooled"] and gpt["id"] != claude["id"]

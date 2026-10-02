@@ -172,9 +172,9 @@ build-test-regional: ## Fill the hand-written test templates into the provisiona
 	@test -n "$(LOCALE)" || { echo "build-test-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
 	$(SYNTH_REGIONAL).build_test --locale $(LOCALE)
 
-synth-retrieval-regional: ## Generate kb.search test questions from real regional text with an LLM, plus the kb_search query the orchestrator's LLM would send (LOCALE=pt-BR|es-MX|es-AR|es-CO; POOL=1 pools the locales and writes checks.md)
+synth-retrieval-regional: ## Generate kb.search test questions from real regional text with an LLM, plus the kb_search query the orchestrator's LLM would send (LOCALE=pt-BR|es-MX|es-AR|es-CO; POOL=1 pools the locales and writes checks.md; GENERATOR=claude reads the hand-written set)
 	@test -n "$(LOCALE)$(POOL)" || { echo "synth-retrieval-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO, and/or POOL=1" >&2; exit 1; }
-	$(SYNTH_REGIONAL).retrieval $(if $(LOCALE),--locale $(LOCALE)) $(if $(POOL),--pool)
+	$(SYNTH_REGIONAL).retrieval $(if $(LOCALE),--locale $(LOCALE)) $(if $(POOL),--pool) $(if $(GENERATOR),--generator $(GENERATOR))
 
 check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR|es-CO)
 	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }

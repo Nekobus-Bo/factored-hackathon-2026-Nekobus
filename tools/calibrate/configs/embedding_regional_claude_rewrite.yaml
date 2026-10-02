@@ -1,0 +1,29 @@
+task: embedding
+mode: zeroshot
+kb_path: packages/retrieval/kb/snippets.jsonl
+# Regional kb.search test questions (tools/synthdata_regional/retrieval.py): Claude Opus 5.5
+# messages, hand-written in a coding session from the GPT Sol briefs, grounded in real es-MX, es-AR, es-CO and pt-BR text. Provisional synthetic
+# test split, not reviewed by a human.
+queries_path: data/eval/synthetic/retrieval/queries_regional_claude.jsonl
+eval_split: test
+# text = the customer's message; kb_query = the query the orchestrator's LLM sent to kb_search
+query_field: kb_query
+score_floor: 0.81
+k_list:
+  - 1
+  - 3
+  - 5
+languages:
+  - es
+  - pt
+candidates:
+  - name: bm25_baseline
+    type: bm25
+    model_id: bm25
+  - name: paraphrase_multilingual_minilm
+    type: sentence_transformers
+    model_id: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  - name: granite_311m
+    type: sentence_transformers
+    model_id: ibm-granite/granite-embedding-311m-multilingual-r2
+    dtype: float32

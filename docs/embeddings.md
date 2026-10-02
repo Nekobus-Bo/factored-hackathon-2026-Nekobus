@@ -85,6 +85,7 @@ Hybrid loses to vector-only because BM25 cannot match across languages and pulls
 
 - **Granite leads in every locale.** These questions share few words with the KB, so all scores drop.
 - **The LLM's rewrite lifts every model**, BM25 most.
+- **A second author agrees on the ranking.** A Claude Opus 5.5 set built with the same recipe ([comparison](../reports/embedding-regional-claude-2026-10-02.md)) has Granite first again (production path 0.602, against MiniLM 0.487). Absolute levels shift with the author.
 
 **The MiniLM pin was broken.** The deployed revision `86741b4e` predated its tokenizer's transformers v5 fix and scored Hit@1 0.05 under the transformers 5.x this repo locks. The 2026-09-27 report measured the fixed `main` revision instead. Every pin check passed: a pin proves which files were loaded, not that they still work with today's libraries.
 
