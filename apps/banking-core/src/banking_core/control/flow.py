@@ -16,18 +16,21 @@ from contracts.envelope import (
     ToolResultStatus,
     VerificationState,
 )
-from contracts.tools import TOOL_CATALOG, get_effective_permitted_states
+from contracts.tools import (
+    TOOL_CATALOG,
+    VERIFICATION_PATH,
+    get_effective_permitted_states,
+)
 
 from banking_core.control.config import ControlConfigRepository
 
 logger = logging.getLogger(__name__)
 
 # The FSM's forward edge from each state (control/fsm.py): the tool whose success
-# moves the session one step towards VERIFIED, or out of a dead end.
+# moves the session one step towards VERIFIED (the contract's VERIFICATION_PATH,
+# which the tool descriptions also read), or out of a dead end.
 ADVANCE: dict[VerificationState, str] = {
-    VerificationState.ANONYMOUS: "customer.match",
-    VerificationState.IDENTIFIED: "otp.send",
-    VerificationState.OTP_PENDING: "otp.verify",
+    **dict(VERIFICATION_PATH),
     VerificationState.LOCKED: "handoff.create",
 }
 _NO_NEXT = frozenset({VerificationState.VERIFIED, VerificationState.HANDED_OFF})
@@ -71,7 +74,14 @@ def flow_hint(
         and result.tool in effective
     ):
         required = sorted(effective[result.tool], key=list(VerificationState).index)
-    return FlowHint(state=state, next=nexts, allowed=allowed, required_states=required)
+    enabled = [tool for tool, states in effective.items() if states]
+    return FlowHint(
+        state=state,
+        next=nexts,
+        allowed=allowed,
+        enabled=enabled,
+        required_states=required,
+    )
 
 
 def with_flow(

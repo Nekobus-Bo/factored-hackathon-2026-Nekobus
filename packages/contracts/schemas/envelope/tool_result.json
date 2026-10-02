@@ -12,6 +12,14 @@
           "title": "Allowed",
           "type": "array"
         },
+        "enabled": {
+          "description": "Every tool the effective configuration allows in some state",
+          "items": {
+            "type": "string"
+          },
+          "title": "Enabled",
+          "type": "array"
+        },
         "next": {
           "description": "Tools that move the session forward from `state`",
           "items": {

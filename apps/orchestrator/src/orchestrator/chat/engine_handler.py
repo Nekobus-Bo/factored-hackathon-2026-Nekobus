@@ -24,6 +24,7 @@ class EngineTurnHandler:
             history=conversation.llm_history,
             placeholder_map=conversation.placeholder_map,
             decisions=conversation.decisions,
+            enabled_tools=conversation.enabled_tools,
             human_takeover=conversation.takeover.active,
         )
         result = await self.engine.run_turn(
@@ -33,6 +34,7 @@ class EngineTurnHandler:
         conversation.llm_history = context.history
         conversation.placeholder_map = context.placeholder_map
         conversation.decisions = context.decisions
+        conversation.enabled_tools = context.enabled_tools
         return TurnOutcome(
             blocks=[block.model_dump(mode="json") for block in result.blocks],
             metadata=result.metadata.model_dump(mode="json"),

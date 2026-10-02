@@ -208,12 +208,16 @@ class FlowHint(BaseModel):
         default_factory=list,
         description="Every tool the effective configuration allows in `state`",
     )
+    enabled: list[str] = Field(
+        default_factory=list,
+        description="Every tool the effective configuration allows in some state",
+    )
     required_states: list[VerificationState] | None = Field(
         default=None,
         description="On a STATE_NOT_ALLOWED refusal: the states in which the tool runs",
     )
 
-    @field_validator("next", "allowed")
+    @field_validator("next", "allowed", "enabled")
     @classmethod
     def _known_tools(cls, tools: list[str]) -> list[str]:
         from contracts.tools import TOOL_CATALOG

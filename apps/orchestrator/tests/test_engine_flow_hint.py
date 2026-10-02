@@ -42,3 +42,31 @@ def test_empty_required_states_are_dropped():
     }
     _name_flow_tools(payload)
     assert payload["flow"] == {"state": "VERIFIED", "next": [], "allowed": []}
+
+
+def test_enabled_tools_shape_what_the_model_is_offered():
+    from orchestrator.conversation.engine import TurnEngine
+
+    engine = TurnEngine.__new__(TurnEngine)
+    from orchestrator.conversation.tools import build_llm_tools
+
+    engine.tools, engine._tool_names = build_llm_tools()
+    assert engine._offered(None) == engine.tools
+    offered = engine._offered(["customer.match", "otp.send", "handoff.create"])
+    assert [t["function"]["name"] for t in offered] == [
+        "customer_match",
+        "handoff_create",
+        "otp_send",
+    ]
+
+
+def test_descriptions_state_the_code_floor_and_the_next_step():
+    from orchestrator.conversation.tools import llm_description
+
+    block = llm_description("card.block")
+    assert "Runs only when the session is VERIFIED." in block
+    assert "customer_match, then otp_send, then otp_verify" in block
+    match = llm_description("customer.match")
+    assert "Runs only when the session is ANONYMOUS or IDENTIFIED." in match
+    assert "otp_send next" in match
+    assert "Runs only" not in llm_description("kb.search")

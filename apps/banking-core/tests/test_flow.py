@@ -68,6 +68,8 @@ def test_a_tool_disabled_by_configuration_is_not_allowed_anywhere():
     for state in S:
         hint = flow_hint(state, repo)
         assert hint is not None and "account.get_summary" not in hint.allowed
+        assert "account.get_summary" not in hint.enabled
+        assert "card.block" in hint.enabled  # enabled somewhere, even if not here
 
 
 def test_a_configuration_outage_drops_the_hint_not_the_result():

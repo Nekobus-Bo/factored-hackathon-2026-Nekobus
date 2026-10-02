@@ -59,6 +59,15 @@ from contracts.tools.transaction_list_recent import (
 
 ALL_STATES: frozenset[VerificationState] = frozenset(VerificationState)
 
+# The verification path (ADR-0016): from each state, the tool whose success moves
+# the session one step towards VERIFIED. banking-core's flow hint and the tool
+# descriptions the LLM reads both come from here.
+VERIFICATION_PATH: tuple[tuple[VerificationState, str], ...] = (
+    (VerificationState.ANONYMOUS, "customer.match"),
+    (VerificationState.IDENTIFIED, "otp.send"),
+    (VerificationState.OTP_PENDING, "otp.verify"),
+)
+
 # Non-configurable architectural floor (ADR-0003 Appendix A):
 # No runtime configuration or policy can widen permissions beyond these maximal permitted states.
 # Customer-data reads and card.block are ONLY permitted in VERIFIED.
@@ -258,6 +267,7 @@ __all__ = [
     "BaseToolOutput",
     "BlockReason",
     "CODE_FLOOR",
+    "VERIFICATION_PATH",
     "CodeFloorViolation",
     "CardBlockInput",
     "CardBlockOutput",

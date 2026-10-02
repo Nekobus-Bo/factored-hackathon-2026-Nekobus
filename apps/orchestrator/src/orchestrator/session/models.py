@@ -184,6 +184,13 @@ class ConversationState(BaseModel):
             "count; ADR-0012). No text; committed only when a turn completes"
         ),
     )
+    enabled_tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Catalog tools banking-core's latest flow hint says the configuration "
+            "enables (ADR-0016); None until the first tool result. Tool names only"
+        ),
+    )
     takeover: Takeover = Field(
         default_factory=Takeover,
         description="Human takeover of the conversation (agent API)",
