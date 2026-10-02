@@ -71,7 +71,7 @@ from orchestrator.conversation.prompt import (
     REPHRASE_MESSAGES,
     SYSTEM_PROMPT,
 )
-from orchestrator.conversation.tools import build_llm_tools
+from orchestrator.conversation.tools import build_llm_tools, llm_tool_name
 from orchestrator.encoder_client import EncoderClient, EncoderUnavailableError
 from orchestrator.llm.provider import LLMProvider, LLMResponse
 from orchestrator.privacy.masking import (
@@ -1007,6 +1007,7 @@ class TurnEngine:
             payload = result.model_dump(mode="json")
             for path in LLM_HIDDEN_FIELDS.get(result.tool, ()):
                 _drop_field(payload.get("data"), path)
+            _name_flow_tools(payload)
         try:
             masked = mask_json_string_values(payload, self.masker, mapping)
             return json.dumps(masked, sort_keys=True, ensure_ascii=False)
@@ -1140,6 +1141,21 @@ def _tool_results(
             continue
         if isinstance(result, dict):
             yield index, result
+
+
+def _name_flow_tools(payload: dict[str, Any]) -> None:
+    """banking-core's flow hint (ADR-0016) names catalog tools (`otp.send`); the
+    model was offered function names (`otp_send`). Rename, and drop the hint's
+    empty fields so the model reads only what is there."""
+    flow = payload.get("flow")
+    if not isinstance(flow, dict):
+        payload.pop("flow", None)
+        return
+    for key in ("next", "allowed"):
+        if isinstance(flow.get(key), list):
+            flow[key] = [llm_tool_name(str(tool)) for tool in flow[key]]
+    if flow.get("required_states") is None:
+        flow.pop("required_states", None)
 
 
 def mask_bare_otps(text: str, mapping: dict[str, str]) -> str:

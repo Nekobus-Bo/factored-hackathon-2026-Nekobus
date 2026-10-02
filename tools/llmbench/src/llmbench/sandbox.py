@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from banking_core.control.authorize import Authorizer
 from banking_core.control.config import InMemoryControlConfigRepository
+from banking_core.control.flow import with_flow
 from banking_core.control.fsm import VerificationFSM
 from banking_core.control.policy import (
     AMOUNT_CONTEXT_KEY,
@@ -467,6 +468,9 @@ class SandboxBank:
             replayed = False
         else:
             result, replayed = self._dispatch(session, tool_call)
+            # Whatever banking-core's dispatcher adds to every result (ADR-0016),
+            # from the same function and configuration.
+            result = with_flow(result, session.state.state, self.config)
         session.calls.append(
             CallRecord(
                 tool=tool_call.tool,

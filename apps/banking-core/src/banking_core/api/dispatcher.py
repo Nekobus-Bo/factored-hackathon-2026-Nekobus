@@ -61,6 +61,7 @@ from banking_core.control.config import (
     ControlConfigRepository,
     get_control_config_repository,
 )
+from banking_core.control.flow import with_flow
 from banking_core.control.fsm import VerificationFSM
 from banking_core.control.policy import (
     AMOUNT_CONTEXT_KEY,
@@ -436,6 +437,9 @@ class ToolDispatcher:
         A call that cannot take the lock within lock_wait_ms is refused with
         SESSION_BUSY, which the caller may retry.
 
+        Every result carries the flow hint for the session's state after the
+        call (ADR-0016).
+
         Raises:
             SessionNotFoundError: If the session does not exist or expired.
         """
@@ -446,7 +450,7 @@ class ToolDispatcher:
                 session = self.session_store.get(session_id)
                 if session is None:
                     raise SessionNotFoundError(session_id)
-                return self._refuse(
+                busy = self._refuse(
                     tool_call,
                     session_id,
                     ReasonCode.SESSION_BUSY,
@@ -455,10 +459,16 @@ class ToolDispatcher:
                     verification_state_after=session.state,
                     reason="session_lock_busy",
                 )
+                return with_flow(busy, session.state, self.config_repo)
             session = self.session_store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
-            return self.dispatch(tool_call, session, db_session)
+            state_before = session.state
+            result = self.dispatch(tool_call, session, db_session)
+            # The hint reads the state the call left behind (ADR-0016).
+            after = self.session_store.get(session_id)
+            state_after = after.state if after is not None else state_before
+            return with_flow(result, state_after, self.config_repo)
 
     def dispatch(
         self,

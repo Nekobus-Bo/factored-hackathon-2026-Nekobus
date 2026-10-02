@@ -193,6 +193,37 @@ class ToolCall(BaseModel):
         return self
 
 
+class FlowHint(BaseModel):
+    """What banking-core allows after a call (ADR-0016). Advisory: every call is
+    still authorized, and nothing in the orchestrator decides on it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: VerificationState = Field(..., description="Session state after the call")
+    next: list[str] = Field(
+        default_factory=list,
+        description="Tools that move the session forward from `state`",
+    )
+    allowed: list[str] = Field(
+        default_factory=list,
+        description="Every tool the effective configuration allows in `state`",
+    )
+    required_states: list[VerificationState] | None = Field(
+        default=None,
+        description="On a STATE_NOT_ALLOWED refusal: the states in which the tool runs",
+    )
+
+    @field_validator("next", "allowed")
+    @classmethod
+    def _known_tools(cls, tools: list[str]) -> list[str]:
+        from contracts.tools import TOOL_CATALOG
+
+        unknown = [t for t in tools if t not in TOOL_CATALOG]
+        if unknown:
+            raise ValueError(f"Unknown tools in flow hint: {unknown}")
+        return tools
+
+
 class ToolResult(BaseModel):
     """Common envelope for results returned by banking-core."""
 
@@ -211,6 +242,10 @@ class ToolResult(BaseModel):
     data: dict[str, Any] | None = Field(
         default=None,
         description="Payload returned by the tool when status is ok; None on refused/error",
+    )
+    flow: FlowHint | None = Field(
+        default=None,
+        description="What banking-core allows next (ADR-0016); advisory",
     )
 
     @model_validator(mode="after")
