@@ -22,7 +22,6 @@ probe:
       otp.verify:
         code: re:^\[OTP_\d+\]$
     forbid:
-    - card.block
     - customer.match
     max_proposals:
       otp.verify: 1
