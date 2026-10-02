@@ -44,7 +44,7 @@ One model carries the submission, **GPT 6 Luna** (why, and what that does not pr
 
 Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, compared per language on these four metrics.
 
-Local small models (Qwen3.5-4B, Granite 4.2 3B, Granite 4.0 1B, Qwen3-1.7B, served by llama.cpp) are compared on a sandbox bank with `make llm-bench` ([tools/llmbench](../tools/llmbench/README.md)): 30 skill probes and 18 of the scenarios below, scored by the same evalrunner checks, with the hosted gpt-6-luna and gpt-6.1-sol as the upper bar. First run in [reports/llm-bench-2026-10-02.md](../reports/llm-bench-2026-10-02.md); the flow improvements (ADR-0016, prompt `turn-engine/4`, secret masking) measured stage by stage in [reports/llm-flow-stages-2026-10-02.md](../reports/llm-flow-stages-2026-10-02.md). Model-selection and change-selection evidence, not system evidence ([limitations](limitations.md)).
+Local models (Qwen3.5-4B, Granite 4.2 3B, Granite 4.0 1B, Qwen3-1.7B, and the bigger Qwen3.5-9B and Qwen3.6-35B-A3B, served by llama.cpp) are compared on a sandbox bank with `make llm-bench` ([tools/llmbench](../tools/llmbench/README.md)): 30 skill probes and 18 of the scenarios below, scored by the same evalrunner checks, with the hosted gpt-6-luna and gpt-6.1-sol as the upper bar. First run in [reports/llm-bench-2026-10-02.md](../reports/llm-bench-2026-10-02.md); the flow improvements (ADR-0016, prompt `turn-engine/4`, secret masking) measured stage by stage in [reports/llm-flow-stages-2026-10-02.md](../reports/llm-flow-stages-2026-10-02.md). Model-selection and change-selection evidence, not system evidence ([limitations](limitations.md)).
 
 ### Decision component (classifier test split)
 
