@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 import yaml
+from dotenv import dotenv_values
 
 from llmbench.episodes import (
     SCENARIOS_DIR,
@@ -81,24 +82,53 @@ def check_server(base_url: str, alias: str) -> None:
         )
 
 
+def hosted_api_key(env_var: str, env_file: Path = Path(".env")) -> str:
+    """The hosted model's key: the environment first, then the repo's .env."""
+    import os
+
+    key = os.environ.get(env_var) or dotenv_values(env_file).get(env_var)
+    if not key or key.strip() in ("", "TODO"):
+        raise SystemExit(f"{env_var} is not set (environment or .env)")
+    return key.strip()
+
+
 def _log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     config = load_models(Path(args.models_file))
-    server = config["server"]
-    base_url = args.base_url or f"http://{server['host']}:{server['port']}/v1"
     alias = args.model
-    if not args.skip_server_check:
-        check_server(base_url, alias)
-    inner = live_provider(f"openai/{alias}", base_url, timeout_seconds=args.timeout)
+    entry = config.get("hosted", {}).get(alias)
+    request_kwargs: dict[str, Any] = {}
+    if entry is not None:
+        # A hosted reference model: no local server, the provider's own key.
+        litellm_model = entry["litellm_model"]
+        base_url = args.base_url or entry.get("base_url")
+        inner = live_provider(
+            litellm_model,
+            base_url,
+            api_key=hosted_api_key(entry.get("api_key_env", "LLM_API_KEY")),
+            timeout_seconds=args.timeout,
+            reasoning_effort=entry.get("reasoning_effort", ""),
+            max_retries=int(entry.get("max_retries", 2)),
+        )
+        if "temperature" in entry:
+            request_kwargs["temperature"] = float(entry["temperature"])
+    else:
+        server = config["server"]
+        base_url = args.base_url or f"http://{server['host']}:{server['port']}/v1"
+        litellm_model = f"openai/{alias}"
+        if not args.skip_server_check:
+            check_server(base_url, alias)
+        inner = live_provider(litellm_model, base_url, timeout_seconds=args.timeout)
 
     def make_llm(conversation: Conversation) -> BenchProvider:
         return BenchProvider(
             inner,
             llm_names=conversation.llm_names,
             allowed_tools=conversation.allowed_tools if args.route_tools else None,
+            request_kwargs=request_kwargs,
         )
 
     probes = load_probes(Path(args.probes_dir)) if args.only != "episodes" else []
@@ -160,7 +190,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     run = {
         "label": label,
         "model": alias,
-        "litellm_model": f"openai/{alias}",
+        "litellm_model": litellm_model,
+        "hosted": entry is not None,
+        "request": {
+            "reasoning_effort": (entry or {}).get("reasoning_effort") or None,
+            "temperature": request_kwargs.get("temperature", 0.0),
+        },
         "base_url": base_url,
         "routed": args.route_tools,
         "repeat": args.repeat,
@@ -214,7 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run probes and episodes against a served model")
-    run.add_argument("--model", required=True, help="alias from models.yaml")
+    run.add_argument(
+        "--model", required=True, help="alias from models.yaml (local or hosted)"
+    )
     run.add_argument(
         "--base-url", help="OpenAI-compatible base URL (default: models.yaml)"
     )

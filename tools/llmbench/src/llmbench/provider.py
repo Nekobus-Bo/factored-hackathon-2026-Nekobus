@@ -19,24 +19,27 @@ from orchestrator.llm.provider import LLMProvider, LLMResponse
 
 def live_provider(
     model: str,
-    base_url: str,
+    base_url: str | None,
     api_key: str = "sk-local",
     timeout_seconds: float = 120.0,
+    reasoning_effort: str = "",
+    max_retries: int = 0,
 ) -> LLMProvider:
     """An LLMProvider in live mode; nothing is read from the environment or .env.
 
     `model` is the LiteLLM model string, e.g. `openai/qwen3.5-4b` for a llama.cpp
-    server whose OpenAI API lives at `base_url` (http://127.0.0.1:8099/v1).
+    server whose OpenAI API lives at `base_url` (http://127.0.0.1:8099/v1). A
+    hosted model (`openai/gpt-6-luna`) takes `base_url=None` and its own key.
     """
     settings = Settings(
         _env_file=None,
         LLM_MODE="live",
         LLM_MODEL=model,
-        LLM_BASE_URL=base_url,
+        LLM_BASE_URL=base_url or "",
         LLM_API_KEY=api_key,
         LLM_TIMEOUT_SECONDS=timeout_seconds,
-        LLM_MAX_RETRIES=0,
-        LLM_REASONING_EFFORT="",
+        LLM_MAX_RETRIES=max_retries,
+        LLM_REASONING_EFFORT=reasoning_effort,
         RECORD=False,
         COST_TRACKING_ENABLED=False,
         ENCODER_ENABLED=False,

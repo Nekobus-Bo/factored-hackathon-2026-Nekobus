@@ -110,13 +110,14 @@ def summarize(run: dict[str, Any]) -> dict[str, Any]:
 
 def render_run(run: dict[str, Any]) -> str:
     s = run["summary"]
+    where = run["base_url"] or "provider default"
     lines = [
         f"# llmbench run: {run['label']}",
         "",
         "Sandbox bank (banking-core's control layer, in-memory data), no encoder. "
         "Evidence for choosing a model, not system evidence.",
         "",
-        f"- Model: `{run['litellm_model']}` at `{run['base_url']}`",
+        f"- Model: `{run['litellm_model']}` at `{where}`",
         f"- Tool routing: {'on' if run['routed'] else 'off'}; repeats: {run['repeat']}",
         f"- Started: {run['started_at']}; duration: {run['duration_s']:.0f}s",
         "",

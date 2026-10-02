@@ -75,3 +75,55 @@ def test_run_and_compare(tmp_path, monkeypatch, capsys):
     assert cli.main([*common, "compare", "--out-dir", str(tmp_path)]) == 0
     table = capsys.readouterr().out
     assert "| granite-4.0-1b |" in table and "| granite-4.0-1b+routed |" in table
+
+
+def test_hosted_model_skips_the_server_and_passes_its_request_settings(
+    tmp_path, monkeypatch
+):
+    built = {}
+
+    def fake_live_provider(model, base_url, **kwargs):
+        built.update(model=model, base_url=base_url, **kwargs)
+        return PoliteModel()
+
+    def no_server(*_):
+        raise AssertionError("a hosted model needs no local server")
+
+    monkeypatch.setattr(cli, "live_provider", fake_live_provider)
+    monkeypatch.setattr(cli, "check_server", no_server)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    args = [
+        "--models-file",
+        str(BENCH / "models.yaml"),
+        "run",
+        "--model",
+        "gpt-6.1-sol",
+        "--only",
+        "probes",
+        "--lang",
+        "en",
+        "--skill",
+        "clarify",
+        "--probes-dir",
+        str(BENCH / "probes"),
+        "--out-dir",
+        str(tmp_path),
+    ]
+    assert cli.main(args) == 0
+    assert built["model"] == "openai/gpt-6.1-sol" and built["base_url"] is None
+    assert built["api_key"] == "sk-test" and built["reasoning_effort"] == "low"
+    (run_file,) = tmp_path.glob("*.json")
+    run = json.loads(run_file.read_text())
+    assert run["hosted"] is True
+    assert run["request"] == {"reasoning_effort": "low", "temperature": 1.0}
+
+
+def test_hosted_model_without_a_key_fails_explicitly(tmp_path, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    try:
+        cli.hosted_api_key("LLM_API_KEY")
+    except SystemExit as exc:
+        assert "LLM_API_KEY is not set" in str(exc)
+    else:
+        raise AssertionError("expected SystemExit")

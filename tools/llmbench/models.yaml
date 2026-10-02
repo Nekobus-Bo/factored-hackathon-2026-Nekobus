@@ -31,3 +31,22 @@ models:
     hf: unsloth/Qwen3-1.7B-GGUF:Q4_K_M
     size_gb: 1.1
     notes: Qwen3 (May 2025), Apache 2.0. BFCL v3 71.8 (PrismML's measurement).
+
+# Hosted reference models: the upper bar the local ones are measured against.
+# No llama-server; LiteLLM calls the provider with the key named by api_key_env
+# (environment first, then the repo's .env). Reasoning is off where the model
+# allows it (LLM_REASONING_EFFORT=none, as the service runs luna), so temperature
+# 0 is accepted. gpt-6.1-sol has no "none": its floor is "low", and with
+# reasoning on OpenAI accepts only temperature 1 (checked 2026-10-01).
+hosted:
+  gpt-6-luna:
+    litellm_model: openai/gpt-6-luna
+    api_key_env: LLM_API_KEY
+    reasoning_effort: none
+    notes: The submission model (.env LLM_MODEL).
+  gpt-6.1-sol:
+    litellm_model: openai/gpt-6.1-sol
+    api_key_env: LLM_API_KEY
+    reasoning_effort: low
+    temperature: 1
+    notes: OpenAI's larger tier, for the ceiling.

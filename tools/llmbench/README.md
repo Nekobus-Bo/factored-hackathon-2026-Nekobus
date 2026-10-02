@@ -17,12 +17,21 @@ make llm-bench-compare                          # table across every run in resu
 
 | Make variable | Meaning |
 |---|---|
-| `MODEL` | Alias from [models.yaml](models.yaml): `qwen3.5-4b`, `granite-4.2-3b`, `granite-4.0-1b`, `qwen3-1.7b` |
+| `MODEL` | Alias from [models.yaml](models.yaml). Local: `qwen3.5-4b`, `granite-4.2-3b`, `granite-4.0-1b`, `qwen3-1.7b`. Hosted reference: `gpt-6-luna`, `gpt-6.1-sol` |
 | `ROUTE=1` | Offer the model only the tools the session's state allows (`--route-tools`) |
 | `BENCH_LANG` | `es`, `pt` or `en` only. It is not called `LANG`, because the shell already uses that name for the locale |
 | `ONLY` | `probes` or `episodes` |
 | `REPEAT` | Run everything N times. The default is 1, at temperature 0 |
 | `PUBLISH=1` | `llm-bench-compare` also writes `reports/llm-bench-<date>.md` |
+
+### Hosted reference models
+
+`gpt-6-luna` (the submission model) and `gpt-6.1-sol` are the upper bar. They need no `llm-bench-serve`: `make llm-bench MODEL=gpt-6-luna` calls OpenAI through LiteLLM with the key in `LLM_API_KEY`, read from the environment first and then from the repo's `.env`. These runs cost money; a full run is about 48 conversations.
+
+| Model | Reasoning effort | Temperature | Why |
+|---|---|---|---|
+| `gpt-6-luna` | `none` | 0 | As the service runs it |
+| `gpt-6.1-sol` | `low` | 1 | It has no `none` effort, and with reasoning on OpenAI accepts only temperature 1. Its runs are not deterministic: use `REPEAT=3` before reading small differences |
 
 `make llm-bench-check` runs the tests (sandbox, probes, episodes, CLI) with stand-in models. No server is needed.
 
@@ -95,7 +104,7 @@ The episodes are three scenarios from each of six groups: happy path, risk thres
 
 ## Adding a model
 
-1. Add an alias to [models.yaml](models.yaml), with its GGUF repo and quant (`hf: <repo>:<quant>`) and any extra `server_args`.
+1. Add an alias to [models.yaml](models.yaml), with its GGUF repo and quant (`hf: <repo>:<quant>`) and any extra `server_args`. A hosted model goes under `hosted:` instead, with `litellm_model`, `api_key_env` and, if needed, `reasoning_effort` and `temperature`; skip steps 2 and 3's server.
 2. Check that llama.cpp parses the model's tool-call format into OpenAI `tool_calls`. A probe transcript with no tool calls at all usually means it does not.
 3. Run it with `make llm-bench-serve MODEL=<alias>`, then `make llm-bench MODEL=<alias>`.
 
