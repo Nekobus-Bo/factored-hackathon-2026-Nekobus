@@ -85,6 +85,7 @@ class LLMProvider:
         self.timeout = self.settings.llm_timeout_seconds
         self.retries = self.settings.llm_max_retries
         self.reasoning_effort = self.settings.effective_reasoning_effort
+        self.temperature = self.settings.llm_temperature
         self.mode = self.settings.llm_mode
         self.replay_on_miss = self.settings.llm_replay_on_miss
         self.record = self.settings.record
@@ -327,7 +328,7 @@ class LLMProvider:
         messages: list[dict[str, Any]],
         prompt_version: str = "1.0",
         tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Execute completion with mandatory masking, replay check, and unmasking."""
@@ -378,7 +379,7 @@ class LLMProvider:
         call_kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": masked_messages,
-            "temperature": temperature,
+            "temperature": self.temperature if temperature is None else temperature,
             "timeout": self.timeout,
             "num_retries": self.retries,
             **kwargs,
@@ -477,7 +478,7 @@ class LLMProvider:
         messages: list[dict[str, Any]],
         prompt_version: str = "1.0",
         tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Synchronous completion execution."""
@@ -527,7 +528,7 @@ class LLMProvider:
         call_kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": masked_messages,
-            "temperature": temperature,
+            "temperature": self.temperature if temperature is None else temperature,
             "timeout": self.timeout,
             "num_retries": self.retries,
             **kwargs,

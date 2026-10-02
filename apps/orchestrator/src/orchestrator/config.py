@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     # Reasoning models reject temperature 0 unless reasoning is off ("none").
     # Blank = the parameter is not sent (non-reasoning models).
     llm_reasoning_effort: str | None = Field(default=None, alias="LLM_REASONING_EFFORT")
+    # 0 is greedy decoding. A local model that thinks may ask for more in its
+    # model card (Qwen3.6: 0.6), since greedy decoding with thinking can loop.
+    llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0, alias="LLM_TEMPERATURE")
     llm_replay_on_miss: Literal["fail", "passthrough"] = Field(
         default="fail", alias="LLM_REPLAY_ON_MISS"
     )
