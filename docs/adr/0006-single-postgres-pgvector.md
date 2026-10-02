@@ -112,11 +112,35 @@ Lab evidence, pooled over the 360 validation queries (bf16, Apple Silicon CPU; Î
 | granite-97m | 0.614 | 0.727 | 0.600 | +0.12 [+0.06, +0.18] | 12 ms (p50) |
 | **granite-311m** | **0.714** | **0.820** | **0.703** | **+0.22 [+0.17, +0.28]** | 37 ms |
 
+Harness confirmation in fp32 (`make calibrate TASK=embedding CONFIG=tools/calibrate/configs/embedding_kb_v2.yaml`, report `reports/calibration-embedding-2026-10-02.md`, mean over es/pt/en):
+
+| Backend | Same-language Hit@1 | Hit@5 | MRR | Cross-language Hit@1 | Cross MRR | p95 CPU (8 threads) |
+|---|---:|---:|---:|---:|---:|---:|
+| BM25 | 0.366 | 0.603 | 0.456 | 0.144 | 0.197 | 0.1 ms |
+| MiniLM (`e8f8c211`, the fixed tokenizer) | 0.494 | 0.794 | 0.605 | 0.508 | 0.593 | 7.1 ms |
+| **granite-311m, fp32** | **0.719** | **0.964** | **0.822** | **0.711** | **0.796** | 18.6 ms |
+
+The report's RAM column comes from one process loading the candidates in turn, so it is not a per-model figure.
+
+**Score floor** ([reports/embedding-score-floor-2026-10-02.md](../../reports/embedding-score-floor-2026-10-02.md)). Granite's cosine scores sit in a compressed band, so the MiniLM-era floor of 0.3 filters nothing. Top-1 same-language scores:
+
+| | Lowest in-domain | Highest off-topic |
+|---|---:|---:|
+| Granite | 0.807 | 0.807 |
+| MiniLM | â€” | 0.30 (median 0.13) |
+
+For Granite, in-domain is the 360 validation queries (p5 0.84) and off-topic is 30 team-written queries (recipes, sport, weather; 10 per language). At 0.3 every off-topic query returned snippets. The seed moves to **`RETRIEVAL_SCORE_FLOOR=0.80`**:
+- it keeps all 360 in-domain queries;
+- it lets 1 of the 30 off-topic queries through, against 1 of 12 for MiniLM at 0.3;
+- at 0.81, one in-domain query falls below the floor.
+
+The margin is a few hundredths wide, so the floor stays provisional until a human-written test set with out-of-scope queries exists.
+
 **Consequences.**
 - Vectors grow from 384 to 768 dimensions. `banking-core` takes the dimension from the model server's first response, so the in-memory index needs no change; a future pgvector column must use 768.
 - The encoder holds about 1.2 GB of fp32 weights for embeddings instead of about 0.45 GB, next to DistilBERT.
 - One query takes tens of milliseconds instead of a few. That is small next to LLM latency.
-- `RETRIEVAL_SCORE_FLOOR` (0.3) was seeded for MiniLM's score scale and is rechecked against Granite's.
+- `RETRIEVAL_SCORE_FLOOR` moves from 0.3 to 0.80, a value tied to this model's score scale. Any later model change must re-derive it.
 - The evidence is still the provisional synthetic set; the human-written test set re-checks it.
 
 ## Action items
