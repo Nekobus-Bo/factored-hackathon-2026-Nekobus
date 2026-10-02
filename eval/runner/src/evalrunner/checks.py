@@ -547,7 +547,8 @@ _BLOCK_CLAIM_PATTERNS = [
 _NEGATION_RE = re.compile(
     r"\b(?:no|nunca|ning[uú]n[ao]?|a[uú]n\s+no|todav[ií]a\s+no|sin|"
     r"n[aã]o|nenhum[a]?|nunca|ainda\s+n[aã]o|"
-    r"not|never|no|cannot|unable)\b|n['’]t\b",
+    r"not|never|no|cannot|unable|failed\s+to|"
+    r"prevent\w*|imp[ei]d\w*)\b|n['’]t\b",
     re.IGNORECASE,
 )
 # Sentences, with semicolons and dashes as hard breaks too: a claim never spans

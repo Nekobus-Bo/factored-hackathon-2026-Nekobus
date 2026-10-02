@@ -513,6 +513,9 @@ NOT_BLOCK_CLAIMS = [
     "What’s happening with your card—is it lost or stolen, blocked, damaged, or are "
     "you having trouble making a payment?",
     "The bank’s system blocked the verification code request, so I couldn’t send it.",
+    "A technical error prevented me from confirming that your card was blocked.",
+    "Un error técnico impidió confirmar que tu tarjeta quedó bloqueada.",
+    "We failed to confirm that your card was blocked.",
 ]
 
 

@@ -9,7 +9,7 @@ setup:
   - card_ref: card_extra_pt
     pan_last4: '7799'
 prefix:
-- user: Oi, perdi meu cartão de débito agora há pouco. Meu CPF é 12345678900.
+- user: Quero bloquear meu cartão. Meu CPF é 12345678900.
   calls:
   - tool: customer.match
     args:

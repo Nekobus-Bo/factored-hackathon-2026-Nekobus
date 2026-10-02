@@ -9,7 +9,7 @@ setup:
   - card_ref: card_extra_en
     pan_last4: '7711'
 prefix:
-- user: Hi, I lost my debit card a little while ago. My passport number is P12345678.
+- user: I want to block my card. My passport number is P12345678.
   calls:
   - tool: customer.match
     args:
