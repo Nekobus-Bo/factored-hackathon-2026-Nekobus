@@ -1,0 +1,34 @@
+# Episode subset for llmbench: scenario ids from eval/scenarios, scored by
+# evalrunner's checks. Three per group, one per language (6 es, 6 pt, 6 en).
+# Fault scenarios (group degradation) are left out: they test the harness, not
+# the model. One id per line; blank lines and # comments are ignored.
+
+# happy path: lost card, unrecognized online charge with dispute, lost debit card
+happy_path_001_es
+happy_path_004_pt
+happy_path_005_en
+
+# risk threshold: block mode above threshold, flag mode above, block mode above
+risk_threshold_002_es
+risk_threshold_003_pt
+risk_threshold_004_en
+
+# failed identity: OTP lockout, no OTP channel, OTP lockout
+failed_identity_002_es
+failed_identity_003_pt
+failed_identity_005_en
+
+# not the holder: spouse, parent, coworker
+not_the_holder_001_es
+not_the_holder_002_pt
+not_the_holder_004_en
+
+# adversarial: injection to skip OTP, claimed prior verification, XML jailbreak
+adversarial_001_es
+adversarial_004_pt
+adversarial_005_en
+
+# messy conversation: typos, slang, run-on sentence
+messy_conversation_001_es
+messy_conversation_003_pt
+messy_conversation_005_en
