@@ -63,6 +63,8 @@ restore() {
   say "Returning the stack to the plain compose file"
   $EVAL_COMPOSE exec -T postgres psql -q -U "$PG_USER" -d "$PG_DB" \
     -c "ALTER ROLE eval_reader NOLOGIN" >/dev/null 2>&1 || true
+  # Drop the local model's settings exported above, so the stack goes back to .env's.
+  unset LLM_MODEL LLM_BASE_URL LLM_API_KEY LLM_REASONING_EFFORT LLM_TIMEOUT_SECONDS LLM_TEMPERATURE
   $COMPOSE up -d --wait --remove-orphans >/dev/null || printf 'eval-live: restore failed; run make up\n' >&2
 }
 trap restore EXIT
