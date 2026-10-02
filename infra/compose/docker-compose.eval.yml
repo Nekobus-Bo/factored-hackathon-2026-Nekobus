@@ -1,0 +1,39 @@
+# Live evaluation override, used only by `make eval-live` (infra/compose/eval-live.sh)
+# on top of docker-compose.yml. Never deploy it: it opens what the eval runner needs
+# and nothing else, and the script returns the stack to the plain file when it ends.
+#
+#   - the orchestrator calls its model live and returns the eval hook
+#     (EVAL_EXPOSE_TURN: masked outbound messages, decisions, tokens);
+#   - banking-core serves the dev OTP hook, so {{otp}} turns can read the code;
+#   - eval-db forwards postgres to 127.0.0.1 for the runner's read-only role
+#     (eval_reader, created by the script with a fresh password each run).
+#
+# eval-db is the one exception to "banking-core is the only service on both
+# networks" (ADR-0004): a TCP forwarder with no credentials of its own, published
+# on loopback only, alive only during the run. The orchestrator still has no path
+# to postgres.
+services:
+  banking-core:
+    environment:
+      ALLOW_DEV_OTP_HOOK: "true"
+
+  orchestrator:
+    environment:
+      EVAL_EXPOSE_TURN: "true"
+      LLM_MODE: live
+    # A local model is served on the host (llama.cpp, or an SSH tunnel to one).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  eval-db:
+    image: alpine/socat:1.8.0.3
+    command: ["tcp-listen:5432,fork,reuseaddr", "tcp-connect:postgres:5432"]
+    networks: [core, edge]
+    ports:
+      - "127.0.0.1:${PORT_EVAL_DB:-5433}:5432"
+    depends_on:
+      postgres: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 64m }

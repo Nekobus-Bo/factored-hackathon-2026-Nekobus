@@ -180,6 +180,20 @@ make eval-adversarial  # ⚠️ pending
 
 The generated report is versioned in the repository: it is the evidence, not a temporary artifact.
 
+### Live end-to-end run (`make eval-live`)
+
+Until replay recordings exist, the proposed system can be run with its model called live. It is the whole stack (encoder, decision points, masking, banking-core, Postgres, Redis), driven through the orchestrator's chat API and scored on banking-core's own evidence:
+
+```bash
+make eval-live                               # the model in .env (gpt-6-luna)
+make eval-live LOCAL_MODEL=qwen3.6-35b-a3b   # a model served on 127.0.0.1:8099 (tools/llmbench)
+make eval-live ARGS="--group happy_path"     # any evalrunner filter
+```
+
+[infra/compose/eval-live.sh](../infra/compose/eval-live.sh) starts the stack with [docker-compose.eval.yml](../infra/compose/docker-compose.eval.yml) on top, rebuilt from the working tree. The override turns on the eval hook (`EVAL_EXPOSE_TURN`), the dev OTP hook and `LLM_MODE=live`, and adds `eval-db`, a TCP forwarder that publishes Postgres on loopback for the duration of the run. The script creates the read-only role `eval_reader` with a fresh password, runs `evalrunner --system proposed --live-llm <model>`, then disables the role and returns the stack to the plain compose file. The report goes to `reports/eval-live-<date>-<model>.md` and names the model.
+
+A live run **cannot be replayed**, and it breaks protocol rule 3 for any model whose provider samples at temperature above 0. Fault scenarios do not run: they need compose-level fault injection.
+
 ### Orchestrator API evidence
 
 `EVAL_EXPOSE_TURN` is false by default and application startup rejects it in

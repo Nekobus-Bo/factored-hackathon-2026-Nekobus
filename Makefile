@@ -70,7 +70,7 @@ NO_PROJECT = { echo "no GCP project: copy $(TF_DIR)/local.tfvars.example to $(TF
 gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) --project $(GCP_PROJECT) --wait
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
+.PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-live eval-baseline eval-adversarial \
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench llm-bench-serve llm-bench llm-bench-compare llm-bench-check clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional synth-retrieval-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
 	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-iap-oauth gcp-gh-vars gcp-migrate gcp-seed \
@@ -124,6 +124,9 @@ ingest: ## Map a delivered dataset data/raw/SOURCE -> data/staging/SOURCE (SOURC
 
 eval: ## pending: baseline vs proposed on the scenario suite
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
+
+eval-live: ## Proposed system end to end with the LLM called live, not replayable: reports/eval-live-<date>-<model>.md (LOCAL_MODEL=<llmbench alias> served on :8099; ARGS="--group happy_path")
+	@COMPOSE="$(COMPOSE)" LOCAL_MODEL="$(LOCAL_MODEL)" ARGS="$(ARGS)" OUT="$(OUT)" bash infra/compose/eval-live.sh
 
 eval-baseline: ## pending: baseline system only
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
