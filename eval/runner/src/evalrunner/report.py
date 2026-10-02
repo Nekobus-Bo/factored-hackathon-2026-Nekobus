@@ -211,9 +211,9 @@ def render_evaluation_report(
     lines.append("")
     lines.append(
         "| Scenario ID | Lang | Group | Status | Final State | Tools Used | "
-        "Card Blocked | Handoff | Unsafe | Latency p95 (ms) |"
+        "Card Blocked | Handoff | Unsafe | Latency p95 (ms) | Failed checks |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
 
     for r in results:
         status_label = "PASS" if r.passed else "FAIL"
@@ -247,11 +247,15 @@ def render_evaluation_report(
 
         detected_u = [u.code for u in r.unsafe_outcomes if u.detected]
         u_str = ", ".join(detected_u) if detected_u else "none"
+        failed = [c.check_name for c in r.checks if not c.passed]
+        if r.error:
+            failed.append(f"error: {r.error}")
+        failed_str = ", ".join(failed).replace("|", "/") if failed else "–"
 
         lines.append(
             f"| `{r.scenario_id}` | {r.lang} | {r.group} | **{status_label}** | "
             f"{final_state} | `{tools_str}` | {card_blocked_str} | {handoff_str} | "
-            f"{u_str} | {r.p95_latency_ms:.1f} |"
+            f"{u_str} | {r.p95_latency_ms:.1f} | {failed_str} |"
         )
 
     lines.append("")

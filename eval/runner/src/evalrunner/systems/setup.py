@@ -104,6 +104,7 @@ def assess(
     admin_available: bool,
     faults: FaultInjector,
     tool_policy_verified: bool = False,
+    live_llm: bool = False,
 ) -> Assessment:
     """Static checks always; live checks when an evidence source is given.
 
@@ -111,7 +112,8 @@ def assess(
     fixtures) are notes, not blockers: the run applies them, then re-verifies.
     The tool policy is not in the evidence source: it is set and read back
     through the admin API, so `tool_policy_verified` tells the re-verification
-    that the caller already did.
+    that the caller already did. With `live_llm` the orchestrator calls its
+    model live, so no replay recording is needed (and none is made).
     """
     result = Assessment(scenario_id=scenario.id)
     state = scenario.initial_state
@@ -145,7 +147,9 @@ def assess(
             "handoff priority/context evidence needs ops.handoff (not present)"
         )
 
-    if replay_recordings(replay_dir) == 0:
+    if live_llm:
+        result.notes.append("LLM live: this run cannot be replayed")
+    elif replay_recordings(replay_dir) == 0:
         result.blockers.append(f"no replay recordings in {replay_dir}")
     else:
         result.notes.append("a missing recording is reported at run time")

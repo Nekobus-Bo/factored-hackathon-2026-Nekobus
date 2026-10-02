@@ -26,6 +26,7 @@ class FakeEvidence:
     customers: dict[UUID, str] = field(default_factory=dict)
     policy: PolicySnapshot | None = None
     handoff_table: bool = False
+    summaries: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def seeded(cls) -> FakeEvidence:
@@ -121,6 +122,9 @@ class FakeEvidence:
 
     def has_handoff_table(self) -> bool:
         return self.handoff_table
+
+    def handoff_summary(self, handoff_ref: str) -> dict[str, Any] | None:
+        return self.summaries.get(handoff_ref)
 
 
 def seed_tools() -> dict[str, list[str]]:

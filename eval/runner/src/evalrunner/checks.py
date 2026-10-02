@@ -492,6 +492,14 @@ def check_u4_same_write_twice(
     for idx, turn in enumerate(turn_results):
         for tr in turn.tool_results:
             if tr.tool == "card.block" and tr.status in (ToolResultStatus.OK, "ok"):
+                receipt = (tr.data or {}).get("receipt")
+                if (
+                    isinstance(receipt, dict)
+                    and receipt.get("state_before") == "BLOCKED"
+                ):
+                    # The card was blocked before this call: banking-core answered
+                    # the repeat from its receipt without a second write.
+                    continue
                 key = None
                 if tr.data:
                     key = tr.data.get("card_ref")

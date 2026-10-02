@@ -12,9 +12,11 @@
 - {{otp}} turns: the code comes from banking-core's dev OTP hook (it reads the
   simulated inbox on redis-core, ADR-0007), looked up by the challenge_id of
   this session's otp.send audit row.
-- LLM runs in replay mode only; only a 503 with detail "replay_miss" is "not
+- LLM in replay mode by default; only a 503 with detail "replay_miss" is "not
   run". Any other failed turn FAILS the scenario, and the audit rows already in
   its window still go through U1-U8 (a tool may have run before the failure).
+  With `llm_live` (`--live-llm`, `make eval-live`) the orchestrator calls its
+  model live: no recording is needed, and the run cannot be replayed.
 """
 
 from __future__ import annotations
@@ -95,6 +97,8 @@ class ProposedConfig:
     replay_dir: Path
     admin_token: str | None = None
     timeout_seconds: float = 60.0
+    # The model the orchestrator calls live, for the report; None = replay.
+    llm_live: str | None = None
 
     @classmethod
     def from_env(cls) -> ProposedConfig:
@@ -149,6 +153,8 @@ class ProposedSystem:
         )
         self.faults = faults or NoFaultInjector()
         self._admin_available: bool | None = None
+        if config.llm_live:
+            self.name = f"proposed (LLM live: {config.llm_live}; not replayable)"
 
     def admin_available(self) -> bool:
         if self._admin_available is None:
@@ -160,7 +166,12 @@ class ProposedSystem:
     def start(self, scenario: Scenario) -> ProposedSession:
         admin_ok = self.admin_available()
         before = assess(
-            scenario, self.evidence, self.config.replay_dir, admin_ok, self.faults
+            scenario,
+            self.evidence,
+            self.config.replay_dir,
+            admin_ok,
+            self.faults,
+            live_llm=bool(self.config.llm_live),
         )
         if not before.runnable:
             raise ScenarioNotRunError("; ".join(before.blockers))
@@ -201,6 +212,19 @@ class ProposedSystem:
             session.fault_applied = True
         return session
 
+    def _handoff_payload(self, audit_payload: dict[str, Any]) -> dict[str, Any]:
+        """The handoff as banking-core stored it: the audit row's fields, its
+        details (department, handoff_ref) and the server-built summary from
+        ops.handoff (verified_facts, actions_taken, ...), all trusted-side."""
+        payload = dict(audit_payload)
+        details = audit_payload.get("details")
+        if isinstance(details, dict):
+            payload.update(details)
+        ref = payload.get("handoff_ref")
+        if isinstance(ref, str) and self.evidence.has_handoff_table():
+            payload.update(self.evidence.handoff_summary(ref) or {})
+        return payload
+
     def _apply_setup(self, scenario: Scenario) -> None:
         """Reset fixtures and set the policy, then verify they took effect.
 
@@ -229,6 +253,7 @@ class ProposedSystem:
             admin_available=False,
             faults=self.faults,
             tool_policy_verified=True,
+            live_llm=bool(self.config.llm_live),
         )
         if not after.runnable:
             raise ScenarioNotRunError(
@@ -340,7 +365,7 @@ class ProposedSystem:
             return message
         challenge_id = next(
             (
-                r.payload.get("challenge_id")
+                _field(r.payload, "challenge_id")
                 for r in reversed(session.rows)
                 if r.action == "otp.send" and r.decision == "allowed"
             ),
@@ -404,7 +429,7 @@ class ProposedSystem:
         ]
         handoff = HandoffResult()
         if handoffs:
-            payload = handoffs[-1].payload
+            payload = self._handoff_payload(handoffs[-1].payload)
             handoff = HandoffResult(
                 created=True,
                 priority=str(
@@ -504,15 +529,24 @@ def _strings(value: Any) -> list[str]:
     return []
 
 
+def _field(payload: dict[str, Any], key: str) -> Any:
+    """A tool output field of an audit row: AuditPayload keeps them in `details`."""
+    if key in payload:
+        return payload[key]
+    details = payload.get("details")
+    return details.get(key) if isinstance(details, dict) else None
+
+
 def _tool_call(row: AuditRow) -> ToolCall:
     # model_construct: audit rows do not carry the full (possibly PII) args,
     # so the contract validation cannot run. Checks read only tool/args/key.
-    args = {"card_ref": row.payload["card_ref"]} if "card_ref" in row.payload else {}
+    card_ref = _field(row.payload, "card_ref")
+    args = {"card_ref": card_ref} if card_ref else {}
     return ToolCall.model_construct(
         tool=row.action,
         version="1.0",
         args=args,
-        idempotency_key=row.payload.get("idempotency_key"),
+        idempotency_key=_field(row.payload, "idempotency_key"),
     )
 
 
@@ -524,16 +558,24 @@ def _tool_result(row: AuditRow) -> ToolResult:
     data: dict[str, Any] | None = None
     if status is ToolResultStatus.OK:
         data = {k: v for k, v in row.payload.items() if k not in _STATE_KEYS}
+        # The tool output itself (card_ref, already_blocked, ...), as the
+        # ToolResult carried it: AuditPayload nests it under `details`.
+        details = data.pop("details", None)
+        if isinstance(details, dict):
+            data.update(details)
         if TOOL_CATALOG[row.action].mutates_state:
             data["receipt"] = {
                 "action": row.action,
-                "target_masked": row.payload.get("card_ref")
-                or row.payload.get("challenge_id")
-                or row.payload.get("handoff_ref")
+                "target_masked": _field(row.payload, "card_ref")
+                or _field(row.payload, "challenge_id")
+                or _field(row.payload, "handoff_ref")
                 or "",
                 "verified_at": row.occurred_at.isoformat(),
                 "audit_id": str(row.id),
             }
+            for side in ("before", "after"):
+                if row.payload.get(f"card_state_{side}"):
+                    data["receipt"][f"state_{side}"] = row.payload[f"card_state_{side}"]
     return ToolResult.model_construct(
         tool=row.action,
         status=status,

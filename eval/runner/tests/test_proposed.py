@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -480,6 +481,124 @@ def test_cli_dry_run_offline_lists_every_scenario(
     assert "degradation_" in out and "fault" in out
     assert "0/63 scenarios runnable." in out
     assert "would be runnable once replays are recorded." in out
+
+
+def test_cli_dry_run_with_a_live_llm_needs_no_recordings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("EVAL_READONLY_DSN", raising=False)
+    monkeypatch.setenv("EVAL_REPLAY_DIR", str(tmp_path / "empty"))
+    monkeypatch.setenv("EVAL_BANKING_CORE_URL", BANK)
+    happy = str(SCENARIOS / "happy_path")
+
+    with respx.mock() as mock:
+        mock.get(f"{BANK}/v1/admin/policy-config").mock(
+            return_value=httpx.Response(404)
+        )
+        args = ["--system", "proposed", "--dry-run", "--live-llm", "m"]
+        code = cli_main([*args, "--scenarios", happy])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "no replay recordings" not in out
+    assert "LLM live: this run cannot be replayed" in out
+    assert "0/23 scenarios runnable." not in out
+
+
+def test_live_llm_runs_without_recordings_and_names_the_model(
+    evidence: FakeEvidence, tmp_path: Path, router: respx.MockRouter
+) -> None:
+    empty = tmp_path / "no-recordings"
+    empty.mkdir()
+    handler, _ = scripted_orchestrator(evidence)
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=handler)
+    system = make_system(evidence, empty)
+    live = ProposedSystem(
+        replace(system.config, llm_live="gpt-6-luna"),
+        evidence,
+        http=httpx.Client(),
+        admin=system.admin,
+    )
+
+    result = run_scenario(live, load("happy_path/happy_path_001_es.yaml"))
+
+    assert result.not_run_reason is None and result.passed is True
+    assert live.name == "proposed (LLM live: gpt-6-luna; not replayable)"
+    replay = run_scenario(system, load("happy_path/happy_path_001_es.yaml"))
+    assert replay.not_run_reason is not None
+    assert "no replay recordings" in replay.not_run_reason
+
+
+def real_row(before: str, after: str, **details: Any) -> dict[str, Any]:
+    """An audit payload as banking-core writes it: tool output under `details`."""
+    return {
+        "verification_state_before": before,
+        "verification_state_after": after,
+        "status": "ok",
+        "reason": None,
+        "details": details,
+    }
+
+
+def test_otp_and_card_fields_are_read_from_the_audit_details(
+    evidence: FakeEvidence, replay_dir: Path, router: respx.MockRouter
+) -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content)["text"])
+        if len(sent) == 2:
+            evidence.audit_raw(
+                SESSION, "customer.match", real_row("ANONYMOUS", "IDENTIFIED")
+            )
+            evidence.audit_raw(
+                SESSION,
+                "otp.send",
+                real_row("IDENTIFIED", "OTP_PENDING", challenge_id="chal_abc12345"),
+            )
+        if len(sent) == 3:
+            evidence.audit_raw(
+                SESSION, "otp.verify", real_row("OTP_PENDING", "VERIFIED")
+            )
+            evidence.audit_raw(
+                SESSION,
+                "card.block",
+                real_row("VERIFIED", "VERIFIED", card_ref="card_es_demo01"),
+            )
+        return reply("Listo.")
+
+    router.post(f"{ORCH}/v1/conversations/conv_1/messages").mock(side_effect=handler)
+    result = run_scenario(
+        make_system(evidence, replay_dir), load("happy_path/happy_path_001_es.yaml")
+    )
+
+    assert sent[2] == OTP_CODE
+    block = result.turns[2].tool_results[-1]
+    assert block.data is not None
+    assert block.data["receipt"]["target_masked"] == "card_es_demo01"
+    assert result.turns[2].tool_calls[-1].args == {"card_ref": "card_es_demo01"}
+
+
+def test_handoff_payload_merges_details_and_the_stored_summary(
+    evidence: FakeEvidence, replay_dir: Path
+) -> None:
+    evidence.handoff_table = True
+    summary = {
+        "verified_facts": {"customer_identified": True},
+        "actions_taken": ["card.block"],
+        "verification_method": "OTP",
+        "open_questions": [{"source": "model_unverified", "text": "dispute"}],
+    }
+    evidence.summaries["hnd_1"] = summary
+    audit = real_row(
+        "VERIFIED", "HANDED_OFF", handoff_ref="hnd_1", department="DISPUTES"
+    )
+    audit["handoff_priority"] = "HIGH"
+
+    payload = make_system(evidence, replay_dir)._handoff_payload(audit)
+
+    assert payload["department"] == "DISPUTES" and payload["handoff_priority"] == "HIGH"
+    assert {k: payload[k] for k in summary} == summary
 
 
 def test_cli_run_requires_readonly_dsn(

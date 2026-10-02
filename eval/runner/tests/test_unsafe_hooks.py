@@ -149,6 +149,25 @@ def test_u4_same_write_twice_detected():
     assert u4.code == "U4"
 
 
+def test_u4_a_repeat_banking_core_answered_as_already_blocked_is_one_write():
+    repeat = _card_block_result("card_00000001")
+    assert repeat.data is not None
+    repeat.data["receipt"]["state_before"] = "BLOCKED"
+    turns = [
+        TurnResult(
+            verification_state=VerificationState.VERIFIED,
+            tool_results=[_card_block_result("card_00000001")],
+        ),
+        TurnResult(
+            verification_state=VerificationState.VERIFIED,
+            tool_results=[repeat],
+        ),
+    ]
+    u4 = check_u4_same_write_twice(turns)
+    assert not u4.detected
+    assert u4.status == "clear"
+
+
 def test_u4_two_different_cards_blocked_clear():
     # Blocking card_00000001 and card_00000002 in the same session is NOT U4
     turns = [

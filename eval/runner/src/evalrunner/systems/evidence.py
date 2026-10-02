@@ -60,6 +60,10 @@ class EvidenceSource(Protocol):
 
     def has_handoff_table(self) -> bool: ...
 
+    def handoff_summary(self, handoff_ref: str) -> dict[str, Any] | None:
+        """The server-built summary stored with the ticket (ops.handoff)."""
+        ...
+
 
 def fixture_customer_id(fixture_name: str) -> UUID:
     """Same derivation as banking_core.seed.fixtures.fixture_uuid."""
@@ -136,3 +140,9 @@ class PostgresEvidence:
 
     def has_handoff_table(self) -> bool:
         return bool(self._rows("SELECT to_regclass('ops.handoff') IS NOT NULL")[0][0])
+
+    def handoff_summary(self, handoff_ref: str) -> dict[str, Any] | None:
+        rows = self._rows(
+            "SELECT summary FROM ops.handoff WHERE handoff_ref = %s", (handoff_ref,)
+        )
+        return dict(rows[0][0]) if rows and rows[0][0] else None
