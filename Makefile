@@ -153,9 +153,9 @@ llm-bench-serve: ## Serve a local model for llmbench with llama.cpp, in the fore
 	@command -v $(LLAMA_SERVER) >/dev/null 2>&1 || $(NO_LLAMA)
 	@cmd="$$($(LLMBENCH) serve-cmd --model $(MODEL) --binary $(LLAMA_SERVER))" && echo "$$cmd" && eval "$$cmd"
 
-llm-bench: ## Benchmark the served model: 30 probes + 18 episodes (MODEL=; ROUTE=1 offers only state-allowed tools; BENCH_LANG=es|pt|en; ONLY=probes|episodes; REPEAT=)
+llm-bench: ## Benchmark the served model: 42 probes + 21 episodes (MODEL=; ROUTE=1 offers only state-allowed tools; BENCH_LANG=es|pt|en; ONLY=probes|episodes; REPEAT=; TAG=)
 	@test -n "$(MODEL)" || $(NO_MODEL)
-	$(LLMBENCH) run --model $(MODEL) $(if $(ROUTE),--route-tools) $(if $(BENCH_LANG),--lang $(BENCH_LANG)) $(if $(ONLY),--only $(ONLY)) $(if $(REPEAT),--repeat $(REPEAT))
+	$(LLMBENCH) run --model $(MODEL) $(if $(ROUTE),--route-tools) $(if $(BENCH_LANG),--lang $(BENCH_LANG)) $(if $(ONLY),--only $(ONLY)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(TAG),--tag $(TAG))
 
 llm-bench-compare: ## Compare the llmbench runs in tools/llmbench/results (PUBLISH=1 also writes reports/llm-bench-<date>.md)
 	$(LLMBENCH) compare $(if $(PUBLISH),--publish)

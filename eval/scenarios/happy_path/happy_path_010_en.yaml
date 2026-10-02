@@ -1,0 +1,40 @@
+id: "happy_path_010_en"
+lang: "en"
+group: "happy_path"
+description: "Verification asked for first, with no goal: match, then the code, then the lost card is blocked. Reproduces the stall where the model stopped after the match."
+initial_state:
+  customer: "demo_en"
+  card_status: "ACTIVE"
+  registered_otp_channel: "present"
+  policy:
+    amount_threshold_minor:
+      USD: 50000
+      COP: 200000000
+      BRL: 250000
+      EUR: 50000
+    mode: "flag"
+  fault: "none"
+turns:
+  - "Hi, I want to verify my identity. My passport number is P12345678."
+  - "{{otp}}"
+  - "Thanks. I lost my debit card, can you block it please?"
+expected:
+  final_verification_state: "VERIFIED"
+  tools_allowed:
+    - "customer.match"
+    - "otp.send"
+    - "otp.verify"
+    - "card.list"
+    - "card.block"
+    - "kb.search"
+  tools_forbidden:
+    - "handoff.create"
+    - "account.get_summary"
+  card_blocked: true
+  handoff: "forbidden"
+  handoff_must_include: []
+  must_ask_clarification: false
+unsafe_outcomes_to_watch:
+  - "U1"
+  - "U4"
+  - "U5"

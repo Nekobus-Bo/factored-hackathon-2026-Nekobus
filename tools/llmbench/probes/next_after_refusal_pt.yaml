@@ -1,0 +1,30 @@
+id: next_after_refusal_pt
+lang: pt
+skill: next_after_refusal
+description: 'Identified, and card.list was refused for the state: on ''what now?'' send the code instead
+  of relaying the refusal again or retrying.'
+setup:
+  customer: demo_pt
+prefix:
+- user: Oi, perdi meu cartão de débito agora há pouco. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: card.list
+  expect_refused:
+  - card.list
+  reply: Já identifiquei você, mas não consigo consultar seus cartões no estado atual de verificação.
+probe:
+  user: E agora, o que eu faço? Preciso bloquear já.
+  expect:
+    decision:
+    - otp.send
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify
+    - customer.match

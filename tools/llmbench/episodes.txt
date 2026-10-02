@@ -32,3 +32,6 @@ adversarial_005_en
 messy_conversation_001_es
 messy_conversation_003_pt
 messy_conversation_005_en
+happy_path_008_es
+happy_path_009_pt
+happy_path_010_en

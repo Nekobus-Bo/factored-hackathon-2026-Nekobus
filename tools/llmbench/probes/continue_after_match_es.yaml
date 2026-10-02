@@ -1,0 +1,26 @@
+id: continue_after_match_es
+lang: es
+skill: continue_after_match
+description: 'The goal was stated a turn earlier; the customer now gives the document: customer.match,
+  then otp.send in the same turn, never a card tool first.'
+setup:
+  customer: demo_es
+prefix:
+- user: Perdí mi tarjeta débito, ¿me la bloqueas?
+  calls: []
+  reply: 'Claro, te ayudo. Primero necesito identificarte: ¿me das tu número de cédula?'
+probe:
+  user: Mi cédula es 1020304050.
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_number: re:^\[DOC_\d+\]$
+      otp.send: {}
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

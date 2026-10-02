@@ -64,7 +64,7 @@ def test_run_and_compare(tmp_path, monkeypatch, capsys):
     runs = sorted(tmp_path.glob("*.json"))
     assert len(runs) == 2
     run = json.loads(runs[0].read_text())
-    assert len(run["probes"]) == 10 and len(run["episodes"]) == 6
+    assert len(run["probes"]) == 14 and len(run["episodes"]) == 7
     summary = run["summary"]
     # Asking a question is right for clarify and no_guess_card, wrong elsewhere.
     assert summary["probe_pass_by_skill"]["clarify"]["es"] == 1.0

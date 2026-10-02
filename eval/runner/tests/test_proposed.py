@@ -478,7 +478,7 @@ def test_cli_dry_run_offline_lists_every_scenario(
     assert "policy mode 'block' needs setup (admin API missing)" in out
     assert "tool policy needs setup (admin API missing)" in out
     assert "degradation_" in out and "fault" in out
-    assert "0/60 scenarios runnable." in out
+    assert "0/63 scenarios runnable." in out
     assert "would be runnable once replays are recorded." in out
 
 
@@ -1028,4 +1028,3 @@ def test_the_report_of_a_proposed_run_carries_the_decision_section(
     assert "## 4. Decision Points by Language (ADR-0012)" in text
     row = "| `turn_intent` | record | shadow | 1 | 1 | 0 | 0 | 0 | 100.0% (1/1)"
     assert row in text
-

@@ -1,0 +1,23 @@
+id: verify_only_en
+lang: en
+skill: verify_only
+description: '''Verify my identity'' with the document and no other goal: customer.match, then otp.send;
+  verifying means the code.'
+setup:
+  customer: demo_en
+prefix: []
+probe:
+  user: Hi, I want to verify my identity. My passport number is P12345678.
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_number: re:^\[DOC_\d+\]$
+      otp.send: {}
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

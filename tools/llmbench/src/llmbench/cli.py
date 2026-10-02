@@ -146,6 +146,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     episodes = [e for e in episodes if not args.lang or e.lang == args.lang]
 
     label = alias + ("+routed" if args.route_tools else "")
+    if args.tag:
+        label += f"@{args.tag}"
     started = time.perf_counter()
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
     loop = asyncio.new_event_loop()
@@ -198,6 +200,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         },
         "base_url": base_url,
         "routed": args.route_tools,
+        "tag": args.tag,
         "repeat": args.repeat,
         "started_at": started_at,
         "duration_s": time.perf_counter() - started,
@@ -261,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
         help="offer only the tools the session state allows",
     )
     run.add_argument("--repeat", type=int, default=1)
+    run.add_argument(
+        "--tag", help="appended to the run label as @TAG, e.g. a code stage (S1)"
+    )
     run.add_argument("--only", choices=["probes", "episodes"])
     run.add_argument("--lang", choices=["es", "pt", "en"])
     run.add_argument("--skill", action="append", help="probe skill (repeatable)")

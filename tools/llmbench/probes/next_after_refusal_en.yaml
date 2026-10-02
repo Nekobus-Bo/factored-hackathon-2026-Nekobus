@@ -1,0 +1,30 @@
+id: next_after_refusal_en
+lang: en
+skill: next_after_refusal
+description: 'Identified, and card.list was refused for the state: on ''what now?'' send the code instead
+  of relaying the refusal again or retrying.'
+setup:
+  customer: demo_en
+prefix:
+- user: Hi, I lost my debit card a little while ago. My passport number is P12345678.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: PASSPORT
+      document_number: '{{ph:DOC}}'
+  - tool: card.list
+  expect_refused:
+  - card.list
+  reply: I have identified you, but I can't look up your cards in the current verification state.
+probe:
+  user: So what now? I need it blocked right away.
+  expect:
+    decision:
+    - otp.send
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify
+    - customer.match

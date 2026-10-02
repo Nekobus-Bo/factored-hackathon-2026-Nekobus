@@ -102,11 +102,11 @@ def test_episode_list_resolves_and_balances_languages():
 
     ids = read_episode_ids(ROOT / "tools" / "llmbench" / "episodes.txt")
     scenarios = load_episodes(ids, SCENARIOS)
-    assert len(scenarios) == 18
+    assert len(scenarios) == 21
     langs = [s.lang for s in scenarios]
     assert {lang: langs.count(lang) for lang in set(langs)} == {
-        "es": 6,
-        "pt": 6,
-        "en": 6,
+        "es": 7,
+        "pt": 7,
+        "en": 7,
     }
     assert all(s.initial_state.fault == "none" for s in scenarios)

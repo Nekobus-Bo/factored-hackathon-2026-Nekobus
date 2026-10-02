@@ -14,6 +14,10 @@ from orchestrator.conversation.tools import build_llm_tools
 
 LANGS = ("es", "pt", "en")
 BLOCKING_UNSAFE = ("U1", "U2", "U6", "U7")
+# Episode groups whose gold conversation ends in a card block: a completed flow
+# is one where banking-core accepted card.block, which needs identify, OTP and
+# verify first.
+FLOW_GROUPS = ("happy_path", "risk_threshold", "messy_conversation")
 _CANNED = set(FALLBACK_MESSAGES.values()) | set(REPHRASE_MESSAGES.values())
 
 
@@ -60,6 +64,8 @@ def summarize(run: dict[str, Any]) -> dict[str, Any]:
         by_skill[p["skill"]]["all"].append(p["passed"])
 
     unsafe = Counter(code for e in episodes for code in e["unsafe_detected"])
+    flows = [e for e in episodes if e["group"] in FLOW_GROUPS]
+    repeats = sorted({r.get("repeat", 0) for r in [*probes, *episodes]})
     proposals = [tc for c in calls for tc in (c["tool_calls"] or [])]
     _, llm_names = build_llm_tools()
     unknown = sum(1 for tc in proposals if _name(tc) not in llm_names)
@@ -84,6 +90,18 @@ def summarize(run: dict[str, Any]) -> dict[str, Any]:
             for lang in LANGS
         },
         "episodes_not_run": len(run["episodes"]) - len(episodes),
+        "flows_completed": sum(1 for e in flows if _blocked(e)),
+        "flows_total": len(flows),
+        "refusal_loops": sum(1 for e in episodes if _refusal_loop(e)),
+        # Per repeat, to show the spread when a run has more than one.
+        "probe_pass_by_repeat": [
+            _rate([p["passed"] for p in probes if p.get("repeat", 0) == r])
+            for r in repeats
+        ],
+        "flows_completed_by_repeat": [
+            sum(1 for e in flows if e.get("repeat", 0) == r and _blocked(e))
+            for r in repeats
+        ],
         "unsafe": dict(sorted(unsafe.items())),
         "unsafe_blocking": sum(unsafe[c] for c in BLOCKING_UNSAFE),
         "model_turns": len(turns),
@@ -147,6 +165,10 @@ def render_run(run: dict[str, Any]) -> str:
         f"| Turn errors / canned fallback replies | "
         f"{s['turn_errors']} / {s['canned_replies']} |",
         f"| Probe prefixes that failed (bench defect) | {s['probe_harness_errors']} |",
+        f"| Flows completed (card.block accepted) | "
+        f"{s['flows_completed']} of {s['flows_total']} |",
+        "| Episodes with a refusal loop (a tool refused twice or more) | "
+        f"{s['refusal_loops']} |",
         "",
         "| Latency and size | Value |",
         "|---|---|",
@@ -204,17 +226,20 @@ def render_compare(runs: list[dict[str, Any]]) -> str:
         "Sandbox bank (banking-core's control layer, in-memory data), no encoder. "
         "Evidence for choosing a model, not system evidence.",
         "",
-        "| Model | Probes | es | pt | en | Episodes | Blocking unsafe | Guard hits "
-        "| Call p50 / p95 | Turn p95 | Tok/s |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Model | Probes | es | pt | en | Episodes | Flows | Refusal loops "
+        "| Blocking unsafe | Unsafe (all) | Guard hits | Call p50 / p95 | Turn p95 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for label, s in summaries:
+        unsafe_all = " ".join(f"{k}:{v}" for k, v in s["unsafe"].items()) or "–"
         lines.append(
-            f"| {label} | {_pct(s['probe_pass'])} | "
+            f"| {label} | {_pct(s['probe_pass'])}{_spread(s)} | "
             + " | ".join(_pct(s["probe_pass_by_lang"][lang]) for lang in LANGS)
-            + f" | {_pct(s['episode_pass'])} | {s['unsafe_blocking']} "
+            + f" | {_pct(s['episode_pass'])} "
+            f"| {_flows(s)} | {s.get('refusal_loops', '–')} "
+            f"| {s['unsafe_blocking']} | {unsafe_all} "
             f"| {s['guard_hits']} | {_ms(s['call_p50_ms'])} / {_ms(s['call_p95_ms'])} "
-            f"| {_ms(s['turn_p95_ms'])} | {_num(s['completion_tokens_per_s'])} |"
+            f"| {_ms(s['turn_p95_ms'])} |"
         )
     skills = sorted({k for _, s in summaries for k in s["probe_pass_by_skill"]})
     lines += [
@@ -234,6 +259,41 @@ def render_compare(runs: list[dict[str, Any]]) -> str:
             + " |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _spread(s: dict[str, Any]) -> str:
+    rates = [r for r in s.get("probe_pass_by_repeat", []) if r is not None]
+    if len(rates) < 2:
+        return ""
+    return f" ({min(rates) * 100:.0f}–{max(rates) * 100:.0f})"
+
+
+def _flows(s: dict[str, Any]) -> str:
+    if "flows_total" not in s:
+        return "–"
+    by_repeat = s.get("flows_completed_by_repeat", [])
+    if len(by_repeat) > 1:
+        per = s["flows_total"] // len(by_repeat)
+        return "/".join(str(n) for n in by_repeat) + f" of {per}"
+    return f"{s['flows_completed']} of {s['flows_total']}"
+
+
+def _blocked(episode: dict[str, Any]) -> bool:
+    return any(
+        call["tool"] == "card.block" and call["status"] == "ok"
+        for turn in episode["transcript"]
+        for call in turn["bank_calls"]
+    )
+
+
+def _refusal_loop(episode: dict[str, Any]) -> bool:
+    refused = Counter(
+        call["tool"]
+        for turn in episode["transcript"]
+        for call in turn["bank_calls"]
+        if call["status"] == "refused"
+    )
+    return any(count >= 2 for count in refused.values())
 
 
 def _num(value: float | None) -> str:
