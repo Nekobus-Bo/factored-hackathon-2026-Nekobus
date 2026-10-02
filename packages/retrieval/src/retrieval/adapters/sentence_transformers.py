@@ -19,19 +19,30 @@ from retrieval.models import KBSnippet, QueryExample
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-311m-multilingual-r2"
+# Precisions the weights may load in. float32 is the default: bf16 weights (as Granite
+# ships) would otherwise load as bf16, which is slow on CPUs without bf16 support.
+EMBEDDING_DTYPES = ("float32", "bfloat16")
+DEFAULT_EMBEDDING_DTYPE = "float32"
+
 
 class SentenceTransformersAdapter(RetrievalAdapter):
     """Dense bi-encoder retrieval adapter using SentenceTransformers."""
 
     def __init__(
         self,
-        model_id: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        model_id: str = DEFAULT_EMBEDDING_MODEL,
         name: str | None = None,
         device: str = "cpu",
+        dtype: str = DEFAULT_EMBEDDING_DTYPE,
     ) -> None:
+        if dtype not in EMBEDDING_DTYPES:
+            allowed = ", ".join(EMBEDDING_DTYPES)
+            raise ValueError(f"embedding dtype must be one of {allowed}, got {dtype!r}")
         self.model_id = model_id
         self.name = name or model_id.split("/")[-1]
         self.device = device
+        self.dtype = dtype
         self.model: SentenceTransformer | None = None
         self.doc_ids: list[str] = []
         self.corpus_embeddings: np.ndarray | None = None
@@ -41,11 +52,16 @@ class SentenceTransformersAdapter(RetrievalAdapter):
         """Load SentenceTransformer model on CPU."""
         try:
             logger.info(
-                "Loading SentenceTransformer %s on device: %s",
+                "Loading SentenceTransformer %s on device %s as %s",
                 self.model_id,
                 self.device,
+                self.dtype,
             )
-            self.model = SentenceTransformer(self.model_id, device=self.device)
+            self.model = SentenceTransformer(
+                self.model_id,
+                device=self.device,
+                model_kwargs={"dtype": self.dtype},
+            )
         except Exception as exc:
             self.model = None
             raise RuntimeError(
@@ -81,7 +97,8 @@ class SentenceTransformersAdapter(RetrievalAdapter):
         texts = [f"{s.title} {s.text}" for s in kb]
 
         if not texts:
-            self.corpus_embeddings = np.empty((0, 384), dtype=np.float32)
+            dim = self.model.get_embedding_dimension() or 0
+            self.corpus_embeddings = np.empty((0, dim), dtype=np.float32)
             return
 
         self.corpus_embeddings = self.embed(texts)

@@ -15,6 +15,8 @@ Backend = Literal["vector", "bm25", "hybrid"]
 # Where the vector backend gets its embeddings: the model server (ADR-0012, App. J)
 # or, for tests and local development only, an in-process model.
 EmbeddingBackend = Literal["remote", "local"]
+# Weights precision of the in-process model (local only; the server has its own).
+EmbeddingDtype = Literal["float32", "bfloat16"]
 DEFAULT_MODEL_SERVER_TIMEOUT_SECONDS = 10.0
 
 
@@ -36,6 +38,10 @@ class KbSearchConfig(BaseModel):
     embedding_backend: EmbeddingBackend = Field(
         default="remote",
         description="remote: the model server. local: in-process, tests and dev only",
+    )
+    embedding_dtype: EmbeddingDtype = Field(
+        default="float32",
+        description="Weights precision of the in-process model (local only)",
     )
     embedding_revision: str | None = Field(
         default=None,
@@ -71,6 +77,8 @@ class KbSearchConfig(BaseModel):
             values["embedding_model"] = model.strip()
         if embedding_backend := os.getenv("EMBEDDING_BACKEND"):
             values["embedding_backend"] = embedding_backend.strip().lower()
+        if dtype := os.getenv("EMBEDDING_DTYPE"):
+            values["embedding_dtype"] = dtype.strip().lower()
         if revision := os.getenv("EMBEDDING_REVISION"):
             values["embedding_revision"] = revision.strip()
         if url := os.getenv("MODEL_SERVER_URL"):

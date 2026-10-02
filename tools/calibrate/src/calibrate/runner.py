@@ -381,7 +381,10 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
             )
 
             adapter = SentenceTransformersAdapter(
-                model_id=model_id, name=cand_name, device="cpu"
+                model_id=model_id,
+                name=cand_name,
+                device="cpu",
+                dtype=cand.get("dtype", "float32"),
             )
         elif adapter_type == "hybrid":
             from retrieval.adapters.sentence_transformers import (
@@ -391,7 +394,10 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
             adapter = HybridAdapter(
                 lexical=BM25Adapter(name=f"{cand_name}_bm25"),
                 dense=SentenceTransformersAdapter(
-                    model_id=model_id, name=f"{cand_name}_dense", device="cpu"
+                    model_id=model_id,
+                    name=f"{cand_name}_dense",
+                    device="cpu",
+                    dtype=cand.get("dtype", "float32"),
                 ),
                 rrf_k=int(cand.get("rrf_k", DEFAULT_RRF_K)),
                 name=cand_name,

@@ -110,7 +110,9 @@ def _dense_adapter(config: KbSearchConfig) -> RetrievalAdapter:
             "vector kb.search needs the 'vector' extra (banking-core[vector])"
         ) from exc
     local_path = resolve_local_model(config.embedding_model)
-    return SentenceTransformersAdapter(model_id=local_path)
+    return SentenceTransformersAdapter(
+        model_id=local_path, dtype=config.embedding_dtype
+    )
 
 
 def build_adapter(config: KbSearchConfig) -> RetrievalAdapter:

@@ -230,6 +230,7 @@ def test_config_from_env_defaults_to_vector_and_validates(
         "EMBEDDING_MODEL",
         "KB_PATH",
         "EMBEDDING_BACKEND",
+        "EMBEDDING_DTYPE",
         "EMBEDDING_REVISION",
         "MODEL_SERVER_URL",
         "MODEL_SERVER_TIMEOUT_SECONDS",
@@ -237,6 +238,7 @@ def test_config_from_env_defaults_to_vector_and_validates(
         monkeypatch.delenv(var, raising=False)
     defaults = KbSearchConfig.from_env()
     assert defaults.backend == "vector"
+    assert defaults.embedding_dtype == "float32"
     assert defaults.embedding_backend == "remote"  # the model server, not in process
     assert defaults.model_server_url is None and defaults.embedding_revision is None
 
@@ -254,11 +256,13 @@ def test_model_server_settings_come_from_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("EMBEDDING_BACKEND", "LOCAL")
+    monkeypatch.setenv("EMBEDDING_DTYPE", "BFLOAT16")
     monkeypatch.setenv("EMBEDDING_REVISION", REVISION)
     monkeypatch.setenv("MODEL_SERVER_URL", "http://encoder:8090")
     monkeypatch.setenv("MODEL_SERVER_TIMEOUT_SECONDS", "2.5")
     config = KbSearchConfig.from_env()
     assert config.embedding_backend == "local"
+    assert config.embedding_dtype == "bfloat16"
     assert (config.embedding_revision, config.model_server_url) == (
         REVISION,
         "http://encoder:8090",
@@ -269,6 +273,10 @@ def test_model_server_settings_come_from_the_environment(
     with pytest.raises(ValidationError):
         KbSearchConfig.from_env()
     monkeypatch.setenv("EMBEDDING_BACKEND", "remote")
+    monkeypatch.setenv("EMBEDDING_DTYPE", "int8")
+    with pytest.raises(ValidationError):
+        KbSearchConfig.from_env()
+    monkeypatch.setenv("EMBEDDING_DTYPE", "float32")
     monkeypatch.setenv("MODEL_SERVER_TIMEOUT_SECONDS", "0")
     with pytest.raises(ValidationError):
         KbSearchConfig.from_env()

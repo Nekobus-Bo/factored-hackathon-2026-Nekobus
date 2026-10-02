@@ -19,9 +19,14 @@ class FakeSentenceTransformer:
     """Returns rows that are NOT unit length unless asked to normalize."""
 
     calls: list[dict[str, Any]] = []
+    loaded: list[dict[str, Any]] = []
 
-    def __init__(self, model_id: str, device: str = "cpu") -> None:
+    def __init__(self, model_id: str, device: str = "cpu", **kwargs: Any) -> None:
         self.model_id = model_id
+        FakeSentenceTransformer.loaded.append({"model_id": model_id, **kwargs})
+
+    def get_embedding_dimension(self) -> int:
+        return 3
 
     def to(self, device: str) -> None:
         pass
@@ -61,6 +66,7 @@ def adapter_module(
         sys.modules, "retrieval.adapters.sentence_transformers", raising=False
     )
     FakeSentenceTransformer.calls = []
+    FakeSentenceTransformer.loaded = []
     module = importlib.import_module("retrieval.adapters.sentence_transformers")
     yield module
     sys.modules.pop("retrieval.adapters.sentence_transformers", None)
@@ -99,5 +105,24 @@ def test_an_empty_index_keeps_its_shape(adapter_module: types.ModuleType) -> Non
     adapter = adapter_module.SentenceTransformersAdapter(model_id="local/path")
     adapter.index([])
     assert adapter.corpus_embeddings is not None
-    assert adapter.corpus_embeddings.shape == (0, 384)
+    assert adapter.corpus_embeddings.shape == (0, 3)
     assert adapter.search("x") == []
+
+
+def test_weights_load_in_float32_unless_configured(
+    adapter_module: types.ModuleType,
+) -> None:
+    adapter_module.SentenceTransformersAdapter(model_id="local/path")
+    adapter_module.SentenceTransformersAdapter(model_id="local/path", dtype="bfloat16")
+    assert [c["model_kwargs"] for c in FakeSentenceTransformer.loaded] == [
+        {"dtype": "float32"},
+        {"dtype": "bfloat16"},
+    ]
+
+
+def test_an_unknown_dtype_fails_before_loading(
+    adapter_module: types.ModuleType,
+) -> None:
+    with pytest.raises(ValueError, match="float32, bfloat16"):
+        adapter_module.SentenceTransformersAdapter(model_id="local/path", dtype="int8")
+    assert FakeSentenceTransformer.loaded == []
