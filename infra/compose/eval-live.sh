@@ -5,6 +5,7 @@
 #
 #   make eval-live                                 # the model in .env (gpt-6-luna)
 #   make eval-live LOCAL_MODEL=qwen3.6-35b-a3b     # a model served on 127.0.0.1:8099
+#   make eval-live LOCAL_MODEL=qwen3.6-35b-a3b-think LOCAL_TEMPERATURE=0.6
 #   make eval-live ARGS="--group happy_path"       # any evalrunner filter
 #
 # Steps: start the stack with docker-compose.eval.yml on top (rebuilding from the
@@ -46,6 +47,7 @@ if [ -n "$LOCAL_MODEL" ]; then
   export LLM_API_KEY="sk-local"
   export LLM_REASONING_EFFORT=""
   export LLM_TIMEOUT_SECONDS="${LLM_TIMEOUT_SECONDS:-120}"
+  export LLM_TEMPERATURE="${LOCAL_TEMPERATURE:-0}"
   LABEL="$LOCAL_MODEL"
 else
   model=$(cfg LLM_MODEL)

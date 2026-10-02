@@ -126,7 +126,7 @@ eval: ## pending: baseline vs proposed on the scenario suite
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
 eval-live: ## Proposed system end to end with the LLM called live, not replayable: reports/eval-live-<date>-<model>.md (LOCAL_MODEL=<llmbench alias> served on :8099; ARGS="--group happy_path")
-	@COMPOSE="$(COMPOSE)" LOCAL_MODEL="$(LOCAL_MODEL)" ARGS="$(ARGS)" OUT="$(OUT)" bash infra/compose/eval-live.sh
+	@COMPOSE="$(COMPOSE)" LOCAL_MODEL="$(LOCAL_MODEL)" LOCAL_TEMPERATURE="$(LOCAL_TEMPERATURE)" ARGS="$(ARGS)" OUT="$(OUT)" bash infra/compose/eval-live.sh
 
 eval-baseline: ## pending: baseline system only
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
