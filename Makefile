@@ -63,7 +63,7 @@ gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) -
 
 .DEFAULT_GOAL := help
 .PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional synth-retrieval-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
 	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-iap-oauth gcp-gh-vars gcp-migrate gcp-seed \
 	gcp-netcheck gcp-smoke
@@ -171,6 +171,10 @@ synth-data-regional: ## Mine real text, generate train/validation with an LLM, t
 build-test-regional: ## Fill the hand-written test templates into the provisional test split (LOCALE=pt-BR|es-MX|es-AR|es-CO)
 	@test -n "$(LOCALE)" || { echo "build-test-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
 	$(SYNTH_REGIONAL).build_test --locale $(LOCALE)
+
+synth-retrieval-regional: ## Generate kb.search test questions from real regional text with an LLM, plus the kb_search query the orchestrator's LLM would send (LOCALE=pt-BR|es-MX|es-AR|es-CO; POOL=1 pools the locales and writes checks.md)
+	@test -n "$(LOCALE)$(POOL)" || { echo "synth-retrieval-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO, and/or POOL=1" >&2; exit 1; }
+	$(SYNTH_REGIONAL).retrieval $(if $(LOCALE),--locale $(LOCALE)) $(if $(POOL),--pool)
 
 check-data-regional: ## Quality gate for a regional dataset; writes checks.md next to it (LOCALE=pt-BR|es-MX|es-AR|es-CO)
 	@test -n "$(LOCALE)" || { echo "check-data-regional: set LOCALE=pt-BR, es-MX, es-AR or es-CO" >&2; exit 1; }
