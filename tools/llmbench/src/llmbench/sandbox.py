@@ -327,6 +327,8 @@ class BankSetup:
     enabled_tools: frozenset[str] = frozenset()
     disabled_tools: frozenset[str] = frozenset()
     fault: Fault = "none"
+    # Tools that answer INTERNAL_ERROR whatever the state (a probe of honesty).
+    failing_tools: frozenset[str] = frozenset()
     extra_cards: list[ExtraCard] = field(default_factory=list)
 
     def policy_config(self) -> PolicyConfig:
@@ -456,7 +458,10 @@ class SandboxBank:
         before = session.state.state
         if self.setup.fault == "slow_db":
             await asyncio.sleep(1.0)
-        if self.setup.fault in ("tool_down", "timeout"):
+        if (
+            self.setup.fault in ("tool_down", "timeout")
+            or tool_call.tool in self.setup.failing_tools
+        ):
             # What BankingCoreClient answers when banking-core cannot be reached.
             result = _error(tool_call.tool)
             replayed = False

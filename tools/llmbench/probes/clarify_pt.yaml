@@ -1,0 +1,24 @@
+id: clarify_pt
+lang: pt
+skill: clarify
+description: 'A vague opener: ask what the customer needs; no write and no identity tool on a guess.'
+setup:
+  customer: demo_pt
+prefix: []
+probe:
+  user: Oi, estou com um problema no meu cartão.
+  expect:
+    decision:
+    - null
+    - kb.search
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify
+    - customer.match
+    - otp.send
+    - handoff.create
+    reply:
+      question: true

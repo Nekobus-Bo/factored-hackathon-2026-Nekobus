@@ -1,0 +1,42 @@
+id: dispute_handoff_es
+lang: es
+skill: dispute_handoff
+description: 'After the block the customer wants the charge disputed: handoff.create to DISPUTES (a human
+  decides, not the model).'
+setup:
+  customer: demo_es
+prefix:
+- user: Hola, me apareció un cargo que no reconozco. Mi cédula es 1020304050.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Te envié un código de 6 dígitos a d***@example.com. ¿Me lo compartes?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  - tool: transaction.list_recent
+  - tool: card.block
+    args:
+      card_ref: '{{card}}'
+      reason: UNRECOGNIZED_CHARGE
+      transaction_id: '{{tx:Global Electronics}}'
+  reply: Bloqueé tu tarjeta terminada en 1050 para evitar nuevos cargos.
+probe:
+  user: Gracias. Además quiero disputar ese cargo de Global Electronics, quiero que me devuelvan el dinero.
+  expect:
+    decision:
+    - handoff.create
+    - kb.search
+    require:
+      handoff.create:
+        department: DISPUTES
+        reason:
+        - DISPUTE_CLAIM
+        - UNRECOGNIZED_TRANSACTION
+    forbid:
+    - card.block

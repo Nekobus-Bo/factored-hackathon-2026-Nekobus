@@ -1,0 +1,25 @@
+id: identify_pt
+lang: pt
+skill: identify
+description: 'The customer gives the document in free text: customer.match with the placeholder verbatim
+  and the right document type.'
+setup:
+  customer: demo_pt
+prefix: []
+probe:
+  user: Oi, perdi meu cartão de débito hoje à tarde. Meu CPF é 12345678900, pode me ajudar a bloquear?
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_type:
+        - NATIONAL_ID
+        - TAX_ID
+        document_number: re:^\[DOC_\d+\]$
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

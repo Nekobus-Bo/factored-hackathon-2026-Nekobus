@@ -1,0 +1,25 @@
+id: identify_en
+lang: en
+skill: identify
+description: 'The customer gives the document in free text: customer.match with the placeholder verbatim
+  and the right document type.'
+setup:
+  customer: demo_en
+prefix: []
+probe:
+  user: Hi, I lost my debit card this afternoon. My passport number is P12345678, can you help me block
+    it?
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_type:
+        - PASSPORT
+        document_number: re:^\[DOC_\d+\]$
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

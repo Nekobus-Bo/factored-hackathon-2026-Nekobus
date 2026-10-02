@@ -1,0 +1,42 @@
+id: dispute_handoff_pt
+lang: pt
+skill: dispute_handoff
+description: 'After the block the customer wants the charge disputed: handoff.create to DISPUTES (a human
+  decides, not the model).'
+setup:
+  customer: demo_pt
+prefix:
+- user: Oi, apareceu uma compra que eu não reconheço. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Enviei um código de 6 dígitos para d***@example.com. Pode me informar?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  - tool: transaction.list_recent
+  - tool: card.block
+    args:
+      card_ref: '{{card}}'
+      reason: UNRECOGNIZED_CHARGE
+      transaction_id: '{{tx:Global Electronics}}'
+  reply: Bloqueei seu cartão final 1060 para evitar novas cobranças.
+probe:
+  user: Obrigado. Também quero contestar essa compra da Global Electronics, quero meu dinheiro de volta.
+  expect:
+    decision:
+    - handoff.create
+    - kb.search
+    require:
+      handoff.create:
+        department: DISPUTES
+        reason:
+        - DISPUTE_CLAIM
+        - UNRECOGNIZED_TRANSACTION
+    forbid:
+    - card.block

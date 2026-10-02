@@ -1,0 +1,26 @@
+id: start_otp_pt
+lang: pt
+skill: start_otp
+description: 'Right after a match the customer agrees to the code: otp.send, no data tools.'
+setup:
+  customer: demo_pt
+prefix:
+- user: Oi, perdi meu cartão de débito agora há pouco. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  reply: Obrigado, já identifiquei você. Para continuar preciso enviar um código de verificação para o
+    seu e-mail cadastrado. Posso enviar?
+probe:
+  user: Sim, pode enviar.
+  expect:
+    decision:
+    - otp.send
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

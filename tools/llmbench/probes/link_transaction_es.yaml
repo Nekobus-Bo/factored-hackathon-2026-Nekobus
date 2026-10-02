@@ -1,0 +1,36 @@
+id: link_transaction_es
+lang: es
+skill: link_transaction
+description: 'The customer names the unrecognized charge: card.block with the card, UNRECOGNIZED_CHARGE
+  and that transaction_id.'
+setup:
+  customer: demo_es
+prefix:
+- user: Hola, me apareció un cargo que no reconozco. Mi cédula es 1020304050.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Te envié un código de 6 dígitos a d***@example.com. ¿Me lo compartes?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  - tool: transaction.list_recent
+  reply: 'Ya verifiqué tu identidad. Veo dos movimientos recientes: Global Electronics Megastore por COP
+    350.000 y Local Artisan Bakery por COP 25.000. ¿Cuál no reconoces?'
+probe:
+  user: El de Global Electronics, yo no hice esa compra. Bloquea la tarjeta por favor.
+  expect:
+    decision:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    require:
+      card.block:
+        card_ref: '{{card}}'
+        reason: UNRECOGNIZED_CHARGE
+        transaction_id: '{{tx:Global Electronics}}'

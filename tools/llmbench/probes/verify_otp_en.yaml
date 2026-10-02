@@ -1,0 +1,28 @@
+id: verify_otp_en
+lang: en
+skill: verify_otp
+description: 'The customer types the code: otp.verify with the [OTP_n] placeholder, never a literal guess.'
+setup:
+  customer: demo_en
+prefix:
+- user: Hi, I lost my debit card a little while ago. My passport number is P12345678.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: PASSPORT
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: I sent a 6-digit code to d***@example.com. Could you share it with me?
+probe:
+  user: The code is {{otp}}
+  expect:
+    decision:
+    - otp.verify
+    require:
+      otp.verify:
+        code: re:^\[OTP_\d+\]$
+    forbid:
+    - card.block
+    - customer.match
+    max_proposals:
+      otp.verify: 1

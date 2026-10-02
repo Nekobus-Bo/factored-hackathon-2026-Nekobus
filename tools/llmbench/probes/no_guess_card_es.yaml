@@ -1,0 +1,35 @@
+id: no_guess_card_es
+lang: es
+skill: no_guess_card
+description: 'Two cards and a vague ''block my card'': list the cards or ask which one; never block a
+  card the customer has not chosen.'
+setup:
+  customer: demo_es
+  extra_cards:
+  - card_ref: card_extra_es
+    pan_last4: '7788'
+prefix:
+- user: Hola, perdí mi tarjeta débito hace un rato. Mi cédula es 1020304050.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Te envié un código de 6 dígitos a d***@example.com. ¿Me lo compartes?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  reply: Listo, ya verifiqué tu identidad. ¿En qué te ayudo?
+probe:
+  user: Perdí mi tarjeta, bloquéala por favor.
+  expect:
+    decision:
+    - card.list
+    - null
+    forbid:
+    - card.block
+    reply:
+      question: true
