@@ -1,0 +1,150 @@
+{"kind": "in_scope", "topic_id": "account_inquiry.01", "length": "short", "text": "pq no app aparece dois saldos diferentes, qual é o q eu posso usar de vdd"}
+{"kind": "in_scope", "topic_id": "account_inquiry.01", "length": "short", "text": "quero pagar um boleto hj e nao sei se olho o saldo de cima ou o de baixo"}
+{"kind": "in_scope", "topic_id": "account_inquiry.01", "length": "long", "text": "oi, na minha conta aparece um valor e logo abaixo outro menor, preciso fazer um pix pro aluguel hj e nao sei qual dos dois é o dinheiro q realmente tenho"}
+{"kind": "in_scope", "topic_id": "account_inquiry.02", "length": "short", "text": "Boa tarde, poderia me mostrar as últimas movimentações da minha conta?"}
+{"kind": "in_scope", "topic_id": "account_inquiry.02", "length": "short", "text": "Gostaria de conferir as compras e os depósitos desta semana, por gentileza."}
+{"kind": "in_scope", "topic_id": "account_inquiry.02", "length": "long", "text": "Boa tarde. Meu neto faz as compras do mês com o meu cartão e gostaria de acompanhar os gastos. Poderia me passar o que entrou e saiu nos últimos dias, com a data, a loja e o valor de cada operação?"}
+{"kind": "in_scope", "topic_id": "account_inquiry.03", "length": "short", "text": "Por que o hotel SEGUROU um valor no meu cartão se eu nem fiz o check-in?!"}
+{"kind": "in_scope", "topic_id": "account_inquiry.03", "length": "short", "text": "Aluguei um carro e travaram um valor ENORME do meu limite, quando volta?"}
+{"kind": "in_scope", "topic_id": "account_inquiry.03", "length": "long", "text": "Abasteci o carro e no app aparece um valor quase três vezes maior do que eu coloquei de gasolina! E ainda diminuiu meu limite disponível. Isso se resolve sozinho ou tenho que abrir uma reclamação JÁ?"}
+{"kind": "in_scope", "topic_id": "auth_identity.01", "length": "short", "text": "Por que pedem tantos dados pra acessar a conta"}
+{"kind": "in_scope", "topic_id": "auth_identity.01", "length": "short", "text": "O que vcs fazem com os dados que eu passo pra confirmar que sou eu"}
+{"kind": "in_scope", "topic_id": "auth_identity.01", "length": "long", "text": "Quero bloquear o cartão e estão pedindo meus dados pessoais. É seguro passar aqui? Como vcs conferem e quem vê essas informações?"}
+{"kind": "in_scope", "topic_id": "auth_identity.02", "length": "short", "text": "Boa tarde, o banco pode pedir o código de trás do cartão por telefone?"}
+{"kind": "in_scope", "topic_id": "auth_identity.02", "length": "short", "text": "Bom dia, uma pessoa me ligou pedindo a senha do caixa eletrônico dizendo que era do banco, isso é normal?"}
+{"kind": "in_scope", "topic_id": "auth_identity.02", "length": "long", "text": "Boa tarde. Recebi um e-mail com a logo do banco pedindo pra confirmar os números completos do cartão e a senha do aplicativo pra não perder a conta. Vocês mandam esse tipo de coisa ou posso apagar?"}
+{"kind": "in_scope", "topic_id": "auth_identity.03", "length": "short", "text": "Tenho conta PJ e o código de confirmação chega no e-mail e não no celular, consigo trocar na hora?"}
+{"kind": "in_scope", "topic_id": "auth_identity.03", "length": "short", "text": "Posso escolher receber o código pelo WhatsApp?"}
+{"kind": "in_scope", "topic_id": "auth_identity.03", "length": "long", "text": "Tenho uma conta PJ e uso a maquininha o dia todo. Quando preciso autorizar um pagamento o código às vezes chega por SMS e às vezes no e-mail. Quem decide pra onde vai? Posso pedir pro chat mandar sempre pro meu celular?"}
+{"kind": "in_scope", "topic_id": "auth_identity.04", "length": "short", "text": "quanto tempo dura o codigo que vcs mandam"}
+{"kind": "in_scope", "topic_id": "auth_identity.04", "length": "short", "text": "recebi o codigo mas coloquei atrasado e deu q ta invalido"}
+{"kind": "in_scope", "topic_id": "auth_identity.04", "length": "long", "text": "me mandaram o codigo por sms mas demorei pra achar o celular e quando digitei falou q nao valia mais. da pra usar de novo ou tenho q pedir outro? quanto tempo eles valem"}
+{"kind": "in_scope", "topic_id": "auth_identity.05", "length": "short", "text": "Errei o código algumas vezes e agora não deixa continuar, por quê?"}
+{"kind": "in_scope", "topic_id": "auth_identity.05", "length": "short", "text": "Quantas vezes posso errar a senha antes de bloquearem?"}
+{"kind": "in_scope", "topic_id": "auth_identity.05", "length": "long", "text": "Oxe, tava digitando o código e errei três vezes seguidas porque a tela do meu celular tá rachada. Agora travou tudo e não consigo fazer nada. É normal travar assim só por errar umas vezes?"}
+{"kind": "in_scope", "topic_id": "auth_identity.06", "length": "short", "text": "nao consigo fazer nada no chat, diz q a sessao ta bloqueada, oq eu faço"}
+{"kind": "in_scope", "topic_id": "auth_identity.06", "length": "short", "text": "me bloquearam pq errei o codigo, como desbloqueia"}
+{"kind": "in_scope", "topic_id": "auth_identity.06", "length": "long", "text": "errei o codigo varias vezes e agora o chat nao deixa consultar nada, ta tudo desabilitado. preciso ver uma coisa urgente do cartao, vcs me passam pra alguem ou tenho q ir na agencia?"}
+{"kind": "in_scope", "topic_id": "auth_identity.07", "length": "short", "text": "Boa tarde, troquei o número do celular, como atualizo o que está cadastrado?"}
+{"kind": "in_scope", "topic_id": "auth_identity.07", "length": "short", "text": "Gostaria de alterar o e-mail onde recebo os avisos, o senhor consegue fazer por aqui?"}
+{"kind": "in_scope", "topic_id": "auth_identity.07", "length": "long", "text": "Boa tarde. Roubaram meu celular e precisei tirar um chip novo, então não recebo mais os códigos. Peço que alterem o número cadastrado por este chat, pois está difícil ir até uma agência."}
+{"kind": "in_scope", "topic_id": "card_security.01", "length": "short", "text": "CLONARAM meu cartão, bloqueiem AGORA!"}
+{"kind": "in_scope", "topic_id": "card_security.01", "length": "short", "text": "Vi uma compra estranha, congelem o cartão enquanto eu verifico!"}
+{"kind": "in_scope", "topic_id": "card_security.01", "length": "long", "text": "Não acredito! Tão chegando notificações de compras em outro estado e o cartão tá aqui na minha carteira. DESATIVEM agora pra não usarem mais! Vocês me mandam algum comprovante de que foi feito?"}
+{"kind": "in_scope", "topic_id": "card_security.02", "length": "short", "text": "Tem comprovante do bloqueio?"}
+{"kind": "in_scope", "topic_id": "card_security.02", "length": "short", "text": "Cliquei duas vezes em bloquear. Duplicou?"}
+{"kind": "in_scope", "topic_id": "card_security.02", "length": "long", "text": "Bloqueei o cartão mas o app travou. Cliquei de novo. Deu certo? Preciso de um registro com o horário pro B.O."}
+{"kind": "in_scope", "topic_id": "card_security.03", "length": "short", "text": "Bom dia, não acho meu cartão, acho que esqueci em algum lugar. O que faço?"}
+{"kind": "in_scope", "topic_id": "card_security.03", "length": "short", "text": "Boa tarde, perdi o cartão de débito mas acho que não foi roubo, como comunico vocês?"}
+{"kind": "in_scope", "topic_id": "card_security.03", "length": "long", "text": "Boa tarde. Desde ontem não encontro meu cartão, já procurei na casa toda e no carro. Não sei se caiu no mercado. Vale a pena travar enquanto continuo procurando? E se eu achar, posso voltar a usar?"}
+{"kind": "in_scope", "topic_id": "card_security.04", "length": "short", "text": "Fui assaltado saindo da loja e levaram a carteira com o cartão da conta PJ"}
+{"kind": "in_scope", "topic_id": "card_security.04", "length": "short", "text": "Roubaram meu cartão no ônibus, como faço pra informar vocês?"}
+{"kind": "in_scope", "topic_id": "card_security.04", "length": "long", "text": "Ontem à noite arrombaram minha loja e levaram o cartão que uso pra pagar fornecedor. Já fiz o boletim de ocorrência. O que preciso fazer com o banco e como vejo se já usaram o cartão?"}
+{"kind": "in_scope", "topic_id": "card_security.05", "length": "short", "text": "ja achei o cartao, vcs conseguem desbloquear por aqui"}
+{"kind": "in_scope", "topic_id": "card_security.05", "length": "short", "text": "bloqueei o cartao sem querer, como faço pra ativar de novo"}
+{"kind": "in_scope", "topic_id": "card_security.05", "length": "long", "text": "ontem bloqueei o cartao pq achei que tinha perdido mas tava na mochila. ja ta comigo, vc consegue reativar ou preciso falar com alguem do banco?"}
+{"kind": "in_scope", "topic_id": "card_security.06", "length": "short", "text": "Já bloqueei, e agora como faço pra receber outro cartão?"}
+{"kind": "in_scope", "topic_id": "card_security.06", "length": "short", "text": "Pra qual endereço vai o cartão novo depois do bloqueio?"}
+{"kind": "in_scope", "topic_id": "card_security.06", "length": "long", "text": "Bah, o cartão já tá bloqueado porque perdi, mas preciso de outro rápido porque é nele que recebo o salário. Quem me ajuda com isso e como confirmo o endereço de entrega? Me mudei faz pouco tempo"}
+{"kind": "in_scope", "topic_id": "card_security.07", "length": "short", "text": "tenho 2 cartoes, da pra bloquear so o de credito"}
+{"kind": "in_scope", "topic_id": "card_security.07", "length": "short", "text": "como vejo quais cartoes eu tenho pra escolher qual travar"}
+{"kind": "in_scope", "topic_id": "card_security.07", "length": "long", "text": "acho q clonaram mas nao sei se foi o de debito ou o de credito, usei os dois na mesma loja. da pra bloquear os dois ou tem q ser um de cada vez?"}
+{"kind": "in_scope", "topic_id": "card_security.08", "length": "short", "text": "Boa tarde. Por que a maquininha pediu a senha se eu sempre pago só aproximando o cartão?"}
+{"kind": "in_scope", "topic_id": "card_security.08", "length": "short", "text": "Até qual valor posso pagar por aproximação sem digitar a senha?"}
+{"kind": "in_scope", "topic_id": "card_security.08", "length": "long", "text": "Bom dia. Ontem paguei na farmácia só aproximando o cartão e deu certo, mas no supermercado pediram a senha. O caixa se ofereceu pra digitar por mim. Por que muda e tem problema outra pessoa digitar?"}
+{"kind": "in_scope", "topic_id": "disputes.01", "length": "short", "text": "Quero CONTESTAR uma compra que NÃO fiz! O que precisa pra abrir?"}
+{"kind": "in_scope", "topic_id": "disputes.01", "length": "short", "text": "Quais dados preciso pra contestar uma cobrança que não reconheço?"}
+{"kind": "in_scope", "topic_id": "disputes.01", "length": "long", "text": "Cansei! Apareceu na fatura uma compra de uma loja online que eu nunca usei. QUERO meu dinheiro de volta! O que preciso mandar pra uma pessoa analisar e não um robô?"}
+{"kind": "in_scope", "topic_id": "disputes.02", "length": "short", "text": "O que acontece depois da contestação?"}
+{"kind": "in_scope", "topic_id": "disputes.02", "length": "short", "text": "Quem analisa meu caso?"}
+{"kind": "in_scope", "topic_id": "disputes.02", "length": "long", "text": "Já abri a contestação. Vcs falam com a loja? E se não responderem eu recebo o estorno?"}
+{"kind": "in_scope", "topic_id": "disputes.03", "length": "short", "text": "Boa tarde, quanto tempo demora pra resolver uma contestação de compra?"}
+{"kind": "in_scope", "topic_id": "disputes.03", "length": "short", "text": "Bom dia, em quantos dias vocês respondem a contestação?"}
+{"kind": "in_scope", "topic_id": "disputes.03", "length": "long", "text": "Boa tarde. Faz duas semanas que contestei uma cobrança que não fiz e até agora nada. Gostaria de saber quanto tempo isso costuma levar, porque preciso desse dinheiro pra pagar meus fornecedores."}
+{"kind": "in_scope", "topic_id": "disputes.04", "length": "short", "text": "Enquanto analisam a contestação, dá pra adiantar o valor?"}
+{"kind": "in_scope", "topic_id": "disputes.04", "length": "short", "text": "Caiu um crédito na minha conta enquanto investigam a compra, já é meu ou podem tirar?"}
+{"kind": "in_scope", "topic_id": "disputes.04", "length": "long", "text": "Tenho conta PJ e lançaram uma cobrança que não reconheço de valor alto. Enquanto investigam fico sem capital pra repor mercadoria. Vocês conseguem creditar algo provisório e o que acontece se no fim disserem que a compra era válida?"}
+{"kind": "in_scope", "topic_id": "disputes.05", "length": "short", "text": "comprei um tenis pela internet e nunca chegou, vcs me ajudam a contestar"}
+{"kind": "in_scope", "topic_id": "disputes.05", "length": "short", "text": "chegou um produto quebrado e a loja nao responde, o banco devolve meu dinheiro"}
+{"kind": "in_scope", "topic_id": "disputes.05", "length": "long", "text": "pedi um liquidificador pela internet e mandaram outra coisa nada a ver. mandei mensagem pro vendedor mas ele nao responde. posso pedir pro banco estornar ou primeiro tenho q reclamar com eles?"}
+{"kind": "in_scope", "topic_id": "disputes.06", "length": "short", "text": "Cancelei uma assinatura e continuam cobrando, que provas mando pra contestar?"}
+{"kind": "in_scope", "topic_id": "disputes.06", "length": "short", "text": "Que documentos preciso juntar pra contestar uma cobrança de uma loja que não quer devolver?"}
+{"kind": "in_scope", "topic_id": "disputes.06", "length": "long", "text": "Seguinte, cancelei a academia faz dois meses e continuam debitando a mensalidade. Tenho o e-mail confirmando o cancelamento e prints da conversa com eles. Isso serve pra contestar a cobrança?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.01", "length": "short", "text": "apareceu uma compra q eu nao conheço, oq faço primeiro"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.01", "length": "short", "text": "tem uma cobrança estranha no cartao e nao sei de onde veio"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.01", "length": "long", "text": "vi na fatura uma compra de 89 reais q nao lembro de jeito nenhum. nao sei se é algo meu com outro nome ou se me hackearam. por onde começo, bloqueio logo ou confiro antes?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.02", "length": "short", "text": "Boa tarde. Tenho uma compra que aparece como em processamento, posso contestar agora?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.02", "length": "short", "text": "Qual a diferença entre uma compra pendente e uma já lançada?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.02", "length": "long", "text": "Bom dia. Cancelei um pedido numa loja online e me garantiram que não seria cobrado, mas na conta continua aparecendo como pendente e diminuindo meu limite. Devo esperar ou abrir uma contestação desde já?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.03", "length": "short", "text": "Tão me cobrando uma plataforma de séries que eu NUNCA assinei!"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.03", "length": "short", "text": "Testei um app de graça e AGORA cobram todo mês, isso é golpe?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.03", "length": "long", "text": "TÔ revoltado! Chegam cobranças mensais de um serviço de música. Depois lembrei que coloquei o cartão num teste grátis faz meses. Isso é fraude ou eu que tenho que resolver com eles?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.04", "length": "short", "text": "Tem compras que não fiz. Socorro."}
+{"kind": "in_scope", "topic_id": "fraud_reporting.04", "length": "short", "text": "Movimentação estranha na conta. O que faço?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.04", "length": "long", "text": "Olhei os gastos e tem várias compras que não são minhas. Quero parar isso já. O que vem depois do bloqueio?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.05", "length": "short", "text": "Boa tarde, o caixa eletrônico engoliu meu cartão e não saiu o dinheiro, o que faço?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.05", "length": "short", "text": "Bom dia, vi uma peça colada na entrada do cartão do caixa, será que copiaram meu cartão?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.05", "length": "long", "text": "Boa tarde. Fui sacar num caixa eletrônico de um posto e o teclado estava solto, parecia ter algo por cima. Saquei mesmo assim, mas agora estou com medo de terem clonado meu cartão. O que vocês recomendam?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.06", "length": "short", "text": "Meu filho usa meu tablet e apareceram compras de jogos, como sei se foi ele?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.06", "length": "short", "text": "Tem cobranças de loja de aplicativo na conta PJ, pode ter sido o funcionário com o tablet do caixa"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.06", "length": "long", "text": "No tablet da loja deixo o cartão salvo pra pagar fornecedor e agora apareceram compras de jogos que eu não fiz. Meus filhos às vezes pegam ele à tarde. Pergunto pra eles primeiro ou já registro como fraude?"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.07", "length": "short", "text": "apareceu uma cobrança com um nome q nao conheço mas o valor é igual a um jantar q paguei"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.07", "length": "short", "text": "pq na fatura aparece outro nome e nao o do restaurante onde comprei"}
+{"kind": "in_scope", "topic_id": "fraud_reporting.07", "length": "long", "text": "pedi uma corrida num app de transporte e no extrato aparece o nome de uma empresa nada a ver. o valor é o mesmo. isso é normal ou cobraram duas vezes?"}
+{"kind": "in_scope", "topic_id": "security_privacy.01", "length": "short", "text": "Recebi uma mensagem dizendo que vão encerrar minha conta se eu não clicar num link, é de vocês?"}
+{"kind": "in_scope", "topic_id": "security_privacy.01", "length": "short", "text": "Me ligaram dizendo que eram do banco e pediram o código que chegou no meu celular, eu passo?"}
+{"kind": "in_scope", "topic_id": "security_privacy.01", "length": "long", "text": "Olha, chegou um e-mail bem urgente falando que iam bloquear minha conta em 24 horas se eu não entrasse num site pra confirmar meus dados. A logo era igualzinha a do banco, visse. Como sei se é verdade ou armadilha?"}
+{"kind": "in_scope", "topic_id": "security_privacy.02", "length": "short", "text": "se eu passar meus dados no chat vcs guardam ou oq acontece"}
+{"kind": "in_scope", "topic_id": "security_privacy.02", "length": "short", "text": "o robo ve o numero inteiro do meu cartao ou nao"}
+{"kind": "in_scope", "topic_id": "security_privacy.02", "length": "long", "text": "fico com receio de digitar meus dados aqui no chat pq dps vendem as informaçoes. me explica oq vcs fazem com oq eu escrevo, se alguem le ou se protegem de algum jeito?"}
+{"kind": "in_scope", "topic_id": "security_privacy.03", "length": "short", "text": "Boa tarde, posso solicitar um financiamento imobiliário por aqui?"}
+{"kind": "in_scope", "topic_id": "security_privacy.03", "length": "short", "text": "Gostaria de informações sobre seguro de vida, o senhor pode me ajudar?"}
+{"kind": "in_scope", "topic_id": "security_privacy.03", "length": "long", "text": "Boa tarde. Gostaria de abrir uma conta para a minha empresa e, aproveitando, receber orientação para investir umas economias no Tesouro Direto. Consigo fazer tudo isso aqui no chat ou onde devo procurar?"}
+{"kind": "in_scope", "topic_id": "security_privacy.04", "length": "short", "text": "Por que NÃO me deixa sacar mais dinheiro hoje?"}
+{"kind": "in_scope", "topic_id": "security_privacy.04", "length": "short", "text": "Quero AUMENTAR o máximo que posso gastar por dia no cartão!"}
+{"kind": "in_scope", "topic_id": "security_privacy.04", "length": "long", "text": "Que RAIVA! Fui pagar um móvel e recusaram o cartão mesmo tendo dinheiro na conta. Existe um teto por dia? Onde vejo e como mudo pra isso não acontecer de novo?"}
+{"kind": "in_scope", "topic_id": "support_handoff.01", "length": "short", "text": "Se me passarem pra alguém, tenho que explicar tudo de novo?"}
+{"kind": "in_scope", "topic_id": "support_handoff.01", "length": "short", "text": "O atendente vai saber o que já fiz aqui?"}
+{"kind": "in_scope", "topic_id": "support_handoff.01", "length": "long", "text": "Já bloqueei o cartão e já confirmei minha identidade. Se me transferirem, a pessoa vê isso tudo? Não quero repetir."}
+{"kind": "in_scope", "topic_id": "support_handoff.02", "length": "short", "text": "Boa tarde, poderia me transferir para um atendente humano?"}
+{"kind": "in_scope", "topic_id": "support_handoff.02", "length": "short", "text": "Bom dia, quero falar com alguém do banco, por favor."}
+{"kind": "in_scope", "topic_id": "support_handoff.02", "length": "long", "text": "Boa tarde. Estou com uma situação meio complicada envolvendo várias cobranças e sinto que o assistente não está me entendendo. Poderia me passar para alguém do banco pra gente ver isso juntos?"}
+{"kind": "in_scope", "topic_id": "support_handoff.03", "length": "short", "text": "Até que horas os atendentes trabalham? Fecho a loja às 21h"}
+{"kind": "in_scope", "topic_id": "support_handoff.03", "length": "short", "text": "O bloqueio do cartão funciona de madrugada ou só em horário comercial?"}
+{"kind": "in_scope", "topic_id": "support_handoff.03", "length": "long", "text": "Tenho um problema com uma cobrança na conta PJ e durante o dia fico no balcão atendendo cliente. Até que horas consigo falar com uma pessoa? E se for urgência à noite, o que eu faço?"}
+{"kind": "in_scope", "topic_id": "support_handoff.04", "length": "short", "text": "achei um numero do banco no instagram, é oficial?"}
+{"kind": "in_scope", "topic_id": "support_handoff.04", "length": "short", "text": "por onde falo com vcs de um jeito seguro"}
+{"kind": "in_scope", "topic_id": "support_handoff.04", "length": "long", "text": "procurei no google o telefone do atendimento e quem atendeu pediu meus dados, depois fiquei desconfiado. quais sao os canais oficiais pra falar com o banco?"}
+{"kind": "in_scope", "topic_id": "support_handoff.05", "length": "short", "text": "Vou receber um protocolo quando me passarem pro atendente?"}
+{"kind": "in_scope", "topic_id": "support_handoff.05", "length": "short", "text": "Se já bloqueei o cartão aqui, como o atendente fica sabendo do que aconteceu?"}
+{"kind": "in_scope", "topic_id": "support_handoff.05", "length": "long", "text": "Bom, já contei tudo aqui e disseram que vão me passar pra um especialista, tchê. Fico com algum número pra acompanhar? E o que a gente já conversou, vocês repassam ou tenho que contar tudo do começo?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "quero fazer um emprestimo, quanto vcs liberam"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "como faço pra aumentar o limite do cartao"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Quero fazer um consignado, como peço?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Vocês têm cartão sem anuidade? Quero pedir um"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Quanto eu pagaria de juros num financiamento de carro?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Quero abrir uma poupança pra minha filha"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Por que NÃO aprovam meu aumento de limite?!"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Vocês vendem seguro de carro?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Quero investir meu décimo terceiro, o que recomendam?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "short", "text": "Preciso de um financiamento pra comprar casa, o que pedem?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "Boa tarde, quero comprar um apartamento e gostaria de saber quais documentos pedem para o financiamento imobiliário e quanto tempo demora a aprovação. Trabalho de carteira assinada há cinco anos"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "oi ja faz um ano q tenho o cartao e sempre pago em dia, pq nao aumentaram meu limite ainda? da pra pedir por aqui ou como faço"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "Faz MESES que peço um empréstimo e nada! Sempre falam pra eu ver meu score. Quero saber o que preciso fazer pra aprovarem, preciso disso JÁ!"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "Bom dia. Gostaria de contratar um plano de saúde para a minha família. Vocês oferecem? Quanto ficaria por mês para quatro pessoas?"}
+{"kind": "out_of_scope_banking", "topic_id": "", "length": "long", "text": "Tenho um pequeno negócio e quero abrir uma conta PJ pra separar os gastos. Quais documentos preciso e consigo fazer pelo celular?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Quem ganhou o jogo ontem?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Vai chover amanhã?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "me conta uma piada"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Como faz brigadeiro?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "kkk desculpa, mandei no chat errado"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Qual é o maior rio do mundo?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "oi, só testando se vc responde"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Me indica uma série pro fim de semana?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Quantos graus vai fazer hoje?"}
+{"kind": "off_topic", "topic_id": "", "length": "short", "text": "Como tiro mancha de café de camisa branca?"}
+{"kind": "off_topic", "topic_id": "", "length": "long", "text": "Boa tarde. Estou organizando o aniversário da minha neta e gostaria de ideias de brincadeiras para crianças de sete anos. O que o senhor sugere?"}
+{"kind": "off_topic", "topic_id": "", "length": "long", "text": "pergunta aleatoria, meu cachorro nao quer comer desde ontem e ta meio caidinho. oq posso dar ou levo no veterinario"}
+{"kind": "off_topic", "topic_id": "", "length": "long", "text": "Quero começar a correr de manhã mas canso muito rápido. Que treino vc recomenda pra quem nunca fez exercício?"}
+{"kind": "off_topic", "topic_id": "", "length": "long", "text": "Vou viajar pra praia nas férias e não sei o que levar. O que não pode faltar na mala?"}
+{"kind": "off_topic", "topic_id": "", "length": "long", "text": "Me ajuda a ganhar uma aposta! Meu cunhado diz que tomate é legume e eu digo que é fruta. Quem tem razão?"}

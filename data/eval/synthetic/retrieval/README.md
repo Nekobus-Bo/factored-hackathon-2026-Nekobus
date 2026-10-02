@@ -112,3 +112,17 @@ for the measured scores.
   - The rewrite forces a search the LLM might not make in a real conversation.
   - The same LLM family wrote the DistilBERT intent data.
   - English has no regional set.
+
+### 6.1 Second author: Claude Opus 5.5 (`queries_regional_claude.jsonl`)
+
+The same recipe and size, with a different author, to test whether results depend on who wrote the questions.
+- **How it was written:** Claude Opus 5.5 wrote the messages **by hand in a coding session** (no API key was available). For each call it worked from the brief GPT Sol received, printed by `python -m tools.synthdata_regional.retrieval --brief --locale <locale>`.
+- **Where the messages live:** the raw messages are versioned in `regional_claude/written/<locale>.jsonl`.
+- **Processing:** `make synth-retrieval-regional LOCALE=<locale> GENERATOR=claude` puts them through the same filters and the same `gpt-6-luna` rewrite. `POOL=1 GENERATOR=claude` writes the pooled file and `regional_claude/checks.md`.
+- **Ids:** `rqc-<locale>-NNN`, so they never collide with the GPT Sol set.
+- **Comparison:** `reports/embedding-regional-claude-2026-10-02.md`.
+
+Caveats:
+- The author had already seen the KB and some GPT Sol questions.
+- es-AR and es-CO were rewritten after a first draft paraphrased es-MX.
+- Not reviewed by a human.
