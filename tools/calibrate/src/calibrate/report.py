@@ -198,6 +198,9 @@ def render_embedding_report(
     k_list: list[int],
     eval_split: str = "test",
     eval_sources: list[str] | None = None,
+    query_field: str = "text",
+    score_floor: float | None = None,
+    floor_rows: list[dict[str, Any]] | None = None,
 ) -> str:
     """Generate Markdown report for embedding/retrieval task."""
     banner = render_eval_split_banner(eval_split, eval_sources or [])
@@ -249,12 +252,18 @@ def render_embedding_report(
         table_rows.append(row_str)
 
     table_body = "\n".join(table_rows)
+    query_line = (
+        f"- **Searched field:** `{query_field}` (not the customer message `text`)\n"
+        if query_field != "text"
+        else ""
+    )
+    floor_md = _floor_section(score_floor, floor_rows or [])
 
     return f"""# Embedding Model Calibration Report
 
 {banner}- **Date:** {date_str}
 - **Task:** `embedding` (Knowledge Base Policy Retrieval)
-- **Execution Environment:** {env_info}
+{query_line}- **Execution Environment:** {env_info}
   (MPS/CUDA for training if available, CPU for inference benchmarking)
 
 ## Artifact Provenance & Hashes
@@ -267,7 +276,7 @@ def render_embedding_report(
 
 {table_header}
 {table_body}
-
+{floor_md}
 ## Evaluation Notes & Decisions
 
 1. **Retrieval Baseline:** Evaluated against `bm25` lexical search.
@@ -278,4 +287,32 @@ def render_embedding_report(
    restricted to the other languages; gold is the query's topic in those
    languages. `n/a` when the KB snippets carry no `topic_id`.
 5. **Latency & Resource Footprint:** Measured strictly on CPU (`device=cpu`).
+"""
+
+
+def _floor_section(score_floor: float | None, rows: list[dict[str, Any]]) -> str:
+    """The kb.search score floor applied to each dense candidate's questions."""
+    if score_floor is None:
+        return ""
+
+    def share(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.3f}"
+
+    body = "\n".join(
+        f"| `{r['model_id']}` | {r['lang']} | {r['answerable']} | {share(r['lost'])} | "
+        f"{r['no_answer']} | {share(r['answered'])} |"
+        for r in rows
+    )
+    return f"""
+## Score Floor ({score_floor:.2f})
+
+A question gets an answer when its best same- or cross-language score reaches the
+floor, as kb.search does. **Lost** is the share of answerable questions left with no
+result; **wrongly answered** is the share of questions the KB does not cover (no gold
+snippet) that still get a result. BM25 and hybrid scores are not cosines and are
+not listed.
+
+| Candidate Model | Language | Answerable | Lost | Not covered | Wrongly answered |
+|---|:---:|---:|---:|---:|---:|
+{body}
 """
