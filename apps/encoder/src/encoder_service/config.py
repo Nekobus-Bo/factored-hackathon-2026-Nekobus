@@ -136,6 +136,10 @@ def get_decision_point_settings(
 
 
 DEFAULT_EMBEDDING_MAX_BATCH = 64
+# Precision the embedding weights load in (EMBEDDING_DTYPE). float32 by default: a
+# model that ships bf16 weights would otherwise run in bf16, slow on CPUs without it.
+EMBEDDING_DTYPES = ("float32", "bfloat16")
+DEFAULT_EMBEDDING_DTYPE = "float32"
 
 
 @dataclass(frozen=True)
@@ -151,6 +155,7 @@ class EmbeddingSettings:
     weights_sha256: str | None
     max_batch: int
     device: str
+    dtype: str = DEFAULT_EMBEDDING_DTYPE
 
 
 def get_embedding_settings(
@@ -170,6 +175,11 @@ def get_embedding_settings(
             f"EMBEDDING_MAX_BATCH must be between 1 and {EMBED_MAX_BATCH} "
             "(the contract ceiling)"
         )
+    raw_dtype = env.get("EMBEDDING_DTYPE", "").strip().lower()
+    dtype = raw_dtype or DEFAULT_EMBEDDING_DTYPE
+    if dtype not in EMBEDDING_DTYPES:
+        allowed = ", ".join(EMBEDDING_DTYPES)
+        raise ValueError(f"EMBEDDING_DTYPE must be one of {allowed}, got {dtype!r}")
     try:
         weights = sha256_hex(
             env.get("EMBEDDING_WEIGHTS_SHA256"), "EMBEDDING_WEIGHTS_SHA256"
@@ -182,4 +192,5 @@ def get_embedding_settings(
         weights_sha256=weights,
         max_batch=max_batch,
         device=env.get("ENCODER_DEVICE", "cpu").strip() or "cpu",
+        dtype=dtype,
     )

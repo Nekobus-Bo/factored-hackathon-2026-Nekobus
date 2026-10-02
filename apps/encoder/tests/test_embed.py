@@ -295,6 +295,23 @@ def test_the_model_is_loaded_from_the_verified_snapshot(hub_cache: Path) -> None
     assert loaded == [hub_cache / "models--org--embedder" / "snapshots" / REVISION]
 
 
+def test_the_default_loader_gets_the_configured_dtype(
+    hub_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import encoder_service.embedding as embedding
+
+    loaded: list[str] = []
+
+    def load(path: Path, dtype: str) -> FakeEmbedder:
+        loaded.append(dtype)
+        return FakeEmbedder(path)
+
+    monkeypatch.setattr(embedding, "_load_sentence_transformers", load)
+    build_embedding_backend(settings())
+    build_embedding_backend(settings(dtype="bfloat16"))
+    assert loaded == ["float32", "bfloat16"]
+
+
 def test_no_model_configured_means_not_served() -> None:
     assert build_embedding_backend(settings(model=None)) is None
 
@@ -414,6 +431,8 @@ def test_settings_from_the_environment() -> None:
     assert parsed == EmbeddingSettings(MODEL, REVISION, WEIGHTS_SHA, 16, "cpu")
     assert get_embedding_settings({}).model is None
     assert get_embedding_settings({}).max_batch == 64
+    assert get_embedding_settings({}).dtype == "float32"
+    assert get_embedding_settings({"EMBEDDING_DTYPE": " BFloat16 "}).dtype == "bfloat16"
 
 
 @pytest.mark.parametrize(
@@ -423,6 +442,7 @@ def test_settings_from_the_environment() -> None:
         ({"EMBEDDING_MAX_BATCH": "0"}, "between 1 and 256"),
         ({"EMBEDDING_MAX_BATCH": "257"}, "between 1 and 256"),
         ({"EMBEDDING_WEIGHTS_SHA256": "abc"}, "64 hexadecimal"),
+        ({"EMBEDDING_DTYPE": "float16"}, "EMBEDDING_DTYPE must be one of"),
     ],
 )
 def test_invalid_settings_fail_loudly(env: dict[str, str], message: str) -> None:
@@ -441,7 +461,7 @@ def test_startup_serves_the_pinned_model(
     monkeypatch.setenv("EMBEDDING_WEIGHTS_SHA256", WEIGHTS_SHA)
     monkeypatch.setattr(
         "encoder_service.embedding._load_sentence_transformers",
-        lambda path: FakeEmbedder(path),
+        lambda path, dtype: FakeEmbedder(path),
     )
     monkeypatch.setenv("ABSTENTION_THRESHOLD", "0.5")
     set_backend(FakeEncoderBackend())

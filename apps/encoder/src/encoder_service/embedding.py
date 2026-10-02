@@ -20,6 +20,7 @@ import logging
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -47,6 +48,7 @@ DOWNLOAD_IGNORE_PATTERNS = [
     "*.tflite",
     "onnx/*",
     "openvino/*",
+    "openvino_model.*",
 ]
 
 
@@ -127,7 +129,7 @@ class UnavailableEmbedding:
         return False
 
 
-def _load_sentence_transformers(path: Path) -> Embedder:
+def _load_sentence_transformers(path: Path, dtype: str) -> Embedder:
     try:
         from retrieval.adapters.sentence_transformers import (
             SentenceTransformersAdapter,
@@ -137,7 +139,7 @@ def _load_sentence_transformers(path: Path) -> Embedder:
             "embedding: dependencies missing; install encoder-service with the `embed` "
             "extra (Docker: --build-arg ENCODER_EXTRAS=embed) or unset EMBEDDING_MODEL"
         ) from exc
-    return SentenceTransformersAdapter(model_id=str(path), device="cpu")
+    return SentenceTransformersAdapter(model_id=str(path), device="cpu", dtype=dtype)
 
 
 def build_embedding_backend(
@@ -176,7 +178,9 @@ def build_embedding_backend(
         raise BackendConfigError(f"embedding: {exc}") from exc
 
     try:
-        embedder = (load or _load_sentence_transformers)(resolved.path)
+        embedder = (load or partial(_load_sentence_transformers, dtype=settings.dtype))(
+            resolved.path
+        )
     except BackendConfigError:
         raise
     except Exception as exc:

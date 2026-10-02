@@ -215,10 +215,11 @@ services:
       EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-remote}
       MODEL_SERVER_URL: ${MODEL_SERVER_URL:-http://encoder:8090}
       MODEL_SERVER_TIMEOUT_SECONDS: ${MODEL_SERVER_TIMEOUT_SECONDS:-10}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-ibm-granite/granite-embedding-311m-multilingual-r2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-44399559930365213510b1ee2eb15ded83374f0e}
+      EMBEDDING_DTYPE: ${EMBEDDING_DTYPE:-float32}
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
-      RETRIEVAL_SCORE_FLOOR: ${RETRIEVAL_SCORE_FLOOR:-0.3}
+      RETRIEVAL_SCORE_FLOOR: ${RETRIEVAL_SCORE_FLOOR:-0.80}
     ports:
       - "127.0.0.1:${PORT_BANKING_CORE:-8081}:8081"
     depends_on:
@@ -349,9 +350,10 @@ services:
       # for a hub model, verified against the cache before it loads. The hash pin is
       # optional and recommended: `make warmup-retrieval` prints it. Empty
       # EMBEDDING_MODEL turns /v1/embed off.
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-ibm-granite/granite-embedding-311m-multilingual-r2}
+      EMBEDDING_REVISION: ${EMBEDDING_REVISION:-44399559930365213510b1ee2eb15ded83374f0e}
       EMBEDDING_WEIGHTS_SHA256: ${EMBEDDING_WEIGHTS_SHA256:-}
+      EMBEDDING_DTYPE: ${EMBEDDING_DTYPE:-float32}
       EMBEDDING_MAX_BATCH: ${EMBEDDING_MAX_BATCH:-64}
       # Decision points (ADR-0012). Default: the pooled DistilBERT artifact (ADR-0014);
       # packages/encoder/calibration/decision_points.json is the tfidf_lr one. Legacy seed

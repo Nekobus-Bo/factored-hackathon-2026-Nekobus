@@ -87,6 +87,62 @@ Measured with the calibration harness (`make calibrate TASK=embedding CONFIG=too
 
 On Cloud Run ([ADR-0015](0015-gcp-cloud-run-terraform.md)) the two Redis instances become two Memorystore instances, each with AUTH, and PostgreSQL becomes Cloud SQL with a private address only. "The orchestrator has no network path to `postgres` or `redis-core`" is kept by address and firewall instead of by Docker network: Cloud SQL and redis-core live in their own private-service-access range, and a firewall rule denies egress to it from every service tagged `pb-edge`; a network-check job verifies it on the real network. Cloud SQL supports pgvector; it is not created, because nothing uses it yet (the KB index is in `banking-core` memory, above).
 
+## Amendment (2026-10-01): kb.search moves to granite-embedding-311m-multilingual-r2
+
+**Context.** Two findings from the lab comparison of MiniLM against four retrieval-trained candidates ([docs/embedding-model-candidates.md](../embedding-model-candidates.md), `lab/notebooks/compare__kb-embeddings.py`, same KB, queries and metrics as the harness):
+
+- **The MiniLM pin was broken.** Revision `86741b4e` holds the same weights as upstream's current commit, but its tokenizer config predates transformers v5. Under the 5.x this repo locks, it loads a `BertTokenizer` that maps most words to `<unk>`, and same-language Hit@1 falls to **0.050**. The 2026-09-27 evidence above loaded the default branch (the harness passes no revision), which already had the fix (`e8f8c211`), so it measured a model that was not the one deployed.
+- **MiniLM is the weakest of the five even when fixed.** It was trained for paraphrase, not retrieval.
+
+**Options.**
+1. Move the MiniLM pin to `e8f8c211`.
+2. Switch to `granite-embedding-97m-multilingual-r2`.
+3. Switch to `granite-embedding-311m-multilingual-r2`.
+
+All three need only configuration in the retrieval path: no prompts, sentence-transformers, no `trust_remote_code`, Apache 2.0, not gated. e5-small and Harrier were set aside: their prefixes add a code path and measured within noise, and neither beats granite-311m.
+
+**Decision.** `kb.search` uses **`ibm-granite/granite-embedding-311m-multilingual-r2`**, revision `44399559930365213510b1ee2eb15ded83374f0e`, **loaded in fp32** (`EMBEDDING_DTYPE=float32`, the default). The model ships bf16 weights. fp32 costs twice the memory, but its CPU speed does not depend on bf16 support, which Cloud Run's x86 hosts may lack.
+
+Lab evidence, pooled over the 360 validation queries (bf16, Apple Silicon CPU; Δ is the paired bootstrap 95% CI against the fixed MiniLM):
+
+| Model | Same-language Hit@1 | MRR | Cross-language Hit@1 | Hit@1 Δ | p95 |
+|---|---:|---:|---:|---|---:|
+| MiniLM, pin `86741b4e` (was deployed) | 0.050 | 0.094 | 0.036 | −0.44 [−0.50, −0.39] | 6 ms |
+| MiniLM, `e8f8c211` (fixed) | 0.494 | 0.605 | 0.508 | — | 6 ms |
+| granite-97m | 0.614 | 0.727 | 0.600 | +0.12 [+0.06, +0.18] | 12 ms (p50) |
+| **granite-311m** | **0.714** | **0.820** | **0.703** | **+0.22 [+0.17, +0.28]** | 37 ms |
+
+Harness confirmation in fp32 (`make calibrate TASK=embedding CONFIG=tools/calibrate/configs/embedding_kb_v2.yaml`, report `reports/calibration-embedding-2026-10-02.md`, mean over es/pt/en):
+
+| Backend | Same-language Hit@1 | Hit@5 | MRR | Cross-language Hit@1 | Cross MRR | p95 CPU (8 threads) |
+|---|---:|---:|---:|---:|---:|---:|
+| BM25 | 0.366 | 0.603 | 0.456 | 0.144 | 0.197 | 0.1 ms |
+| MiniLM (`e8f8c211`, the fixed tokenizer) | 0.494 | 0.794 | 0.605 | 0.508 | 0.593 | 7.1 ms |
+| **granite-311m, fp32** | **0.719** | **0.964** | **0.822** | **0.711** | **0.796** | 18.6 ms |
+
+The report's RAM column comes from one process loading the candidates in turn, so it is not a per-model figure.
+
+**Score floor** ([reports/embedding-score-floor-2026-10-02.md](../../reports/embedding-score-floor-2026-10-02.md)). Granite's cosine scores sit in a compressed band, so the MiniLM-era floor of 0.3 filters nothing. Top-1 same-language scores:
+
+| | Lowest in-domain | Highest off-topic |
+|---|---:|---:|
+| Granite | 0.807 | 0.807 |
+| MiniLM | — | 0.30 (median 0.13) |
+
+For Granite, in-domain is the 360 validation queries (p5 0.84) and off-topic is 30 team-written queries (recipes, sport, weather; 10 per language). At 0.3 every off-topic query returned snippets. The seed moves to **`RETRIEVAL_SCORE_FLOOR=0.80`**:
+- it keeps all 360 in-domain queries;
+- it lets 1 of the 30 off-topic queries through, against 1 of 12 for MiniLM at 0.3;
+- at 0.81, one in-domain query falls below the floor.
+
+The margin is a few hundredths wide, so the floor stays provisional until a human-written test set with out-of-scope queries exists.
+
+**Consequences.**
+- Vectors grow from 384 to 768 dimensions. `banking-core` takes the dimension from the model server's first response, so the in-memory index needs no change; a future pgvector column must use 768.
+- The encoder holds about 1.2 GB of fp32 weights for embeddings instead of about 0.45 GB, next to DistilBERT.
+- One query takes tens of milliseconds instead of a few. That is small next to LLM latency.
+- `RETRIEVAL_SCORE_FLOOR` moves from 0.3 to 0.80, a value tied to this model's score scale. Any later model change must re-derive it.
+- The evidence is still the provisional synthetic set; the human-written test set re-checks it.
+
 ## Action items
 
 1. [ ] Migrations with the three schemas

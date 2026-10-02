@@ -89,9 +89,16 @@ Run of 2026-09-27 (`reports/calibration-embedding-2026-09-27.md`, config `tools/
 | Vector only (`paraphrase-multilingual-MiniLM-L12-v2`) | 0.492 / 0.650 | 0.458 / 0.650 | 0.533 / 0.767 | 0.508 / 0.656 |
 | Hybrid (RRF, k=60, equal weights) | 0.400 / 0.667 | 0.433 / 0.700 | 0.550 / 0.733 | 0.325 / 0.597 |
 
+Run of 2026-10-02 (`reports/calibration-embedding-2026-10-02.md`, config `tools/calibrate/configs/embedding_kb_v2.yaml`), same queries and cells. The model loads in fp32, as served:
+
+| Configuration | Hit@k (es) | Hit@k (pt) | Hit@k (en) | Cross-language query (any pair es/pt/en) |
+|---|---|---|---|---|
+| Vector only (`paraphrase-multilingual-MiniLM-L12-v2`) | 0.492 / 0.650 | 0.458 / 0.650 | 0.533 / 0.767 | 0.508 / 0.656 |
+| **Vector only (`granite-embedding-311m-multilingual-r2`, default since 2026-10-01)** | **0.658 / 0.933** | **0.758 / 0.950** | **0.742 / 0.883** | **0.711 / 0.872** |
+
 With 120 queries per language, a Hit@1 difference under ~0.09 is within the 95% sampling noise. The queries were deliberately written without the KB's wording, which penalizes BM25; treat the gap as an upper bound until the human-written test set exists.
 
-**Outcome:** the vector component stays. Hybrid beats BM25, as ADR-0006 required, but equal-weight RRF does not beat vector-only on Hit@1 or cross-language, so the default backend is vector-only. See the amendment in [ADR-0006](adr/0006-single-postgres-pgvector.md).
+**Outcome:** the vector component stays. Hybrid beats BM25, as ADR-0006 required, but equal-weight RRF does not beat vector-only on Hit@1 or cross-language, so the default backend is vector-only. On 2026-10-01 the vector model became `granite-embedding-311m-multilingual-r2`: +0.22 same-language and +0.20 cross-language Hit@1 over MiniLM, beyond the noise band. Both decisions are amendments in [ADR-0006](adr/0006-single-postgres-pgvector.md).
 
 ## 3. Unsafe outcome taxonomy
 

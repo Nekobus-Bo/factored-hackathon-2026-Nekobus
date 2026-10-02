@@ -67,7 +67,7 @@ SNIPPETS = [
         "a qualquer hora usando uma chave Pix.",
     ),
 ]
-MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+MODEL_ID = "ibm-granite/granite-embedding-311m-multilingual-r2"
 
 
 @pytest.fixture
@@ -230,6 +230,7 @@ def test_config_from_env_defaults_to_vector_and_validates(
         "EMBEDDING_MODEL",
         "KB_PATH",
         "EMBEDDING_BACKEND",
+        "EMBEDDING_DTYPE",
         "EMBEDDING_REVISION",
         "MODEL_SERVER_URL",
         "MODEL_SERVER_TIMEOUT_SECONDS",
@@ -237,6 +238,7 @@ def test_config_from_env_defaults_to_vector_and_validates(
         monkeypatch.delenv(var, raising=False)
     defaults = KbSearchConfig.from_env()
     assert defaults.backend == "vector"
+    assert defaults.embedding_dtype == "float32"
     assert defaults.embedding_backend == "remote"  # the model server, not in process
     assert defaults.model_server_url is None and defaults.embedding_revision is None
 
@@ -254,11 +256,13 @@ def test_model_server_settings_come_from_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("EMBEDDING_BACKEND", "LOCAL")
+    monkeypatch.setenv("EMBEDDING_DTYPE", "BFLOAT16")
     monkeypatch.setenv("EMBEDDING_REVISION", REVISION)
     monkeypatch.setenv("MODEL_SERVER_URL", "http://encoder:8090")
     monkeypatch.setenv("MODEL_SERVER_TIMEOUT_SECONDS", "2.5")
     config = KbSearchConfig.from_env()
     assert config.embedding_backend == "local"
+    assert config.embedding_dtype == "bfloat16"
     assert (config.embedding_revision, config.model_server_url) == (
         REVISION,
         "http://encoder:8090",
@@ -269,6 +273,10 @@ def test_model_server_settings_come_from_the_environment(
     with pytest.raises(ValidationError):
         KbSearchConfig.from_env()
     monkeypatch.setenv("EMBEDDING_BACKEND", "remote")
+    monkeypatch.setenv("EMBEDDING_DTYPE", "int8")
+    with pytest.raises(ValidationError):
+        KbSearchConfig.from_env()
+    monkeypatch.setenv("EMBEDDING_DTYPE", "float32")
     monkeypatch.setenv("MODEL_SERVER_TIMEOUT_SECONDS", "0")
     with pytest.raises(ValidationError):
         KbSearchConfig.from_env()
@@ -310,7 +318,7 @@ def _vector_ready() -> bool:
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and MiniLM in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and Granite in the HF cache"
 )
 @pytest.mark.parametrize(
     ("locale", "query", "expected_topic"),
@@ -323,14 +331,14 @@ def _vector_ready() -> bool:
 def test_vector_hits_the_topic_in_each_language(
     kb_path: Path, locale: str, query: str, expected_topic: str
 ) -> None:
-    """Default config (seed floor 0.3): the top hit is the right topic."""
+    """Default config (seed floor 0.80): the top hit is the right topic."""
     searcher = KbSearcher(KbSearchConfig(kb_path=kb_path, embedding_backend="local"))
     out = searcher.search(KbSearchInput(query=query, locale=locale, limit=1))
     assert [r.article_id for r in out.results] == [f"{expected_topic}.{locale}"]
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and MiniLM in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and Granite in the HF cache"
 )
 def test_vector_falls_back_cross_language_for_a_topic_missing_in_es(
     kb_path: Path,

@@ -9,12 +9,14 @@ from retrieval import DEFAULT_KB_PATH
 
 # Contract ceiling for KbSearchInput.limit; configuration can only lower it.
 KB_SEARCH_HARD_CAP = 20
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-311m-multilingual-r2"
 
 Backend = Literal["vector", "bm25", "hybrid"]
 # Where the vector backend gets its embeddings: the model server (ADR-0012, App. J)
 # or, for tests and local development only, an in-process model.
 EmbeddingBackend = Literal["remote", "local"]
+# Weights precision of the in-process model (local only; the server has its own).
+EmbeddingDtype = Literal["float32", "bfloat16"]
 DEFAULT_MODEL_SERVER_TIMEOUT_SECONDS = 10.0
 
 
@@ -37,6 +39,10 @@ class KbSearchConfig(BaseModel):
         default="remote",
         description="remote: the model server. local: in-process, tests and dev only",
     )
+    embedding_dtype: EmbeddingDtype = Field(
+        default="float32",
+        description="Weights precision of the in-process model (local only)",
+    )
     embedding_revision: str | None = Field(
         default=None,
         description="Pinned revision the model server must report (remote)",
@@ -53,10 +59,13 @@ class KbSearchConfig(BaseModel):
     )
     max_k: int = Field(default=5, ge=1, le=KB_SEARCH_HARD_CAP)
     score_floor: float = Field(
-        default=0.3,
+        default=0.80,
         ge=0.0,
         le=1.0,
-        description="Minimum normalized score; below it SAME falls back to CROSS",
+        description=(
+            "Minimum normalized score; below it SAME falls back to CROSS. Tied to "
+            "the embedding model's score scale (ADR-0006 amendment 2026-10-01)"
+        ),
     )
 
     @classmethod
@@ -71,6 +80,8 @@ class KbSearchConfig(BaseModel):
             values["embedding_model"] = model.strip()
         if embedding_backend := os.getenv("EMBEDDING_BACKEND"):
             values["embedding_backend"] = embedding_backend.strip().lower()
+        if dtype := os.getenv("EMBEDDING_DTYPE"):
+            values["embedding_dtype"] = dtype.strip().lower()
         if revision := os.getenv("EMBEDDING_REVISION"):
             values["embedding_revision"] = revision.strip()
         if url := os.getenv("MODEL_SERVER_URL"):

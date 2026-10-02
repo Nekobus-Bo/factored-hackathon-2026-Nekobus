@@ -118,13 +118,13 @@ variable "rate_limit_conversations_per_ip_hour" {
 variable "embedding_model" {
   description = "The kb.search embedding model, baked into the encoder image and checked by banking-core. Must match .env.example."
   type        = string
-  default     = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  default     = "ibm-granite/granite-embedding-311m-multilingual-r2"
 }
 
 variable "embedding_revision" {
   description = "The pinned commit of embedding_model. Must match .env.example."
   type        = string
-  default     = "86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d"
+  default     = "44399559930365213510b1ee2eb15ded83374f0e"
 
   validation {
     condition     = can(regex("^[0-9a-f]{40}$", var.embedding_revision))
@@ -135,7 +135,7 @@ variable "embedding_revision" {
 variable "embedding_weights_sha256" {
   description = "SHA-256 of the pinned weights file. Must match .env.example."
   type        = string
-  default     = "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b"
+  default     = "dcb6431bfa6e817fe100a2b0521360cec3383963b03fa966b685de18ca310d31"
 
   validation {
     condition     = can(regex("^[0-9a-f]{64}$", var.embedding_weights_sha256))
