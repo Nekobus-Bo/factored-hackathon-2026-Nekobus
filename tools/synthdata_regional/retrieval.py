@@ -27,6 +27,7 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import polars as pl
 import yaml
@@ -45,8 +46,16 @@ from tools.synthdata_regional.generate import (
 from tools.synthdata_regional.locales import LOCALES, REPO, Locale, get_locale
 
 KB_PATH = REPO / "packages" / "retrieval" / "kb" / "snippets.jsonl"
-OUT_DIR = REPO / "data" / "eval" / "synthetic" / "retrieval" / "regional"
-POOLED = REPO / "data" / "eval" / "synthetic" / "retrieval" / "queries_regional.jsonl"
+RETRIEVAL_DIR = REPO / "data" / "eval" / "synthetic" / "retrieval"
+OUT_DIR = RETRIEVAL_DIR / "regional"
+POOLED = RETRIEVAL_DIR / "queries_regional.jsonl"
+# The same recipe with two generators: GPT Sol through the API, and Claude Opus 5.5 writing
+# by hand in a coding session from the same briefs (`--brief`), read from `written/<locale>.jsonl`.
+GENERATORS = {
+    "gpt-sol": {"out_dir": OUT_DIR, "pooled": POOLED, "id": "rq", "written": None},
+    "claude": {"out_dir": RETRIEVAL_DIR / "regional_claude", "pooled": RETRIEVAL_DIR / "queries_regional_claude.jsonl",
+               "id": "rqc", "written": RETRIEVAL_DIR / "regional_claude" / "written", "model": "claude-opus-5-5"},
+}
 OLD_QUERIES = REPO / "data" / "eval" / "synthetic" / "retrieval" / "queries.jsonl"
 PROMPT_VERSION = "retrieval-v1"
 SPLIT = "test"
@@ -302,12 +311,60 @@ def rewrite(messages: list[str]) -> list[dict]:
         return list(pool.map(one, messages))
 
 
-def generate(loc: Locale) -> pl.DataFrame:
+def read_written(loc: Locale, path: Path) -> list[dict]:
+    """Hand-written messages ({kind, topic_id, length, text} per line), in the shape collect() returns."""
+    rows = []
+    for i, line in enumerate(path.read_text().splitlines()):
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        kind, topic = r["kind"], r.get("topic_id", "")
+        gold = {"in_scope": [f"{topic}.{loc.lang}"], "out_of_scope_banking": [f"{SCOPE_TOPIC}.{loc.lang}"],
+                "off_topic": []}[kind]
+        rows.append({"call": i, "kind": kind, "topic_id": SCOPE_TOPIC if kind == "out_of_scope_banking" else topic,
+                     "relevant_ids": gold, "length": r["length"], "text": r["text"].strip()})
+    return rows
+
+
+def brief(loc: Locale) -> str:
+    """What each GPT Sol call is given, compacted, for a person or a coding agent writing by hand."""
+    card = yaml.safe_load((loc.out_dir / "style_cards.B.yaml").read_text())
+    phrases = pl.read_parquet(loc.out_dir / "phrase_bank.parquet").filter(pl.col("half") == "B")
+    prompts = build_prompts(loc, plan_calls(loc, kb_snippets()), card, phrases)
+    head = prompts[0].split("The bank's chat assistant answers")[0]
+    style = prompts[0].split("Style evidence")[1].split("Customer profile")[0]
+    out = [head.strip(), "", "Style evidence" + style.strip(), ""]
+    for c, prompt in zip(plan_calls(loc, kb_snippets()).iter_rows(named=True), prompts, strict=True):
+        task = prompt.split("\n\n", 1)[1].split("\n\nStyle evidence")[0]
+        real = prompt.split("do not reuse their situations literally:\n")[1].split("\n- Common openers")[0]
+        persona = prompt.split("Customer profile for this batch: ")[1].split("\n")[0]
+        terms = prompt.split("- Words and expressions typical of this topic: ")[1].split("\n")[0]
+        out += [f"### {c['kind']} {c['topic_id']} (call {c['call']})", task, f"Topic terms: {terms}", "Real phrases:", real,
+                f"Persona: {persona}", ""]
+    return "\n".join(out)
+
+
+def generate(loc: Locale, generator: str = "gpt-sol") -> pl.DataFrame:
+    spec = GENERATORS[generator]
+    kb = kb_snippets()
+    if spec["written"] is not None:
+        model = spec["model"]
+        rows = read_written(loc, spec["written"] / f"{loc.code}.jsonl")
+        cleaned, counts = clean(loc, rows, kb)
+        kept, deficit = select(cleaned)
+        print(f"{loc.code} ({generator}): written {len(rows)} · " + " · ".join(f"{k} {v}" for k, v in counts.items()))
+        if deficit:
+            print(f"WARNING: below target, write more for: {deficit}")
+    else:
+        model, kept = _generate_llm(loc, kb)
+    return _finish(loc, kept, model, spec)
+
+
+def _generate_llm(loc: Locale, kb: pl.DataFrame) -> tuple[str, pl.DataFrame]:
     model, api_key, base_url = _llm_settings()
     stage = loc.out_dir
     card = yaml.safe_load((stage / "style_cards.B.yaml").read_text())
     phrases = pl.read_parquet(stage / "phrase_bank.parquet").filter(pl.col("half") == "B")
-    kb = kb_snippets()
 
     def run(batch: pl.DataFrame, round_: int) -> tuple[list[dict], int]:
         prompts = build_prompts(loc, batch, card, phrases, round_)
@@ -330,11 +387,15 @@ def generate(loc: Locale) -> pl.DataFrame:
     print(f"{loc.code}: calls {calls.height} · tokens {tokens:,} · " + " · ".join(f"{k} {v}" for k, v in counts.items()))
     if deficit:
         print(f"WARNING: below target after top-up: {deficit}")
+    return model, kept
 
+
+def _finish(loc: Locale, kept: pl.DataFrame, model: str, spec: dict) -> pl.DataFrame:
+    """The rewrite step, ids and provenance, and the locale file."""
     rewrites = rewrite(kept["text"].to_list())
     prefix = ID_PREFIX[loc.code]
     out = kept.with_columns(
-        id=pl.Series([f"rq-{prefix}-{i:03d}" for i in range(1, kept.height + 1)]),
+        id=pl.Series([f"{spec['id']}-{prefix}-{i:03d}" for i in range(1, kept.height + 1)]),
         kb_query=pl.Series([r["query"][:QUERY_MAX_CHARS] for r in rewrites]),
         lang=pl.lit(loc.lang), locale=pl.lit(loc.code), split=pl.lit(SPLIT), source=pl.lit(SOURCE),
         model=pl.lit(model), rewrite_model=pl.lit(rewrites[0]["model"] if rewrites else ""),
@@ -344,36 +405,47 @@ def generate(loc: Locale) -> pl.DataFrame:
     empty = sum(1 for r in rewrites if not r["query"])
     if empty:
         print(f"WARNING: {empty} rewrites returned no query")
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / f"{loc.code}.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in out.to_dicts()))
+    spec["out_dir"].mkdir(parents=True, exist_ok=True)
+    (spec["out_dir"] / f"{loc.code}.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in out.to_dicts()))
     return out
 
 
-def pool() -> pl.DataFrame:
-    frames = [pl.read_ndjson(OUT_DIR / f"{code}.jsonl") for code in LOCALES if (OUT_DIR / f"{code}.jsonl").exists()]
+def pool(generator: str = "gpt-sol") -> pl.DataFrame:
+    spec = GENERATORS[generator]
+    out_dir = spec["out_dir"]
+    frames = [pl.read_ndjson(out_dir / f"{code}.jsonl") for code in LOCALES if (out_dir / f"{code}.jsonl").exists()]
     if not frames:
-        raise SystemExit(f"No locale files in {OUT_DIR}: generate them first.")
+        raise SystemExit(f"No locale files in {out_dir}: generate them first.")
     pooled = pl.concat(frames, how="diagonal_relaxed")
-    POOLED.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in pooled.to_dicts()))
+    spec["pooled"].write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in pooled.to_dicts()))
     return pooled
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--locale", choices=list(LOCALES))
+    parser.add_argument("--generator", choices=list(GENERATORS), default="gpt-sol",
+                        help="gpt-sol calls the API; claude reads hand-written messages from written/<locale>.jsonl")
     parser.add_argument("--pool", action="store_true", help="pool the locale files and write checks.md")
+    parser.add_argument("--brief", action="store_true", help="print what each call is given, for writing by hand")
     args = parser.parse_args()
+    if args.brief:
+        if not args.locale:
+            parser.error("--brief needs --locale")
+        print(brief(get_locale(args.locale)))
+        return
     if not args.locale and not args.pool:
         parser.error("set --locale, --pool or both")
     if args.locale:
-        out = generate(get_locale(args.locale))
+        out = generate(get_locale(args.locale), args.generator)
         print(out.group_by("kind", "length").len().sort("kind", "length"))
     if args.pool:
         from tools.synthdata_regional.retrieval_checks import write_checks
 
-        pooled = pool()
-        print(f"pooled {pooled.height} rows → {POOLED.relative_to(REPO)}")
-        write_checks(pooled)
+        spec = GENERATORS[args.generator]
+        pooled = pool(args.generator)
+        print(f"pooled {pooled.height} rows → {spec['pooled'].relative_to(REPO)}")
+        write_checks(pooled, spec["out_dir"])
 
 
 if __name__ == "__main__":

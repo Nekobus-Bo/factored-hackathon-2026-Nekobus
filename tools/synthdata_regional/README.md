@@ -41,6 +41,7 @@ make check-data-regional LOCALE=es-MX   # quality gate only; writes checks.md, e
   - **Questions:** from the **half-B** cards and phrases, 3 messages per KB topic plus 15 out-of-scope banking and 15 off-topic ones.
   - **Rewrite:** each message also gets the `kb_search` query the orchestrator's LLM sends for it.
   - **Output:** `data/eval/synthetic/retrieval/queries_regional.jsonl` and `regional/checks.md`, written by `retrieval_checks.py`.
+  - **Second author:** `GENERATOR=claude` reads hand-written messages from `retrieval/regional_claude/written/<locale>.jsonl` instead of calling the API. `--brief --locale <locale>` prints what each GPT Sol call is given, as a writing brief.
   - **Docs:** `data/eval/synthetic/retrieval/README.md` §6.
 - **`checks.py`** is the gate:
   - format and offsets, counts and the short/long mix;
