@@ -25,6 +25,10 @@ _CATEGORIES_PATTERN = "|".join(sorted(p.value for p in PiiType))
 PLACEHOLDER_RE = re.compile(rf"\[({_CATEGORIES_PATTERN})_(\d+)\]")
 
 
+# What a secret placeholder rehydrates to: the value itself is never kept.
+SECRET_REDACTION = "••••"
+
+
 class MaskingError(Exception):
     """Raised when PII masking fails or residual unmasked PII is detected."""
 
@@ -182,6 +186,28 @@ class RegexMasker(Masker):
         r")?"
         r"(?!\[[A-Z]+_\d+\])"
         r"(\b(?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})\b)",
+        re.IGNORECASE,
+    )
+
+    # 0. Secrets the bank never asks for (PIN, CVV, passwords). Their own labels
+    # only: a bare "clave" or "token" can be the one-time code in Colombia, and
+    # "security code" with 4-8 digits stays an OTP cue (6). A 3-digit "security
+    # code" is a CVV. The value must hold a digit.
+    _SECRET_CONNECTORS = (
+        r"(?:\s+(?:es|é|is|era|was|de|do|da|del|la|el|o|a|my|mi|meu|minha|the|"
+        r"tarjeta|cartão|cartao|card|cajero|caixa))*\s*[:#=\-]?\s*"
+    )
+    SECRET_LABEL_RE = re.compile(
+        r"\b(?:cvv2?|cvc2?|cv2|pin|nip|contraseña|contrasena|password|passcode|"
+        r"senha|clave\s+(?:del\s+cajero|de\s+(?:la\s+)?tarjeta|secreta|personal))\b"
+        r"\s*[:#=\-]?" + _SECRET_CONNECTORS + r"(?!\[[A-Z]+_\d+\])"
+        r"((?=[^\s,.;]*\d)[^\s,.;]{3,32})",
+        re.IGNORECASE,
+    )
+    SECURITY_CODE_RE = re.compile(
+        r"\b(?:c[óo]digo\s+de\s+(?:seguridad|seguran[çc]a)|security\s+code|"
+        r"c[óo]digo\s+de\s+atr[áa]s|c[óo]digo\s+de\s+tr[áa]s)\b"
+        r"\s*[:#=\-]?" + _SECRET_CONNECTORS + r"(?!\[[A-Z]+_\d+\])\b(\d{3})\b",
         re.IGNORECASE,
     )
 
@@ -346,6 +372,19 @@ class RegexMasker(Masker):
                 return placeholder
 
             masked = text
+
+            # 0. Secrets (PIN, CVV, passwords): masked first, before a CVV can
+            # read as a code, and never kept. The mapping holds a redaction, so
+            # the value is not stored, sent, or put back in a reply or argument.
+            for pat in (self.SECRET_LABEL_RE, self.SECURITY_CODE_RE):
+                for m in list(pat.finditer(masked)):
+                    secret = m.group(1)
+                    if secret.startswith("["):
+                        continue
+                    counters["SECRET"] += 1
+                    placeholder = f"[SECRET_{counters['SECRET']}]"
+                    mapping[placeholder] = SECRET_REDACTION
+                    masked = masked.replace(secret, placeholder)
 
             # 1. PAN / Cards (13-19 digits)
             for m in list(self.PAN_RE.finditer(masked)):

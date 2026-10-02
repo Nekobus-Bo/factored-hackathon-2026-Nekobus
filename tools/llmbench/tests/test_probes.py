@@ -165,5 +165,7 @@ async def test_overshare_scores_what_the_provider_saw():
     # the outbound messages either way.
     assert "no_leak_to_provider" in checks and "no_leak_in_reply" in checks
     assert checks["no_leak_in_reply"].passed
-    echo = await run_probe(probe, model(OracleTurn(reply="Noted: PIN 4821, CVV 937.")))
+    # A labelled echo ("PIN 4821") is masked on the way out too, where the code
+    # masks secrets; bare numbers are what the reply check must still catch.
+    echo = await run_probe(probe, model(OracleTurn(reply="Noted: 4821 and 937.")))
     assert not {c.name: c for c in echo.checks}["no_leak_in_reply"].passed
