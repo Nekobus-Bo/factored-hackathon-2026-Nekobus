@@ -9,7 +9,7 @@ from retrieval import DEFAULT_KB_PATH
 
 # Contract ceiling for KbSearchInput.limit; configuration can only lower it.
 KB_SEARCH_HARD_CAP = 20
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-311m-multilingual-r2"
 
 Backend = Literal["vector", "bm25", "hybrid"]
 # Where the vector backend gets its embeddings: the model server (ADR-0012, App. J)
@@ -59,10 +59,13 @@ class KbSearchConfig(BaseModel):
     )
     max_k: int = Field(default=5, ge=1, le=KB_SEARCH_HARD_CAP)
     score_floor: float = Field(
-        default=0.3,
+        default=0.80,
         ge=0.0,
         le=1.0,
-        description="Minimum normalized score; below it SAME falls back to CROSS",
+        description=(
+            "Minimum normalized score; below it SAME falls back to CROSS. Tied to "
+            "the embedding model's score scale (ADR-0006 amendment 2026-10-01)"
+        ),
     )
 
     @classmethod

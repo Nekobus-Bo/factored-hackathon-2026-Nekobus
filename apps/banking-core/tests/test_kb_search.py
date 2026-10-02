@@ -67,7 +67,7 @@ SNIPPETS = [
         "a qualquer hora usando uma chave Pix.",
     ),
 ]
-MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+MODEL_ID = "ibm-granite/granite-embedding-311m-multilingual-r2"
 
 
 @pytest.fixture
@@ -318,7 +318,7 @@ def _vector_ready() -> bool:
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and MiniLM in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and the embedding model in the HF cache"
 )
 @pytest.mark.parametrize(
     ("locale", "query", "expected_topic"),
@@ -331,14 +331,14 @@ def _vector_ready() -> bool:
 def test_vector_hits_the_topic_in_each_language(
     kb_path: Path, locale: str, query: str, expected_topic: str
 ) -> None:
-    """Default config (seed floor 0.3): the top hit is the right topic."""
+    """Default config (seed floor 0.80): the top hit is the right topic."""
     searcher = KbSearcher(KbSearchConfig(kb_path=kb_path, embedding_backend="local"))
     out = searcher.search(KbSearchInput(query=query, locale=locale, limit=1))
     assert [r.article_id for r in out.results] == [f"{expected_topic}.{locale}"]
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and MiniLM in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and the embedding model in the HF cache"
 )
 def test_vector_falls_back_cross_language_for_a_topic_missing_in_es(
     kb_path: Path,
