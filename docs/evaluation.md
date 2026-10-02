@@ -44,6 +44,8 @@ One model carries the submission, **GPT 6 Luna** (why, and what that does not pr
 
 Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, compared per language on these four metrics.
 
+Local small models (Qwen3.5-4B, Granite 4.2 3B, Granite 4.0 1B, Qwen3-1.7B, served by llama.cpp) are compared on a sandbox bank with `make llm-bench` ([tools/llmbench](../tools/llmbench/README.md)): 30 skill probes and 18 of the scenarios below, scored by the same evalrunner checks. ⚠️ Not run yet; its numbers would be model-selection evidence, not system evidence ([limitations](limitations.md)).
+
 ### Decision component (classifier test split)
 
 Every number here is on a **provisional, synthetic** test split (written by the coding agent, not by humans) and is not certified. Two different splits are involved, so compare within a column, not across rows of different splits.

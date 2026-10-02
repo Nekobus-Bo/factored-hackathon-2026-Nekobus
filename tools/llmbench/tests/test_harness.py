@@ -134,9 +134,9 @@ def test_live_provider_ignores_the_environment(monkeypatch):
 
     monkeypatch.setenv("LLM_MODE", "replay")
     monkeypatch.setenv("LLM_REASONING_EFFORT", "high")
-    provider = live_provider("openai/qwen3-1.7b", "http://127.0.0.1:8090/v1")
+    provider = live_provider("openai/qwen3-1.7b", "http://127.0.0.1:8099/v1")
     assert provider.mode == "live"
     assert provider.model == "openai/qwen3-1.7b"
-    assert provider.base_url == "http://127.0.0.1:8090/v1"
+    assert provider.base_url == "http://127.0.0.1:8099/v1"
     assert provider.reasoning_effort is None
     assert provider.record is False

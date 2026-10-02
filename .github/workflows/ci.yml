@@ -47,6 +47,7 @@ jobs:
           uv run --package evalrunner pytest -q eval/runner
           uv run --package retrieval pytest -q packages/retrieval/tests
           uv run --package calibrate pytest -q tools/calibrate
+          uv run --package llmbench pytest -q tools/llmbench
 
       - name: Start the stack with no .env (defaults only)
         run: make up

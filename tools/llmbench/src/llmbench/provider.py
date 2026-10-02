@@ -26,7 +26,7 @@ def live_provider(
     """An LLMProvider in live mode; nothing is read from the environment or .env.
 
     `model` is the LiteLLM model string, e.g. `openai/qwen3.5-4b` for a llama.cpp
-    server whose OpenAI API lives at `base_url` (http://127.0.0.1:8090/v1).
+    server whose OpenAI API lives at `base_url` (http://127.0.0.1:8099/v1).
     """
     settings = Settings(
         _env_file=None,

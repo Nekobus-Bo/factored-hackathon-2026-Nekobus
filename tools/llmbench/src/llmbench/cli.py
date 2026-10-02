@@ -35,13 +35,15 @@ def load_models(path: Path = MODELS_FILE) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def serve_command(alias: str, config: dict[str, Any]) -> list[str]:
+def serve_command(
+    alias: str, config: dict[str, Any], binary: str = "llama-server"
+) -> list[str]:
     models = config["models"]
     if alias not in models:
         raise SystemExit(f"unknown model {alias!r}; known: {', '.join(models)}")
     server = config["server"]
     return [
-        "llama-server",
+        binary,
         "-hf",
         models[alias]["hf"],
         "--alias",
@@ -61,6 +63,11 @@ def check_server(base_url: str, alias: str) -> None:
     try:
         response = httpx.get(f"{base_url}/models", timeout=5)
         response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise SystemExit(
+            f"{base_url}/models answered HTTP {exc.response.status_code}: another "
+            "service holds that port. Change server.port in models.yaml"
+        ) from None
     except httpx.HTTPError as exc:
         raise SystemExit(
             f"no OpenAI-compatible server at {base_url} ({type(exc).__name__}). "
@@ -196,7 +203,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
 
 def cmd_serve_cmd(args: argparse.Namespace) -> int:
-    print(shlex.join(serve_command(args.model, load_models(Path(args.models_file)))))
+    config = load_models(Path(args.models_file))
+    print(shlex.join(serve_command(args.model, config, args.binary)))
     return 0
 
 
@@ -239,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         "serve-cmd", help="Print the llama-server command for a model"
     )
     serve.add_argument("--model", required=True)
+    serve.add_argument("--binary", default="llama-server")
     serve.set_defaults(func=cmd_serve_cmd)
 
     args = parser.parse_args(argv)

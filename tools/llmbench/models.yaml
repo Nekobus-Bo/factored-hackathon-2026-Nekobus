@@ -1,3 +1,4 @@
+# Port 8099: the compose stack already publishes 8090 (encoder), 8080 and 8081.
 # Local models for llmbench, served one at a time by llama.cpp's llama-server
 # (`make llm-bench-serve MODEL=<alias>`). The alias is also the served model name,
 # so LiteLLM addresses it as `openai/<alias>`.
@@ -8,7 +9,7 @@
 
 server:
   host: 127.0.0.1
-  port: 8090
+  port: 8099
   # Ten tool schemas (~2.6k tokens) plus a multi-turn history fit in 16k.
   ctx_size: 16384
   args: ["--jinja", "--chat-template-kwargs", '{"enable_thinking": false}']
