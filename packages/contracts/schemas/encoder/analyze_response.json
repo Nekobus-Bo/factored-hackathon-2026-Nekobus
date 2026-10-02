@@ -179,7 +179,8 @@
         "EMAIL",
         "CARD",
         "DATE",
-        "OTP"
+        "OTP",
+        "SECRET"
       ],
       "title": "PiiType",
       "type": "string"

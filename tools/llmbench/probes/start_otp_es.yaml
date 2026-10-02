@@ -1,0 +1,26 @@
+id: start_otp_es
+lang: es
+skill: start_otp
+description: 'Right after a match the customer agrees to the code: otp.send, no data tools.'
+setup:
+  customer: demo_es
+prefix:
+- user: Hola, perdí mi tarjeta débito hace un rato. Mi cédula es 1020304050.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  reply: Gracias, ya te identifiqué. Para continuar necesito enviarte un código de verificación a tu correo
+    registrado. ¿Te lo envío?
+probe:
+  user: Sí, envíamelo por favor.
+  expect:
+    decision:
+    - otp.send
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

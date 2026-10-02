@@ -16,6 +16,7 @@ members = [
     "encoder",
     "encoder-service",
     "evalrunner",
+    "llmbench",
     "orchestrator",
     "pattern-blue",
     "profile-factored",
@@ -927,6 +928,45 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/86/74f6ad713dc63700d5c40828708d64118db105a62a2919c9cdecddd6b966/litellm-1.102.1-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:f7c4ffead69cf010fe3f551d2941bd6190bdaa816b98d5ebc85df67096724180", size = 26919523, upload-time = "2026-09-23T03:58:51.904Z" },
     { url = "https://files.pythonhosted.org/packages/86/09/ba63c28d3373389022d8686396f26b28ac89c1e324e2b1fa00b4578e9b63/litellm-1.102.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:c5fcfbe322e3052f96fa92409fc61ec9712a7b2b567e7760e057b17b7587d021", size = 27475133, upload-time = "2026-09-23T03:58:55.204Z" },
     { url = "https://files.pythonhosted.org/packages/69/e7/6a1613821f7cead31d17c4c84b1d1939b6c9a33226ba638a7e31610ce060/litellm-1.102.1-cp310-abi3-win_amd64.whl", hash = "sha256:b2c24cad24c637b20e91f6dd7b812971a5fa64ad2330213e517ff8f38d25c0d8", size = 27407273, upload-time = "2026-09-23T03:58:58.799Z" },
+]
+
+[[package]]
+name = "llmbench"
+version = "0.1.0"
+source = { editable = "tools/llmbench" }
+dependencies = [
+    { name = "banking-core" },
+    { name = "contracts" },
+    { name = "evalrunner" },
+    { name = "httpx" },
+    { name = "orchestrator" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "banking-core", editable = "apps/banking-core" },
+    { name = "contracts", editable = "packages/contracts" },
+    { name = "evalrunner", editable = "eval/runner" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "orchestrator", editable = "apps/orchestrator" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "ruff", specifier = ">=0.6.0" },
 ]
 
 [[package]]

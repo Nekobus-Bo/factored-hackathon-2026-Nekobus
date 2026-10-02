@@ -1,0 +1,26 @@
+id: continue_after_match_en
+lang: en
+skill: continue_after_match
+description: 'The goal was stated a turn earlier; the customer now gives the document: customer.match,
+  then otp.send in the same turn, never a card tool first.'
+setup:
+  customer: demo_en
+prefix:
+- user: I lost my debit card, can you block it?
+  calls: []
+  reply: 'Sure, I can help. First I need to identify you: could you give me your passport number?'
+probe:
+  user: My passport number is P12345678.
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_number: re:^\[DOC_\d+\]$
+      otp.send: {}
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

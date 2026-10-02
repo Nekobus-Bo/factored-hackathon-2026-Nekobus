@@ -1,0 +1,36 @@
+id: link_transaction_en
+lang: en
+skill: link_transaction
+description: 'The customer names the unrecognized charge: card.block with the card, UNRECOGNIZED_CHARGE
+  and that transaction_id.'
+setup:
+  customer: demo_en
+prefix:
+- user: Hi, there is a charge on my card I don't recognize. My passport number is P12345678.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: PASSPORT
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: I sent a 6-digit code to d***@example.com. Could you share it with me?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  - tool: transaction.list_recent
+  reply: 'I have verified your identity. I see two recent charges: Global Electronics Megastore for $139.99
+    and Local Artisan Bakery for $12.50. Which one don''t you recognize?'
+probe:
+  user: The Global Electronics one, I didn't make that purchase. Please block the card.
+  expect:
+    decision:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    require:
+      card.block:
+        card_ref: '{{card}}'
+        reason: UNRECOGNIZED_CHARGE
+        transaction_id: '{{tx:Global Electronics}}'

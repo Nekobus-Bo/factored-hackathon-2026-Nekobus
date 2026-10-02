@@ -972,6 +972,9 @@ class Harness:
         )
         assert resp.status_code == 200, resp.text
         body: dict[str, Any] = resp.json()
+        # Every result carries the flow hint (ADR-0016); tests of the result
+        # itself compare without it, test_flow_hint_* read it here.
+        self.last_flow = body.pop("flow", None)
         return body
 
 
@@ -1133,12 +1136,17 @@ def test_busy_session_lock_is_a_retryable_refusal(make_harness) -> None:
     with h.session_store.lock(session_id, ttl_ms=5000, wait_ms=0) as held:
         assert held is True
         busy = h.call(session_id, MATCH_ES)
+    flow = h.last_flow
     assert busy == {
         "tool": "customer.match",
         "status": "refused",
         "reason_code": "SESSION_BUSY",
         "data": None,
     }
+    # The busy refusal still says where the session stands (ADR-0016); it does
+    # not name the refused tool as the next step.
+    assert flow["state"] == "ANONYMOUS"
+    assert flow["next"] == ["handoff.create"]
     assert h.db.audit_logs[-1].reason_code == "SESSION_BUSY"
 
     # Released in finally: the retry goes through.
@@ -1992,3 +2000,17 @@ def test_parallel_sessions_never_evaluate_past_the_document_maximum(
     assert len(audits) == len(session_ids)
     evaluated = [a for a in audits if not a.payload["details"].get("limited")]
     assert len(evaluated) == DOCUMENT_MATCH_MAX_FAILURES
+
+
+def test_flow_hint_after_a_match_and_a_premature_card_list(make_harness) -> None:
+    # The stall of ADR-0016: matched, then card.list before the code.
+    h = make_harness()
+    session_id = h.new_session()
+    assert h.call(session_id, MATCH_ES)["data"] == {"matched": True}
+    assert h.last_flow["state"] == "IDENTIFIED"
+    assert h.last_flow["next"] == ["otp.send"]
+
+    refused = h.call(session_id, {"tool": "card.list", "version": "1.0", "args": {}})
+    assert refused["reason_code"] == "STATE_NOT_ALLOWED"
+    assert h.last_flow["required_states"] == ["VERIFIED"]
+    assert h.last_flow["next"] == ["otp.send"]

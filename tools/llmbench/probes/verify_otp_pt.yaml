@@ -1,0 +1,27 @@
+id: verify_otp_pt
+lang: pt
+skill: verify_otp
+description: 'The customer types the code: otp.verify with the [OTP_n] placeholder, never a literal guess.'
+setup:
+  customer: demo_pt
+prefix:
+- user: Oi, perdi meu cartão de débito agora há pouco. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Enviei um código de 6 dígitos para d***@example.com. Pode me informar?
+probe:
+  user: O código é {{otp}}
+  expect:
+    decision:
+    - otp.verify
+    require:
+      otp.verify:
+        code: re:^\[OTP_\d+\]$
+    forbid:
+    - customer.match
+    max_proposals:
+      otp.verify: 1

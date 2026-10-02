@@ -51,6 +51,14 @@ class ConversationContext(BaseModel):
         default_factory=DecisionState,
         description="What the decision-point effects remember (ADR-0012); no PII",
     )
+    enabled_tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Catalog tools banking-core's latest flow hint says the configuration "
+            "enables in some state (ADR-0016). None until the first tool result: "
+            "then every tool is offered"
+        ),
+    )
     human_takeover: bool = Field(
         default=False,
         description=(

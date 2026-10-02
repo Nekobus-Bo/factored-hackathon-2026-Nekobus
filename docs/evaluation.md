@@ -44,6 +44,8 @@ One model carries the submission, **GPT 6 Luna** (why, and what that does not pr
 
 Future work: the same suite on DeepSeek V4 Flash 0731 and DeepSeek V4.1 Flash, compared per language on these four metrics.
 
+Local models (Qwen3.5-4B, Granite 4.2 3B, Granite 4.0 1B, Qwen3-1.7B, and the bigger Qwen3.5-9B and Qwen3.6-35B-A3B, served by llama.cpp) are compared on a sandbox bank with `make llm-bench` ([tools/llmbench](../tools/llmbench/README.md)): 30 skill probes and 18 of the scenarios below, scored by the same evalrunner checks, with the hosted gpt-6-luna and gpt-6.1-sol as the upper bar. First run in [reports/llm-bench-2026-10-02.md](../reports/llm-bench-2026-10-02.md); the flow improvements (ADR-0016, prompt `turn-engine/4`, secret masking) measured stage by stage in [reports/llm-flow-stages-2026-10-02.md](../reports/llm-flow-stages-2026-10-02.md). Model-selection and change-selection evidence, not system evidence ([limitations](limitations.md)).
+
 ### Decision component (classifier test split)
 
 Every number here is on a **provisional, synthetic** test split (written by the coding agent, not by humans) and is not certified. Two different splits are involved, so compare within a column, not across rows of different splits.
@@ -145,11 +147,11 @@ A case counts as unsafe if any of these occur, regardless of whether the convers
 
 Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`. Because they reside directly in the repository and do not depend on the organization's external dataset, `make eval` (⚠️ pending) is fully reproducible on any machine without external dependencies.
 
-**60 scenarios**, distributed across Spanish (22), Portuguese (19), and English (19). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
+**63 scenarios**, distributed across Spanish (23), Portuguese (20), and English (20). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
 
 | Group | What it tests |
 |---|---|
-| Happy path | Clear report, verifiable customer, authorized action |
+| Happy path | Clear report, verifiable customer, authorized action; also verification asked for first, before any goal (`happy_path_008`–`010`) |
 | Account inquiry | Verified balance and recent-payment requests, restricted to the session holder; and the same request with the tool switched off by configuration, which must not run |
 | Ambiguity | Request open to several readings: must ask for clarification |
 | Out of scope | Request from another workflow: must abstain or route |
@@ -177,6 +179,20 @@ make eval-adversarial  # ⚠️ pending
 ```
 
 The generated report is versioned in the repository: it is the evidence, not a temporary artifact.
+
+### Live end-to-end run (`make eval-live`)
+
+Until replay recordings exist, the proposed system can be run with its model called live. It is the whole stack (encoder, decision points, masking, banking-core, Postgres, Redis), driven through the orchestrator's chat API and scored on banking-core's own evidence:
+
+```bash
+make eval-live                               # the model in .env (gpt-6-luna)
+make eval-live LOCAL_MODEL=qwen3.6-35b-a3b   # a model served on 127.0.0.1:8099 (tools/llmbench)
+make eval-live ARGS="--group happy_path"     # any evalrunner filter
+```
+
+[infra/compose/eval-live.sh](../infra/compose/eval-live.sh) starts the stack with [docker-compose.eval.yml](../infra/compose/docker-compose.eval.yml) on top, rebuilt from the working tree. The override turns on the eval hook (`EVAL_EXPOSE_TURN`), the dev OTP hook and `LLM_MODE=live`, and adds `eval-db`, a TCP forwarder that publishes Postgres on loopback for the duration of the run. The script creates the read-only role `eval_reader` with a fresh password, runs `evalrunner --system proposed --live-llm <model>`, then disables the role and returns the stack to the plain compose file. The report goes to `reports/eval-live-<date>-<model>.md` and names the model.
+
+A live run **cannot be replayed**, and it breaks protocol rule 3 for any model whose provider samples at temperature above 0. Fault scenarios do not run: they need compose-level fault injection.
 
 ### Orchestrator API evidence
 

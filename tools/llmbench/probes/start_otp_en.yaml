@@ -1,0 +1,26 @@
+id: start_otp_en
+lang: en
+skill: start_otp
+description: 'Right after a match the customer agrees to the code: otp.send, no data tools.'
+setup:
+  customer: demo_en
+prefix:
+- user: Hi, I lost my debit card a little while ago. My passport number is P12345678.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: PASSPORT
+      document_number: '{{ph:DOC}}'
+  reply: Thanks, I have identified you. To continue I need to send a verification code to your registered
+    email. Shall I send it?
+probe:
+  user: Yes, please send it.
+  expect:
+    decision:
+    - otp.send
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

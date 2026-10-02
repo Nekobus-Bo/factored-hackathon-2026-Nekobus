@@ -1,0 +1,73 @@
+# Port 8099: the compose stack already publishes 8090 (encoder), 8080 and 8081.
+# Local models for llmbench, served one at a time by llama.cpp's llama-server
+# (`make llm-bench-serve MODEL=<alias>`). The alias is also the served model name,
+# so LiteLLM addresses it as `openai/<alias>`.
+#
+# Thinking is off by default (`enable_thinking: false` in the chat template): the
+# turn engine makes 2-6 sequential calls per turn, and reasoning tokens would
+# multiply the latency of each. A `-think` alias turns it back on through its
+# server_args (the later --chat-template-kwargs wins) and sets the temperature
+# its model card asks for, since greedy decoding with thinking can loop.
+# Repos and quants checked on 2026-10-02.
+
+server:
+  host: 127.0.0.1
+  port: 8099
+  # Ten tool schemas (~2.6k tokens) plus a multi-turn history fit in 16k.
+  ctx_size: 16384
+  args: ["--jinja", "--chat-template-kwargs", '{"enable_thinking": false}']
+
+models:
+  qwen3.5-4b:
+    hf: unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+    size_gb: 2.7
+    notes: Qwen3.5 small series (Mar 2026), Apache 2.0. BFCL v4 50.3.
+  granite-4.2-3b:
+    hf: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+    size_gb: 2.2
+    notes: Granite 4.2 (Aug 2026), Apache 2.0. es and pt official. BFCL v4 52.4.
+  granite-4.0-1b:
+    hf: ibm-granite/granite-4.0-1b-GGUF:Q4_K_M
+    size_gb: 1.0
+    notes: Granite 4.0 (Oct 2025), Apache 2.0. es and pt official. BFCL v3 50.2.
+  qwen3-1.7b:
+    hf: unsloth/Qwen3-1.7B-GGUF:Q4_K_M
+    size_gb: 1.1
+    notes: Qwen3 (May 2025), Apache 2.0. BFCL v3 71.8 (PrismML's measurement).
+  # Bigger candidates, to see whether size closes the gap to gpt-6-luna. Both fit
+  # a 24 GB card (RTX 3090, or an L4 on Cloud Run); the vision encoder is not loaded.
+  qwen3.5-9b:
+    hf: unsloth/Qwen3.5-9B-GGUF:Q4_K_M
+    size_gb: 5.7
+    server_args: ["--no-mmproj"]
+    notes: Qwen3.5 small series (Feb 2026), Apache 2.0. BFCL v4 66.1, TAU2 79.1.
+  qwen3.6-35b-a3b:
+    hf: unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M
+    size_gb: 22.1
+    server_args: ["--no-mmproj"]
+    notes: Qwen3.6 MoE, 35B total and 3B active (Apr 2026), Apache 2.0. TAU3 67.2. Uses 21.6 GB of a 3090 at 16k context.
+  qwen3.6-35b-a3b-think:
+    hf: unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M
+    size_gb: 22.1
+    server_args: ["--no-mmproj", "--chat-template-kwargs", '{"enable_thinking": true}']
+    temperature: 0.6
+    notes: The same model with thinking on, at the model card's thinking temperature.
+
+# Hosted reference models: the upper bar the local ones are measured against.
+# No llama-server; LiteLLM calls the provider with the key named by api_key_env
+# (environment first, then the repo's .env). Reasoning is off where the model
+# allows it (LLM_REASONING_EFFORT=none, as the service runs luna), so temperature
+# 0 is accepted. gpt-6.1-sol has no "none": its floor is "low", and with
+# reasoning on OpenAI accepts only temperature 1 (checked 2026-10-01).
+hosted:
+  gpt-6-luna:
+    litellm_model: openai/gpt-6-luna
+    api_key_env: LLM_API_KEY
+    reasoning_effort: none
+    notes: The submission model (.env LLM_MODEL).
+  gpt-6.1-sol:
+    litellm_model: openai/gpt-6.1-sol
+    api_key_env: LLM_API_KEY
+    reasoning_effort: low
+    temperature: 1
+    notes: OpenAI's larger tier, for the ceiling.

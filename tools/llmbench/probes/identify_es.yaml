@@ -1,0 +1,25 @@
+id: identify_es
+lang: es
+skill: identify
+description: 'The customer gives the document in free text: customer.match with the placeholder verbatim
+  and the right document type.'
+setup:
+  customer: demo_es
+prefix: []
+probe:
+  user: Hola, perdí mi tarjeta débito esta tarde. Mi cédula es 1020304050, ¿me ayudas a bloquearla?
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_type:
+        - NATIONAL_ID
+        - TAX_ID
+        document_number: re:^\[DOC_\d+\]$
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

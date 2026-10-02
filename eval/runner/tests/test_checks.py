@@ -449,3 +449,51 @@ def test_disabled_tools_check_only_exists_when_the_scenario_disables_something()
     assert "disabled_tools_not_executed" in names(
         ToolPolicySetup(disabled=["account.get_summary"])
     )
+
+
+def _handoff_after(state: VerificationState) -> list[TurnResult]:
+    return [
+        TurnResult(
+            verification_state=VerificationState.HANDED_OFF,
+            tool_call_reports=[
+                ToolCallReport(
+                    tool="handoff.create",
+                    verification_state_before=state,
+                    status=ToolResultStatus.OK,
+                )
+            ],
+        )
+    ]
+
+
+def test_final_state_is_read_before_the_handoff_when_one_is_expected():
+    # handoff.create moves any state to HANDED_OFF: a scenario that expects a
+    # state and a handoff is checked on the state the handoff started from.
+    sc = _make_scenario(final_verification_state="LOCKED", handoff="required")
+    detail = check_final_verification_state(
+        sc, _handoff_after(VerificationState.LOCKED)
+    )
+    assert detail.passed
+    assert detail.actual == "LOCKED (then HANDED_OFF)"
+
+
+def test_final_state_before_the_handoff_still_has_to_match():
+    sc = _make_scenario(final_verification_state="VERIFIED", handoff="required")
+    detail = check_final_verification_state(
+        sc, _handoff_after(VerificationState.IDENTIFIED)
+    )
+    assert not detail.passed
+
+
+def test_final_state_handed_off_without_a_handoff_report_fails():
+    sc = _make_scenario(final_verification_state="VERIFIED")
+    turns = [TurnResult(verification_state=VerificationState.HANDED_OFF)]
+    assert not check_final_verification_state(sc, turns).passed
+
+
+def test_final_state_handed_off_when_expected():
+    sc = _make_scenario(final_verification_state="HANDED_OFF")
+    detail = check_final_verification_state(
+        sc, _handoff_after(VerificationState.VERIFIED)
+    )
+    assert detail.passed and detail.actual == "HANDED_OFF"

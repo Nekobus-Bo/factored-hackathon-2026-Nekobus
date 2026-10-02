@@ -256,7 +256,16 @@ def test_masker_categories_equal_pii_type() -> None:
     masker = RegexMasker()
     assert masker.categories == set(PiiType)
     assert RegexMasker.CATEGORIES == set(PiiType)
-    assert masker.categories == {"DOC", "NAME", "PHONE", "EMAIL", "CARD", "DATE", "OTP"}
+    assert masker.categories == {
+        "DOC",
+        "NAME",
+        "PHONE",
+        "EMAIL",
+        "CARD",
+        "DATE",
+        "OTP",
+        "SECRET",
+    }
 
 
 def test_date_placeholder_and_round_trip() -> None:

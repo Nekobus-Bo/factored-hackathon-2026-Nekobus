@@ -1,5 +1,60 @@
 {
   "$defs": {
+    "FlowHint": {
+      "additionalProperties": false,
+      "description": "What banking-core allows after a call (ADR-0016). Advisory: every call is\nstill authorized, and nothing in the orchestrator decides on it.",
+      "properties": {
+        "allowed": {
+          "description": "Every tool the effective configuration allows in `state`",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed",
+          "type": "array"
+        },
+        "enabled": {
+          "description": "Every tool the effective configuration allows in some state",
+          "items": {
+            "type": "string"
+          },
+          "title": "Enabled",
+          "type": "array"
+        },
+        "next": {
+          "description": "Tools that move the session forward from `state`",
+          "items": {
+            "type": "string"
+          },
+          "title": "Next",
+          "type": "array"
+        },
+        "required_states": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/VerificationState"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "On a STATE_NOT_ALLOWED refusal: the states in which the tool runs",
+          "title": "Required States"
+        },
+        "state": {
+          "$ref": "#/$defs/VerificationState",
+          "description": "Session state after the call"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "FlowHint",
+      "type": "object"
+    },
     "ReasonCode": {
       "description": "Standard refusal and error reason codes.",
       "enum": [
@@ -27,6 +82,19 @@
       ],
       "title": "ToolResultStatus",
       "type": "string"
+    },
+    "VerificationState": {
+      "description": "Customer identity verification state in banking-core state machine.",
+      "enum": [
+        "ANONYMOUS",
+        "IDENTIFIED",
+        "OTP_PENDING",
+        "VERIFIED",
+        "LOCKED",
+        "HANDED_OFF"
+      ],
+      "title": "VerificationState",
+      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -45,6 +113,18 @@
       "default": null,
       "description": "Payload returned by the tool when status is ok; None on refused/error",
       "title": "Data"
+    },
+    "flow": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FlowHint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "What banking-core allows next (ADR-0016); advisory"
     },
     "reason_code": {
       "anyOf": [

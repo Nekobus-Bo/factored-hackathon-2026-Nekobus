@@ -21,6 +21,14 @@ UV_RUN_FLAGS ?=
 BUN ?= bun
 NO_BUN = { echo "bun is not installed (BUN=$(BUN)). Install it from https://bun.sh, 1.3 or later, or pass BUN=/path/to/bun." >&2; exit 1; }
 
+# llmbench (tools/llmbench): local LLMs served by llama.cpp, benchmarked against the real turn engine
+# on a sandbox bank. `brew install llama.cpp` provides llama-server. The language filter is BENCH_LANG,
+# not LANG, which the shell already sets to the locale.
+LLAMA_SERVER ?= llama-server
+NO_LLAMA = { echo "llama-server is not installed (LLAMA_SERVER=$(LLAMA_SERVER)): brew install llama.cpp, or https://github.com/ggml-org/llama.cpp" >&2; exit 1; }
+NO_MODEL = { echo "$@: set MODEL=<alias from tools/llmbench/models.yaml>: qwen3.5-4b, granite-4.2-3b, granite-4.0-1b or qwen3-1.7b" >&2; exit 1; }
+LLMBENCH = uv run --package llmbench python -m llmbench.cli
+
 # What `make web-check` covers: the shared contracts, then every web app (apps/web-client,
 # apps/web-backoffice) as soon as it has a package.json. Each needs `typecheck` and `test` scripts;
 # one without them fails the gate instead of being skipped. packages/design-tokens keeps its own gate
@@ -62,8 +70,8 @@ NO_PROJECT = { echo "no GCP project: copy $(TF_DIR)/local.tfvars.example to $(TF
 gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) --project $(GCP_PROJECT) --wait
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-baseline eval-adversarial \
-	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional synth-retrieval-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
+.PHONY: help up down logs clean smoke build-multiarch demo seed eval eval-live eval-baseline eval-adversarial \
+	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench llm-bench-serve llm-bench llm-bench-compare llm-bench-check clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional synth-retrieval-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
 	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-iap-oauth gcp-gh-vars gcp-migrate gcp-seed \
 	gcp-netcheck gcp-smoke
@@ -117,6 +125,9 @@ ingest: ## Map a delivered dataset data/raw/SOURCE -> data/staging/SOURCE (SOURC
 eval: ## pending: baseline vs proposed on the scenario suite
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
+eval-live: ## Proposed system end to end with the LLM called live, not replayable: reports/eval-live-<date>-<model>.md (LOCAL_MODEL=<llmbench alias> served on :8099; ARGS="--group happy_path")
+	@COMPOSE="$(COMPOSE)" LOCAL_MODEL="$(LOCAL_MODEL)" LOCAL_TEMPERATURE="$(LOCAL_TEMPERATURE)" ARGS="$(ARGS)" OUT="$(OUT)" bash infra/compose/eval-live.sh
+
 eval-baseline: ## pending: baseline system only
 	@echo "pending: $@ is not implemented yet" >&2; exit 1
 
@@ -139,6 +150,21 @@ warmup-retrieval: ## Download the pinned kb.search embedding model onto the mode
 
 encoder-bench: ## Encoder p95 latency and peak RAM on CPU (ENCODER_BACKEND=tfidf_lr|gliner, ENCODER_MODEL=, DATA=)
 	ENCODER_BACKEND=$(or $(ENCODER_BACKEND),tfidf_lr) uv run --package encoder-service $(if $(filter gliner,$(ENCODER_BACKEND)),--extra gliner) python -m encoder_service.bench --data $(or $(DATA),data/eval/synthetic/decision.validation.jsonl)
+
+llm-bench-serve: ## Serve a local model for llmbench with llama.cpp, in the foreground (MODEL=qwen3.5-4b|granite-4.2-3b|granite-4.0-1b|qwen3-1.7b; downloads the GGUF once)
+	@test -n "$(MODEL)" || $(NO_MODEL)
+	@command -v $(LLAMA_SERVER) >/dev/null 2>&1 || $(NO_LLAMA)
+	@cmd="$$($(LLMBENCH) serve-cmd --model $(MODEL) --binary $(LLAMA_SERVER))" && echo "$$cmd" && eval "$$cmd"
+
+llm-bench: ## Benchmark the served model: 42 probes + 21 episodes (MODEL=; ROUTE=1 offers only state-allowed tools; BENCH_LANG=es|pt|en; ONLY=probes|episodes; REPEAT=; TAG=)
+	@test -n "$(MODEL)" || $(NO_MODEL)
+	$(LLMBENCH) run --model $(MODEL) $(if $(ROUTE),--route-tools) $(if $(BENCH_LANG),--lang $(BENCH_LANG)) $(if $(ONLY),--only $(ONLY)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(TAG),--tag $(TAG))
+
+llm-bench-compare: ## Compare the llmbench runs in tools/llmbench/results (PUBLISH=1 also writes reports/llm-bench-<date>.md)
+	$(LLMBENCH) compare $(if $(PUBLISH),--publish)
+
+llm-bench-check: ## llmbench tests: sandbox bank, probes, episodes and CLI with stand-in models; no model server needed
+	uv run --package llmbench pytest -q tools/llmbench
 
 clean-models: ## pending: drop cached model weights
 	@echo "pending: $@ is not implemented yet" >&2; exit 1

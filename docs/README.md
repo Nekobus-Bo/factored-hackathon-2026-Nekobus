@@ -46,5 +46,6 @@ In this order, about 15 minutes:
 | [0013](adr/0013-front-ends-bff-takeover.md) | Front ends, their BFFs and the human takeover | Accepted |
 | [0014](adr/0014-distilbert-intent-backend.md) | Pooled DistilBERT as the decision backend, locale-keyed thresholds, hint and clarification effects | Accepted |
 | [0015](adr/0015-gcp-cloud-run-terraform.md) | The presentation environment on Google Cloud Run, defined in Terraform | Accepted |
+| [0016](adr/0016-banking-core-states-the-next-step.md) | banking-core states the next step: every tool result carries an advisory flow hint | Accepted |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.

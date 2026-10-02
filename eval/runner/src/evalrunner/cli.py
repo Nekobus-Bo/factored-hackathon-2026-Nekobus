@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from evalrunner.loader import load_scenarios_from_directory
@@ -81,6 +82,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--live-llm",
+        metavar="MODEL",
+        default=None,
+        help=(
+            "The orchestrator calls MODEL live (LLM_MODE=live): run without replay "
+            "recordings. The report names the model and says it cannot be "
+            "replayed (proposed only; make eval-live)"
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -140,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         from evalrunner.systems.evidence import PostgresEvidence
         from evalrunner.systems.proposed import ProposedSystem
 
-        config = ProposedConfig.from_env()
+        config = replace(ProposedConfig.from_env(), llm_live=args.live_llm)
         if args.dry_run:
             evidence = (
                 PostgresEvidence(config.readonly_dsn) if config.readonly_dsn else None
@@ -211,7 +222,12 @@ def _dry_run(
     feasible = 0
     for scenario in scenarios:
         result = assess(
-            scenario, evidence, config.replay_dir, admin_available, NoFaultInjector()
+            scenario,
+            evidence,
+            config.replay_dir,
+            admin_available,
+            NoFaultInjector(),
+            live_llm=bool(config.llm_live),
         )
         runnable += result.runnable
         feasible += not [

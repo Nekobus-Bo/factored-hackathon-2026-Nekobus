@@ -1,0 +1,26 @@
+id: continue_after_match_pt
+lang: pt
+skill: continue_after_match
+description: 'The goal was stated a turn earlier; the customer now gives the document: customer.match,
+  then otp.send in the same turn, never a card tool first.'
+setup:
+  customer: demo_pt
+prefix:
+- user: Perdi meu cartão de débito, pode bloquear pra mim?
+  calls: []
+  reply: 'Claro, eu ajudo. Primeiro preciso identificar você: pode me informar seu CPF?'
+probe:
+  user: Meu CPF é 12345678900.
+  expect:
+    decision:
+    - customer.match
+    require:
+      customer.match:
+        document_number: re:^\[DOC_\d+\]$
+      otp.send: {}
+    forbid:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    - account.get_summary
+    - otp.verify

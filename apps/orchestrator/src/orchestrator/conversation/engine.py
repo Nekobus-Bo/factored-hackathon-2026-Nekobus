@@ -71,7 +71,7 @@ from orchestrator.conversation.prompt import (
     REPHRASE_MESSAGES,
     SYSTEM_PROMPT,
 )
-from orchestrator.conversation.tools import build_llm_tools
+from orchestrator.conversation.tools import build_llm_tools, llm_tool_name
 from orchestrator.encoder_client import EncoderClient, EncoderUnavailableError
 from orchestrator.llm.provider import LLMProvider, LLMResponse
 from orchestrator.privacy.masking import (
@@ -155,6 +155,8 @@ class _TurnGuard:
     required_handoff_tried: bool = False
     # The decision-point effects of the turn (ADR-0012); none in a bare guard.
     decisions: TurnDecisions | None = None
+    # Tools banking-core's latest flow hint says are enabled somewhere (ADR-0016).
+    enabled: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -346,7 +348,7 @@ class TurnEngine:
         # 4-5. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
         handoffs: list[HandoffBlock] = []
-        guard = _TurnGuard(decisions=turn_decisions)
+        guard = _TurnGuard(decisions=turn_decisions, enabled=context.enabled_tools)
         final: LLMResponse | None = None
         while True:
             # Before every completion: a card.block of the last round, or of an
@@ -359,10 +361,11 @@ class TurnEngine:
                 *hint_messages,
                 *history,
             ]
+            context.enabled_tools = guard.enabled
             response = await self.llm.complete(
                 messages=messages,
                 prompt_version=PROMPT_VERSION,
-                tools=self.tools,
+                tools=self._offered(guard.enabled),
             )
             metadata.llm_recording_keys.append(response.recording_key)
             if self.collect_eval:
@@ -646,6 +649,8 @@ class TurnEngine:
             result = await self.banking.call_tool(session_id, tool_call)
             executed = True
             guard.executed.add(tool)
+            if result.flow is not None:
+                guard.enabled = list(result.flow.enabled)
             if result.status is ToolResultStatus.OK and definition.mutates_state:
                 guard.written[tool] = guard.written.get(tool, 0) + 1
             elif result.status is ToolResultStatus.REFUSED:
@@ -993,6 +998,19 @@ class TurnEngine:
             return {k: self._rehydrate(v, mapping) for k, v in value.items()}
         return value
 
+    def _offered(self, enabled: list[str] | None) -> list[dict[str, Any]]:
+        """The tool schemas to offer: all of them until banking-core has said which
+        tools the configuration enables, then only those (ADR-0016). A tool
+        disabled everywhere is one the model could only be refused."""
+        if enabled is None:
+            return self.tools
+        allowed = set(enabled)
+        return [
+            tool
+            for tool in self.tools
+            if self._tool_names.get(tool["function"]["name"]) in allowed
+        ]
+
     def _tool_feedback(
         self, name: str, result: ToolResult | None, mapping: dict[str, str]
     ) -> str:
@@ -1007,6 +1025,7 @@ class TurnEngine:
             payload = result.model_dump(mode="json")
             for path in LLM_HIDDEN_FIELDS.get(result.tool, ()):
                 _drop_field(payload.get("data"), path)
+            _name_flow_tools(payload)
         try:
             masked = mask_json_string_values(payload, self.masker, mapping)
             return json.dumps(masked, sort_keys=True, ensure_ascii=False)
@@ -1140,6 +1159,23 @@ def _tool_results(
             continue
         if isinstance(result, dict):
             yield index, result
+
+
+def _name_flow_tools(payload: dict[str, Any]) -> None:
+    """banking-core's flow hint (ADR-0016) names catalog tools (`otp.send`); the
+    model was offered function names (`otp_send`). Rename, and drop the hint's
+    empty fields so the model reads only what is there."""
+    flow = payload.get("flow")
+    if not isinstance(flow, dict):
+        payload.pop("flow", None)
+        return
+    # `enabled` shapes the offered tools; the model need not read it.
+    flow.pop("enabled", None)
+    for key in ("next", "allowed"):
+        if isinstance(flow.get(key), list):
+            flow[key] = [llm_tool_name(str(tool)) for tool in flow[key]]
+    if flow.get("required_states") is None:
+        flow.pop("required_states", None)
 
 
 def mask_bare_otps(text: str, mapping: dict[str, str]) -> str:

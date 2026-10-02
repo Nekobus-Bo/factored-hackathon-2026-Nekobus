@@ -64,6 +64,7 @@ class PiiType(StrEnum):
     CARD = "CARD"
     DATE = "DATE"
     OTP = "OTP"
+    SECRET = "SECRET"
 
     @classmethod
     def _missing_(cls, value: object) -> Any:

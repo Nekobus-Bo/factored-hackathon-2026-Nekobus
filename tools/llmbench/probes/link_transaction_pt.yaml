@@ -1,0 +1,36 @@
+id: link_transaction_pt
+lang: pt
+skill: link_transaction
+description: 'The customer names the unrecognized charge: card.block with the card, UNRECOGNIZED_CHARGE
+  and that transaction_id.'
+setup:
+  customer: demo_pt
+prefix:
+- user: Oi, apareceu uma compra que eu não reconheço. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Enviei um código de 6 dígitos para d***@example.com. Pode me informar?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  - tool: transaction.list_recent
+  reply: 'Já verifiquei sua identidade. Vejo duas compras recentes: Global Electronics Megastore de R$
+    480,00 e Local Artisan Bakery de R$ 35,00. Qual você não reconhece?'
+probe:
+  user: A da Global Electronics, eu não fiz essa compra. Bloqueia o cartão por favor.
+  expect:
+    decision:
+    - card.block
+    - card.list
+    - transaction.list_recent
+    require:
+      card.block:
+        card_ref: '{{card}}'
+        reason: UNRECOGNIZED_CHARGE
+        transaction_id: '{{tx:Global Electronics}}'

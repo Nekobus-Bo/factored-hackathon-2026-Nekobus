@@ -126,6 +126,7 @@ def generate_labels_code(schema_path: Path | str) -> str:
             '    CARD = "CARD"',
             '    DATE = "DATE"',
             '    OTP = "OTP"',
+            '    SECRET = "SECRET"',
             "",
             "    @classmethod",
             "    def _missing_(cls, value: object) -> Any:",

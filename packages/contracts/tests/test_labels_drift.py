@@ -40,7 +40,7 @@ def test_labels_enum_members_match_schema():
 
 def test_pii_type_enum():
     """Verify PiiType enum supports uppercase and case-insensitive resolution."""
-    expected_pii = {"DOC", "NAME", "PHONE", "EMAIL", "CARD", "DATE", "OTP"}
+    expected_pii = {"DOC", "NAME", "PHONE", "EMAIL", "CARD", "DATE", "OTP", "SECRET"}
     assert {p.value for p in PiiType} == expected_pii
 
     # Case-insensitivity check via _missing_

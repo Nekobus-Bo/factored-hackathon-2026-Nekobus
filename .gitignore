@@ -56,3 +56,6 @@ infra/deploy/gcp/local.tfvars
 
 # OAuth client files downloaded from the GCP console (gcp-iap-oauth reads the values by hand).
 client_secret_*.json
+
+# llmbench run files: per-machine, per-day; a comparison worth keeping goes to reports/ via --publish
+tools/llmbench/results/

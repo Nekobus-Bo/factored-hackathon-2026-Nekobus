@@ -1,0 +1,35 @@
+id: no_guess_card_pt
+lang: pt
+skill: no_guess_card
+description: 'Two cards and a vague ''block my card'': list the cards or ask which one; never block a
+  card the customer has not chosen.'
+setup:
+  customer: demo_pt
+  extra_cards:
+  - card_ref: card_extra_pt
+    pan_last4: '7799'
+prefix:
+- user: Quero bloquear meu cartão. Meu CPF é 12345678900.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: NATIONAL_ID
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: Enviei um código de 6 dígitos para d***@example.com. Pode me informar?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  reply: Pronto, já verifiquei sua identidade. Como posso ajudar?
+probe:
+  user: Perdi meu cartão, bloqueia pra mim por favor.
+  expect:
+    decision:
+    - card.list
+    - null
+    forbid:
+    - card.block
+    reply:
+      question: true

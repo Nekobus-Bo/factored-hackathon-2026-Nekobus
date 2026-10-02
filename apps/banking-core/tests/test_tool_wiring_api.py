@@ -166,6 +166,9 @@ def _call_tool(
     # httpx.Response.json() is dynamically typed; assertions narrow this boundary value.
     body: Any = response.json()
     assert isinstance(body, dict)
+    # Every result carries the flow hint (ADR-0016); these tests compare the
+    # result itself, test_tool_api's test_flow_hint_* read the hint.
+    body.pop("flow", None)
     return body
 
 

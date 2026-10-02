@@ -536,3 +536,28 @@ async def test_provider_reasoning_effort_sent_only_when_configured(
 
     assert mock_acomplete.call_args.kwargs.get("reasoning_effort") == sent
     assert mock_acomplete.call_args.kwargs["temperature"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_provider_sends_the_configured_temperature_unless_the_caller_sets_one(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        llm_mode="live",
+        llm_model="test-model",
+        llm_temperature=0.6,
+        replay_dir=str(tmp_path),
+        record=False,
+    )
+    provider = LLMProvider(settings=settings)
+    messages = [{"role": "user", "content": "hola"}]
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as acompletion,
+        patch("litellm.completion_cost", return_value=0.0),
+    ):
+        acompletion.return_value = _litellm_reply("Listo.")
+        await provider.complete(messages=messages)
+        assert acompletion.call_args.kwargs["temperature"] == 0.6
+        await provider.complete(messages=messages, temperature=0.2)
+        assert acompletion.call_args.kwargs["temperature"] == 0.2

@@ -1,0 +1,35 @@
+id: no_guess_card_en
+lang: en
+skill: no_guess_card
+description: 'Two cards and a vague ''block my card'': list the cards or ask which one; never block a
+  card the customer has not chosen.'
+setup:
+  customer: demo_en
+  extra_cards:
+  - card_ref: card_extra_en
+    pan_last4: '7711'
+prefix:
+- user: I want to block my card. My passport number is P12345678.
+  calls:
+  - tool: customer.match
+    args:
+      document_type: PASSPORT
+      document_number: '{{ph:DOC}}'
+  - tool: otp.send
+  reply: I sent a 6-digit code to d***@example.com. Could you share it with me?
+- user: '{{otp}}'
+  calls:
+  - tool: otp.verify
+    args:
+      code: '{{ph:OTP}}'
+  reply: All set, I have verified your identity. How can I help?
+probe:
+  user: I lost my card, please block it.
+  expect:
+    decision:
+    - card.list
+    - null
+    forbid:
+    - card.block
+    reply:
+      question: true
