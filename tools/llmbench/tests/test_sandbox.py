@@ -4,7 +4,6 @@ import pytest
 from contracts import ReasonCode, ToolCall, ToolResultStatus
 from contracts.envelope import VerificationState
 from contracts.tools.card_list import CardStatus
-
 from llmbench.sandbox import BankSetup, ExtraCard, SandboxBank
 
 DOC_ES = {"document_type": "NATIONAL_ID", "document_number": "1020304050"}

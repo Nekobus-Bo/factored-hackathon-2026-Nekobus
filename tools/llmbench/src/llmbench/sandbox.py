@@ -435,7 +435,7 @@ class SandboxBank:
         return list(self._sessions[session_id].calls)
 
     def otp_code(self, session_id: str) -> str | None:
-        """The code of the session's active challenge, as the simulated inbox shows it."""
+        """The active challenge's code, as the simulated inbox shows it."""
         session = self._sessions[session_id]
         challenge_id = session.state.otp_challenge_id
         challenge = session.challenges.get(challenge_id or "")

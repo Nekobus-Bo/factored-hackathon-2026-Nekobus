@@ -34,7 +34,3 @@ packages = ["src/llmbench"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-
-[tool.ruff]
-line-length = 88
-target-version = "py312"
