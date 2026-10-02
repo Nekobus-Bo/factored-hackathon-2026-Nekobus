@@ -26,6 +26,7 @@ members = [
     "tools/calibrate",
     "eval/runner",
     "tools/profile_factored",
+    "tools/llmbench",
 ]
 
 [tool.uv.sources]
@@ -36,6 +37,7 @@ orchestrator = { workspace = true }
 encoder-service = { workspace = true }
 contracts = { workspace = true }
 evalrunner = { workspace = true }
+llmbench = { workspace = true }
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [[tool.uv.index]]
