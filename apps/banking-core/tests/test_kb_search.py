@@ -318,7 +318,7 @@ def _vector_ready() -> bool:
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and the embedding model in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and Granite in the HF cache"
 )
 @pytest.mark.parametrize(
     ("locale", "query", "expected_topic"),
@@ -338,7 +338,7 @@ def test_vector_hits_the_topic_in_each_language(
 
 
 @pytest.mark.skipif(
-    not _vector_ready(), reason="needs banking-core[vector] and the embedding model in the HF cache"
+    not _vector_ready(), reason="needs banking-core[vector] and Granite in the HF cache"
 )
 def test_vector_falls_back_cross_language_for_a_topic_missing_in_es(
     kb_path: Path,
