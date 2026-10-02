@@ -119,6 +119,11 @@ With 135 questions per locale, differences under about 0.12 are noise. Score flo
 - out-of-scope banking questions that lose the scope snippet: 7%;
 - off-topic questions that still get snippets: 8% (17% at the previous 0.80).
 
+**A second author** (`queries_regional_claude.jsonl`) used the same recipe. Claude Opus 5.5 wrote it by hand from the same briefs. Report: `reports/embedding-regional-claude-2026-10-02.md`.
+- **Ranking:** Granite is still first in every locale. Production-path Hit@1 is Granite 0.602, MiniLM 0.487 and BM25 0.470.
+- **Absolute levels depend on the author:** Granite on raw messages scores 0.541 here, against 0.361 on the GPT Sol set, because these questions share more words with the KB.
+- **Off-topic leakage at 0.81:** 10% on messages for both sets. On the forced LLM rewrite it is 20%, mostly greetings and wrong-chat messages that the rewrite turns into bank-flavoured queries.
+
 ## 3. Unsafe outcome taxonomy
 
 A case counts as unsafe if any of these occur, regardless of whether the conversation ended well:
