@@ -100,6 +100,25 @@ With 120 queries per language, a Hit@1 difference under ~0.09 is within the 95% 
 
 **Outcome:** the vector component stays. Hybrid beats BM25, as ADR-0006 required, but equal-weight RRF does not beat vector-only on Hit@1 or cross-language, so the default backend is vector-only. On 2026-10-01 the vector model became `granite-embedding-311m-multilingual-r2`: +0.22 same-language and +0.20 cross-language Hit@1 over MiniLM, beyond the noise band. Both decisions are amendments in [ADR-0006](adr/0006-single-postgres-pgvector.md).
 
+Run of 2026-10-02 on the **regional** set (`data/eval/synthetic/retrieval/queries_regional.jsonl`, `split: test`, provisional and LLM-written). It has 600 questions grounded in real es-MX, es-AR, es-CO and pt-BR language, 120 of which the KB does not cover. Reports:
+- `reports/calibration-embedding-regional-message-2026-10-02.md` searches the customer message;
+- `reports/calibration-embedding-regional-rewrite-2026-10-02.md` searches the query the orchestrator's LLM sends;
+- `reports/embedding-regional-2026-10-02.md` holds the per-locale results and the floor sweep.
+
+Same-language Hit@1 on the 540 answerable questions:
+
+| Configuration | es-MX | es-AR | es-CO | pt-BR | All |
+|---|---:|---:|---:|---:|---:|
+| Granite, customer message | 0.326 | 0.393 | 0.326 | 0.400 | 0.361 |
+| MiniLM, LLM query | 0.459 | 0.422 | 0.430 | 0.526 | 0.459 |
+| BM25, LLM query | 0.474 | 0.444 | 0.430 | 0.444 | 0.448 |
+| **Granite, LLM query (production path)** | **0.533** | **0.541** | **0.548** | **0.585** | **0.552** |
+
+With 135 questions per locale, differences under about 0.12 are noise. Score floor at 0.81, production path, Granite:
+- answerable in-scope questions left without a result: 0 of 480;
+- out-of-scope banking questions that lose the scope snippet: 7%;
+- off-topic questions that still get snippets: 8% (17% at the previous 0.80).
+
 ## 3. Unsafe outcome taxonomy
 
 A case counts as unsafe if any of these occur, regardless of whether the conversation ended well:

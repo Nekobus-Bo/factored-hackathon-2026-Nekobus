@@ -80,3 +80,35 @@ The harness evaluates a query against snippets in other languages and maps its
 topic IDs to those translations. Cross-language metrics are `n/a` when the KB
 snippets lack `topic_id`. See the [committed report](../../../../reports/calibration-embedding-2026-09-27.md)
 for the measured scores.
+
+---
+
+## 6. Regional Test Questions (Provisional)
+
+`queries_regional.jsonl` (pooled) and `regional/<locale>.jsonl`: 600 questions, `split: "test"`, `source: "synthetic"`, **provisional** (LLM-written, not reviewed by a human). Built by `make synth-retrieval-regional LOCALE=<locale>`, then `POOL=1` (`tools/synthdata_regional/retrieval.py`).
+
+- **Locales:** es-MX, es-AR, es-CO and pt-BR, 150 each:
+  - 120 answerable, 3 per KB topic (2 short, 1 long);
+  - 15 `out_of_scope_banking` (loans, limits, insurance, investments, new accounts), whose gold is `security_privacy.03.<lang>`, the snippet that says these are out of scope;
+  - 15 `off_topic`, with `relevant_ids: []`. The KB has no answer, so kb.search's score floor should return nothing.
+- **Grounding:** `openai/gpt-6.1-sol` writes from each locale's **half-B** style card and up to 5 masked, safety-filtered real sentences per call. Those come from the companies held out of the decision training data (`data/staging/decision_*/`, mined from Google Play reviews MX/AR, tuquejasuma CO and Reclame Aqui BR). It sees the gold snippet and is told not to reuse its wording.
+- **Filters:**
+  - near-duplicates;
+  - 8-word overlaps with any real source text;
+  - PII;
+  - other-variety markers;
+  - any 4-word run shared with the gold snippet.
+- **Fields:**
+  - `text`: the customer's message;
+  - `kb_query`: the query `openai/gpt-6-luna` sends to `kb_search` for that message, with the orchestrator's system prompt, tool schemas and PII masking, and the tool call forced;
+  - `locale`, `kind`, `topic_id`, `length`, `model`, `rewrite_model`, `prompt_version`.
+- **Quality gate:** `regional/checks.md`. It covers counts, integrity, typing against real customers, BM25 overlap, and a list of possible label drift (listed, not removed).
+- **Scoring:**
+  - `tools/calibrate/configs/embedding_regional_message.yaml` searches `text`;
+  - `embedding_regional_rewrite.yaml` searches `kb_query`, which is what kb.search receives;
+  - questions with no gold count only in the report's score-floor section;
+  - results: `reports/embedding-regional-2026-10-02.md`.
+- **Caveats:**
+  - The rewrite forces a search the LLM might not make in a real conversation.
+  - The same LLM family wrote the DistilBERT intent data.
+  - English has no regional set.

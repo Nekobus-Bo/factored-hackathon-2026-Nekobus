@@ -106,7 +106,7 @@ locals {
         AUDIT_HASH_CHAIN_ENABLED                 = "true"
         RETRIEVAL_MODE                           = "vector"
         RETRIEVAL_TOP_K                          = "5"
-        RETRIEVAL_SCORE_FLOOR                    = "0.80"
+        RETRIEVAL_SCORE_FLOOR                    = "0.81"
         EMBEDDING_BACKEND                        = "remote"
         MODEL_SERVER_URL                         = local.service_url["encoder"]
         # Compose uses 10 s; a cold model server on Cloud Run needs longer.

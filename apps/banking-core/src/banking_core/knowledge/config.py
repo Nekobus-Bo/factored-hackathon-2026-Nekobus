@@ -59,12 +59,12 @@ class KbSearchConfig(BaseModel):
     )
     max_k: int = Field(default=5, ge=1, le=KB_SEARCH_HARD_CAP)
     score_floor: float = Field(
-        default=0.80,
+        default=0.81,
         ge=0.0,
         le=1.0,
         description=(
             "Minimum normalized score; below it SAME falls back to CROSS. Tied to "
-            "the embedding model's score scale (ADR-0006 amendment 2026-10-01)"
+            "the embedding model's score scale (ADR-0006, amendment 2026-10-02)"
         ),
     )
 

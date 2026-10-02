@@ -67,8 +67,14 @@ def load_kb_dataset(jsonl_path: str | Path) -> list[KBSnippet]:
     return snippets
 
 
-def load_queries_dataset(jsonl_path: str | Path) -> list[QueryExample]:
-    """Load evaluation queries from JSONL."""
+def load_queries_dataset(
+    jsonl_path: str | Path, query_field: str = "text"
+) -> list[QueryExample]:
+    """Load evaluation queries from JSONL.
+
+    ``query_field`` names the field that is embedded and searched: ``text`` (the
+    customer's message) or another one, such as ``kb_query`` (the query an LLM sent).
+    """
     queries: list[QueryExample] = []
     with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
@@ -76,6 +82,13 @@ def load_queries_dataset(jsonl_path: str | Path) -> list[QueryExample]:
             if not line or line.startswith("#"):
                 continue
             data = json.loads(line)
+            if query_field != "text":
+                value = data.get(query_field)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(
+                        f"query {data.get('id')!r} has no {query_field!r} to search"
+                    )
+                data["text"] = value
             queries.append(QueryExample(**data))
     return queries
 
@@ -330,6 +343,47 @@ def run_decision_calibration(config_path: str | Path, out_dir: str | Path) -> Pa
     return report_file
 
 
+# Scores that are not a cosine in [0, 1]: a score floor means nothing for them.
+FLOORLESS_TYPES = ("bm25", "hybrid")
+
+
+def floor_row(
+    retriever: Retriever,
+    answerable: list[QueryExample],
+    no_answer: list[QueryExample],
+    floor: float,
+    *,
+    model_id: str,
+    lang: str,
+) -> dict[str, Any]:
+    """What a kb.search score floor does to one language's questions.
+
+    kb.search keeps same-language results at or above the floor, falls back to the
+    other languages when there are none, and returns nothing if those fall short
+    too. So a question gets an answer when its best same- or cross-language score
+    (clipped to [0, 1], as kb.search normalizes cosine) reaches the floor.
+    """
+
+    def answered(q: QueryExample) -> bool:
+        best = 0.0
+        for mode in (SearchMode.SAME, SearchMode.CROSS):
+            hits = retriever.search(q.text, lang=q.lang, k=1, mode=mode)
+            if hits:
+                best = max(best, min(1.0, max(0.0, hits[0].score)))
+        return best >= floor
+
+    lost = [not answered(q) for q in answerable]
+    wrongly = [answered(q) for q in no_answer]
+    return {
+        "model_id": model_id,
+        "lang": lang,
+        "answerable": len(answerable),
+        "lost": sum(lost) / len(lost) if lost else None,
+        "no_answer": len(no_answer),
+        "answered": sum(wrongly) / len(wrongly) if wrongly else None,
+    }
+
+
 def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> Path:
     """Run calibration pipeline for embedding/retrieval task."""
     cfg_p = Path(config_path)
@@ -348,13 +402,18 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
     knowledge_base = KnowledgeBase(kb)
 
     eval_split = resolve_eval_split(config)
-    queries = load_queries_dataset(queries_file)
+    query_field = config.get("query_field", "text")
+    score_floor = config.get("score_floor")
+    if score_floor is not None and not 0.0 <= float(score_floor) <= 1.0:
+        raise ValueError(f"score_floor must be between 0 and 1, got {score_floor!r}")
+    queries = load_queries_dataset(queries_file, query_field=query_field)
     train_queries = [q for q in queries if q.split == "train"]
     val_queries = [q for q in queries if q.split == "validation"]
     eval_queries = [q for q in queries if q.split == eval_split]
     max_k = max(k_list)
 
     report_rows: list[dict[str, Any]] = []
+    floor_rows: list[dict[str, Any]] = []
 
     candidates_cfg = config.get("candidates", [])
     adapter: Any = None
@@ -427,7 +486,23 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         )
 
         for lang in languages:
-            eval_lang = [q for q in eval_queries if q.lang == lang]
+            # Hit@k and MRR need a gold snippet; questions with none (the KB does
+            # not cover them) only count in the score-floor section.
+            eval_lang = [q for q in eval_queries if q.lang == lang and q.relevant_ids]
+            no_answer_lang = [
+                q for q in eval_queries if q.lang == lang and not q.relevant_ids
+            ]
+            if score_floor is not None and adapter_type not in FLOORLESS_TYPES:
+                floor_rows.append(
+                    floor_row(
+                        retriever,
+                        eval_lang,
+                        no_answer_lang,
+                        float(score_floor),
+                        model_id=model_id,
+                        lang=lang,
+                    )
+                )
             if not eval_lang:
                 row_data: dict[str, Any] = {
                     "model_id": model_id,
@@ -500,6 +575,9 @@ def run_embedding_calibration(config_path: str | Path, out_dir: str | Path) -> P
         k_list=k_list,
         eval_split=eval_split,
         eval_sources=sorted({q.source for q in eval_queries}),
+        query_field=query_field,
+        score_floor=None if score_floor is None else float(score_floor),
+        floor_rows=floor_rows,
     )
 
     out_path = Path(out_dir)

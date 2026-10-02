@@ -141,6 +141,23 @@ The margin is a few hundredths wide, so the floor stays provisional until a huma
 - The encoder holds about 1.2 GB of fp32 weights for embeddings instead of about 0.45 GB, next to DistilBERT.
 - One query takes tens of milliseconds instead of a few. That is small next to LLM latency.
 - `RETRIEVAL_SCORE_FLOOR` moves from 0.3 to 0.80, a value tied to this model's score scale. Any later model change must re-derive it.
+
+## Amendment (2026-10-02): regional test questions, floor 0.80 → 0.81
+
+**Context.** The evidence above rests on one uniform synthetic set (360 questions, all answerable) and 30 team-written off-topic queries. A second, harder set now exists: `data/eval/synthetic/retrieval/queries_regional.jsonl`, 600 provisional questions. GPT Sol wrote them from real es-MX, es-AR, es-CO and pt-BR customer language (half-B style cards and masked phrases from `tools/synthdata_regional`). They include 60 out-of-scope banking and 60 off-topic questions, and each one comes with the query the orchestrator's LLM (gpt-6-luna) sends to `kb_search`. Construction: `data/eval/synthetic/retrieval/README.md` §6. Results: [reports/embedding-regional-2026-10-02.md](../../reports/embedding-regional-2026-10-02.md).
+
+**Findings.**
+- **Granite stays first in every locale and on both inputs.** On the production path (the LLM's query) it scores Hit@1 0.552, against MiniLM 0.459 and BM25 0.448. The decision of 2026-10-01 stands on questions that share far fewer words with the KB (BM25 Hit@1 on messages 0.12, against 0.37 on the older set).
+- **The 0.80 floor let 17% of off-topic questions through** on the production path (10 of 60), against 3% on the earlier 30.
+
+**Decision.** `RETRIEVAL_SCORE_FLOOR` seed **0.81**: in `.env.example`, compose, Terraform and the `KbSearchConfig` default. On the production path it:
+- keeps all 480 answerable in-scope questions;
+- cuts off-topic answers to 8%;
+- costs 7% of out-of-scope banking questions their scope snippet (the LLM can still decline those itself).
+
+At 0.82 and above, answerable questions start going unanswered (5 of 480 at 0.82).
+
+**Consequences.** The floor is still provisional: the set is LLM-written and not reviewed by a human, and each locale has only 30 not-covered questions. A human-written set with out-of-scope questions must re-derive it. The harness now reports the floor's effect directly (`score_floor` in the embedding config).
 - The evidence is still the provisional synthetic set; the human-written test set re-checks it.
 
 ## Action items

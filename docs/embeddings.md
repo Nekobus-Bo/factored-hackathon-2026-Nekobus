@@ -28,7 +28,7 @@ flowchart LR
 1. **Tool exposure.** The orchestrator offers every tool in the contract catalog to the LLM, including `kb.search` ([tools.py](../apps/orchestrator/src/orchestrator/conversation/tools.py)). The LLM decides when to call it.
 2. **Permissions.** `kb.search` is allowed in every FSM state, including `LOCKED` and `HANDED_OFF`, and is never rate-limited, because the KB is public and holds no PII ([ADR-0003](adr/0003-deterministic-vs-ai.md)).
 3. **Indexing.** On first use, each `banking-core` process reads [snippets.jsonl](../packages/retrieval/kb/snippets.jsonl), sends the snippets to `/v1/embed` and keeps the vectors in memory.
-4. **Search.** The query is embedded on the model server and ranked by cosine similarity. It searches the customer's language first (`SAME`); only if nothing scores at least `RETRIEVAL_SCORE_FLOOR` (0.80) does it search the other languages (`CROSS`). Results below the floor are dropped, so an off-topic query returns nothing.
+4. **Search.** The query is embedded on the model server and ranked by cosine similarity. It searches the customer's language first (`SAME`); only if nothing scores at least `RETRIEVAL_SCORE_FLOOR` (0.81) does it search the other languages (`CROSS`). Results below the floor are dropped, so an off-topic query returns nothing.
 5. **Integrity checks.** Every response must report the pinned model and revision. `banking-core` also checks the vector count, the dimension (fixed by the first response) and finiteness, re-normalizes each vector and refuses zero vectors ([remote_embedding.py](../packages/retrieval/src/retrieval/adapters/remote_embedding.py)).
 6. **Failure.** If the server is down, unreachable or serving another model, `kb.search` is unavailable. It never falls back to BM25 or to a local model.
 
@@ -58,7 +58,7 @@ flowchart LR
 | `MODEL_SERVER_URL` | banking-core | `http://encoder:8090` | Where `/v1/embed` lives |
 | `RETRIEVAL_MODE` | banking-core | `vector` | `vector`, `bm25` or `hybrid` |
 | `RETRIEVAL_TOP_K` | banking-core | `5` | Results per query (contract max 20) |
-| `RETRIEVAL_SCORE_FLOOR` | banking-core | `0.80` | Below it, SAME falls back to CROSS, and results are dropped. Tied to the model's score scale ([report](../reports/embedding-score-floor-2026-10-02.md)) |
+| `RETRIEVAL_SCORE_FLOOR` | banking-core | `0.81` | Below it, SAME falls back to CROSS, and results are dropped. Tied to the model's score scale ([report](../reports/embedding-regional-2026-10-02.md)) |
 
 `make warmup-retrieval` downloads the pinned model into the encoder's `hf-cache` volume and prints the hashes to pin. On Cloud Run the model is baked into the encoder image at build time ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)).
 
@@ -74,6 +74,17 @@ Mean over es/pt/en, 120 synthetic validation queries per language ([2026-09-27 r
 | **Vector (granite-311m, fp32)** | **0.719** | **0.822** | **0.711** | 18.6 ms (8 threads) |
 
 Hybrid loses to vector-only because BM25 cannot match across languages and pulls the fused ranking down. Granite against MiniLM: +0.22 same-language and +0.20 cross-language Hit@1, both outside the paired bootstrap noise. The lab comparison of five models is in `lab/notebooks/compare__kb-embeddings.py`, and the reasoning in [embedding-model-candidates.md](embedding-model-candidates.md).
+
+**Regional test questions** (2026-10-02, [report](../reports/embedding-regional-2026-10-02.md)). The set has 600 provisional questions that GPT Sol wrote from real es-MX, es-AR, es-CO and pt-BR language, including 120 the KB does not cover. Each comes with the query the orchestrator's LLM sends to `kb_search`. Hit@1 / MRR over the 540 answerable questions:
+
+| Model | Customer message | LLM's `kb_query` (production) |
+|---|---:|---:|
+| BM25 | 0.120 / 0.193 | 0.448 / 0.549 |
+| MiniLM | 0.257 / 0.352 | 0.459 / 0.544 |
+| **Granite** | **0.361 / 0.487** | **0.552 / 0.659** |
+
+- **Granite leads in every locale.** These questions share few words with the KB, so all scores drop.
+- **The LLM's rewrite lifts every model**, BM25 most.
 
 **The MiniLM pin was broken.** The deployed revision `86741b4e` predated its tokenizer's transformers v5 fix and scored Hit@1 0.05 under the transformers 5.x this repo locks. The 2026-09-27 report measured the fixed `main` revision instead. Every pin check passed: a pin proves which files were loaded, not that they still work with today's libraries.
 
@@ -108,7 +119,8 @@ ADR-0006 planned a `knowledge_snippets` table with an embedding column, offline 
 |---|---|
 | pgvector table and KB ingestion | ADR-0006 action item 2, [limitations.md](limitations.md), KB README |
 | Only synthetic, provisional queries; no human-written test set | ADR-0006, [evaluation.md](evaluation.md) |
-| `RETRIEVAL_SCORE_FLOOR` (0.80) rests on 30 team-written off-topic queries and a narrow margin | limitations.md, [report](../reports/embedding-score-floor-2026-10-02.md) |
+| `RETRIEVAL_SCORE_FLOOR` (0.81) rests on LLM-written off-topic questions (90 in total) and a narrow margin | limitations.md, [report](../reports/embedding-regional-2026-10-02.md) |
+| The regional test set is LLM-written and unreviewed; 68 of 540 answerable questions may carry the wrong topic | [checks.md](../data/eval/synthetic/retrieval/regional/checks.md) |
 | No fine-tuning results; `embedding_finetune.yaml` exists but no report uses it | not recorded |
 | No authentication or TLS to the model server; plausible wrong vectors from a server reporting the right identity are not detected | limitations.md |
 | No x86 latency for fp32 Granite (measured on Apple Silicon only) | limitations.md |
