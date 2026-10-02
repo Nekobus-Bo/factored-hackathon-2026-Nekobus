@@ -17,11 +17,11 @@ make llm-bench-compare                          # table across every run in resu
 
 | Make variable | Meaning |
 |---|---|
-| `MODEL` | Alias from [models.yaml](models.yaml). Local: `qwen3.5-4b`, `granite-4.2-3b`, `granite-4.0-1b`, `qwen3-1.7b`. Hosted reference: `gpt-6-luna`, `gpt-6.1-sol` |
+| `MODEL` | Alias from [models.yaml](models.yaml). Local: `qwen3.5-4b`, `granite-4.2-3b`, `granite-4.0-1b`, `qwen3-1.7b`, and the bigger `qwen3.5-9b`, `qwen3.6-35b-a3b` and `qwen3.6-35b-a3b-think` (thinking on). Hosted reference: `gpt-6-luna`, `gpt-6.1-sol` |
 | `ROUTE=1` | Offer the model only the tools the session's state allows (`--route-tools`) |
 | `BENCH_LANG` | `es`, `pt` or `en` only. It is not called `LANG`, because the shell already uses that name for the locale |
 | `ONLY` | `probes` or `episodes` |
-| `REPEAT` | Run everything N times. The default is 1, at temperature 0 |
+| `REPEAT` | Run everything N times. The default is 1, at temperature 0, unless the model's entry sets a `temperature` |
 | `TAG` | Appended to the run label as `@TAG` (`--tag`), to tell code stages apart |
 | `PUBLISH=1` | `llm-bench-compare` also writes `reports/llm-bench-<date>.md` |
 
@@ -111,7 +111,7 @@ The episodes are three scenarios from each of six groups (happy path, risk thres
 
 ## Adding a model
 
-1. Add an alias to [models.yaml](models.yaml), with its GGUF repo and quant (`hf: <repo>:<quant>`) and any extra `server_args`. A hosted model goes under `hosted:` instead, with `litellm_model`, `api_key_env` and, if needed, `reasoning_effort` and `temperature`; skip steps 2 and 3's server.
+1. Add an alias to [models.yaml](models.yaml), with its GGUF repo and quant (`hf: <repo>:<quant>`), any extra `server_args` and, if the model card asks for one, a `temperature`. A hosted model goes under `hosted:` instead, with `litellm_model`, `api_key_env` and, if needed, `reasoning_effort` and `temperature`; skip steps 2 and 3's server.
 2. Check that llama.cpp parses the model's tool-call format into OpenAI `tool_calls`. A probe transcript with no tool calls at all usually means it does not.
 3. Run it with `make llm-bench-serve MODEL=<alias>`, then `make llm-bench MODEL=<alias>`.
 

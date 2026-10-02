@@ -122,6 +122,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not args.skip_server_check:
             check_server(base_url, alias)
         inner = live_provider(litellm_model, base_url, timeout_seconds=args.timeout)
+        local = config.get("models", {}).get(alias, {})
+        if "temperature" in local:
+            request_kwargs["temperature"] = float(local["temperature"])
 
     def make_llm(conversation: Conversation) -> BenchProvider:
         return BenchProvider(

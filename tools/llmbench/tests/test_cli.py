@@ -31,6 +31,41 @@ def test_serve_command_uses_the_alias_and_thinking_off():
     assert '{"enable_thinking": false}' in command
 
 
+def test_think_alias_turns_thinking_back_on_after_the_default():
+    command = cli.serve_command(
+        "qwen3.6-35b-a3b-think", cli.load_models(BENCH / "models.yaml")
+    )
+    flag = "--chat-template-kwargs"
+    kwargs = [command[i + 1] for i, arg in enumerate(command) if arg == flag]
+    assert kwargs == ['{"enable_thinking": false}', '{"enable_thinking": true}']
+    assert "--no-mmproj" in command
+
+
+def test_local_model_passes_its_temperature(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "live_provider", lambda *a, **k: PoliteModel())
+    args = [
+        "--models-file",
+        str(BENCH / "models.yaml"),
+        "run",
+        "--model",
+        "qwen3.6-35b-a3b-think",
+        "--skip-server-check",
+        "--only",
+        "probes",
+        "--lang",
+        "en",
+        "--skill",
+        "clarify",
+        "--probes-dir",
+        str(BENCH / "probes"),
+        "--out-dir",
+        str(tmp_path),
+    ]
+    assert cli.main(args) == 0
+    (run_file,) = tmp_path.glob("*.json")
+    assert json.loads(run_file.read_text())["request"]["temperature"] == 0.6
+
+
 def test_run_and_compare(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "live_provider", lambda *a, **k: PoliteModel())
     common = [
