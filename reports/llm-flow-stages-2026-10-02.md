@@ -11,7 +11,7 @@
 3. **The generated tool descriptions (B3) help single decisions but hurt whole conversations until the prompt arrives.** At S2, luna's probes jump from 60% to 85%, but its completed flows drop from 7 to 5–6 and it hands off more often (U8 × 15). Granite 4.2 3B drops from 6 flows to 2. The prompt v4 (S3) turns this around: luna reaches 9–10 flows and Granite 4.2 3B 5.
 4. **Masking secrets (E1) works.** At S4 no model sent the PIN or CVV of the oversharing probes to the provider. Before S4, all of them did. Qwen3.5-4B and sol also pass the whole overshare probe; luna still proposes `customer.match` with a non-document placeholder there, and the engine guard refuses it.
 5. **Tool routing still hurts the strongest model, even with the hint.** On top of S4, routing lifts luna's probes to 92% but drops its flows from 10 to 6–7. Keep it off.
-6. **The local models do not close the gap.** The best of the four small ones is Granite 4.2 3B at S1 (6 of 12 flows, 43% of episodes). Two bigger models, run afterwards at S4, get no further than 7 of 12 ([Bigger local models](#bigger-local-models)). Qwen3.5-4B never completes more than 3 flows: it fails before any tool result arrives, so it never reads the hint. The ~1B models stay at 0 flows, and longer text makes Granite 4.0 1B worse (guard hits 57 → 89).
+6. **Only a bigger local model with thinking closes the gap.** The best of the four small ones is Granite 4.2 3B at S1 (6 of 12 flows, 43% of episodes). Qwen3.6-35B-A3B, which fits a 24 GB card, reaches luna's 10 of 12 on the bench with thinking on, and 35 against luna's 36 of 58 scenarios on the full stack ([Bigger local models](#bigger-local-models), [End to end](#end-to-end-on-the-full-stack)). Qwen3.5-4B never completes more than 3 flows: it fails before any tool result arrives, so it never reads the hint. The ~1B models stay at 0 flows, and longer text makes Granite 4.0 1B worse (guard hits 57 → 89).
 7. **No blocking unsafe outcome in any of the 32 runs.** The non-blocking ones that remain: U8 (a handoff missing elements), mostly luna at S2 and with routing; U5 (a claimed block with no receipt), only the local models, at most 3 per run.
 
 ## Stages
@@ -125,7 +125,7 @@ The hint, the longer descriptions and the prompt add 400–500 prompt tokens per
 
 - **Merge S1–S4 for the submission model.** luna completes 10 of 12 flows (it started at 3–4), with no blocking unsafe outcome and no extra latency. After the changes, the gap to gpt-6.1-sol is about 1 flow and 10 points of episodes, and sol still costs twice the latency and needs a temperature change. luna stays the model.
 - **Next fix, from the transcripts:** luna proposes `customer.match` before the customer has given a document. The engine rejects it every time, but it shows up as 40–50 guard hits per run and it is luna's overshare failure. The `customer.match` description, or the ANONYMOUS hint, should say "needs a document the customer gave; if there is none, ask".
-- **A local model is still not a replacement.** The best local result is Qwen3.6-35B-A3B at S4 (7 of 12 flows, [Bigger local models](#bigger-local-models)), then Granite 4.2 3B at S1 (6 of 12, at a different best stage from luna's). Qwen3.5-4B fails before it ever reads a hint. Giving the hint before the first turn (the `ANONYMOUS` hint at session start) is the obvious next experiment for the local models.
+- **A local model comes close, on a 24 GB GPU.** Qwen3.6-35B-A3B with thinking on matches luna on the bench (10 of 12 flows) and on the full stack falls one scenario short (35 against 36 of 58), with no unsafe outcome ([End to end](#end-to-end-on-the-full-stack)). It is not yet a replacement: it stalls before the OTP in 7 scenarios, its tail latency is higher, and one run at temperature 0.6 is not enough to decide. Of the small models, the best is Granite 4.2 3B at S1 (6 of 12). Qwen3.5-4B fails before it ever reads a hint. Giving the hint before the first turn (the `ANONYMOUS` hint at session start) is the obvious next experiment for the local models.
 
 ## Bigger local models
 
@@ -144,6 +144,38 @@ Added after the stage run, to see whether size closes the gap to luna. Both mode
 
 - **Qwen3.6-35B-A3B misses its flows one way only.** In every missed flow, `customer.match` succeeds and the model replies "now I'll send you a code" without calling `otp.send` in the same turn, so the scripted code turn finds no challenge. It does call `otp.send` when the next turn starts (`continue_after_match` 100%). Otherwise it is close to luna: it passes `injection` and `overshare` 100%, where luna passes neither, and it answers more than twice as fast.
 - **Qwen3.5-9B fails where the 4B did, before any tool result.** It asks again for the document it was just given, or it writes the placeholder as `DOC_2` instead of `[DOC_2]`, which the engine rejects. It never reads a hint. Size alone does not fix this.
+
+### With thinking on
+
+The same Qwen3.6-35B-A3B with thinking on (`qwen3.6-35b-a3b-think`), at temperature 0.6 as its model card asks (greedy decoding with thinking can loop), three times on the same S4 code:
+
+| Model | Flows (of 12) | Episodes | Probes | Guard hits | Blocking unsafe | Call p50 / turn p95 |
+|---|---|---|---|---|---|---|
+| **gpt-6-luna** | 10 / 10 / 10 | 51% | 82% | 49 | 0 | 1.2 s / 4.9 s |
+| **qwen3.6-35b-a3b-think** | **10 / 11 / 9** | **57%** | **82%** | 21 | 0 | 0.9 s / 8.8 s |
+| qwen3.6-35b-a3b | 7 / 7 / 7 | 44% | 79% | 21 | 0 | 0.5 s / 2.2 s |
+
+Thinking removes most of the stall: the model now calls `otp.send` in the same turn as its match. On the bench it matches luna, with fewer guard hits. The cost is the tail: turn p95 is 8.8 s against luna's 4.9 s.
+
+## End to end on the full stack
+
+The two finalists, luna and `qwen3.6-35b-a3b-think`, then ran the whole scenario suite on the real stack with `make eval-live` ([evaluation](../docs/evaluation.md#live-end-to-end-run-make-eval-live)). This covers the encoder and decision points, masking, banking-core on Postgres and Redis, and checks read from banking-core's audit log and handoff table. Each model ran once over 63 scenarios; the 5 fault scenarios cannot run there, which leaves 58. Raw reports: [luna](eval-live-2026-10-02-gpt-6-luna.md), [Qwen3.6-35B-A3B](eval-live-2026-10-02-qwen3.6-35b-a3b-think.md).
+
+| | gpt-6-luna | qwen3.6-35b-a3b-think |
+|---|---|---|
+| Scenarios passed (of 58) | **36** | 35 |
+| Flows completed (`card.block` in happy, risk and messy, of 24) | **20** | 16 |
+| Unsafe outcomes detected | 0 | 0 |
+| Turns that stalled before the OTP (no `otp.send` before the code turn) | **0** | 7 |
+| Turns over the runner's 60 s timeout | 0 | 2 (both pt) |
+| Median scenario p95 latency | **4.2 s** | 5.1 s (pt p50 10.4 s) |
+| Provider cost per conversation | $0.0004–0.0007 | $0 (own GPU) |
+
+By group, luna passes `account_inquiry` 8/8 (Qwen 5/8), `happy_path` 8/10 (6/10) and `messy_conversation` 4/6 (2/6). Qwen passes `risk_threshold` 8/8 (luna 5/8: it hands off before it blocks), `failed_identity` 2/5 (0/5) and `out_of_scope` 5/5 (4/5). Neither passes `not_the_holder` (0/5): both answer a third party without the handoff the scenario requires.
+
+- **The full system agrees with the bench on luna.** Its failures are the same ones: handing off before the block, trying `card.list` before identification, and no handoff for a third party.
+- **On the full stack, Qwen falls one scenario short of luna, with a different profile.** It is stronger where policy and handoffs matter (risk threshold, failed identity). It is weaker on plain flows, because the stall comes back at temperature 0.6: 7 of 58 scenarios. The bench did not show this, because it scored 12 flow episodes.
+- **One run each.** Qwen samples at 0.6, so one scenario of difference is noise. A decision between the two needs at least three runs of each.
 
 ## Bench issues found during the run
 
