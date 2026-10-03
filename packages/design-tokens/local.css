@@ -1,0 +1,129 @@
+/* Local changes to the Pattern Blue design system that are not in the design-system artifact yet.
+   src/components.css stays a verbatim copy of the artifact; these rules load after it (index.css).
+   They come from the declutter review of the customer chat and the landing (2026-10-02). When the artifact
+   takes them, move them into its components/bundle.css, sync src/ again and delete them here. The rule
+   changes they imply are listed in README.md, "Local changes not yet in the artifact".
+   Chat rules are scoped to .pb-dock, the customer chat: the back office keeps the artifact's look. */
+
+/* ---------- ChatBubble: a bigger panel, full screen on phones ---------- */
+.pb-dock__panel { bottom: 84px; width: min(420px, calc(100% - 32px)); }
+.pb-dock .pb-chat { max-width: none; height: min(680px, calc(100dvh - 148px)); }
+.pb-chat__body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pb-dock .pb-chat__log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+@media (max-width: 480px) {
+  .pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }
+  .pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+}
+
+/* Launcher with a word. */
+.pb-launcher--label { display: inline-flex; width: auto; height: 52px; padding: 0 20px 0 16px; gap: 10px; font: 700 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-launcher--label .pb-ico { width: 22px; height: 22px; }
+
+/* ---------- ChatMessage: bubbles ---------- */
+/* No sender label on screen (it is in a pb-sr span); the time sits after the last word and takes a line of its
+   own only when the last line is full. Bubbles in a row from the same side sit 4px apart. */
+.pb-dock .pb-msg { display: flow-root; }
+.pb-msg__time { float: right; margin: 3px 0 -2px 12px; font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.pb-msg--customer .pb-msg__time { color: var(--on-violet); opacity: 0.82; }
+.pb-msg--customer[data-status="failed"] .pb-msg__time { color: var(--ink-muted); opacity: 1; }
+.pb-dock .pb-msg--assistant + .pb-msg--assistant,
+.pb-dock .pb-msg--customer + .pb-msg--customer { margin-top: -8px; }
+.pb-dock .pb-msg--agent .pb-msg__meta { font: 600 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
+
+/* System lines: sentence case at 13px, with an optional receipt reference. */
+.pb-dock .pb-sys { font: 500 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
+.pb-sys__ref { font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+
+/* ---------- Proof: an engine-built result in two lines, details on demand ---------- */
+/* Put it on a pb-cut element. Receipts (sync edge) and the handoff (violet edge). */
+.pb-proof { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--sync); --face: var(--surface-100); align-self: stretch; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; align-items: start; margin: 0; padding: 10px 14px 10px 10px; color: var(--ink); }
+.pb-proof > * { grid-column: 2; min-width: 0; }
+.pb-proof > .pb-proof__icon { grid-column: 1; grid-row: 1 / span 2; }
+.pb-proof > .pb-proof__foot, .pb-proof > .pb-proof__note { grid-column: 1 / -1; }
+.pb-proof[data-tone="handoff"] { --edge: var(--violet); }
+.pb-proof__icon { --icon-fg: var(--sync); --icon-bg: var(--sync-soft); display: grid; place-items: center; width: 32px; height: 32px; background: var(--icon-bg); color: var(--icon-fg); clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.pb-proof__icon .pb-ico { vertical-align: 0; }
+.pb-proof__icon[data-tone="blocked"] { --icon-fg: var(--crimson); --icon-bg: var(--crimson-soft); }
+.pb-proof__icon[data-tone="violet"] { --icon-fg: var(--violet); --icon-bg: var(--violet-soft); }
+.pb-proof__title { margin: 0; font: 600 15px/20px var(--font-sans); }
+.pb-proof__sub { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__data { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-proof__ref { position: relative; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink-muted); cursor: pointer; font: 400 13px/20px var(--font-sans); text-align: left; }
+.pb-proof__ref::before { content: ""; position: absolute; inset: -12px -8px; }
+.pb-proof__ref > .pb-ico { width: 14px; height: 14px; vertical-align: 0; flex: none; }
+.pb-proof__ref > .pb-ico--shield-check { color: var(--sync); }
+.pb-proof__ref .pb-proof__data { font-size: 12.5px; }
+.pb-proof__ref .pb-ico--chev1 { transform: rotate(180deg); transition: transform var(--motion-step, 160ms) var(--ease-step, steps(4, end)); }
+.pb-proof__ref[aria-expanded="true"] .pb-ico--chev1 { transform: none; }
+.pb-proof__ref:hover { color: var(--ink); }
+.pb-proof__ref:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-proof__more { display: grid; gap: 8px; justify-items: start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__foot b { font: 700 15px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-proof__foot .pb-action { font-size: 13px; }
+.pb-proof__note { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+
+/* ---------- Degraded states ---------- */
+/* A message the API did not accept: one line under the bubble, with the retry beside it. */
+.pb-unsent { align-self: flex-end; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 14px; margin: -6px 0 0; font: 400 13px/20px var(--font-sans); color: var(--ink); }
+.pb-unsent > span { display: inline-flex; align-items: center; gap: 6px; }
+.pb-unsent .pb-ico--warning { width: 14px; height: 14px; vertical-align: 0; color: var(--alert); }
+.pb-unsent .pb-action { font-size: 13px; }
+/* One sentence on a soft tint, with its action on the same line when it fits. Put it on a pb-cut element. */
+.pb-strip { --tone: var(--alert); --tone-bg: var(--alert-soft); --c-tl: var(--cut-sm); --c-br: var(--cut-sm); --edge: var(--tone); --face: var(--tone-bg); align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; padding: 9px 12px; color: var(--ink); font: 400 14px/20px var(--font-sans); }
+.pb-strip[data-tone="info"] { --tone: var(--pattern); --tone-bg: var(--pattern-soft); }
+.pb-strip > .pb-ico { flex: none; vertical-align: 0; color: var(--tone); }
+.pb-strip > span { flex: 1 1 200px; min-width: 0; }
+.pb-strip .pb-action { margin-left: auto; font-size: 13px; }
+
+/* ---------- OtpInboxNotice: the simulated inbox as a sheet over the messages ---------- */
+.pb-chat__scrim { position: absolute; inset: 0; z-index: 1; background: var(--scrim); opacity: 0.55; }
+.pb-sheet { --c-tl: var(--cut-lg); --c-br: 0px; --edge: var(--violet); --face: var(--surface-100); position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: grid; gap: 12px; max-height: 100%; overflow: auto; padding: 12px 16px 16px; color: var(--ink); }
+.pb-sheet__bar { display: flex; align-items: center; gap: 10px; }
+.pb-sheet__bar .pb-chat__title { margin: 0; font-size: 15px; }
+.pb-sheet__bar .pb-btn { margin-left: auto; }
+.pb-sheet__from { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__from b { font-weight: 600; color: var(--ink); }
+.pb-sheet__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.pb-sheet__exp { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__exp b { font: 700 16px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-sheet__note { display: flex; gap: 8px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__note .pb-ico { margin-top: 2px; color: var(--pattern); }
+
+/* ---------- Composer: a text area that grows to four lines ---------- */
+.pb-chat__composer { align-items: flex-end; }
+.pb-chat__composer textarea { flex: 1; min-width: 0; min-height: 24px; max-height: 120px; margin: 0; padding: 10px 0; border: 0; outline: 0; resize: none; background: transparent; color: inherit; font: 400 16px/24px var(--font-sans); field-sizing: content; }
+.pb-chat__composer textarea::placeholder { color: var(--ink-muted); opacity: 1; }
+
+/* ---------- Feedback when the conversation ends: one line between hairlines, two equal buttons ---------- */
+.pb-rate { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ink-muted); font: 500 13px/18px var(--font-sans); }
+.pb-rate::before, .pb-rate::after { content: ""; flex: 1 1 8px; height: 1px; background: var(--line-strong); opacity: 0.5; }
+.pb-rate__ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 10px; text-align: center; }
+.pb-rate__btns { display: inline-flex; gap: 2px; }
+.pb-rate__btn { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; }
+.pb-rate__face { --c-tl: var(--cut-sm); --c-br: var(--cut-sm); --edge: var(--line-strong); --face: var(--surface-100); display: inline-flex; align-items: center; min-height: 30px; padding: 0 14px; font: 600 13px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; }
+.pb-rate__btn:hover .pb-rate__face { --edge: var(--violet); --face: var(--violet-soft); color: var(--violet); }
+.pb-rate__btn:disabled { cursor: progress; }
+.pb-rate__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+.pb-rate__done { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; }
+.pb-rate__done .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--violet); }
+
+/* ---------- Landing ---------- */
+/* Hero: one fact line instead of a checked list. */
+.pb-hero__fact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: var(--space-1) 0 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-hero__fact .pb-ico { vertical-align: 0; color: var(--sync); }
+/* Theme toggle with one button. */
+.pb-theme--single .pb-theme__btn { width: 44px; height: 44px; }
+/* S2PromoCard as a band from 720px: the mark on the left, title and line on the right. */
+.pb-section__band { max-width: 880px; margin: 0 auto; }
+@media (min-width: 720px) {
+  .pb-s2--band { grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-8); row-gap: var(--space-3); align-items: end; }
+  .pb-s2--band .pb-s2__top, .pb-s2--band .pb-gauge, .pb-s2--band .pb-s2__legal { grid-column: 1 / -1; }
+  .pb-s2--band .pb-s2__mark { grid-column: 1; grid-row: 2 / span 2; align-self: center; }
+  .pb-s2--band .pb-s2__title { grid-column: 2; grid-row: 2; }
+  .pb-s2--band .pb-s2__sub { grid-column: 2; grid-row: 3; }
+}
+/* Footer with the wordmark, the demo note and the small print only. */
+.pb-footer__inner--compact { gap: var(--space-4); padding-top: var(--space-8); }
+@media (min-width: 900px) { .pb-footer__inner--compact { grid-template-columns: minmax(0, 1fr); } }
+.pb-footer__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }

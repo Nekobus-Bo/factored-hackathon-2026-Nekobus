@@ -15,9 +15,10 @@ The look of Pattern Blue for both front ends (`apps/web-client`, `apps/web-backo
 
 ```
 packages/design-tokens/
-  index.css              imports dist/tokens.css, then src/components.css (the required order)
+  index.css              imports dist/tokens.css, then src/components.css, then local.css (the required order)
   src/tokens.json        copied verbatim from the artifact
   src/components.css     copied verbatim from the artifact, behind a header comment naming the source and version
+  local.css              written here: changes not in the artifact yet (see below)
   scripts/               build.ts (CLI), generate.ts (pure generators), schema.ts (Zod schema of tokens.json)
   dist/tokens.css        GENERATED, committed: every token as a custom property, both themes, type-style classes
   dist/tokens.ts         GENERATED, committed: typed token names and values per theme
@@ -110,6 +111,33 @@ Apply the remembered choice from an inline script in `<head>` (before the styles
 
 Every style in `tokens.json` (`title-card`, `h1`, `h2`, `h3`, `body`, `body-strong`, `small`, `label`, `label-lg`, `mono-data`, `mono-code`, `case-id`) is a class of the same name in `tokens.css` with family, size, line height, weight and letter spacing. `mono-*` and `case-id` also get tabular figures. Uppercase and `font-stretch` are added by `components.css`, because the token grammar cannot express them. `components.css` also has the `pb-t-*` utilities with the same values.
 
+## Local changes not yet in the artifact
+
+`local.css` holds styles written in this repository that the artifact does not have yet. It loads after `src/components.css`, uses only tokens and `pb-` classes (a test checks both), and scopes every chat rule to `.pb-dock`, so the back office keeps the artifact's look. They come from the declutter review of the customer chat and the landing of 2026-10-02. The artifact belongs to another claude.ai account, so they could not be published there.
+
+They change these design-system rules. Whoever updates the artifact should change the rule, move the CSS into `components/bundle.css`, sync, and delete it from `local.css`.
+
+| Rule in the artifact | What the customer app does now |
+|---|---|
+| ChatBubble: the panel is a 360px column | 420 × 680 on desktop, capped by the window height; full screen on phones |
+| ChatBubble: the launcher is a 60px glyph | The glyph and the word "Asistente" (`pb-launcher--label`) |
+| ChatBubble: `pb-msg__meta` carries sender and time on every message | The sender is a `pb-sr` label and the time sits after the last word (`pb-msg__time`). A human agent's message keeps a sender line, in sentence case |
+| README: case ids are `case-id` (stencil) | In the customer chat, case and receipt references are mono |
+| ChatMessage 2: a receipt shows kicker, state transition, key-values and footer | `pb-proof`: the result and the receipt reference. The transition and "Verificado contra la base de datos" open from the reference. `otp.verify` is a verified system line with its reference |
+| ChatMessage 2 and 4: the `otp.send` receipt and the OTP notice are two messages | One `pb-proof` with the countdown and "Abrir bandeja" |
+| OtpInboxNotice: the inbox is a card in the log with De / Para / Asunto | A sheet over the messages (`pb-sheet`), without the key-value rows |
+| ChatMessage 3: the handoff shows priority, status, queue position and a list of what the agent knows | The department, the case reference and one closing sentence that keeps "Desde aquí el asistente deja de actuar" |
+| ChatMessage 5: system lines use the `label` style | 13px sentence case, with an optional receipt reference (`pb-sys__ref`) |
+| ChatMessage 6b and 6c: a failed message adds a caution card; a rate limit is a caution card | One `pb-unsent` line under the failed message; `pb-strip` for 429 and 404 |
+| ChatMessage: the list of content types | A new one: feedback after a handoff (`pb-rate`) |
+| Hero: say only what the assistant does | The landing is a fictional bank's home page; the hero names its products and what the chat does |
+| Landing: a section header is a kicker and a title card of two or three lines | The title alone, on one line |
+| FeatureGrid: the assistant's features, a fact line on each card | The bank's products, no fact line |
+| Navbar: a login button and a two-button theme radio group | "Abrir chat" and a one-button theme toggle (`pb-theme--single`) |
+| Footer: link columns and its own language and theme controls | The wordmark, the demo note and the small print (`pb-footer__inner--compact`) |
+
+`pb-s2--band` (S² as a band from 720px) and `pb-hero__fact` are new layouts that change no rule.
+
 ## Class-naming rules (from the design system)
 
 - Component classes are prefixed `pb-`. Elements use `__` (`pb-msg__meta`), variants `--` (`pb-btn--ghost`, `pb-ico--lock`). The only unprefixed classes are the type styles above.
@@ -128,7 +156,8 @@ When the design system changes:
 3. Replace `src/components.css` with the header comment (update the version and date, they come from the read's "version" line) followed by `bundle.css`, byte for byte.
    Replace `reference/` with the artifact's `project/README.md` and `project/components/` (every `README.md` and `preview.html`, not `bundle.css`).
 4. Run `make design-tokens`, then `make design-tokens-check`.
-5. Commit `src/` and `dist/` together: `feat(design-tokens): sync from the design-system artifact <version>`. Update the version in the table at the top of this file.
+5. Delete from `local.css` whatever the artifact now has.
+6. Commit `src/` and `dist/` together: `feat(design-tokens): sync from the design-system artifact <version>`. Update the version in the table at the top of this file.
 
 `make design-tokens-check` is designed to fail on the changes a sync can bring:
 

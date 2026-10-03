@@ -1,4 +1,6 @@
-/* Everything an app needs, in the order the design system requires: tokens first, then the pb-* components.
+/* Everything an app needs, in the order the design system requires: tokens first, then the pb-* components,
+   then the local changes that are not in the design-system artifact yet (local.css).
    The fonts are a separate <link> (dist/fonts.html): they load from Google Fonts. */
 @import "./dist/tokens.css";
 @import "./src/components.css";
+@import "./local.css";

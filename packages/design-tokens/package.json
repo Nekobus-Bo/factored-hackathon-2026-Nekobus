@@ -8,6 +8,7 @@
     "./index.css": "./index.css",
     "./tokens.css": "./dist/tokens.css",
     "./components.css": "./src/components.css",
+    "./local.css": "./local.css",
     "./tokens": "./dist/tokens.ts",
     "./tokens.json": "./src/tokens.json",
     "./fonts.html": "./dist/fonts.html"
