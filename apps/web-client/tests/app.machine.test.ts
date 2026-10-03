@@ -125,10 +125,51 @@ describe("language", () => {
     const { env, attributes, store } = fakeEnv();
     const actor = start(env);
     actor.send({ type: "LANG.SET", lang: "pt" });
-    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "pt" });
+    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "pt", locale: null });
     expect(attributes.get("lang")).toBe("pt");
     expect(store.size).toBe(0);
     actor.send({ type: "LANG.SET", lang: "en" });
     expect(actor.getSnapshot().context.lang).toBe("en");
+  });
+});
+
+describe("market", () => {
+  test("starts from navigator.language only when it names a market exactly", () => {
+    for (const [nav, locale] of [
+      ["es-CO", "es-CO"],
+      ["es-mx", "es-MX"],
+      ["es_AR", "es-AR"],
+      ["pt-BR", "pt-BR"],
+      ["en-US", "en-US"],
+      ["es", null],
+      ["es-ES", null],
+      ["pt-PT", null],
+      ["en-GB", null],
+      [undefined, null],
+    ] as const) {
+      const { env } = fakeEnv({ navigatorLanguage: nav });
+      expect(start(env).getSnapshot().context.locale).toBe(locale);
+    }
+  });
+
+  test("LOCALE.SET picks the market and its language, and <html lang> follows the language", () => {
+    const { env, attributes } = fakeEnv({ navigatorLanguage: "en-US" });
+    const actor = start(env);
+    actor.send({ type: "LOCALE.SET", locale: "es-MX" });
+    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "es", locale: "es-MX" });
+    expect(attributes.get("lang")).toBe("es");
+    actor.send({ type: "LOCALE.SET", locale: "es-AR" });
+    expect(actor.getSnapshot().context.locale).toBe("es-AR");
+  });
+
+  test("LANG.SET keeps a market of the same language and drops one of another", () => {
+    const { env } = fakeEnv({ navigatorLanguage: "es-CO" });
+    const actor = start(env);
+    actor.send({ type: "LANG.SET", lang: "es" });
+    expect(actor.getSnapshot().context.locale).toBe("es-CO");
+    actor.send({ type: "LANG.SET", lang: "pt" });
+    expect(actor.getSnapshot().context.locale).toBeNull();
+    actor.send({ type: "LANG.SET", lang: "es" });
+    expect(actor.getSnapshot().context.locale).toBeNull();
   });
 });

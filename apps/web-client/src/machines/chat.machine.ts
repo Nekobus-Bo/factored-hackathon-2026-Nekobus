@@ -16,15 +16,26 @@
 //
 // While a takeover is active a send returns `blocks: []` by design; that is a normal answer, not an error.
 //
+// The customer's market (`locale`, ADR-0014) is sent only when the conversation is created: the chat API
+// takes no market on a turn, so a market picked after the first message reaches the next conversation.
+//
 // The machine keeps what the customer sees (`entries`) apart from the one-time code, which lives only in
 // `inbox.message`: nothing that reaches an entry can contain it, and what the customer typed is masked
 // before it is stored.
 
-import type { InboxMessage, InboxResponse, Lang, SendMessageResponse, TranscriptResponse } from "@pattern-blue/contracts";
+import type {
+  CreateConversationRequest,
+  InboxMessage,
+  InboxResponse,
+  Lang,
+  Locale,
+  SendMessageResponse,
+  TranscriptResponse,
+} from "@pattern-blue/contracts";
 import { parseBlocks } from "@pattern-blue/contracts";
 import { assign, enqueueActions, fromPromise, setup, type SnapshotFrom } from "xstate";
 import type { ApiClient, ApiResult } from "../api/client";
-import { dictionaries } from "../i18n";
+import { dictionaries, langOf } from "../i18n";
 import {
   deriveChip,
   isOtpPending,
@@ -54,6 +65,8 @@ export interface PendingSend {
   /** As typed. Kept only here, only until the turn is accepted, and never rendered. */
   text: string;
   lang: Lang;
+  /** The market when the message was sent, or null. */
+  locale: Locale | null;
   entryId: string;
 }
 
@@ -79,7 +92,7 @@ export interface ChatContext {
 }
 
 export type ChatEvent =
-  | { type: "SEND"; text: string; lang: Lang }
+  | { type: "SEND"; text: string; lang: Lang; locale?: Locale | null }
   | { type: "RETRY" }
   | { type: "CODE.REVEAL" }
   | { type: "CODE.HIDE" }
@@ -99,6 +112,11 @@ export interface ChatInput {
 const sameMessage = (a: InboxMessage, b: InboxMessage) =>
   a.received_at === b.received_at && a.expires_at === b.expires_at && a.code === b.code;
 
+/** The body of a new conversation. A market of another language is left out: the orchestrator would answer 422. */
+export function createConversationBody(lang: Lang, locale: Locale | null): CreateConversationRequest {
+  return locale && langOf(locale) === lang ? { lang, locale } : { lang };
+}
+
 function withStatus(entries: Entry[], entryId: string | undefined, status: "sent" | "failed"): Entry[] {
   return entries.map((entry) => (entry.id === entryId && entry.kind === "customer" ? { ...entry, status } : entry));
 }
@@ -106,8 +124,8 @@ function withStatus(entries: Entry[], entryId: string | undefined, status: "sent
 export const chatMachine = setup({
   types: {} as { context: ChatContext; events: ChatEvent; input: ChatInput },
   actors: {
-    createConversation: fromPromise(({ input }: { input: { api: ApiClient; lang: Lang } }) =>
-      input.api.createConversation({ lang: input.lang }),
+    createConversation: fromPromise(({ input }: { input: { api: ApiClient; lang: Lang; locale: Locale | null } }) =>
+      input.api.createConversation(createConversationBody(input.lang, input.locale)),
     ),
     sendMessage: fromPromise(
       ({ input }: { input: { api: ApiClient; conversationId: string; pending: PendingSend } }) =>
@@ -165,7 +183,7 @@ export const chatMachine = setup({
       return {
         entries: [...context.entries, entry],
         nextEntry: context.nextEntry + 1,
-        pending: { clientMessageId: context.deps.newId(), text, lang: event.lang, entryId },
+        pending: { clientMessageId: context.deps.newId(), text, lang: event.lang, locale: event.locale ?? null, entryId },
         retryUntil: null,
       };
     }),
@@ -302,7 +320,11 @@ export const chatMachine = setup({
         creating: {
           invoke: {
             src: "createConversation",
-            input: ({ context }) => ({ api: context.deps.api, lang: context.pending?.lang ?? "es" }),
+            input: ({ context }) => ({
+              api: context.deps.api,
+              lang: context.pending?.lang ?? "es",
+              locale: context.pending?.locale ?? null,
+            }),
             onDone: [
               { guard: ({ event }) => event.output.ok, target: "sending", actions: "setConversation" },
               {

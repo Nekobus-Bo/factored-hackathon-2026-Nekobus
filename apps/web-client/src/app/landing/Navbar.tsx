@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
-import { LangSwitch, ThemeSwitch } from "./Switches";
+import { LangSwitch, MarketSwitch, ThemeSwitch } from "./Switches";
 
 export function Navbar() {
   const { dict } = useI18n();
@@ -39,6 +39,7 @@ export function Navbar() {
           </nav>
           <div className="pb-nav__tools">
             <LangSwitch />
+            <MarketSwitch />
             <ThemeSwitch />
             {/* Decorative in the demo: there is no account, session or authentication behind it. */}
             <a className="pb-btn pb-btn--secondary" href="#ingresar">

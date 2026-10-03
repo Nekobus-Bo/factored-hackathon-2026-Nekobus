@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_LANG, detectLang, dictionaries, format, formatWait, LANGS } from "../src/i18n";
+import {
+  DEFAULT_LANG,
+  detectLang,
+  detectLocale,
+  dictionaries,
+  format,
+  formatWait,
+  LANGS,
+  langOf,
+  LOCALES,
+  localesOf,
+} from "../src/i18n";
 
 /** `a.b[0].c` for every string in the dictionary. */
 function flatten(value: unknown, prefix = ""): Map<string, string> {
@@ -57,11 +68,17 @@ describe("dictionaries", () => {
       "footer.legalGroup",
       "chat.handoff.priorities.NORMAL",
       "chat.inbox.demoTag",
+      "nav.markets.es-AR",
     ];
+    const sameInEn = [...sameInBoth, "nav.markets.es-CO"];
     const sameInPt = [
       ...sameInBoth,
       "nav.linksLabel",
       "nav.languageLabel",
+      "nav.marketLabel",
+      "nav.markets.es-MX",
+      "nav.markets.pt-BR",
+      "nav.markets.en-US",
       "nav.themeLabel",
       "nav.themeLight",
       "card.holder",
@@ -93,7 +110,7 @@ describe("dictionaries", () => {
     ];
     for (const [lang, allowed] of [
       ["pt", sameInPt],
-      ["en", sameInBoth],
+      ["en", sameInEn],
     ] as const) {
       const copied = [...flat.es].filter(([key, text]) => flat[lang].get(key) === text).map(([key]) => key);
       expect(copied.sort(), lang).toEqual([...allowed].filter((key) => copied.includes(key)).sort());
@@ -165,6 +182,24 @@ describe("helpers", () => {
     expect(detectLang("")).toBe("es");
     expect(detectLang(undefined)).toBe("es");
     expect(detectLang(null)).toBe("es");
+  });
+
+  test("detectLocale names a market only on an exact match", () => {
+    expect(detectLocale("es-CO")).toBe("es-CO");
+    expect(detectLocale("ES-mx")).toBe("es-MX");
+    expect(detectLocale(" es_AR ")).toBe("es-AR");
+    expect(detectLocale("pt-BR")).toBe("pt-BR");
+    expect(detectLocale("en-US")).toBe("en-US");
+    for (const none of ["es", "es-ES", "es-CL", "pt", "pt-PT", "en-GB", "fr-FR", "", undefined, null]) {
+      expect(detectLocale(none), String(none)).toBeNull();
+    }
+  });
+
+  test("every market belongs to a supported language, and Spanish has three", () => {
+    for (const locale of LOCALES) expect(LANGS).toContain(langOf(locale));
+    expect(localesOf("es")).toEqual(["es-MX", "es-AR", "es-CO"]);
+    expect(localesOf("pt")).toEqual(["pt-BR"]);
+    expect(localesOf("en")).toEqual(["en-US"]);
   });
 
   test("format fills placeholders and leaves an unknown one visible", () => {
