@@ -93,7 +93,7 @@ run "the_first_apply_creates_no_service_or_job" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret.secret) == 11 && length(google_redis_instance.zone) == 2
+    condition     = length(google_secret_manager_secret.secret) == 12 && length(google_redis_instance.zone) == 2
     error_message = "Everything else is created by the first apply."
   }
 }

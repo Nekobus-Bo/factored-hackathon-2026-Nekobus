@@ -74,7 +74,7 @@ gcp_job = $(GCLOUD) run jobs execute $(GCP_PREFIX)-$(1) --region $(GCP_REGION) -
 	data-quality verify-audit warmup warmup-encoder warmup-retrieval encoder-bench llm-bench-serve llm-bench llm-bench-compare llm-bench-check clean-models deploy calibrate calibration-verify synth-data stage-data-co synth-data-regional synth-retrieval-regional build-test-regional check-data-regional pool-data-regional train-encoder encoder-weights-image generate-labels migrate \
 	profile-factored lab ingest design-tokens design-tokens-check web-check web-client web-backoffice \
 	gcp-state gcp-init gcp-check gcp-plan gcp-apply gcp-destroy gcp-llm-key gcp-iap-oauth gcp-gh-vars gcp-migrate gcp-seed \
-	gcp-netcheck gcp-smoke
+	gcp-netcheck gcp-smoke gcp-backoffice-open gcp-backoffice-close gcp-judges
 
 generate-labels: ## Generate packages/contracts/src/contracts/labels.py from schema.yaml
 	uv run generate-contracts-labels
@@ -330,6 +330,30 @@ gcp-iap-oauth: ## GCP, project with no organization only: give IAP the OAuth cli
 		f="$$(mktemp)"; trap 'rm -f "$$f"' EXIT; chmod 600 "$$f"; \
 		printf 'access_settings:\n  oauth_settings:\n    client_id: %s\n    client_secret: %s\n' "$$id" "$$secret" > "$$f"; \
 		$(GCLOUD) iap settings set "$$f" --project=$(GCP_PROJECT) | grep -v -i secret
+
+# The judging window (ADR-0015, amendment of 2026-10-03). Both are a full apply that asks before
+# it changes anything: read the plan, it should touch only the back office, its IAP bindings and
+# the judge logins. A plain `make gcp-apply` also closes, unless local.tfvars sets the variables.
+gcp-backoffice-open: ## GCP: open the back office to judges for an evaluation window: no IAP, its own login only, JUDGES=N logins (default 5); needs terraform
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-backoffice-open: ' >&2; $(NO_TF); }
+	@echo "gcp-backoffice-open: the back office will answer anyone on the internet, behind its own login only. Close it with make gcp-backoffice-close." >&2
+	$(TF) -chdir=$(TF_DIR) apply $(TF_VARS) -var backoffice_public=true -var judge_accounts=$(or $(JUDGES),5)
+	@echo "gcp-backoffice-open: done. make gcp-judges prints the URL and the logins." >&2
+
+gcp-backoffice-close: ## GCP: put the back office behind IAP again and drop the judge logins; needs terraform
+	@command -v $(TF) >/dev/null 2>&1 || { printf 'gcp-backoffice-close: ' >&2; $(NO_TF); }
+	$(TF) -chdir=$(TF_DIR) apply $(TF_VARS) -var backoffice_public=false -var judge_accounts=0
+
+gcp-judges: ## GCP: print the back office URL and the judge logins to hand out, and whether it is open; needs gcloud and curl
+	@command -v $(GCLOUD) >/dev/null 2>&1 || { printf 'gcp-judges: ' >&2; $(NO_GCLOUD); }
+	@test -n "$(GCP_PROJECT)" || { printf 'gcp-judges: ' >&2; $(NO_PROJECT); }
+	@url="$$($(GCLOUD) run services describe $(GCP_PREFIX)-web-backoffice --region $(GCP_REGION) --project $(GCP_PROJECT) --format 'value(status.url)')" && \
+		test -n "$$url" || { echo "gcp-judges: no $(GCP_PREFIX)-web-backoffice service in $(GCP_PROJECT)" >&2; exit 1; }; \
+		accounts="$$($(GCLOUD) secrets versions access latest --secret $(GCP_PREFIX)-demo-judge-accounts --project $(GCP_PROJECT))" || exit 1; \
+		code="$$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$$url/")"; \
+		case "$$code" in 2??) ;; *) echo "gcp-judges: WARNING the back office does not answer an anonymous visitor (HTTP $$code): still behind IAP? make gcp-backoffice-open" >&2 ;; esac; \
+		echo "Back office: $$url"; \
+		printf '%s' "$$accounts" | python3 -c 'import json, sys; accounts = json.load(sys.stdin); [print(f"  {email}  {password}") for email, password in accounts.items()]; accounts or print("  no judge logins: make gcp-backoffice-open JUDGES=N")'
 
 gcp-gh-vars: ## GCP: set deploy.yml's repository variables from the Terraform outputs (GH_REPO=owner/name, DEMO_SEED=true|false); needs gh
 	@command -v $(GH) >/dev/null 2>&1 || { echo "gcp-gh-vars: gh is not installed (GH=$(GH)): https://cli.github.com" >&2; exit 1; }

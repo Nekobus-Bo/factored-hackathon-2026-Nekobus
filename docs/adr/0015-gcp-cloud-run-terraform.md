@@ -1,6 +1,6 @@
 # ADR-0015: The presentation environment runs on Google Cloud Run, defined in Terraform
 
-**Status:** Accepted · **Date:** 2026-09-29 · **Deciders:** TODO (team)
+**Status:** Accepted · amended 2026-10-03 (the back office can be opened to judges for an evaluation window) · **Date:** 2026-09-29 · **Deciders:** TODO (team)
 
 ## Context
 
@@ -80,3 +80,19 @@ Option A is cheaper to write and B is cheaper to run well. The deciding factor i
 3. [ ] Encoder image with the pinned embedding weights baked in
 4. [ ] First real deploy, logged in [deployment.md](../deployment.md); until then, section 6 stays marked as not yet exercised
 5. [ ] The web-client BFF forwards the client address, the hop count measured on Cloud Run, and the stopgap removed
+6. [ ] The back office opened and closed once on a real project, with `make gcp-smoke` passing in both states (amendment of 2026-10-03). The IAP switch alone has been tried in place on a throwaway service ([deployment.md](../deployment.md), section 7)
+
+## Amendment 2026-10-03: the back office can be opened to judges for an evaluation window
+
+**Context.** Identity-Aware Proxy lets in only the Google accounts listed in `iap_members`. Judges evaluating a hosted environment cannot be listed: their accounts are not known in advance and cannot be asked for. Locally the back office has no proxy, only its own login, and that is what a judge would need.
+
+**Options.** (a) Keep IAP and ask judges for Google accounts: not possible. (b) Remove IAP for good: the back office would face the internet whenever the environment is up. (c) A switch, off by default, that removes IAP for a window and closes it again, with a login per judge.
+
+**Decision.** (c). Two Terraform variables, both off by default, so an apply that does not set them leaves the environment as this ADR describes it:
+
+- `backoffice_public = true` turns IAP off on the back office and lets anyone invoke it (`invoker_iam_disabled`), like the customer app. Its own login stays, and becomes its only lock.
+- `judge_accounts = N` generates `judge1` to `judgeN` logins at the demo agent's domain, each with a random 24-character password, into one Secret Manager secret the back office reads as `DEMO_EXTRA_AGENTS`. Each judge's actions are recorded under their own e-mail.
+
+`make gcp-backoffice-open JUDGES=N` applies both, `make gcp-judges` prints the URL and the logins to hand out, and `make gcp-backoffice-close` (or any plain `make gcp-apply`) puts IAP back and drops the judge logins. The smoke test reads which state the service is in: behind IAP the page must refuse an anonymous visitor; open, the page must answer and its API must still refuse a request with no session.
+
+**Consequences.** While open, the login page is on the internet, and the back office has no login rate limit and no roles ([limitations](../limitations.md)): every login can change the guardrails that apply to every live conversation. The passwords make guessing impractical, but the window should stay short. Which state an environment is in lives in the Terraform state and on the service, not in the repository. Nothing here promises judges a hosted instance: the local stack is still how judges run the system.

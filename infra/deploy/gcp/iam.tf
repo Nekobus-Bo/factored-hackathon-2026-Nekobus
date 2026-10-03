@@ -25,6 +25,7 @@ locals {
       AGENT_API_TOKEN           = "agent-api-token"
       BACKOFFICE_SESSION_SECRET = "backoffice-session-secret"
       DEMO_AGENT_PASSWORD       = "demo-agent-password"
+      DEMO_EXTRA_AGENTS         = "demo-judge-accounts"
     }
     "migrate" = {
       DATABASE_URL = "database-url"

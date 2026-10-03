@@ -81,6 +81,25 @@ variable "demo_agent_email" {
   }
 }
 
+# The judging window (ADR-0015, amendment of 2026-10-03). Both off by default: an apply that
+# does not set them puts IAP back and drops the judge logins. `make gcp-backoffice-open` sets them.
+variable "backoffice_public" {
+  description = "Open the back office to anyone for an evaluation window: no Identity-Aware Proxy, so its own login is its only lock."
+  type        = bool
+  default     = false
+}
+
+variable "judge_accounts" {
+  description = "How many judge logins to generate (judge1 to judgeN at the demo agent's domain, random passwords in Secret Manager). 0 is none."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.judge_accounts >= 0 && var.judge_accounts <= 20 && floor(var.judge_accounts) == var.judge_accounts
+    error_message = "judge_accounts must be a whole number from 0 to 20."
+  }
+}
+
 variable "llm_model" {
   description = "LiteLLM model id of the conversational model (ADR-0001). The openai/ prefix pins the provider."
   type        = string

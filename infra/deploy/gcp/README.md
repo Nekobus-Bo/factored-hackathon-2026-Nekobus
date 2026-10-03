@@ -58,6 +58,7 @@ Step 5 exists because a project with no organization cannot create IAP's OAuth c
 | `make gcp-seed` | Reload the synthetic demo customers (truncates the banking tables) |
 | `make gcp-migrate`, `make gcp-netcheck` | Run those jobs by hand |
 | `make gcp-smoke` | Check the environment from outside |
+| `make gcp-backoffice-open JUDGES=N`, `make gcp-judges`, `make gcp-backoffice-close` | Open the back office to judges for a window (no IAP, one login each), print their logins, close it again ([deployment.md](../../../docs/deployment.md), section 7) |
 | `make gcp-check` | The offline gate CI runs |
 
 Set `warm = false` in `local.tfvars` and `make gcp-apply` between presentations: every service scales to zero, and Cloud SQL and the two Redis instances are what remains billed.

@@ -423,6 +423,7 @@ services:
       AGENT_API_TOKEN: ${AGENT_API_TOKEN:-dev-only-agent-token}
       DEMO_AGENT_EMAIL: ${DEMO_AGENT_EMAIL:-agent@demo.local}
       DEMO_AGENT_PASSWORD: ${DEMO_AGENT_PASSWORD:-demo-only-change-me}
+      DEMO_EXTRA_AGENTS: ${DEMO_EXTRA_AGENTS:-}
       BACKOFFICE_SESSION_SECRET: ${BACKOFFICE_SESSION_SECRET:-dev-only-backoffice-session-secret}
     ports:
       - "127.0.0.1:${PORT_WEB_BACKOFFICE:-5174}:5174"
