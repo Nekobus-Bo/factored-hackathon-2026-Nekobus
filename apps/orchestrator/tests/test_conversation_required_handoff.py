@@ -510,7 +510,8 @@ def test_engine_handoff_context_is_a_plain_conversation_context() -> None:
     """The retry lives in the history: no field is needed for it.
 
     The other persisted fields are the decision-point state (ADR-0012), the
-    market (ADR-0014) and the tools banking-core enables (ADR-0016). The
+    market (ADR-0014), the tools banking-core enables and the flow hint the
+    session opened with (ADR-0016). The
     takeover flag is not persisted from here: it is a view of the conversation's
     takeover, so the engine can refuse a turn on a conversation an agent holds.
     """
@@ -522,5 +523,6 @@ def test_engine_handoff_context_is_a_plain_conversation_context() -> None:
         "placeholder_map",
         "decisions",
         "enabled_tools",
+        "opening_flow",
         "human_takeover",
     }

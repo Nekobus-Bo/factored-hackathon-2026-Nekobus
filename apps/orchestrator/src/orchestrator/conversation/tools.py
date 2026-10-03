@@ -20,11 +20,16 @@ FOLLOW_UP: dict[str, str] = {
         "one card and has not said which, ask before blocking."
     ),
     "transaction.list_recent": (
-        "Pass the transaction_id of the charge the customer disputes to card_block."
+        "Use it to show the customer their recent charges and identify together "
+        "the one they do not recognize; pass its transaction_id to card_block and "
+        "to handoff_create."
     ),
     "handoff.create": (
         "For a person: when the customer asks, when a result requires it, or when "
-        "the flow cannot go on (a refused code, a locked session)."
+        "the flow cannot go on (a refused code, a locked session). For a dispute or "
+        "a charge the customer does not recognize, identify the customer first "
+        "(customer_match). If the person writing is not the cardholder, or asks "
+        "for a person, use CUSTOMER_REQUEST without identifying them."
     ),
 }
 

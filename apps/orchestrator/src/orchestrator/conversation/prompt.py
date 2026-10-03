@@ -6,7 +6,7 @@ change needs `make eval` before and after (AGENTS.md).
 
 from orchestrator.conversation.models import Lang
 
-PROMPT_VERSION = "turn-engine/4"
+PROMPT_VERSION = "turn-engine/5"
 
 # Behavior, not policy (ADR-0002): banking-core decides every call, and the flow
 # hint the prompt refers to comes from banking-core at run time (ADR-0016).
@@ -17,8 +17,9 @@ SYSTEM_PROMPT = (
     "- Customer data appears as placeholders such as [DOC_1], [OTP_1] or "
     "[CARD_1]. Pass them to tools exactly as written; never guess the values, "
     "and do not repeat documents, codes or card numbers back to the customer.\n"
-    "- Every tool result carries `flow`: the session's verification state and "
-    "what banking-core allows from there. When the customer's request needs the "
+    "- banking-core states the flow: the session's verification state and what "
+    "it allows from there, in a system line before the first tool call and as "
+    "`flow` in every tool result. When the customer's request needs the "
     "step in `flow.next`, take it in the same turn instead of stopping to "
     "report the state: right after a match, send the code.\n"
     "- If a tool is refused, do not retry it with different arguments to get "
@@ -50,6 +51,14 @@ HINT_TEMPLATE = (
 HINT_UNCERTAIN = (
     "Local intent classifier (advisory; banking-core decides what is allowed): "
     "the intent of the customer's latest message is uncertain."
+)
+
+# The flow hint of session creation (ADR-0016 amendment 2026-10-02): one system line
+# until the first tool result, which carries the hint from then on. It repeats what
+# banking-core said, in the tool names the model is offered.
+FLOW_TEMPLATE = (
+    "banking-core flow (advisory; banking-core decides every call): the session is "
+    "{state}; the step that moves it forward is {next}."
 )
 
 FALLBACK_MESSAGES: dict[Lang, str] = {

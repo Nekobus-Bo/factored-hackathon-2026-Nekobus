@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
+from contracts.envelope import FlowHint
 from contracts.locale import Locale
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -188,7 +189,16 @@ class ConversationState(BaseModel):
         default=None,
         description=(
             "Catalog tools banking-core's latest flow hint says the configuration "
-            "enables (ADR-0016); None until the first tool result. Tool names only"
+            "enables (ADR-0016); from session creation on, None if banking-core "
+            "gave no hint then. Tool names only"
+        ),
+    )
+    opening_flow: FlowHint | None = Field(
+        default=None,
+        description=(
+            "The flow hint banking-core returned when the session was created "
+            "(ADR-0016 amendment 2026-10-02): the model reads it until the first "
+            "tool result. Tool names and states only"
         ),
     )
     takeover: Takeover = Field(

@@ -245,7 +245,7 @@ async def create_conversation(
 ) -> CreateConversationResponse:
     await _enforce_conversation_limit(request)
     try:
-        banking_session_id = await _banking(request).create_session()
+        opened = await _banking(request).open_session()
     except SessionCreationError as exc:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY, detail="Could not open a banking session"
@@ -257,8 +257,16 @@ async def create_conversation(
         or (lang_of(locale) if locale else None)
         or request.app.state.default_lang
     )
+    # The first completion reads where the session starts and is offered only
+    # the tools the configuration enables (ADR-0016 amendment 2026-10-02).
     state = ConversationState(
-        banking_session_id=banking_session_id, language=lang, locale=locale
+        banking_session_id=opened.session_id,
+        language=lang,
+        locale=locale,
+        enabled_tools=(
+            list(opened.flow.enabled) if opened.flow and opened.flow.enabled else None
+        ),
+        opening_flow=opened.flow,
     )
     await _store(request).save(state)
     return CreateConversationResponse(

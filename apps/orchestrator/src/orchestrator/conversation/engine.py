@@ -41,6 +41,7 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
+from contracts.envelope import FlowHint
 from contracts.locale import Locale, lang_of
 from contracts.tools.handoff_create import (
     HandoffCreateOutput,
@@ -67,6 +68,7 @@ from orchestrator.conversation.models import (
 )
 from orchestrator.conversation.prompt import (
     FALLBACK_MESSAGES,
+    FLOW_TEMPLATE,
     PROMPT_VERSION,
     REPHRASE_MESSAGES,
     SYSTEM_PROMPT,
@@ -359,6 +361,7 @@ class TurnEngine:
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 *hint_messages,
+                *_opening_flow_messages(context.opening_flow, history),
                 *history,
             ]
             context.enabled_tools = guard.enabled
@@ -1159,6 +1162,22 @@ def _tool_results(
             continue
         if isinstance(result, dict):
             yield index, result
+
+
+def _opening_flow_messages(
+    flow: FlowHint | None, history: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """The session-creation flow hint as one system line, until a tool result is in
+    the history and carries the hint itself (ADR-0016 amendment 2026-10-02)."""
+    if flow is None or not flow.next:
+        return []
+    if any(message.get("role") == "tool" for message in history):
+        return []
+    line = FLOW_TEMPLATE.format(
+        state=flow.state.value,
+        next=" or ".join(f"`{llm_tool_name(tool)}`" for tool in flow.next),
+    )
+    return [{"role": "system", "content": line}]
 
 
 def _name_flow_tools(payload: dict[str, Any]) -> None:
