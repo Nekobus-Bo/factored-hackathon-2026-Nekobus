@@ -113,7 +113,7 @@ Every style in `tokens.json` (`title-card`, `h1`, `h2`, `h3`, `body`, `body-stro
 
 ## Local changes not yet in the artifact
 
-`local.css` holds styles written in this repository that the artifact does not have yet. It loads after `src/components.css`, uses only tokens and `pb-` classes (a test checks both), and scopes every chat rule to `.pb-dock`, so the back office keeps the artifact's look. They come from the declutter review of the customer chat and the landing of 2026-10-02. The artifact belongs to another claude.ai account, so they could not be published there.
+`local.css` holds styles written in this repository that the artifact does not have yet. It loads after `src/components.css` and uses only tokens and `pb-` classes (a test checks both). The customer chat's rules are scoped to `.pb-dock`; the back office's conversation rules to `.pb-convo`. They come from the two declutter reviews of 2026-10-02: the customer chat and the landing, then the back office (ADR-0018 for the decisions). The artifact belongs to another claude.ai account, so they could not be published there.
 
 They change these design-system rules. Whoever updates the artifact should change the rule, move the CSS into `components/bundle.css`, sync, and delete it from `local.css`.
 
@@ -135,6 +135,23 @@ They change these design-system rules. Whoever updates the artifact should chang
 | FeatureGrid: the assistant's features, a fact line on each card | The bank's products, no fact line |
 | Navbar: a login button and a two-button theme radio group | "Abrir chat" and a one-button theme toggle (`pb-theme--single`) |
 | Footer: link columns and its own language and theme controls | The wordmark, the demo note and the small print (`pb-footer__inner--compact`) |
+
+And in the back office:
+
+| Rule in the artifact | What the back office does now |
+|---|---|
+| StatusChip: the back office shows the raw enum (`OTP_PENDING`) | Chips speak the agent's language; the raw enum is the chip's `title` |
+| README: case ids are `case-id` (stencil) | Lowercase mono in groups of four (`pb-caseref`); copying gives the plain id |
+| QueueRow: id, priority, department, language, wait, customer; the id is the anchor; the row is not focusable | Priority, the case in words (reason, department, amount, id), who holds it, the wait, and a chevron (`pb-cases`, `pb-crow`). The title is the link, so the whole row opens the case |
+| QueueRow: nothing opens over the queue | A summary card under the row (`pb-peek`) with the case facts and the decisions |
+| HandoffCard: `pb-caseid`, priority and HANDED_OFF chips in the header; facts as `pb-kv`; actions as `pb-steps`; open questions numbered in stencil | The page header holds the case (`pb-casehead`). The card is a summary in sentence-case sections (`pb-sum`): the customer's ask as an unverified quote (`pb-said`), the charge (`pb-txn`), facts as sentences (`pb-facts`), the writes, the customer's feedback, and the full log on demand (`pb-more`, `pb-audit`) |
+| HandoffCard: `pb-handoff__actions` holds Tomar caso and Reasignar | Tomar caso, Aprobar, Rechazar and Escalar in the header, with one confirmation (`pb-decide`, `pb-confirm`, `pb-choices`, `pb-done`) |
+| ChatBubble and ChatMessage: the customer is right-aligned in violet; `pb-msg__meta` on every message; receipts as `pb-cmsg` | Inside `.pb-convo` the customer is on the left and the bank on the right, names once per run (`pb-convo__who`), the time in the bubble, receipts and the handoff as `pb-sys` lines |
+| PolicyControl: one `pb-tool` block per tool with its `pb-cells` row | One table, the states named once in the header (`pb-mx`) |
+| Navbar: the language radio group and the theme in the bar | One theme button and the agent's menu (`pb-menu`) with the language and Salir; a count on Cola (`pb-nav__count`) |
+| No metrics components | Four numbers with their change (`pb-kpis`, `pb-kpi`, `pb-delta`), two short lists (`pb-list`), the tables on demand (`pb-details`, `pb-mtable`) |
+
+`pb-live`, `pb-tabs`, `pb-linkbtn` and `pb-empty` are new parts that change no rule.
 
 `pb-s2--band` (S² as a band from 720px) and `pb-hero__fact` are new layouts that change no rule.
 
