@@ -14,6 +14,7 @@
 !packages/contracts/ts
 packages/contracts/ts/tests
 !packages/design-tokens/index.css
+!packages/design-tokens/local.css
 !packages/design-tokens/dist
 !packages/design-tokens/src
 
