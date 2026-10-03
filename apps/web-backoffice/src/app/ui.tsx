@@ -1,9 +1,13 @@
-// Small pieces of the design system as React: StatusChip, AlertBanner and the icon. The markup is the
-// one of the component previews (packages/design-tokens/reference/components/*/preview.html), so the
-// classes and attributes are the design system's, not ours.
+// Small pieces of the design system as React: StatusChip, AlertBanner, the icon and the case id. The
+// markup is the one of the component previews (packages/design-tokens/reference/components/*/preview.html)
+// and of local.css, so the classes and attributes are the design system's, not ours.
+//
+// Chips speak the agent's language (the declutter review of 2026-10-02): the word is the chip's text and
+// the raw enum is its tooltip, instead of both side by side.
 
 import type { HandoffPriority, HandoffStatus } from "@pattern-blue/contracts";
 import type { ReactNode } from "react";
+import { useI18n } from "./context";
 
 export function Icon({ name, large = false }: { name: string; large?: boolean }) {
   return <i className={`pb-ico pb-ico--${name}${large ? " pb-ico--lg" : ""}`} aria-hidden="true" />;
@@ -16,12 +20,28 @@ export const chipState = (value: string): string => value.toLowerCase().replace(
 
 type Tone = "danger" | "warning" | "neutral" | "info" | "success";
 
-/** A chip: a glyph and the raw enum. The back office shows the enum itself (StatusChip README). */
-export function Chip({ tone, icon, children }: { tone: Tone; icon: string; children: ReactNode }) {
+/** A chip: a glyph and a word, with the raw enum as its tooltip when there is one. */
+export function Chip({ tone, icon, title, children }: { tone: Tone; icon: string; title?: string; children: ReactNode }) {
   return (
-    <span className="pb-chip" data-tone={tone}>
+    <span className="pb-chip" data-tone={tone} title={title}>
       <Icon name={icon} />
       {children}
+    </span>
+  );
+}
+
+/** A case id in mono, lowercase, in groups of four. The groups are spans, so a copy gives the plain id. */
+export function CaseRef({ value, large = false }: { value: string; large?: boolean }) {
+  const cut = value.indexOf("_") + 1;
+  const head = value.slice(0, cut);
+  const rest = value.slice(cut);
+  const groups = rest.match(/.{1,4}/g) ?? [];
+  return (
+    <span className={`pb-caseref${large ? " pb-caseref--lg" : ""}`}>
+      {head && <span>{head}</span>}
+      {groups.map((group, index) => (
+        <span key={index}>{group}</span>
+      ))}
     </span>
   );
 }
@@ -34,10 +54,11 @@ const PRIORITY_CHIP: Record<HandoffPriority, { tone: Tone; icon: string }> = {
 };
 
 export function PriorityChip({ priority }: { priority: HandoffPriority }) {
+  const { t } = useI18n();
   const { tone, icon } = PRIORITY_CHIP[priority];
   return (
-    <Chip tone={tone} icon={icon}>
-      {priority}
+    <Chip tone={tone} icon={icon} title={priority}>
+      {t(`enums.priority.${priority}`)}
     </Chip>
   );
 }
@@ -46,24 +67,27 @@ const STATUS_CHIP: Record<HandoffStatus, { tone: Tone; icon: string }> = {
   QUEUED: { tone: "info", icon: "clock" },
   ASSIGNED: { tone: "success", icon: "user" },
   PENDING: { tone: "neutral", icon: "clock" },
+  CLOSED: { tone: "neutral", icon: "check" },
 };
 
 export function HandoffStatusChip({ status }: { status: HandoffStatus }) {
+  const { t } = useI18n();
   const { tone, icon } = STATUS_CHIP[status];
   return (
-    <Chip tone={tone} icon={icon}>
-      {status}
+    <Chip tone={tone} icon={icon} title={status}>
+      {t(`enums.status.${status}`)}
     </Chip>
   );
 }
 
-/** The audit decision of a tool call, as a chip. */
-export function DecisionChip({ decision }: { decision: "allowed" | "refused" | "error" }) {
+/** The audit decision of a tool call, as a chip in words; `title` carries the raw codes. */
+export function DecisionChip({ decision, title }: { decision: "allowed" | "refused" | "error"; title?: string }) {
+  const { t } = useI18n();
   const tone: Tone = decision === "allowed" ? "success" : decision === "refused" ? "warning" : "danger";
   const icon = decision === "allowed" ? "check" : decision === "refused" ? "warning" : "critical";
   return (
-    <Chip tone={tone} icon={icon}>
-      {decision}
+    <Chip tone={tone} icon={icon} title={title ?? decision}>
+      {t(`enums.decision.${decision}`)}
     </Chip>
   );
 }
@@ -129,20 +153,32 @@ export const STATE_GLYPH: Record<string, string> = {
  * A StatusChip for a verification state or a card status, with the raw enum as its word. A state the
  * design system has no color for (NONE, QUEUED, ...) is a neutral chip: the word still says what it is.
  */
-export function StateChip({ state }: { state: string }) {
+export function StateChip({ state, words = false }: { state: string; words?: boolean }) {
+  const { t } = useI18n();
   const glyph = STATE_GLYPH[state];
+  const known = state in STATE_WORD_KEYS;
+  const word = words && known ? t(STATE_WORD_KEYS[state as keyof typeof STATE_WORD_KEYS]) : state;
   if (!glyph) {
     return (
-      <span className="pb-chip" data-tone="neutral">
+      <span className="pb-chip" data-tone="neutral" title={words ? state : undefined}>
         <Icon name="minus" />
-        {state}
+        {word}
       </span>
     );
   }
   return (
-    <span className="pb-chip" data-state={chipState(state)}>
+    <span className="pb-chip" data-state={chipState(state)} title={words ? state : undefined}>
       <Icon name={glyph} />
-      {state}
+      {word}
     </span>
   );
 }
+
+const STATE_WORD_KEYS = {
+  ANONYMOUS: "enums.state.ANONYMOUS",
+  IDENTIFIED: "enums.state.IDENTIFIED",
+  OTP_PENDING: "enums.state.OTP_PENDING",
+  VERIFIED: "enums.state.VERIFIED",
+  LOCKED: "enums.state.LOCKED",
+  HANDED_OFF: "enums.state.HANDED_OFF",
+} as const;

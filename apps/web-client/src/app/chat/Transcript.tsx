@@ -2,26 +2,50 @@
 // in the tests exactly as it does in the page.
 
 import type { Lang } from "@pattern-blue/contracts";
+import type { ReactNode } from "react";
 import { dictionaries, type Dictionary } from "../../i18n";
-import { formatClock, type Entry } from "../../machines/chat-model";
+import { formatClock, isHandoff, isOtpSendReceipt, lastEntryWith, type Entry } from "../../machines/chat-model";
 import { Icon } from "../ui/Icon";
-import { Blocks, MessageText } from "./Blocks";
+import { Blocks, MessageText, Sender } from "./Blocks";
+
+/** The message the API did not accept just now, and what the line under it says and offers. */
+export interface PendingFailure {
+  entryId: string;
+  /** "Reintentar" resends it (503, or a rate limit that has run its course). */
+  retry: boolean;
+  /** Why, when it is worth saying: the assistant is not available. A rate limit has its own strip. */
+  reason: string | null;
+}
 
 export interface TranscriptProps {
   entries: readonly Entry[];
   /** The language of the page. */
   lang: Lang;
-  /** A failed message that can be retried from the log itself (after a rate limit). */
-  retryEntryId?: string | null;
+  failure?: PendingFailure | null;
   onRetry?: () => void;
+  /** Goes inside the newest `otp.send` receipt while its code is live: the countdown and the inbox action. */
+  otpFoot?: ReactNode;
+  /** Goes right after the newest handoff block: the feedback line. */
+  afterHandoff?: ReactNode;
 }
 
-export function Transcript({ entries, lang, retryEntryId = null, onRetry }: TranscriptProps) {
+export function Transcript({ entries, lang, failure = null, onRetry, otpFoot, afterHandoff }: TranscriptProps) {
   const dict = dictionaries[lang];
+  const otpEntryId = otpFoot ? lastEntryWith(entries, isOtpSendReceipt) : null;
+  const handoffEntryId = afterHandoff ? lastEntryWith(entries, isHandoff) : null;
   return (
     <>
       {entries.map((entry) => (
-        <EntryView key={entry.id} entry={entry} lang={lang} dict={dict} canRetry={entry.id === retryEntryId} onRetry={onRetry} />
+        <EntryView
+          key={entry.id}
+          entry={entry}
+          lang={lang}
+          dict={dict}
+          failure={failure?.entryId === entry.id ? failure : null}
+          onRetry={onRetry}
+          otpFoot={entry.id === otpEntryId ? otpFoot : undefined}
+          afterHandoff={entry.id === handoffEntryId ? afterHandoff : undefined}
+        />
       ))}
     </>
   );
@@ -31,54 +55,48 @@ function EntryView({
   entry,
   lang,
   dict,
-  canRetry,
+  failure,
   onRetry,
+  otpFoot,
+  afterHandoff,
 }: {
   entry: Entry;
   lang: Lang;
   dict: Dictionary;
-  canRetry: boolean;
+  failure: PendingFailure | null;
   onRetry?: () => void;
+  otpFoot?: ReactNode;
+  afterHandoff?: ReactNode;
 }) {
   switch (entry.kind) {
     case "customer": {
       const failed = entry.status === "failed";
       return (
-        <div
-          className="pb-msg pb-msg--customer"
-          data-status={failed ? "failed" : undefined}
-          lang={entry.lang === lang ? undefined : entry.lang}
-        >
-          <span className="pb-msg__meta">
-            {dict.chat.roles.customer} · {formatClock(entry.at, entry.lang)}
-            {failed && (
-              <>
-                {" · "}
-                <Icon name="warning" />
-                {dict.chat.notSent}
-              </>
-            )}
-          </span>
-          <MessageText text={entry.text} />
-          {failed && canRetry && onRetry && (
-            <button className="pb-action chat-inline-action" type="button" onClick={onRetry}>
-              {dict.chat.retry}
-              <Icon name="retry" />
-            </button>
-          )}
-        </div>
+        <>
+          <div
+            className="pb-msg pb-msg--customer"
+            data-status={failed ? "failed" : undefined}
+            lang={entry.lang === lang ? undefined : entry.lang}
+          >
+            <Sender name={dict.chat.roles.customer} />
+            <MessageText text={entry.text} />
+            <span className="pb-msg__time">{formatClock(entry.at, entry.lang)}</span>
+          </div>
+          {failed && <UnsentLine dict={dict} failure={failure} onRetry={onRetry} />}
+        </>
       );
     }
     case "assistant":
-      return <Blocks blocks={entry.blocks} turnLang={entry.lang} lang={lang} at={entry.at} />;
+      return <Blocks blocks={entry.blocks} turnLang={entry.lang} lang={lang} at={entry.at} otpFoot={otpFoot} afterHandoff={afterHandoff} />;
     case "agent":
       return (
         <div className="pb-msg pb-msg--agent">
           <span className="pb-msg__meta">
             <Icon name="user" />
-            {dict.chat.roles.agent} · {formatClock(entry.at, lang)}
+            {dict.chat.roles.agent}
           </span>
           <MessageText text={entry.text} />
+          <span className="pb-msg__time">{formatClock(entry.at, lang)}</span>
         </div>
       );
     case "system":
@@ -98,4 +116,23 @@ function EntryView({
         </div>
       );
   }
+}
+
+/** Under a message the API did not accept: what happened and, when it can be resent, "Reintentar". */
+function UnsentLine({ dict, failure, onRetry }: { dict: Dictionary; failure: PendingFailure | null; onRetry?: () => void }) {
+  const reason = failure?.reason ?? null;
+  return (
+    <p className="pb-unsent" role={reason ? "alert" : undefined}>
+      <span>
+        <Icon name="warning" />
+        {reason ? `${dict.chat.notSent} ${reason}` : dict.chat.notSent}
+      </span>
+      {failure?.retry && onRetry && (
+        <button className="pb-action" type="button" onClick={onRetry}>
+          {dict.chat.retry}
+          <Icon name="retry" />
+        </button>
+      )}
+    </p>
+  );
 }

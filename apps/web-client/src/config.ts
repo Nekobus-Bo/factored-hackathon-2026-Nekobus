@@ -1,7 +1,7 @@
 // Runtime configuration of the server. Two settings, both from the environment.
 //
 //   PORT              port to listen on (default 5173)
-//   ORCHESTRATOR_URL  where the four chat routes are forwarded (default http://localhost:8080)
+//   ORCHESTRATOR_URL  where the five chat routes are forwarded (default http://localhost:8080)
 
 export const DEFAULT_PORT = 5173;
 export const DEFAULT_ORCHESTRATOR_URL = "http://localhost:8080";

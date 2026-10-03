@@ -9,8 +9,8 @@
 //                   rateLimited   429: the composer is disabled until Retry-After, then the message can be retried
 //                   gone          404: the conversation expired; "Empezar de nuevo" opens a new one
 //   followup      after every completed turn, once: the transcript (to detect a takeover) and the inbox
-//   takeover      once the transcript says an agent holds the conversation: the transcript every 2 s
-//                 while the tab is visible, and the agent's messages join the log
+//   takeover      from the handoff on (while waiting for an agent, and while one holds the conversation):
+//                 the transcript every 2 s while the tab is visible, and the agent's messages join the log
 //   inbox         the OTP notice: shown while the simulated inbox holds a message that has not expired
 //                 and has not been used, hidden at expiry. The code is revealed only by CODE.REVEAL
 //
@@ -33,12 +33,14 @@ import type {
   TranscriptResponse,
 } from "@pattern-blue/contracts";
 import { parseBlocks } from "@pattern-blue/contracts";
-import { assign, enqueueActions, fromPromise, setup, type SnapshotFrom } from "xstate";
+import { assign, enqueueActions, fromPromise, not, setup, type SnapshotFrom } from "xstate";
 import type { ApiClient, ApiResult } from "../api/client";
 import { dictionaries, langOf } from "../i18n";
 import {
   deriveChip,
+  isHandoff,
   isOtpPending,
+  lastEntryWith,
   maskTypedSecrets,
   newAgentMessages,
   pickInboxMessage,
@@ -98,6 +100,8 @@ export type ChatEvent =
   | { type: "CODE.HIDE" }
   | { type: "VISIBLE" }
   | { type: "HIDDEN" }
+  /** The customer's answer to "did the assistant help?", after a handoff (ADR-0017). */
+  | { type: "FEEDBACK.SEND"; helpful: boolean }
   // Internal: raised by the machine itself.
   | { type: "TURN_DONE" }
   | { type: "INBOX.FOUND"; message: InboxMessage }
@@ -141,6 +145,9 @@ export const chatMachine = setup({
     loadInbox: fromPromise(({ input }: { input: { api: ApiClient; conversationId: string } }) =>
       input.api.getInbox(input.conversationId),
     ),
+    sendFeedback: fromPromise(({ input }: { input: { api: ApiClient; conversationId: string; helpful: boolean } }) =>
+      input.api.sendFeedback(input.conversationId, { helpful: input.helpful }),
+    ),
   },
   guards: {
     canSend: ({ event }) =>
@@ -151,7 +158,8 @@ export const chatMachine = setup({
       event.text.trim().length > 0 &&
       event.text.trim().length <= MAX_MESSAGE_LENGTH,
     hasConversation: ({ context }) => context.conversationId !== null,
-    takeoverActive: ({ context }) => context.takeover.active,
+    /** A handoff was shown, or an agent already holds the conversation: the agent's messages may arrive any time. */
+    awaitingAgent: ({ context }) => context.takeover.active || lastEntryWith(context.entries, isHandoff) !== null,
     takeoverInactive: ({ context }) => !context.takeover.active,
     isVisible: ({ context }) => context.visible,
   },
@@ -445,8 +453,10 @@ export const chatMachine = setup({
         HIDDEN: { actions: "setHidden" },
       },
       states: {
-        off: { always: { guard: "takeoverActive", target: "on" } },
+        off: { always: { guard: "awaitingAgent", target: "on" } },
         on: {
+          // Starting over clears the handoff and the takeover: the old conversation is no longer read.
+          always: { guard: not("awaitingAgent"), target: "off" },
           initial: "route",
           states: {
             route: { always: [{ guard: "isVisible", target: "polling" }, { target: "paused" }] },
@@ -489,6 +499,33 @@ export const chatMachine = setup({
         },
       },
     },
+
+    // The answer to "did the assistant help?". The view asks only after a handoff block; banking-core
+    // decides whether there is a handoff to rate. A failed answer can be sent again.
+    feedback: {
+      initial: "asking",
+      states: {
+        asking: {
+          on: { "FEEDBACK.SEND": { guard: "hasConversation", target: "sending" } },
+        },
+        sending: {
+          invoke: {
+            src: "sendFeedback",
+            input: ({ context, event }) => ({
+              api: context.deps.api,
+              conversationId: context.conversationId as string,
+              helpful: event.type === "FEEDBACK.SEND" && event.helpful,
+            }),
+            onDone: [{ guard: ({ event }) => event.output.ok, target: "sent" }, { target: "failed" }],
+            onError: { target: "failed" },
+          },
+        },
+        sent: {},
+        failed: {
+          on: { "FEEDBACK.SEND": { guard: "hasConversation", target: "sending" } },
+        },
+      },
+    },
   },
 });
 
@@ -521,6 +558,15 @@ const CONVERSATION_STATES: readonly ConversationState[] = [
 
 export function conversationState(snapshot: ChatSnapshot): ConversationState {
   return CONVERSATION_STATES.find((state) => snapshot.matches({ conversation: state })) ?? "idle";
+}
+
+export type FeedbackState = "asking" | "sending" | "sent" | "failed";
+
+const FEEDBACK_STATES: readonly FeedbackState[] = ["sending", "sent", "failed", "asking"];
+
+/** Where the answer to "did the assistant help?" stands. */
+export function selectFeedback(snapshot: ChatSnapshot): FeedbackState {
+  return FEEDBACK_STATES.find((state) => snapshot.matches({ feedback: state })) ?? "asking";
 }
 
 /** The header chip: what the blocks prove, or nothing. */

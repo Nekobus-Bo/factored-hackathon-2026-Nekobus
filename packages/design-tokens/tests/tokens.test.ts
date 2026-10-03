@@ -19,6 +19,7 @@ import {
 const tokens = await readTokens();
 const tokensCss = await readText("dist/tokens.css");
 const componentsCss = await readText("src/components.css");
+const localCss = await readText("local.css");
 const blocks = themeBlocks(tokensCss);
 
 const colorNames = tokens.color.tokens.map((token) => token.name);
@@ -51,6 +52,22 @@ describe("components.css only reads variables that exist", () => {
     expect(classes.length).toBeGreaterThan(0);
     for (const name of classes) expect(styleNames).toContain(name);
     for (const name of styleNames) expect(tokensCss).toContain(`.${name} {`);
+  });
+});
+
+describe("local.css", () => {
+  const defined = new Set(variableNames(blocks.light));
+
+  test("reads only tokens and the variables the component stylesheets declare", () => {
+    expect(undefinedVariables(`${componentsCss}\n${localCss}`, defined)).toEqual([]);
+  });
+
+  test("styles only pb- classes", () => {
+    expect(unprefixedClasses(localCss)).toEqual([]);
+  });
+
+  test("says it is not in the design-system artifact yet", () => {
+    expect(localCss).toContain("not in the design-system artifact yet");
   });
 });
 
@@ -273,20 +290,20 @@ const manifest = JSON.parse(await readText("package.json")) as { exports: Record
 describe("package", () => {
   test("every export points at a file that exists", () => {
     expect(Object.keys(manifest.exports).sort()).toEqual(
-      ["./components.css", "./fonts.html", "./index.css", "./tokens", "./tokens.css", "./tokens.json"],
+      ["./components.css", "./fonts.html", "./index.css", "./local.css", "./tokens", "./tokens.css", "./tokens.json"],
     );
     for (const target of Object.values(manifest.exports)) expect(existsSync(join(PACKAGE_ROOT, target)), target).toBe(true);
   });
 
-  test("index.css imports the tokens before the components", async () => {
+  test("index.css imports the tokens, then the components, then the local changes", async () => {
     const index = await readText("index.css");
     const imports = [...index.matchAll(/@import "([^"]+)";/g)].map((match) => match[1]);
-    expect(imports).toEqual(["./dist/tokens.css", "./src/components.css"]);
+    expect(imports).toEqual(["./dist/tokens.css", "./src/components.css", "./local.css"]);
     expect(manifest.exports["./tokens.css"]).toBe("./dist/tokens.css");
     expect(manifest.exports["./components.css"]).toBe("./src/components.css");
   });
 
-  test("bundling index.css puts the tokens before the components", async () => {
+  test("bundling index.css puts the tokens before the components, and the local changes last", async () => {
     const result = await Bun.build({ entrypoints: [join(PACKAGE_ROOT, "index.css")] });
     expect(result.success).toBe(true);
     const css = await result.outputs[0]!.text();
@@ -294,6 +311,7 @@ describe("package", () => {
     const firstComponent = css.indexOf(".pb-btn");
     expect(firstToken).toBeGreaterThan(-1);
     expect(firstComponent).toBeGreaterThan(firstToken);
+    expect(css.indexOf(".pb-proof")).toBeGreaterThan(css.indexOf(".pb-cmsg"));
     expect(css).toContain(':root[data-theme="dark"]');
   });
 

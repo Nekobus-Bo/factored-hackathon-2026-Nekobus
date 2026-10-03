@@ -149,6 +149,8 @@ describe("hash routes", () => {
     ["#/guardrails", { name: "guardrails" }],
     ["#/guardrails/", { name: "guardrails" }],
     ["#/metrics", { name: "metrics" }],
+    ["#/flows", { name: "flows" }],
+    ["#/flows/extra", { name: "queue" }],
     ["#/handoffs/hnd_qwertyuiopasdfgh", { name: "handoff", ref: "hnd_qwertyuiopasdfgh" }],
     ["#/handoffs/hnd_x%2Fy", { name: "queue" }],
     ["#/handoffs/..%2Fadmin", { name: "queue" }],

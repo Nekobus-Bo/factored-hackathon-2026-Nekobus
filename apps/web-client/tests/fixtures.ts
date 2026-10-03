@@ -76,6 +76,8 @@ export const CREATE_RESPONSE = { conversation_id: CONVERSATION_ID, language: "es
 
 export const SEND_RESPONSE = { conversation_id: CONVERSATION_ID, blocks: [TEXT_BLOCK] };
 
+export const FEEDBACK_RESPONSE = { helpful: true, recorded_at: "2026-09-29T15:50:00Z" };
+
 export const TRANSCRIPT = {
   conversation_id: CONVERSATION_ID,
   language: "es",

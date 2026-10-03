@@ -1,18 +1,22 @@
 // The message blocks of one assistant turn, as the customer sees them.
 //
 //   text      a bubble; the only block the model writes
-//   receipt   a structured message built from the receipt the engine re-read from the database
-//   handoff   the customer view: department, priority, status, position and a fixed list. Never `summary`.
+//   receipt   a structured message built from the receipt the engine re-read from the database: the result
+//             and the receipt reference, with the state change and the database check one tap away. A
+//             verified code is a system line with its reference.
+//   handoff   the customer view: the department and the case reference. Never `summary`, and no queue
+//             details (status, position, priority belong to the back office).
 //
 // `blocks` arrive raw and go through `parseBlocks` here: a type this build does not know, or a block that
 // fails its schema, is left out and the rest of the turn is shown. The strings of receipts and handoffs are
 // fixed per language and come from the dictionary; nothing the model says can make one appear.
 
 import { parseBlocks, type HandoffBlock, type Lang, type RawBlock, type Receipt } from "@pattern-blue/contracts";
+import { Fragment, useState, type ReactNode } from "react";
 import { dictionaries, format, type Dictionary } from "../../i18n";
-import { displayTarget, formatClock, maskCardNumbers } from "../../machines/chat-model";
-import { Icon } from "../ui/Icon";
-import { PriorityChip, ResourceChip, StateChip } from "../ui/StateChip";
+import { displayTarget, formatClock, formatClockSeconds, maskCardNumbers } from "../../machines/chat-model";
+import { Icon, type IconName } from "../ui/Icon";
+import { ResourceChip } from "../ui/StateChip";
 
 export interface BlocksProps {
   blocks: readonly RawBlock[];
@@ -22,9 +26,13 @@ export interface BlocksProps {
   lang: Lang;
   /** When the turn arrived, ISO. */
   at: string;
+  /** Shown inside this turn's `otp.send` receipt while its code is live: the countdown and the inbox action. */
+  otpFoot?: ReactNode;
+  /** Shown right after this turn's handoff block: the feedback line. */
+  afterHandoff?: ReactNode;
 }
 
-export function Blocks({ blocks, turnLang, lang, at }: BlocksProps) {
+export function Blocks({ blocks, turnLang, lang, at, otpFoot, afterHandoff }: BlocksProps) {
   const dict = dictionaries[lang];
   const { blocks: known } = parseBlocks(blocks);
   return (
@@ -34,9 +42,22 @@ export function Blocks({ blocks, turnLang, lang, at }: BlocksProps) {
           case "text":
             return <TextBubble key={index} text={block.text} at={at} lang={lang} turnLang={turnLang} dict={dict} />;
           case "receipt":
-            return <ReceiptMessage key={index} receipt={block.receipt} dict={dict} />;
+            return (
+              <ReceiptMessage
+                key={index}
+                receipt={block.receipt}
+                dict={dict}
+                lang={lang}
+                foot={block.receipt.action === "otp.send" ? otpFoot : undefined}
+              />
+            );
           case "handoff":
-            return <HandoffMessage key={index} block={block} dict={dict} />;
+            return (
+              <Fragment key={index}>
+                <HandoffMessage block={block} dict={dict} />
+                {afterHandoff}
+              </Fragment>
+            );
         }
       })}
     </>
@@ -48,64 +69,100 @@ export function MessageText({ text }: { text: string }) {
   return <span className="chat-text">{maskCardNumbers(text)}</span>;
 }
 
+/** The sender, for screen readers only: on screen the side and the face of the bubble say it. */
+export function Sender({ name }: { name: string }) {
+  return <span className="pb-sr">{name}: </span>;
+}
+
 function TextBubble({ text, at, lang, turnLang, dict }: { text: string; at: string; lang: Lang; turnLang: Lang; dict: Dictionary }) {
   return (
     <div className="pb-msg pb-msg--assistant" lang={turnLang === lang ? undefined : turnLang}>
-      <span className="pb-msg__meta">
-        {dict.chat.roles.assistant} · {formatClock(at, turnLang)}
-      </span>
+      <Sender name={dict.chat.roles.assistant} />
       <MessageText text={text} />
+      <span className="pb-msg__time">{formatClock(at, turnLang)}</span>
     </div>
   );
 }
 
 // --- Receipt ------------------------------------------------------------------------------------------------------
 
+const PROOF_LOOK: Record<string, { icon: IconName; tone?: "blocked" | "violet" }> = {
+  "card.block": { icon: "card-blocked", tone: "blocked" },
+  "otp.send": { icon: "mail", tone: "violet" },
+};
+
 function receiptTitle(action: string, dict: Dictionary): string {
   const t = dict.chat.receipt;
   if (action === "card.block") return t.titleCardBlock;
   if (action === "otp.send") return t.titleOtpSend;
-  if (action === "otp.verify") return t.titleOtpVerify;
   return t.titleOther;
 }
 
-/** What the target of this action is called; `null` when showing it would only show an internal reference. */
-function targetLabel(action: string, dict: Dictionary): string | null {
-  if (action === "card.block") return dict.chat.receipt.card;
-  if (action === "otp.send") return dict.chat.receipt.destination;
-  return null;
+/** A title with its `{target}` set in the data face: `Bloqueé tu tarjeta •••• 4821`. */
+function withTarget(template: string, target: string): ReactNode {
+  const [before, after] = template.split("{target}");
+  if (after === undefined) return template;
+  return (
+    <>
+      {before}
+      <span className="pb-proof__data">{target}</span>
+      {after}
+    </>
+  );
 }
 
-export function ReceiptMessage({ receipt, dict }: { receipt: Receipt; dict: Dictionary }) {
-  const t = dict.chat.receipt;
-  const label = targetLabel(receipt.action, dict);
+export function ReceiptMessage({ receipt, dict, lang, foot }: { receipt: Receipt; dict: Dictionary; lang: Lang; foot?: ReactNode }) {
+  if (receipt.action === "otp.verify" && (receipt.state_after === "VERIFIED" || receipt.state_after === "LOCKED")) {
+    return <VerificationLine receipt={receipt} dict={dict} />;
+  }
+  return <ProofCard receipt={receipt} dict={dict} lang={lang} foot={foot} />;
+}
+
+/** A code check: a system line, verified or locked, that keeps its receipt reference. */
+function VerificationLine({ receipt, dict }: { receipt: Receipt; dict: Dictionary }) {
+  const verified = receipt.state_after === "VERIFIED";
   return (
-    <article className="pb-cmsg" data-tone="receipt" aria-label={format(t.aria, { action: receipt.action })}>
-      <div className="pb-cmsg__head">
-        <span className="pb-cmsg__kicker">
-          {t.kicker} · {receipt.action}
+    <p className="pb-sys" data-tone={verified ? "verified" : "locked"}>
+      <span className="pb-sys__text">
+        <Icon name={verified ? "shield-check" : "lock"} />
+        {verified ? dict.chat.receipt.titleOtpVerify : dict.chat.chip.locked}
+        <span className="pb-sys__ref">
+          · {dict.chat.receipt.reference} {receipt.audit_id}
         </span>
-      </div>
-      <h3 className="pb-cmsg__title">{receiptTitle(receipt.action, dict)}</h3>
-      <span className="pb-transition">
-        <ResourceChip state={receipt.state_before} label={dict.chat.states[receipt.state_before]} />
-        <Icon name="arrow" label={t.changedTo} />
-        <ResourceChip state={receipt.state_after} label={dict.chat.states[receipt.state_after]} />
       </span>
-      <dl className="pb-kv">
-        {label && (
-          <>
-            <dt>{label}</dt>
-            <dd>{displayTarget(receipt.target_masked)}</dd>
-          </>
-        )}
-        <dt>{t.reference}</dt>
-        <dd>{receipt.audit_id}</dd>
-      </dl>
-      <div className="pb-cmsg__foot">
+    </p>
+  );
+}
+
+function ProofCard({ receipt, dict, lang, foot }: { receipt: Receipt; dict: Dictionary; lang: Lang; foot?: ReactNode }) {
+  const t = dict.chat.receipt;
+  const [open, setOpen] = useState(false);
+  const look = PROOF_LOOK[receipt.action] ?? { icon: "shield-check" };
+  const id = `receipt-${receipt.audit_id}`;
+  return (
+    <article className="pb-cut pb-proof" aria-labelledby={`${id}-title`}>
+      <span className="pb-proof__icon" data-tone={look.tone} aria-hidden="true">
+        <Icon name={look.icon} />
+      </span>
+      <p className="pb-proof__title" id={`${id}-title`}>
+        {withTarget(receiptTitle(receipt.action, dict), displayTarget(receipt.target_masked))}
+      </p>
+      <button className="pb-proof__ref" type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((value) => !value)}>
         <Icon name="shield-check" />
-        {t.foot}
+        <span>
+          {t.reference} <span className="pb-proof__data">{receipt.audit_id}</span>
+        </span>
+        <Icon name="chev1" />
+      </button>
+      <div className="pb-proof__more" id={id} hidden={!open}>
+        <span className="pb-transition">
+          <ResourceChip state={receipt.state_before} label={dict.chat.states[receipt.state_before]} />
+          <Icon name="arrow" label={t.changedTo} />
+          <ResourceChip state={receipt.state_after} label={dict.chat.states[receipt.state_after]} />
+        </span>
+        <span>{format(t.verified, { time: formatClockSeconds(receipt.verified_at, lang) })}</span>
       </div>
+      {foot}
     </article>
   );
 }
@@ -114,46 +171,19 @@ export function ReceiptMessage({ receipt, dict }: { receipt: Receipt; dict: Dict
 
 export function HandoffMessage({ block, dict }: { block: HandoffBlock; dict: Dictionary }) {
   const t = dict.chat.handoff;
+  const titleId = `handoff-${block.handoff_id}`;
   return (
-    <article className="pb-cmsg" data-tone="handoff" aria-label={t.aria}>
-      <div className="pb-cmsg__head">
-        <span className="pb-cmsg__kicker">{t.kicker}</span>
-        <StateChip state="handed-off" label={dict.chat.chip.handedOff} />
-      </div>
-      <h3 className="pb-cmsg__title">{format(t.title, { department: t.departments[block.department] })}</h3>
-      <dl className="pb-kv">
-        <dt>{t.reference}</dt>
-        <dd>
-          <span className="pb-caseid">{block.handoff_id}</span>
-        </dd>
-        <dt>{t.status}</dt>
-        <dd className="pb-kv__text">{t.statuses[block.status]}</dd>
-        {block.queue_position !== null && (
-          <>
-            <dt>{t.position}</dt>
-            <dd className="pb-kv__text">{format(t.positionValue, { n: block.queue_position })}</dd>
-          </>
-        )}
-        <dt>{t.priority}</dt>
-        <dd className="pb-kv__text">
-          <PriorityChip priority={block.priority} label={t.priorities[block.priority]} />
-        </dd>
-      </dl>
-      <div>
-        <span className="pb-cmsg__kicker chat-knows">{t.knowsTitle}</span>
-        <ul className="pb-cmsg__list">
-          {t.knows.map((line) => (
-            <li key={line}>
-              <Icon name="check" />
-              <span>{line}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="pb-cmsg__foot">
+    <article className="pb-cut pb-proof" data-tone="handoff" aria-labelledby={titleId}>
+      <span className="pb-proof__icon" data-tone="violet" aria-hidden="true">
         <Icon name="handoff" />
-        {t.foot}
-      </div>
+      </span>
+      <p className="pb-proof__title" id={titleId}>
+        {format(t.title, { department: t.departments[block.department] })}
+      </p>
+      <p className="pb-proof__sub">
+        {t.caseLabel} <span className="pb-proof__data">{block.handoff_id}</span>
+      </p>
+      <p className="pb-proof__note">{t.note}</p>
     </article>
   );
 }

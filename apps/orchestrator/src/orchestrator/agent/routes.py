@@ -4,6 +4,7 @@ GET  /v1/agent/sessions/{session_ref}/conversation  banking session id -> conver
 GET  /v1/agent/conversations/{id}                    transcript and takeover
 POST /v1/agent/conversations/{id}/takeover           an agent takes the conversation
 POST /v1/agent/conversations/{id}/messages           an agent writes to the customer
+POST /v1/agent/conversations/{id}/release            the holder lets it go (ADR-0018)
 
 Mounted only when AGENT_API_ENABLED=true, behind a bearer token (agent/auth.py).
 The caller is the back-office server, which authenticates the agent itself and
@@ -19,6 +20,8 @@ encrypted, so the customer and the agent read it as written (ADR-0013, amendment
 2026-09-29). The text as written is decrypted only to answer these routes and the
 customer's transcript; it never reaches the LLM, the encoder, a tool or a log.
 Once a takeover is active it stays so: there is no hand-back to the assistant.
+Its agent can release it when the case goes back to the queue (ADR-0018); the
+assistant stays off and the next agent's takeover picks the conversation up.
 """
 
 import logging
@@ -89,6 +92,13 @@ class TakeoverRequest(BaseModel):
 class TakeoverResponse(BaseModel):
     conversation_id: str
     takeover: AgentTakeoverState
+
+
+class ReleaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_ref: AgentRef
+    handoff_ref: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class AgentMessageRequest(BaseModel):
@@ -205,8 +215,9 @@ async def take_over(
         if token is None:
             raise _busy()
         state = await _load(store, conversation_id)
-        if state.takeover.active:
-            if state.takeover.agent_ref != body.agent_ref:
+        holder = state.takeover.agent_ref
+        if state.takeover.active and holder is not None:
+            if holder != body.agent_ref:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT, detail="taken_over_by_another_agent"
                 )
@@ -214,12 +225,50 @@ async def take_over(
                 conversation_id=conversation_id,
                 takeover=_takeover_view(state.takeover),
             )
+        # Never taken, or released by its last agent: this agent holds it now.
         now = datetime.now(UTC)
         state.takeover = Takeover(active=True, since=now, agent_ref=body.agent_ref)
         state.updated_at = now
         if not await store.save_fenced(state, token):
             raise _not_saved()
     logger.info("Conversation taken over (handoff %s)", body.handoff_ref)
+    return TakeoverResponse(
+        conversation_id=conversation_id, takeover=_takeover_view(state.takeover)
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/release", response_model=TakeoverResponse
+)
+async def release(
+    request: Request, conversation_id: str, body: ReleaseRequest
+) -> TakeoverResponse:
+    """Let the conversation go when its case goes back to the queue (ADR-0018).
+
+    Only its holder may release it, and the assistant stays off: the takeover
+    stays active with no agent until the next agent's takeover. A conversation
+    that was never taken, or is already released, is answered as it is.
+    """
+    store = _store(request)
+    await _load(store, conversation_id)
+    wait = request.app.state.agent_lock_wait_seconds
+    async with store.turn_lock(conversation_id, wait_seconds=wait) as token:
+        if token is None:
+            raise _busy()
+        state = await _load(store, conversation_id)
+        holder = state.takeover.agent_ref
+        if state.takeover.active and holder is not None:
+            if holder != body.agent_ref:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, detail="taken_over_by_another_agent"
+                )
+            state.takeover = Takeover(
+                active=True, since=state.takeover.since, agent_ref=None
+            )
+            state.updated_at = datetime.now(UTC)
+            if not await store.save_fenced(state, token):
+                raise _not_saved()
+            logger.info("Conversation released (handoff %s)", body.handoff_ref)
     return TakeoverResponse(
         conversation_id=conversation_id, takeover=_takeover_view(state.takeover)
     )

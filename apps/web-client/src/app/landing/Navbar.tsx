@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
-import { LangSwitch, MarketSwitch, ThemeSwitch } from "./Switches";
+import { LangSwitch, MarketSwitch, ThemeToggle } from "./Switches";
 
-export function Navbar() {
+export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
   const { dict } = useI18n();
   const [open, setOpen] = useState(false);
   const t = dict.nav;
   const links = [
-    { href: "#funciones", label: t.features },
-    { href: "#como-funciona", label: t.how },
+    { href: "#productos", label: t.products },
+    { href: "#tarjeta-perdida", label: t.lostCard },
     { href: "#s2", label: t.s2 },
     { href: "#ayuda", label: t.help },
   ];
@@ -40,11 +40,20 @@ export function Navbar() {
           <div className="pb-nav__tools">
             <LangSwitch />
             <MarketSwitch />
-            <ThemeSwitch />
-            {/* Decorative in the demo: there is no account, session or authentication behind it. */}
-            <a className="pb-btn pb-btn--secondary" href="#ingresar">
-              {t.login}
-            </a>
+            <ThemeToggle />
+            {/* The chat is the one thing in the demo that works: it stays one click away while the page scrolls. */}
+            <button
+              className="pb-btn pb-btn--secondary"
+              type="button"
+              data-open-chat
+              onClick={() => {
+                setOpen(false);
+                onOpenChat();
+              }}
+            >
+              <Icon name="chat" />
+              {t.openChat}
+            </button>
           </div>
         </div>
       </div>

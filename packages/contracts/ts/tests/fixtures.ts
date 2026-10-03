@@ -62,9 +62,37 @@ export const HANDOFF_ITEM = {
   assigned_agent: null,
   assigned_at: null,
   session_ref: SESSION_REF,
+  outcome: null,
+  outcome_reason: null,
+  closed_by: null,
+  closed_at: null,
+  disputed_amount: { amount_minor: 125000, currency: "COP" },
 };
 
-export const HANDOFF_DETAIL = { ...HANDOFF_ITEM, summary: SUMMARY };
+export const CLOSING_MESSAGE = { es: "Cerramos tu caso.", pt: "Encerramos seu caso.", en: "We closed your case." };
+
+export const DECISIONS = {
+  outcomes: ["APPROVED", "REJECTED"],
+  reject_reasons: ["CUSTOMER_RECOGNIZES_CHARGE", "OTHER"],
+  escalate_to: ["CUSTOMER_SUPPORT", "DISPUTES"],
+  closing_messages: { APPROVED: CLOSING_MESSAGE, REJECTED: CLOSING_MESSAGE },
+};
+
+export const HANDOFF_DETAIL = { ...HANDOFF_ITEM, summary: SUMMARY, feedback: null, decisions: DECISIONS };
+
+export const CLOSED_DETAIL = {
+  ...HANDOFF_DETAIL,
+  status: "CLOSED",
+  queue_position: null,
+  assigned_agent: AGENT_REF,
+  assigned_at: LATER,
+  outcome: "REJECTED",
+  outcome_reason: "OTHER",
+  closed_by: AGENT_REF,
+  closed_at: LATER,
+  feedback: { helpful: false, recorded_at: NOW },
+  decisions: { outcomes: [], reject_reasons: [], escalate_to: [], closing_messages: {} },
+};
 
 export const CLAIMED_DETAIL = {
   ...HANDOFF_DETAIL,
@@ -92,9 +120,19 @@ export const METRICS = {
     by_status: { QUEUED: 6, ASSIGNED: 3 },
     by_priority: { URGENT: 2, HIGH: 3, NORMAL: 4 },
     by_department: { FRAUD_OPERATIONS: 5, DISPUTES: 4 },
+    by_outcome: { APPROVED: 1, REJECTED: 0, RESOLVED: 0 },
   },
   cards_blocked: 7,
   otp: { sent: 12, verified: 9, failed: 3 },
+  feedback: { helpful: 4, not_helpful: 1 },
+  recent_not_helpful: [{ handoff_ref: HANDOFF_REF, reason: "SUSPECTED_FRAUD", recorded_at: LATER }],
+  queue: { waiting: 6, urgent: 2, oldest_created_at: NOW },
+  previous: {
+    cards_blocked: 5,
+    otp: { sent: 10, verified: 8, failed: 2 },
+    handoffs_total: 7,
+    feedback: { helpful: 3, not_helpful: 1 },
+  },
 };
 
 export const POLICY_CONFIG = { amount_mode: "flag", thresholds_minor: { COP: 500000000, USD: 100000 }, version: 3 };

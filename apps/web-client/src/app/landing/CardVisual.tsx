@@ -2,19 +2,19 @@ import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
 
 /**
- * A Pattern Blue card mockup, BLOCKED. Decorative art: every value on the plate is masked and fixed
+ * A Pattern Blue card mockup, active or blocked. Decorative art: every value on the plate is masked and fixed
  * for the demo (the design system forbids a real number, holder or expiry).
  */
-export function CardVisual() {
+export function CardVisual({ state }: { state: "active" | "blocked" }) {
   const { dict } = useI18n();
   return (
-    <div className="pb-cardvis" data-state="blocked" aria-hidden="true">
+    <div className="pb-cardvis" data-state={state} aria-hidden="true">
       <i className="pb-hexfield" aria-hidden="true" />
       <div className="pb-cardvis__top">
         <span className="pb-cardvis__brand">Pattern Blue</span>
-        <span className="pb-chip" data-state="blocked">
-          <Icon name="card-blocked" />
-          {dict.card.blocked}
+        <span className="pb-chip" data-state={state}>
+          <Icon name={state === "blocked" ? "card-blocked" : "card"} />
+          {state === "blocked" ? dict.card.blocked : dict.card.active}
         </span>
       </div>
       <div className="pb-cardvis__mid">

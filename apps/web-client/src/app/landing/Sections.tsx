@@ -1,49 +1,39 @@
-// FeatureGrid, HowItWorks, S2PromoCard and FaqAccordion: the sections between the hero and the footer.
+// FeatureGrid (the bank's products), HowItWorks (what to do if you lose your card), S2PromoCard and
+// FaqAccordion: the sections between the hero and the footer.
 
 import { Accordion } from "@ark-ui/react/accordion";
 import { useI18n } from "../actors";
 import { Icon, type IconName } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
 
-/** The two-line title card of a section. */
-function SectionHead({ id, kicker, kickerIcon, title }: { id: string; kicker: string; kickerIcon: IconName; title: readonly string[] }) {
+/** A section's title on its own: it names what the customer is looking for, so it needs no kicker. */
+function SectionHead({ id, title }: { id: string; title: string }) {
   return (
     <header className="pb-section__head">
-      <p className="pb-section__kicker">
-        <Icon name={kickerIcon} />
-        {kicker}
-      </p>
       <h2 className="pb-section__title" id={id}>
-        {title.map((line) => (
-          <span key={line}>{line}</span>
-        ))}
+        {title}
       </h2>
     </header>
   );
 }
 
-// One entry per feature the product has, in the order the design system fixes.
-const FEATURE_ICONS: readonly IconName[] = ["card-blocked", "mail", "handoff", "chat"];
-const FEATURE_FACT_ICONS: readonly IconName[] = ["shield-check", "clock", "user", "hex"];
+// The products the demo bank has, in the order of the dictionary: the account, the debit card, the chat.
+const PRODUCT_ICONS: readonly IconName[] = ["db", "card", "chat"];
 
 export function FeatureGrid() {
   const { dict } = useI18n();
-  const t = dict.features;
+  const t = dict.products;
   return (
-    <section className="pb-section" id="funciones" aria-labelledby="feat-title">
-      <SectionHead id="feat-title" kicker={t.kicker} kickerIcon="hex" title={t.title} />
+    <section className="pb-section" id="productos" aria-labelledby="products-title">
+      <SectionHead id="products-title" title={t.title} />
       <ul className="pb-features">
         {t.items.map((item, index) => (
           <li className="pb-feature" key={item.title}>
             <span className="pb-feature__icon" aria-hidden="true">
-              <Icon name={FEATURE_ICONS[index] ?? "hex"} />
+              <Icon name={PRODUCT_ICONS[index] ?? "hex"} />
             </span>
             <h3 className="pb-feature__title">{item.title}</h3>
             <p className="pb-feature__text">{item.text}</p>
-            <p className="pb-feature__fact">
-              <Icon name={FEATURE_FACT_ICONS[index] ?? "hex"} />
-              {item.fact}
-            </p>
           </li>
         ))}
       </ul>
@@ -62,8 +52,8 @@ export function HowItWorks() {
   const { dict } = useI18n();
   const t = dict.flow;
   return (
-    <section className="pb-section" id="como-funciona" aria-labelledby="flow-title">
-      <SectionHead id="flow-title" kicker={t.kicker} kickerIcon="chev1" title={t.title} />
+    <section className="pb-section" id="tarjeta-perdida" aria-labelledby="flow-title">
+      <SectionHead id="flow-title" title={t.title} />
       <ol className="pb-flow" role="list">
         {t.steps.map((step, index) => (
           <li className="pb-flow__item" key={step.title}>
@@ -85,8 +75,8 @@ export function S2PromoCard() {
   const t = dict.s2;
   return (
     <section className="pb-section" id="s2" aria-label={t.label}>
-      <div className="pb-section__narrow">
-        <aside className="pb-s2" aria-labelledby="s2-title">
+      <div className="pb-section__band">
+        <aside className="pb-s2 pb-s2--band" aria-labelledby="s2-title">
           <i className="pb-hexfield" aria-hidden="true" />
           <div className="pb-s2__top">
             <span>{t.top}</span>
@@ -123,7 +113,7 @@ export function FaqAccordion() {
   const t = dict.faq;
   return (
     <section className="pb-section" id="ayuda" aria-labelledby="faq-title">
-      <SectionHead id="faq-title" kicker={t.kicker} kickerIcon="info" title={t.title} />
+      <SectionHead id="faq-title" title={t.title} />
       {/* Ark UI's accordion: one item open at a time, collapsible, the first open. The design system's CSS reads its data attributes. */}
       <Accordion.Root className="pb-faq" collapsible multiple={false} defaultValue={["faq-0"]}>
         {t.items.map((item, index) => (

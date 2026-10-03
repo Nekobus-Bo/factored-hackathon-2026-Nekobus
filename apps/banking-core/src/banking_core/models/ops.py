@@ -1,4 +1,4 @@
-"""SQLAlchemy models for operations: audit log, idempotency store, handoff queue."""
+"""SQLAlchemy models for operations: audit log, idempotency, handoffs, feedback."""
 
 import uuid
 from datetime import datetime
@@ -92,8 +92,12 @@ class Handoff(Base):
     __tablename__ = "handoff"
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('QUEUED', 'ASSIGNED', 'PENDING')",
+            "status IN ('QUEUED', 'ASSIGNED', 'PENDING', 'CLOSED')",
             name="ck_handoff_status",
+        ),
+        sa.CheckConstraint(
+            "outcome IS NULL OR outcome IN ('APPROVED', 'REJECTED', 'RESOLVED')",
+            name="ck_handoff_outcome",
         ),
         sa.CheckConstraint(
             "priority IN ('LOW', 'NORMAL', 'HIGH', 'URGENT')",
@@ -135,4 +139,37 @@ class Handoff(Base):
     assigned_agent: Mapped[str | None] = mapped_column(sa.String(254), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
+    )
+    # Set together when an agent closes the case (ADR-0018); empty until then.
+    outcome: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    outcome_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    closed_by: Mapped[str | None] = mapped_column(sa.String(254), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+
+class AssistantFeedback(Base):
+    """The customer's answer to "did the assistant help?", one per handoff.
+
+    See ADR-0017.
+    """
+
+    __tablename__ = "assistant_feedback"
+    __table_args__ = (
+        sa.UniqueConstraint("handoff_id", name="uq_assistant_feedback_handoff_id"),
+        {"schema": "ops"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    handoff_id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        sa.ForeignKey("ops.handoff.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    helpful: Mapped[bool] = mapped_column(sa.Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
     )

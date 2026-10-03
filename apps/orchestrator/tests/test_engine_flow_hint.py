@@ -70,3 +70,30 @@ def test_descriptions_state_the_code_floor_and_the_next_step():
     assert "Runs only when the session is ANONYMOUS or IDENTIFIED." in match
     assert "otp_send next" in match
     assert "Runs only" not in llm_description("kb.search")
+
+
+def test_the_reworded_follow_ups_lead_to_the_charge_and_identity_first():
+    from orchestrator.conversation.tools import llm_description
+
+    recent = llm_description("transaction.list_recent")
+    assert "identify together the one they do not recognize" in recent
+    assert "card_block and to handoff_create" in recent
+    handoff = llm_description("handoff.create")
+    assert "identify the customer first (customer_match)" in handoff
+    assert "not the cardholder" in handoff and "CUSTOMER_REQUEST" in handoff
+
+
+def test_the_opening_line_names_the_offered_tools_until_a_tool_result():
+    from contracts.envelope import FlowHint
+    from orchestrator.conversation.engine import _opening_flow_messages
+
+    flow = FlowHint(state="ANONYMOUS", next=["customer.match"])
+    user = [{"role": "user", "content": "hola"}]
+    [line] = _opening_flow_messages(flow, user)
+    assert line["role"] == "system"
+    assert "ANONYMOUS" in line["content"] and "`customer_match`" in line["content"]
+
+    after_a_tool = [*user, {"role": "tool", "tool_call_id": "c1", "content": "{}"}]
+    assert _opening_flow_messages(flow, after_a_tool) == []
+    assert _opening_flow_messages(None, user) == []
+    assert _opening_flow_messages(FlowHint(state="VERIFIED"), user) == []

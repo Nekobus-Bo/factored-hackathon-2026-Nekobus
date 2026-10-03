@@ -39,7 +39,7 @@ flowchart TD
 
     EXT[Customers] -->|HTTP :5173, through the platform ingress| WC
     OPS[Operator] -.->|its own login behind a proxy, or an SSH tunnel| WB
-    WC -->|the four chat routes| ORC
+    WC -->|the five chat routes| ORC
     WB -->|/v1/agent, agent token| ORC
     WB -->|/v1/admin, admin token| CORE
     ORC -->|HTTP /v1/analyze| ENC

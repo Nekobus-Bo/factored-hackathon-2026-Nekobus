@@ -25,6 +25,7 @@ class EngineTurnHandler:
             placeholder_map=conversation.placeholder_map,
             decisions=conversation.decisions,
             enabled_tools=conversation.enabled_tools,
+            opening_flow=conversation.opening_flow,
             human_takeover=conversation.takeover.active,
         )
         result = await self.engine.run_turn(

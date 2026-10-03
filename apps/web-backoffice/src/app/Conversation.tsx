@@ -1,49 +1,76 @@
-// The agent's view of a conversation: the transcript in the design system's chat structure (pb-chat, pb-msg,
-// pb-cmsg, pb-sys) and the reply composer. The customer's messages are masked at the source and shown as stored.
-// The agent's own messages are shown as the agent wrote them: the orchestrator keeps that text encrypted next to
-// its masked twin and answers with it (ADR-0013, amendment 2026-09-29), so `Hola, soy Ana` reads as typed.
+// The agent's view of a conversation (the declutter review of 2026-10-02): the customer on the left, the
+// bank on the right (the assistant in grey, the agent in violet), each name once per run of messages,
+// the time at the end of the bubble, and the engine's receipts and handoff as one sentence-case line each.
+//
+// The customer's messages are masked at the source and shown as stored. The agent's own messages are
+// shown as written: the orchestrator keeps that text encrypted next to its masked twin and answers with it
+// (ADR-0013, amendment 2026-09-29). The transcript does not say which agent wrote a message, so agent
+// messages are labelled by who holds the conversation now.
 
 import { parseBlocks, type MessageBlock } from "@pattern-blue/contracts";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { ErrorCategory } from "../api/errors";
 import type { Outbox, TranscriptMessages } from "../machines/handoff";
+import { shortMask } from "./CaseFacts";
 import { useI18n } from "./context";
+import { agentName } from "./Decisions";
 import { clockText } from "./format";
-import { Alert, Icon, StateChip } from "./ui";
+import { Alert, Icon } from "./ui";
 
-const dots = (masked: string) => masked.replaceAll("*", "•");
+export { agentName };
 
-function Block({ block }: { block: MessageBlock }) {
+type Message = TranscriptMessages[number];
+
+function SysLine({ tone, icon, children, reference }: { tone?: string; icon: string; children: string; reference?: string }) {
+  return (
+    <div className="pb-sys" data-tone={tone}>
+      <span className="pb-sys__text">
+        <Icon name={icon} />
+        {children}
+        {reference && <span className="pb-sys__ref">· {reference}</span>}
+      </span>
+    </div>
+  );
+}
+
+function BlockLine({ block }: { block: MessageBlock }) {
   const { t } = useI18n();
   if (block.type === "receipt") {
     const { receipt } = block;
+    const target = shortMask(receipt.target_masked);
+    if (receipt.action === "card.block") {
+      return (
+        <SysLine tone="locked" icon="card-blocked" reference={receipt.audit_id}>
+          {t("handoff.transcript.cardBlocked", { target })}
+        </SysLine>
+      );
+    }
+    if (receipt.action === "otp.send") {
+      return (
+        <SysLine icon="mail" reference={receipt.audit_id}>
+          {t("handoff.transcript.codeSent", { target: receipt.target_masked.replaceAll("*", "•") })}
+        </SysLine>
+      );
+    }
+    if (receipt.action === "otp.verify") {
+      const verified = receipt.state_after === "VERIFIED";
+      return (
+        <SysLine tone={verified ? "verified" : "locked"} icon={verified ? "shield-check" : "lock"} reference={receipt.audit_id}>
+          {verified ? t("handoff.transcript.verified") : t("handoff.transcript.lockedOut")}
+        </SysLine>
+      );
+    }
     return (
-      <article className="pb-cmsg" data-tone="receipt" aria-label={t("handoff.transcript.receipt", { action: receipt.action })}>
-        <div className="pb-cmsg__head">
-          <span className="pb-cmsg__kicker">{t("handoff.transcript.receipt", { action: receipt.action })}</span>
-        </div>
-        <span className="pb-transition">
-          <StateChip state={receipt.state_before} />
-          <Icon name="arrow" />
-          <StateChip state={receipt.state_after} />
-        </span>
-        <dl className="pb-kv">
-          <dt>{t("handoff.transcript.target")}</dt>
-          <dd>{dots(receipt.target_masked)}</dd>
-          <dt>{t("handoff.transcript.audit")}</dt>
-          <dd>{receipt.audit_id}</dd>
-        </dl>
-      </article>
+      <SysLine icon="check" reference={receipt.audit_id}>
+        {t("handoff.transcript.receipt", { action: receipt.action })}
+      </SysLine>
     );
   }
   if (block.type === "handoff") {
     return (
-      <div className="pb-sys" data-tone="joined">
-        <span className="pb-sys__text">
-          <Icon name="handoff" />
-          {t("handoff.transcript.handoffBlock", { ref: block.handoff_id })}
-        </span>
-      </div>
+      <SysLine tone="joined" icon="handoff">
+        {t("handoff.transcript.handoffTo", { department: t(`enums.department.${block.department}`) })}
+      </SysLine>
     );
   }
   return null;
@@ -54,22 +81,24 @@ function Blocks({ raw }: { raw: unknown }) {
   const { blocks, unknown } = parseBlocks(raw);
   return (
     <>
-      {blocks.filter((block) => block.type !== "text").map((block, index) => (
-        <Block key={index} block={block} />
-      ))}
+      {blocks
+        .filter((block) => block.type !== "text")
+        .map((block, index) => (
+          <BlockLine key={index} block={block} />
+        ))}
       {unknown.map((item) => (
-        <div key={`unknown-${item.index}`} className="pb-sys">
-          <span className="pb-sys__text">{t("handoff.transcript.block", { type: item.type ?? t("common.unknown") })}</span>
-        </div>
+        <SysLine key={`unknown-${item.index}`} icon="info">
+          {t("handoff.transcript.block", { type: item.type ?? t("common.unknown") })}
+        </SysLine>
       ))}
     </>
   );
 }
 
-/** `agent@demo.local` -> `agent`: the design system labels a human agent by first name. */
-export const agentName = (agentRef: string | null): string | null => (agentRef ? (agentRef.split("@")[0] ?? agentRef) : null);
+type Side = "customer" | "assistant" | "agent";
+const sideOf = (message: Message): Side => (message.role === "user" ? "customer" : message.role === "assistant" ? "assistant" : "agent");
 
-export function TranscriptLog({ messages, agent }: { messages: TranscriptMessages; agent: string | null }) {
+export function TranscriptLog({ messages, me, holder }: { messages: TranscriptMessages; me: string; holder: string | null }) {
   const { t } = useI18n();
   const log = useRef<HTMLDivElement>(null);
 
@@ -79,56 +108,51 @@ export function TranscriptLog({ messages, agent }: { messages: TranscriptMessage
     if (element) element.scrollTop = element.scrollHeight;
   }, [messages.length]);
 
+  const agentLabel = holder === null ? t("handoff.transcript.agent") : holder === me ? t("handoff.transcript.you") : (agentName(holder) ?? t("handoff.transcript.agent"));
+  const label: Record<Side, string> = { customer: t("handoff.transcript.customer"), assistant: t("handoff.transcript.assistant"), agent: agentLabel };
+
+  const items: ReactNode[] = [];
+  let previous: Side | null = null;
   let joined = false;
-  return (
-    <div className="pb-chat__log bo-log" role="log" aria-live="polite" aria-label={t("handoff.transcript.title")} ref={log}>
-      {messages.length === 0 && <p className="pb-t-small">{t("handoff.transcript.empty")}</p>}
-      {messages.map((message, index) => {
-        const stamp = clockText(message.created_at);
-        if (message.role === "user") {
-          return (
-            <div key={index} className="pb-msg pb-msg--customer">
-              <span className="pb-msg__meta">{t("handoff.transcript.customer")} · {stamp}</span>
-              {message.content}
-            </div>
-          );
-        }
-        if (message.role === "assistant") {
-          return (
-            <div key={index} className="bo-turn">
-              {message.content !== "" && (
-                <div className="pb-msg pb-msg--assistant">
-                  <span className="pb-msg__meta">{t("handoff.transcript.assistant")} · {stamp}</span>
-                  {message.content}
-                </div>
-              )}
-              <Blocks raw={message.blocks} />
-            </div>
-          );
-        }
-        const name = agent ?? t("common.unknown");
-        const firstAgentMessage = !joined;
-        joined = true;
-        return (
-          <div key={index} className="bo-turn">
-            {firstAgentMessage && (
-              <div className="pb-sys" data-tone="joined">
-                <span className="pb-sys__text">
-                  <Icon name="user" />
-                  {t("handoff.transcript.joined", { agent: name })}
-                </span>
-              </div>
-            )}
-            <div className="pb-msg pb-msg--agent">
-              <span className="pb-msg__meta">
-                <Icon name="user" />
-                {t("handoff.transcript.agent", { agent: name })} · {stamp}
-              </span>
-              {message.content}
-            </div>
+  messages.forEach((message, index) => {
+    const side = sideOf(message);
+    if (side === "agent" && !joined) {
+      joined = true;
+      items.push(
+        <SysLine key={`joined-${index}`} tone="joined" icon="user">
+          {holder === me ? t("handoff.transcript.joinedYou") : t("handoff.transcript.joined", { agent: agentLabel })}
+        </SysLine>,
+      );
+      previous = null;
+    }
+    const showName = side !== previous;
+    if (message.content !== "") {
+      items.push(
+        <div key={index} className={`pb-convo__grp${side === "customer" ? "" : " pb-convo__grp--bank"}`}>
+          {showName && (
+            <span className="pb-convo__who" data-me={side === "agent" && holder === me ? "" : undefined}>
+              {label[side]}
+            </span>
+          )}
+          <div className={`pb-msg pb-msg--${side}`}>
+            {message.content}
+            <span className="pb-msg__time">{clockText(message.created_at)}</span>
           </div>
-        );
-      })}
+        </div>,
+      );
+      previous = side;
+    }
+    if (message.role === "assistant") {
+      const lines = <Blocks key={`blocks-${index}`} raw={message.blocks} />;
+      items.push(lines);
+      if (parseBlocks(message.blocks).blocks.some((block) => block.type !== "text")) previous = null;
+    }
+  });
+
+  return (
+    <div className="pb-convo__log" role="log" aria-live="polite" aria-label={t("handoff.transcript.title")} ref={log}>
+      {messages.length === 0 && <p className="pb-t-small">{t("handoff.transcript.empty")}</p>}
+      {items}
     </div>
   );
 }
@@ -140,8 +164,6 @@ const SEND_ERROR_KEY = {
 } as const;
 
 export function Composer({
-  enabled,
-  lockedReason,
   sending,
   failed,
   outbox,
@@ -150,8 +172,6 @@ export function Composer({
   onRetry,
   onDiscard,
 }: {
-  enabled: boolean;
-  lockedReason: "locked" | "lockedOther";
   sending: boolean;
   failed: boolean;
   outbox: Outbox | null;
@@ -163,24 +183,31 @@ export function Composer({
   const { t } = useI18n();
   const [text, setText] = useState("");
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!enabled || sending || text.trim() === "") return;
+  const submit = () => {
+    if (sending || text.trim() === "") return;
     onSend(text);
     setText("");
   };
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    submit();
+  };
+  // Enter sends, Shift+Enter adds a line; Enter while an input method composes a word does neither.
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      submit();
+    }
+  };
 
-  const errorText = error === null ? null : t(error === "turnInProgress" || error === "noActiveTakeover" || error === "unavailable" ? SEND_ERROR_KEY[error] : "errors.generic");
+  const errorText =
+    error === null ? null : t(error === "turnInProgress" || error === "noActiveTakeover" || error === "unavailable" ? SEND_ERROR_KEY[error] : "errors.generic");
 
   return (
     <div className="bo-composer-wrap">
       {failed && outbox && (
         <div className="bo-failed">
           <div className="pb-msg pb-msg--agent" data-status="failed">
-            <span className="pb-msg__meta">
-              <Icon name="warning" />
-              {t("handoff.composer.notSent")}
-            </span>
             {outbox.text}
           </div>
           <Alert
@@ -201,24 +228,32 @@ export function Composer({
           </Alert>
         </div>
       )}
-      <form className="pb-chat__composer" onSubmit={submit}>
+      <form className="pb-chat__composer" onSubmit={onSubmit}>
         <label className="pb-field">
           <span className="pb-sr">{t("handoff.composer.label")}</span>
-          <input
-            type="text"
-            value={text}
-            maxLength={2000}
-            autoComplete="off"
-            disabled={!enabled || sending}
-            placeholder={enabled ? t("handoff.composer.placeholder") : t(`handoff.composer.${lockedReason}`)}
-            onChange={(event) => setText(event.target.value)}
-          />
+          <textarea rows={1} value={text} maxLength={2000} disabled={sending} placeholder={t("handoff.composer.placeholder")} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} />
         </label>
-        <button type="submit" className="pb-btn pb-btn--primary pb-btn--sm" disabled={!enabled || sending || text.trim() === ""}>
+        <button type="submit" className="pb-btn pb-btn--primary pb-btn--sm" disabled={sending || text.trim() === ""}>
           {sending ? t("handoff.composer.sending") : t("handoff.composer.send")}
         </button>
       </form>
-      <p className="pb-t-small bo-composer-note">{t("handoff.composer.note")}</p>
+      <p className="pb-convo__note">{t("handoff.composer.note")}</p>
+    </div>
+  );
+}
+
+/** Before the case is the agent's: one line, and the way to take it when that is possible. */
+export function ComposerLocked({ reason, onTake, taking }: { reason: "take" | "other"; onTake?: () => void; taking?: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="pb-convo__locked">
+      <span>{reason === "take" ? t("handoff.composer.locked") : t("handoff.composer.lockedOther")}</span>
+      {reason === "take" && onTake && (
+        <button type="button" className="pb-btn pb-btn--secondary pb-btn--sm" disabled={taking} onClick={onTake}>
+          <Icon name="handoff" />
+          {taking ? t("handoff.taking") : t("handoff.take")}
+        </button>
+      )}
     </div>
   );
 }

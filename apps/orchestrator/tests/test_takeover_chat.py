@@ -761,8 +761,10 @@ def test_an_active_takeover_names_its_holder_and_time() -> None:
         "agent_ref": None,
     }
     assert Takeover(active=True, since=now, agent_ref=ANA).active is True
+    # Released by its agent (ADR-0018): still active, nobody holds it.
+    assert Takeover(active=True, since=now).agent_ref is None
     with pytest.raises(ValidationError):
-        Takeover(active=True, since=now)
+        Takeover(active=True, since=now, agent_ref="")
     with pytest.raises(ValidationError):
         Takeover(active=True, agent_ref=ANA)
     with pytest.raises(ValidationError):

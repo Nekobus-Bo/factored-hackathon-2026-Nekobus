@@ -15,9 +15,10 @@ The look of Pattern Blue for both front ends (`apps/web-client`, `apps/web-backo
 
 ```
 packages/design-tokens/
-  index.css              imports dist/tokens.css, then src/components.css (the required order)
+  index.css              imports dist/tokens.css, then src/components.css, then local.css (the required order)
   src/tokens.json        copied verbatim from the artifact
   src/components.css     copied verbatim from the artifact, behind a header comment naming the source and version
+  local.css              written here: changes not in the artifact yet (see below)
   scripts/               build.ts (CLI), generate.ts (pure generators), schema.ts (Zod schema of tokens.json)
   dist/tokens.css        GENERATED, committed: every token as a custom property, both themes, type-style classes
   dist/tokens.ts         GENERATED, committed: typed token names and values per theme
@@ -110,6 +111,50 @@ Apply the remembered choice from an inline script in `<head>` (before the styles
 
 Every style in `tokens.json` (`title-card`, `h1`, `h2`, `h3`, `body`, `body-strong`, `small`, `label`, `label-lg`, `mono-data`, `mono-code`, `case-id`) is a class of the same name in `tokens.css` with family, size, line height, weight and letter spacing. `mono-*` and `case-id` also get tabular figures. Uppercase and `font-stretch` are added by `components.css`, because the token grammar cannot express them. `components.css` also has the `pb-t-*` utilities with the same values.
 
+## Local changes not yet in the artifact
+
+`local.css` holds styles written in this repository that the artifact does not have yet. It loads after `src/components.css` and uses only tokens and `pb-` classes (a test checks both). The customer chat's rules are scoped to `.pb-dock`; the back office's conversation rules to `.pb-convo`. They come from the two declutter reviews of 2026-10-02: the customer chat and the landing, then the back office (ADR-0018 for the decisions). The artifact belongs to another claude.ai account, so they could not be published there.
+
+They change these design-system rules. Whoever updates the artifact should change the rule, move the CSS into `components/bundle.css`, sync, and delete it from `local.css`.
+
+| Rule in the artifact | What the customer app does now |
+|---|---|
+| ChatBubble: the panel is a 360px column | 420 × 680 on desktop, capped by the window height; full screen on phones |
+| ChatBubble: the launcher is a 60px glyph | The glyph and the word "Asistente" (`pb-launcher--label`) |
+| ChatBubble: `pb-msg__meta` carries sender and time on every message | The sender is a `pb-sr` label and the time sits after the last word (`pb-msg__time`). A human agent's message keeps a sender line, in sentence case |
+| README: case ids are `case-id` (stencil) | In the customer chat, case and receipt references are mono |
+| ChatMessage 2: a receipt shows kicker, state transition, key-values and footer | `pb-proof`: the result and the receipt reference. The transition and "Verificado contra la base de datos" open from the reference. `otp.verify` is a verified system line with its reference |
+| ChatMessage 2 and 4: the `otp.send` receipt and the OTP notice are two messages | One `pb-proof` with the countdown and "Abrir bandeja" |
+| OtpInboxNotice: the inbox is a card in the log with De / Para / Asunto | A sheet over the messages (`pb-sheet`), without the key-value rows |
+| ChatMessage 3: the handoff shows priority, status, queue position and a list of what the agent knows | The department, the case reference and one closing sentence that keeps "Desde aquí el asistente deja de actuar" |
+| ChatMessage 5: system lines use the `label` style | 13px sentence case, with an optional receipt reference (`pb-sys__ref`) |
+| ChatMessage 6b and 6c: a failed message adds a caution card; a rate limit is a caution card | One `pb-unsent` line under the failed message; `pb-strip` for 429 and 404 |
+| ChatMessage: the list of content types | A new one: feedback after a handoff (`pb-rate`) |
+| Hero: say only what the assistant does | The landing is a fictional bank's home page; the hero names its products and what the chat does |
+| Landing: a section header is a kicker and a title card of two or three lines | The title alone, on one line |
+| FeatureGrid: the assistant's features, a fact line on each card | The bank's products, no fact line |
+| Navbar: a login button and a two-button theme radio group | "Abrir chat" and a one-button theme toggle (`pb-theme--single`) |
+| Footer: link columns and its own language and theme controls | The wordmark, the demo note and the small print (`pb-footer__inner--compact`) |
+
+And in the back office:
+
+| Rule in the artifact | What the back office does now |
+|---|---|
+| StatusChip: the back office shows the raw enum (`OTP_PENDING`) | Chips speak the agent's language; the raw enum is the chip's `title` |
+| README: case ids are `case-id` (stencil) | Lowercase mono in groups of four (`pb-caseref`); copying gives the plain id |
+| QueueRow: id, priority, department, language, wait, customer; the id is the anchor; the row is not focusable | Priority, the case in words (reason, department, amount, id), who holds it, the wait, and a chevron (`pb-cases`, `pb-crow`). The title is the link, so the whole row opens the case |
+| QueueRow: nothing opens over the queue | A summary card under the row (`pb-peek`) with the case facts and the decisions |
+| HandoffCard: `pb-caseid`, priority and HANDED_OFF chips in the header; facts as `pb-kv`; actions as `pb-steps`; open questions numbered in stencil | The page header holds the case (`pb-casehead`). The card is a summary in sentence-case sections (`pb-sum`): the customer's ask as an unverified quote (`pb-said`), the charge (`pb-txn`), facts as sentences (`pb-facts`), the writes, the customer's feedback, and the full log on demand (`pb-more`, `pb-audit`) |
+| HandoffCard: `pb-handoff__actions` holds Tomar caso and Reasignar | Tomar caso, Aprobar, Rechazar and Escalar in the header, with one confirmation (`pb-decide`, `pb-confirm`, `pb-choices`, `pb-done`) |
+| ChatBubble and ChatMessage: the customer is right-aligned in violet; `pb-msg__meta` on every message; receipts as `pb-cmsg` | Inside `.pb-convo` the customer is on the left and the bank on the right, names once per run (`pb-convo__who`), the time in the bubble, receipts and the handoff as `pb-sys` lines |
+| PolicyControl: one `pb-tool` block per tool with its `pb-cells` row | One table, the states named once in the header (`pb-mx`) |
+| Navbar: the language radio group and the theme in the bar | One theme button and the agent's menu (`pb-menu`) with the language and Salir; a count on Cola (`pb-nav__count`) |
+| No metrics components | Four numbers with their change (`pb-kpis`, `pb-kpi`, `pb-delta`), two short lists (`pb-list`), the tables on demand (`pb-details`, `pb-mtable`) |
+
+`pb-live`, `pb-tabs`, `pb-linkbtn` and `pb-empty` are new parts that change no rule.
+
+`pb-s2--band` (S² as a band from 720px) and `pb-hero__fact` are new layouts that change no rule.
+
 ## Class-naming rules (from the design system)
 
 - Component classes are prefixed `pb-`. Elements use `__` (`pb-msg__meta`), variants `--` (`pb-btn--ghost`, `pb-ico--lock`). The only unprefixed classes are the type styles above.
@@ -128,7 +173,8 @@ When the design system changes:
 3. Replace `src/components.css` with the header comment (update the version and date, they come from the read's "version" line) followed by `bundle.css`, byte for byte.
    Replace `reference/` with the artifact's `project/README.md` and `project/components/` (every `README.md` and `preview.html`, not `bundle.css`).
 4. Run `make design-tokens`, then `make design-tokens-check`.
-5. Commit `src/` and `dist/` together: `feat(design-tokens): sync from the design-system artifact <version>`. Update the version in the table at the top of this file.
+5. Delete from `local.css` whatever the artifact now has.
+6. Commit `src/` and `dist/` together: `feat(design-tokens): sync from the design-system artifact <version>`. Update the version in the table at the top of this file.
 
 `make design-tokens-check` is designed to fail on the changes a sync can bring:
 

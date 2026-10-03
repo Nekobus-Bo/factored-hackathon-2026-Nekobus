@@ -326,6 +326,63 @@ async def test_slow_turn_that_lost_its_lock_cannot_overwrite_a_newer_turn(
     assert state.llm_history == [{"role": "user", "content": "turno nuevo"}]
 
 
+@pytest.mark.parametrize(
+    "flow",
+    [
+        {
+            "state": "ANONYMOUS",
+            "next": ["customer.match"],
+            "allowed": ["customer.match", "handoff.create", "kb.search"],
+            "enabled": ["customer.match", "otp.send", "handoff.create", "kb.search"],
+        },
+        None,
+        {"state": "ANONYMOUS", "next": ["not.a.tool"]},
+    ],
+    ids=["hint", "no-hint", "invalid-hint"],
+)
+async def test_a_conversation_keeps_the_flow_hint_its_session_opened_with(
+    redis: fakeredis.FakeAsyncRedis, make_client: Any, flow: dict[str, Any] | None
+) -> None:
+    """ADR-0016 amendment 2026-10-02; a missing or invalid hint never fails it."""
+    body: dict[str, Any] = {"session_id": "sess_opaque_0001"}
+    if flow is not None:
+        body["flow"] = flow
+    store = SessionStore(
+        redis=redis,
+        encryptor=PlaceholderEncryptor("test-secret"),
+        ttl_seconds=3600,
+        lock_timeout_seconds=30,
+    )
+    settings = Settings()
+    with respx.mock(assert_all_called=False) as router:
+        router.post(f"{BANKING_URL}/v1/sessions").mock(
+            return_value=httpx.Response(201, json=body)
+        )
+        client = make_client(
+            create_app(
+                settings=settings,
+                session_store=store,
+                banking_client=BankingCoreClient(
+                    base_url=BANKING_URL, settings=settings
+                ),
+                turn_handler=FakeTurnHandler(),
+            )
+        )
+        created = await client.post("/v1/conversations")
+
+    assert created.status_code == 201
+    state = await store.get(created.json()["conversation_id"])
+    assert state is not None
+    assert state.banking_session_id == "sess_opaque_0001"
+    if flow is not None and "enabled" in flow:
+        assert state.opening_flow is not None
+        assert state.opening_flow.next == ["customer.match"]
+        assert state.enabled_tools == flow["enabled"]
+    else:
+        assert state.opening_flow is None
+        assert state.enabled_tools is None
+
+
 async def test_invalid_message_block_is_not_persisted(
     redis: fakeredis.FakeAsyncRedis,
     banking: Any,

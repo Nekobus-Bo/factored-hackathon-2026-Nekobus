@@ -13,7 +13,7 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
 
 1. **Each front end is a Bun fullstack app.** `Bun.serve` with HTML imports serves the bundle; no Vite. React + TypeScript, Zod on every payload that crosses a boundary, XState v5 (one global app machine for theme, language and, in the back office, the agent session; local machines per feature), Zag.js / Ark UI for accessible headless parts. Styles come only from `@pattern-blue/design-tokens` (`index.css` + `dist/fonts.html`); no CSS framework, no inline colors, no new tokens.
 2. **Same-origin BFF.** Each app's server exposes the bundle and a closed list of `/api/*` routes. The browser never talks to the orchestrator or banking-core directly, so there is no CORS. The BFF forwards only the routes listed here, with typed request and response validation. It never forwards an arbitrary path or body; a generic pass-through would void ADR-0004.
-3. **web-client BFF** (`apps/web-client`, port 5173) forwards the four chat routes of the orchestrator. It holds no tokens. It sets `X-Forwarded-For` to the client address, and compose sets `TRUSTED_PROXY_HOPS=1` on the orchestrator. It also serves `GET /healthz`.
+3. **web-client BFF** (`apps/web-client`, port 5173) forwards the five chat routes of the orchestrator. It holds no tokens. It sets `X-Forwarded-For` to the client address, and compose sets `TRUSTED_PROXY_HOPS=1` on the orchestrator. It also serves `GET /healthz`.
 4. **web-backoffice BFF** (`apps/web-backoffice`, port 5174):
    - The agent logs in with `DEMO_AGENT_EMAIL` / `DEMO_AGENT_PASSWORD`. Compare in constant time.
    - The session is an HttpOnly, `SameSite=Strict` cookie signed with HMAC-SHA256 using `BACKOFFICE_SESSION_SECRET`, with an 8 h expiry.
@@ -34,7 +34,7 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
 7. **Live updates by polling, no WebSocket:**
    - back-office queue: every 3 s;
    - back-office open conversation: every 2 s;
-   - customer chat while a takeover is active: every 2 s;
+   - customer chat from the handoff on (while it waits for an agent and while one holds the conversation): every 2 s, so the agent's first message arrives without the customer writing again;
    - OTP inbox: **not polled**. The code is delivered synchronously during the turn that calls `otp.send`, so it is already in the inbox when that turn's answer arrives. The customer app reads the inbox once after every completed turn (with the transcript, to detect a takeover); an unexpired message received after the last successful verification shows the notice, and the notice hides itself at `expires_at`.
    - The polling above stops when the tab is hidden and resumes when it is visible.
 8. **Shared TypeScript contracts:**
@@ -66,6 +66,7 @@ All JSON. Times are ISO 8601 UTC. Errors keep FastAPI's `{"detail": ...}`.
   - NEW: for an agent message `content` is the text as the agent wrote it; every other `content` is masked. The shape is unchanged.
   - NEW: `takeover` is `{active: bool, since: time|null}`, with no agent identity.
 - `GET /v1/conversations/{id}/inbox` → `{messages[{channel, destination_masked, code, received_at, expires_at}]}`.
+- NEW (ADR-0017): `POST /v1/conversations/{id}/feedback` `{helpful: bool}` (strict) → `{helpful, recorded_at}`; 404 unknown conversation; 409 `{detail:"no_handoff"}` or `{detail:"already_answered"}`; 503 when banking-core cannot store it. It relays to banking-core `POST /v1/sessions/{session_id}/feedback` for the conversation's own banking session, which keeps one answer per handoff (`ops.assistant_feedback`), audited as `feedback.recorded` and re-read after the commit.
 - NEW behavior: while a takeover is active, `POST .../messages` stores the customer message (masked), does not call the LLM or banking-core tools, and returns `{conversation_id, blocks: []}`.
 
 ### Orchestrator agent API (NEW)
@@ -103,18 +104,24 @@ Routes:
   - Idempotent for the same agent. 409 `{detail:"claimed_by_another_agent"}` otherwise.
   - Writes audit action `admin.handoff.claimed` with `actor_type='agent'`, `actor_ref=agent_ref` and payload `{handoff_ref, before_status, after_status}`, with no PII.
   - Needs migration `0008` adding the nullable columns `assigned_agent` and `assigned_at` to `ops.handoff`.
-- `GET /v1/admin/metrics?hours=24` (1..720) → `{generated_at, window_hours, tool_calls:[{action, decision, reason_code|null, count}], handoffs:{total, by_status{}, by_priority{}, by_department{}}, cards_blocked, otp:{sent, verified, failed}}`.
+- `POST /v1/admin/handoffs/{handoff_ref}/close` `{agent_ref, outcome, reason?}` and `POST .../escalate` `{agent_ref, department, raise_to_urgent}` → the detail above ([ADR-0018](adr/0018-agent-decisions-on-a-case.md)).
+  - Close sets the status `CLOSED` with the outcome (`APPROVED`, `REJECTED` with a reason, `RESOLVED`), claiming a queued case in the same write. Escalate puts the case back in the queue with no agent, in another department, and can raise it to `URGENT`.
+  - 409 `claimed_by_another_agent`, `already_closed`, or a code for a decision the case does not allow (`outcome_not_allowed`, `reason_required`, `reason_not_allowed`, `nothing_to_escalate`). The same close by the same agent again changes nothing.
+  - Audited as `admin.handoff.closed` and `admin.handoff.escalated`, `actor_type='agent'`, enums and the case ref only.
+  - The detail carries `decisions` (the outcomes, reject reasons, departments and closing messages the case allows, from `handoff/decisions.json`), `feedback` (the customer's answer, ADR-0017) and the closing fields; the list carries `disputed_amount`. Migration `0010` adds the status and the columns.
+- `GET /v1/admin/metrics?hours=24` (1..720) → `{generated_at, window_hours, tool_calls:[{action, decision, reason_code|null, count}], handoffs:{total, by_status{}, by_priority{}, by_department{}, by_outcome{}}, cards_blocked, otp:{sent, verified, failed}, feedback:{helpful, not_helpful}, recent_not_helpful:[{handoff_ref, reason, recorded_at}], queue:{waiting, urgent, oldest_created_at|null}, previous:{cards_blocked, otp, handoffs_total, feedback}}`.
   - It aggregates from `ops.audit_log` over the window and from `ops.handoff`, with no PII.
   - Use the real audit action names. List them in your report.
 - Existing routes the back office uses as they are: `GET`/`PUT /v1/admin/policy-config`, `GET`/`PUT /v1/admin/tool-policy`, `POST /v1/admin/demo/reset-fixtures`.
 
 ### web-client BFF (`/api`, same origin)
 
-These map 1:1 to the four orchestrator chat routes:
+These map 1:1 to the five orchestrator chat routes:
 - `POST /api/conversations`
 - `POST /api/conversations/:id/messages`
 - `GET /api/conversations/:id`
 - `GET /api/conversations/:id/inbox`
+- `POST /api/conversations/:id/feedback`
 
 Rules:
 - `:id` is an opaque path-safe token, `^[A-Za-z0-9_-]{1,64}$` (`ConversationIdSchema`). The orchestrator's ids are `conv_<hex>`, not UUIDs. Validate the request, forward, then validate the response with Zod.
@@ -131,6 +138,8 @@ Rules:
   - `GET /api/handoffs` → the admin list.
   - `GET /api/handoffs/:ref` → the admin detail, plus `conversation_id|null` resolved through the agent API.
   - `POST /api/handoffs/:ref/claim` → claims in banking-core with the session's agent, then takes over in the orchestrator. It returns `{handoff, takeover}`: `handoff` is the claim's handoff detail, and `takeover` is the agent API's takeover response verbatim, `{conversation_id, takeover:{active, since, agent_ref}}`. If the takeover fails after the claim succeeded, it returns 502 `{detail:"claimed_but_takeover_failed"}`, and a retry of the same call is safe because both steps are idempotent.
+  - `POST /api/handoffs/:ref/close` `{outcome, reason?}` → closes in banking-core with the session's agent, then takes the conversation over for that agent and sends the closing message in the conversation's language (`client_message_id = close_<ref>`). It returns `{handoff, customer_notified}`; the case is closed even when the message could not go out.
+  - `POST /api/handoffs/:ref/escalate` `{department, raise_to_urgent}` → escalates in banking-core, then releases the conversation in the orchestrator (`POST /v1/agent/conversations/{id}/release`) so the next agent's takeover succeeds. It returns `{handoff}`.
 - **Conversations:**
   - `GET /api/conversations/:id` → the agent transcript.
   - `POST /api/conversations/:id/messages` `{text, client_message_id}` → the agent API, with `X-Agent-Ref` from the session.
@@ -140,7 +149,7 @@ Rules:
 
 ## Customer app (web-client) scope
 
-- **Landing:** the Landing composition (Navbar, Hero, FeatureGrid, HowItWorks, S2PromoCard, FaqAccordion, Footer), with the copy of the previews in es, pt and en. The previews have only es copy for FeatureGrid, HowItWorks, FAQ and Footer; translate them faithfully, keeping every rule: no invented numbers, and a demo note in every language.
+- **Landing:** the home page of a fictional bank, built from the Landing composition (Navbar, Hero, FeatureGrid as its products, HowItWorks as what to do if you lose your card, S2PromoCard, FaqAccordion, Footer), in es, pt and en. Every rule holds: no invented numbers, only the products the demo data has, and a demo note in every language. The changes to the design system's rules this needed are listed in `packages/design-tokens/README.md`, "Local changes not yet in the artifact".
 - **Chat dock:** ChatBubble launcher and panel. Every content type in `components/ChatMessage/README.md` that says "Exists", with the backend source it names:
   - text;
   - receipts;
@@ -159,7 +168,7 @@ Rules:
 
 - **Login.**
 - **Queue:** QueueRow list, polling, filters by status.
-- **Handoff detail:** HandoffCard with the stored summary, the masked transcript, "Tomar caso" (claim plus takeover), and the reply composer once taken over.
+- **Handoff detail:** the case's reason as the title, its status on one line, "Tomar caso" and the decisions (Aprobar, Rechazar or Cerrar, Escalar) in the header; the summary card (the customer's ask, the charge, what the bank verified, what the assistant did, the customer's feedback, the full log on demand), the masked transcript, and the reply composer once taken over. The queue offers the same summary and decisions under each row (the declutter review of 2026-10-02, ADR-0018).
 - **Guardrails:**
   - PolicyControl for the per-currency thresholds and the amount mode, labelled "handoff recomendado (`flag`)" / "handoff requerido (`block`)" per AGENTS.md.
   - The tool × state matrix, where only what the code floor allows is toggleable and the floor is shown.

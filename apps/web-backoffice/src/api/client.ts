@@ -10,6 +10,8 @@ import {
   routePath,
   toQueryString,
   type AgentMessageRequest,
+  type CloseCaseRequest,
+  type EscalateCaseRequest,
   type HandoffStatus,
   type PolicyConfigRequest,
   type RouteShape,
@@ -106,6 +108,8 @@ export function createApi(fetchImpl: FetchLike = (input, init) => globalThis.fet
     listHandoffs: (statuses?: readonly HandoffStatus[]) => request(routes.listHandoffs, { query: { status: statuses } }),
     getHandoff: (ref: string) => request(routes.getHandoff, { params: { ref } }),
     claimHandoff: (ref: string) => request(routes.claimHandoff, { params: { ref } }),
+    closeHandoff: (ref: string, body: CloseCaseRequest) => request(routes.closeHandoff, { params: { ref }, body }),
+    escalateHandoff: (ref: string, body: EscalateCaseRequest) => request(routes.escalateHandoff, { params: { ref }, body }),
 
     getConversation: (id: string) => request(routes.getConversation, { params: { id } }),
     sendAgentMessage: (id: string, message: AgentMessageRequest) => request(routes.sendAgentMessage, { params: { id }, body: message }),

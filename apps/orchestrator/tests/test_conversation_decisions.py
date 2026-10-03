@@ -28,6 +28,7 @@ from orchestrator.conversation.decisions.state import (
     GateStatus,
 )
 from orchestrator.conversation.prompt import (
+    FLOW_TEMPLATE,
     HINT_TEMPLATE,
     HINT_UNCERTAIN,
     PROMPT_VERSION,
@@ -783,7 +784,7 @@ async def test_the_eval_hook_carries_the_decision_records(services: Any) -> None
 
 
 def test_the_prompt_explains_the_refusal_and_holds_no_policy() -> None:
-    assert PROMPT_VERSION == "turn-engine/4"
+    assert PROMPT_VERSION == "turn-engine/5"
     assert "CONFIRMATION_REQUIRED" in SYSTEM_PROMPT
     # The next step comes from banking-core's flow hint at run time (ADR-0016),
     # not from a copy of the state machine in the text.
@@ -792,10 +793,11 @@ def test_the_prompt_explains_the_refusal_and_holds_no_policy() -> None:
         assert state not in SYSTEM_PROMPT
     assert "one short question" in SYSTEM_PROMPT
     # explanatory only: the gate is code, and no threshold or mode is in the text
-    for text in (SYSTEM_PROMPT, HINT_TEMPLATE, HINT_UNCERTAIN):
+    for text in (SYSTEM_PROMPT, HINT_TEMPLATE, HINT_UNCERTAIN, FLOW_TEMPLATE):
         for word in ("threshold", "shadow", "enforce", "confirm_gate", "tau"):
             assert word not in text.lower()
     assert "advisory" in HINT_TEMPLATE and "banking-core decides" in HINT_TEMPLATE
+    assert "advisory" in FLOW_TEMPLATE and "banking-core decides" in FLOW_TEMPLATE
 
 
 @pytest.mark.parametrize(

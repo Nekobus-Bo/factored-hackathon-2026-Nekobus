@@ -13,6 +13,7 @@ import httpx
 import pytest
 import respx
 from contracts import HandoffBlock, ReceiptBlock, TextBlock, ToolResult
+from contracts.envelope import FlowHint
 from orchestrator.config import Settings
 from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.conversation.prompt import FALLBACK_MESSAGES, REPHRASE_MESSAGES
@@ -1057,3 +1058,80 @@ async def test_malformed_handoff_result_does_not_create_block(
 
     assert route.call_count == 1
     assert not any(isinstance(block, HandoffBlock) for block in result.blocks)
+
+
+OPENING_FLOW = FlowHint(
+    state="ANONYMOUS",
+    next=["customer.match"],
+    allowed=["customer.match", "handoff.create", "kb.search"],
+    enabled=[
+        "customer.match",
+        "otp.send",
+        "otp.verify",
+        "card.list",
+        "transaction.list_recent",
+        "card.block",
+        "handoff.create",
+        "kb.search",
+    ],
+)
+
+
+def _system_lines(call: dict[str, Any]) -> list[str]:
+    return [m["content"] for m in call["messages"] if m["role"] == "system"]
+
+
+async def test_the_first_completion_reads_where_the_session_starts(
+    mock_services: Any,
+) -> None:
+    """ADR-0016 amendment 2026-10-02: the hint of session creation, until a result."""
+    banking = FakeBankingCore(refuse={"handoff.create": "POLICY_BLOCKED"})
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    mock_services.post(f"{ENCODER_URL}/v1/analyze").mock(
+        return_value=httpx.Response(200, json=ANALYZE_OK)
+    )
+    dispute = {"reason": "DISPUTE_CLAIM", "summary": "Unrecognized purchase."}
+    llm = ScriptedLLM(
+        [
+            Step(tool_calls=[tool_call("call_1", "handoff_create", dispute)]),
+            Step(content="¿Me compartes tu número de documento?"),
+        ]
+    )
+    context = ConversationContext(
+        session_id=SESSION_ID,
+        language="es",
+        enabled_tools=list(OPENING_FLOW.enabled),
+        opening_flow=OPENING_FLOW,
+    )
+
+    await make_engine(llm).run_turn(
+        context, "he detectado una compra que no hice con mi tarjeta"
+    )
+
+    first, second = llm.calls
+    opening = [line for line in _system_lines(first) if "banking-core flow" in line]
+    assert opening == [
+        "banking-core flow (advisory; banking-core decides every call): the session "
+        "is ANONYMOUS; the step that moves it forward is `customer_match`."
+    ]
+    # Only what the configuration enables is offered, from the first completion.
+    offered = {tool["function"]["name"] for tool in first["tools"]}
+    assert "account_get_summary" not in offered
+    assert "customer_match" in offered
+    # The refusal is in the history now: the hint travels in the results.
+    assert not any("banking-core flow" in line for line in _system_lines(second))
+
+
+async def test_without_an_opening_hint_the_first_completion_is_as_before(
+    mock_services: Any,
+) -> None:
+    mock_services.post(f"{ENCODER_URL}/v1/analyze").mock(
+        return_value=httpx.Response(200, json=ANALYZE_OK)
+    )
+    llm = ScriptedLLM([Step(content="Hola, ¿en qué te ayudo?")])
+
+    await make_engine(llm).run_turn(new_context(), "hola")
+
+    assert not any("banking-core flow" in line for line in _system_lines(llm.calls[0]))
+    offered = {tool["function"]["name"] for tool in llm.calls[0]["tools"]}
+    assert "account_get_summary" in offered

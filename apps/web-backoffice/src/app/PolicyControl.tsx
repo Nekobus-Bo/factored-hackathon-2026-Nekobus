@@ -1,10 +1,12 @@
-// PolicyControl (design system: PolicyControl): the amount threshold per currency, the handoff mode and
-// the tool by state matrix. Presentational: the guardrails machine owns the draft and the rules.
+// PolicyControl (design system: PolicyControl, as changed by the declutter review of 2026-10-02): the
+// amount threshold per currency, the handoff mode and the tools by state as one matrix. Presentational:
+// the guardrails machine owns the draft and the rules.
 //
-// Two deviations from the component's README, both because of what the admin API provides:
-//   * no "Semilla" (the .env seed): `GET /v1/admin/policy-config` does not return it, so the row shows
-//     the value in force ("Vigente") and marks an edited row;
-//   * the API needs a threshold greater than zero (the README says "non-negative").
+// Deviations from the component's README:
+//   * no "Semilla" (the .env seed): `GET /v1/admin/policy-config` does not return it. A row shows its old
+//     value only once it is edited;
+//   * the API needs a threshold greater than zero (the README says "non-negative");
+//   * the tools are one table with the states as columns, named once, instead of a block per tool.
 
 import type { AmountMode, VerificationState } from "@pattern-blue/contracts";
 import { Switch } from "@ark-ui/react/switch";
@@ -13,7 +15,7 @@ import { FSM_ORDER } from "../machines/policy-draft";
 import type { Refusal } from "../machines/guardrails";
 import { useI18n } from "./context";
 import { money, parseMajor } from "./format";
-import { Alert, Icon, STATE_GLYPH } from "./ui";
+import { Alert, Icon, StateChip } from "./ui";
 
 /** The English demo customer's disputed charge (docs/runbook.md, section 7): USD 139.99, on a 0 to 200 scale. */
 export const DEMO_CHARGE_MINOR = 13999;
@@ -71,28 +73,18 @@ export function ThresholdRow({
         )}
       </div>
       <div className="pb-thr__side">
-        <div className="pb-thr__seed">
-          <span>
-            {t("guardrails.thresholds.current")} <b>{savedMinor === undefined ? t("common.empty") : money(savedMinor, currency)}</b>
-          </span>
-          {edited ? (
-            <span className="pb-chip" data-tone="info">
-              <Icon name="info" />
+        {edited && (
+          <div className="pb-thr__seed">
+            <span className="pb-chip" data-tone="warning">
+              <Icon name="warning" />
               {t("guardrails.thresholds.edited")}
             </span>
-          ) : (
-            <span>{t("guardrails.thresholds.unchanged")}</span>
-          )}
-        </div>
+            <span>{t("guardrails.thresholds.before", { amount: savedMinor === undefined ? t("common.empty") : money(savedMinor, currency) })}</span>
+          </div>
+        )}
         {showDemo && (
           <div className="pb-thr__demo">
-            <span>
-              {t("guardrails.thresholds.demoCharge", { amount: money(DEMO_CHARGE_MINOR, "USD"), threshold: thresholdText })} →{" "}
-              <span className="pb-chip" data-tone={above ? "warning" : "success"}>
-                <Icon name={above ? "warning" : "check"} />
-                {t(above ? "guardrails.thresholds.above" : "guardrails.thresholds.below")}
-              </span>
-            </span>
+            <span>{t(above ? "guardrails.thresholds.demoAboveLine" : "guardrails.thresholds.demoBelowLine", { amount: money(DEMO_CHARGE_MINOR, "USD") })}</span>
             <div
               className="pb-gauge pb-gauge--sm"
               data-state={above ? "caution" : "decided"}
@@ -109,7 +101,6 @@ export function ThresholdRow({
                 <span className="pb-gauge__tau" />
               </div>
             </div>
-            <span>{t("guardrails.thresholds.scale")}</span>
           </div>
         )}
       </div>
@@ -128,8 +119,8 @@ export function ModeGroup({ mode, onChange }: { mode: AmountMode; onChange: (mod
       <fieldset className="pb-modes bo-modes" role="radiogroup" aria-describedby="mode-help">
         <legend className="pb-sr">{t("guardrails.mode.label")}</legend>
         {MODES.map((value) => (
-          <button key={value} type="button" className="pb-btn pb-btn--sm" role="radio" aria-checked={mode === value} data-mode={value} onClick={() => onChange(value)}>
-            {t(value === "flag" ? "guardrails.mode.flagLabel" : "guardrails.mode.blockLabel")} <span className="bo-raw">({value})</span>
+          <button key={value} type="button" className="pb-btn pb-btn--sm" role="radio" aria-checked={mode === value} data-mode={value} title={value} onClick={() => onChange(value)}>
+            {t(value === "flag" ? "guardrails.mode.flagLabel" : "guardrails.mode.blockLabel")}
           </button>
         ))}
       </fieldset>
@@ -142,71 +133,118 @@ export function ModeGroup({ mode, onChange }: { mode: AmountMode; onChange: (mod
 
 // --- Tool by state matrix -------------------------------------------------------------------------------
 
-export function ToolRow({
-  tool,
-  floor,
+/** The three kinds of cell, shown instead of described. */
+export function MatrixLegend() {
+  const { t } = useI18n();
+  return (
+    <p className="pb-legend">
+      <span>
+        <span className="pb-mx__cell" role="img" aria-checked="true" aria-label={t("guardrails.tools.legendOn")}>
+          <Icon name="check" />
+        </span>
+        {t("guardrails.tools.legendOn")}
+      </span>
+      <span>
+        <span className="pb-mx__cell" role="img" aria-checked="false" aria-label={t("guardrails.tools.legendOff")}>
+          <Icon name="check" />
+        </span>
+        {t("guardrails.tools.legendOff")}
+      </span>
+      <span>
+        <span className="pb-mx__off" aria-hidden="true">
+          ·
+        </span>
+        {t("guardrails.tools.legendOutside")}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The tools by state, one row per tool: a cell per state the code permits (on or off), a dot for a state
+ * outside the code floor (nothing to click), and the tool's switch.
+ */
+export function ToolMatrix({
+  tools,
+  floorOf,
   enabled,
   onCell,
   onMaster,
 }: {
-  tool: string;
-  /** The states the code permits, in FSM order. Configuration can only restrict within it. */
-  floor: readonly VerificationState[];
-  /** The states the draft enables. */
-  enabled: readonly VerificationState[];
-  onCell: (state: VerificationState) => void;
-  onMaster: () => void;
+  tools: readonly string[];
+  floorOf: (tool: string) => readonly VerificationState[];
+  enabled: (tool: string) => readonly VerificationState[];
+  onCell: (tool: string, state: VerificationState) => void;
+  onMaster: (tool: string) => void;
 }) {
   const { t, note } = useI18n();
-  const nameId = `tool-${tool.replaceAll(".", "-")}`;
-  const on = enabled.length > 0;
-  const allStates = floor.length === FSM_ORDER.length;
-  const toolNote = note(tool);
-
   return (
-    <div className="pb-tool" data-floor={floor.join(", ")}>
-      <div className="pb-tool__head">
-        <div>
-          <span className="pb-tool__name" id={nameId}>
-            {tool}
-          </span>
-          <p className="pb-tool__meta">
-            {t("guardrails.tools.floor")}: <b>{allStates ? t("guardrails.tools.allStates") : floor.join(", ")}</b> · {t("guardrails.tools.activeIn")}:{" "}
-            <b>{enabled.length === 0 ? t("common.none") : enabled.length === floor.length && allStates ? t("common.all") : enabled.join(", ")}</b>
-          </p>
-        </div>
-        <div className="pb-tool__ctl">
-          <span>{on ? t("guardrails.tools.on") : t("guardrails.tools.off")}</span>
-          <Switch.Root checked={on} onCheckedChange={onMaster}>
-            <Switch.Control className="pb-switch">
-              <Switch.Thumb className="pb-switch__thumb" />
-            </Switch.Control>
-            <Switch.HiddenInput aria-labelledby={nameId} />
-          </Switch.Root>
-        </div>
-      </div>
-      {toolNote && <p className="pb-tool__note">{toolNote}</p>}
-      <div className="pb-cells" role="group" aria-label={t("guardrails.tools.group", { tool })}>
-        {FSM_ORDER.map((state) => {
-          const inFloor = floor.includes(state);
-          return (
-            <button
-              key={state}
-              type="button"
-              className="pb-btn pb-btn--sm pb-btn--secondary"
-              role="switch"
-              aria-checked={enabled.includes(state)}
-              aria-disabled={inFloor ? undefined : true}
-              aria-label={inFloor ? undefined : t("guardrails.tools.outsideFloor", { state })}
-              data-fsm={state}
-              onClick={() => onCell(state)}
-            >
-              <Icon name={inFloor ? (STATE_GLYPH[state] ?? "minus") : "x"} />
-              {state}
-            </button>
-          );
-        })}
-      </div>
+    <div className="pb-mx">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{t("guardrails.tools.colTool")}</th>
+            {FSM_ORDER.map((state) => (
+              <th key={state} scope="col">
+                <StateChip state={state} words />
+              </th>
+            ))}
+            <th scope="col">{t("guardrails.tools.colActive")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tools.map((tool) => {
+            const floor = floorOf(tool);
+            const on = enabled(tool);
+            const nameId = `tool-${tool.replaceAll(".", "-")}`;
+            const toolNote = note(tool);
+            return (
+              <tr key={tool} data-tool={tool}>
+                <td>
+                  <span className="pb-mx__tool">
+                    <b id={nameId}>{tool}</b>
+                    {toolNote && <span>{toolNote}</span>}
+                  </span>
+                </td>
+                {FSM_ORDER.map((state) => {
+                  const stateWord = t(`enums.state.${state}`);
+                  return (
+                    <td key={state}>
+                      {floor.includes(state) ? (
+                        <button
+                          type="button"
+                          className="pb-mx__cell"
+                          role="switch"
+                          aria-checked={on.includes(state)}
+                          aria-label={t("guardrails.tools.cell", { tool, state: stateWord })}
+                          data-fsm={state}
+                          onClick={() => onCell(tool, state)}
+                        >
+                          <Icon name="check" />
+                        </button>
+                      ) : (
+                        <span className="pb-mx__off" role="img" aria-label={t("guardrails.tools.outsideFloor", { state: stateWord })} data-fsm={state}>
+                          ·
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td>
+                  <span className="pb-mx__ctl">
+                    <Switch.Root checked={on.length > 0} onCheckedChange={() => onMaster(tool)}>
+                      <Switch.Control className="pb-switch">
+                        <Switch.Thumb className="pb-switch__thumb" />
+                      </Switch.Control>
+                      <Switch.HiddenInput aria-labelledby={nameId} />
+                    </Switch.Root>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

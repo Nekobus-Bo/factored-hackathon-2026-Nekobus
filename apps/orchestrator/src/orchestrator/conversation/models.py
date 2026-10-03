@@ -9,6 +9,7 @@ from contracts import (
     TextBlock,
     ToolResultStatus,
 )
+from contracts.envelope import FlowHint
 from contracts.locale import Locale
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,8 +56,16 @@ class ConversationContext(BaseModel):
         default=None,
         description=(
             "Catalog tools banking-core's latest flow hint says the configuration "
-            "enables in some state (ADR-0016). None until the first tool result: "
-            "then every tool is offered"
+            "enables in some state (ADR-0016), from session creation on. None if "
+            "banking-core gave no hint yet: then every tool is offered"
+        ),
+    )
+    opening_flow: FlowHint | None = Field(
+        default=None,
+        description=(
+            "The flow hint of session creation (ADR-0016 amendment 2026-10-02): "
+            "one system line names its state and next step until the first tool "
+            "result is in the history"
         ),
     )
     human_takeover: bool = Field(

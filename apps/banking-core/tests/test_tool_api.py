@@ -1409,6 +1409,8 @@ def test_session_creation_falls_back_to_the_seed_ttl_without_configuration(
     response = TestClient(app).post("/v1/sessions")
 
     assert response.status_code == 201
+    # The flow hint is advisory: without configuration it is left out, never fatal.
+    assert response.json()["flow"] is None
     [key] = fake.keys("session:*")
     assert 900 < fake.ttl(key) <= 3600
 

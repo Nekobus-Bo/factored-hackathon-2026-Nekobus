@@ -1,6 +1,6 @@
 // The web-client BFF (apps/web-client, port 5173), same origin as the page under `/api`.
 //
-// It maps 1:1 to the orchestrator's four chat routes, so it speaks the same shapes: validate the
+// It maps 1:1 to the orchestrator's five chat routes, so it speaks the same shapes: validate the
 // request with the route's schemas, forward, validate the response, answer with the parsed value.
 // Status codes and `Retry-After` pass through; an upstream that cannot be reached is a 503
 // `{"detail": "unavailable"}` (ERROR_DETAIL.unavailable). It holds no tokens, sets `X-Forwarded-For`
@@ -10,7 +10,9 @@ import {
   ConversationParamsSchema,
   CreateConversationRequestSchema,
   CreateConversationResponseSchema,
+  FeedbackResponseSchema,
   InboxResponseSchema,
+  SendFeedbackRequestSchema,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
   TranscriptResponseSchema,
@@ -48,5 +50,13 @@ export const clientBffRoutes = {
     successStatus: 200,
     params: ConversationParamsSchema,
     response: InboxResponseSchema,
+  }),
+  sendFeedback: defineRoute({
+    method: "POST",
+    pattern: "/api/conversations/:id/feedback",
+    successStatus: 200,
+    params: ConversationParamsSchema,
+    body: SendFeedbackRequestSchema,
+    response: FeedbackResponseSchema,
   }),
 } as const;

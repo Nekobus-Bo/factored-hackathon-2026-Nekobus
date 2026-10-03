@@ -16,6 +16,7 @@ import {
   bankingAdminRoutes,
   orchestratorAgentRoutes,
   queryFromSearchParams,
+  type ClosingMessage,
   type RouteShape,
   type ValidationIssue,
 } from "@pattern-blue/contracts";
@@ -167,6 +168,28 @@ export function createBff(config: Config, deps: BffDeps = {}): Bff {
     return empty(204, { "Set-Cookie": sessionSetCookie(value, { secure: config.production, maxAgeSeconds: config.sessionTtlSeconds }) });
   };
 
+  /**
+   * Send the closing message as the agent, in the conversation's language: take the conversation over for
+   * the agent (idempotent), then post the message with a fixed `client_message_id`, so a retried close
+   * cannot send it twice. False when the conversation is gone, another agent holds it, or a step fails.
+   */
+  const notifyCustomer = async (sessionRef: string, handoffRef: string, agentRef: string, message: ClosingMessage): Promise<boolean> => {
+    const conversation = await upstream.call("orchestrator", agent.conversationForSession, { params: { session_ref: sessionRef } });
+    if (conversation.kind !== "ok") return false;
+    const id = conversation.data.conversation_id;
+    const current = await upstream.call("orchestrator", agent.getConversation, { params: { id } });
+    if (current.kind !== "ok") return false;
+    const takeover = await upstream.call("orchestrator", agent.takeover, { params: { id }, body: { agent_ref: agentRef, handoff_ref: handoffRef } });
+    if (takeover.kind !== "ok") return false;
+    const sent = await upstream.call("orchestrator", agent.sendMessage, {
+      params: { id },
+      body: { text: message[current.data.language], client_message_id: `close_${handoffRef}` },
+      headers: { [AGENT_REF_HEADER]: agentRef },
+    });
+    if (sent.kind !== "ok") log(`close ${handoffRef}: the closing message was not sent (${sent.kind})`);
+    return sent.kind === "ok";
+  };
+
   // --- Handlers of the authenticated routes -----------------------------------------------------------
 
   const handlers: { [N in AuthedRouteName]: Handler<N> } = {
@@ -216,6 +239,40 @@ export function createBff(config: Config, deps: BffDeps = {}): Bff {
       if (takeover.kind !== "ok") return claimedButFailed();
 
       return ok("claimHandoff", { handoff: claim.data, takeover: takeover.data });
+    },
+
+    closeHandoff: async ({ params, body, session }) => {
+      // Step 1, in banking-core: the decision, audited, claiming a queued case (ADR-0018).
+      const closed = await upstream.call("banking-core", admin.closeHandoff, {
+        params: { handoff_ref: params.ref },
+        body: { agent_ref: session.agent_ref, outcome: body.outcome, reason: body.reason ?? null },
+      });
+      if (closed.kind !== "ok") return fail(closed);
+      // Step 2, in the orchestrator: the closing message. The case is closed whatever happens here.
+      const message = closed.data.decisions.closing_messages[body.outcome];
+      const customer_notified = message ? await notifyCustomer(closed.data.session_ref, params.ref, session.agent_ref, message) : false;
+      return ok("closeHandoff", { handoff: closed.data, customer_notified });
+    },
+
+    escalateHandoff: async ({ params, body, session }) => {
+      const escalated = await upstream.call("banking-core", admin.escalateHandoff, {
+        params: { handoff_ref: params.ref },
+        body: { agent_ref: session.agent_ref, department: body.department, raise_to_urgent: body.raise_to_urgent },
+      });
+      if (escalated.kind !== "ok") return fail(escalated);
+      // Let the conversation go if this agent held it, so the next agent's takeover succeeds. A conversation
+      // that expired, or that this agent never took, has nothing to release.
+      const conversation = await upstream.call("orchestrator", agent.conversationForSession, {
+        params: { session_ref: escalated.data.session_ref },
+      });
+      if (conversation.kind === "ok") {
+        const released = await upstream.call("orchestrator", agent.release, {
+          params: { id: conversation.data.conversation_id },
+          body: { agent_ref: session.agent_ref, handoff_ref: params.ref },
+        });
+        if (released.kind !== "ok") log(`escalate ${params.ref}: the conversation was not released (${released.kind})`);
+      }
+      return ok("escalateHandoff", { handoff: escalated.data });
     },
 
     getConversation: async ({ params }) => {

@@ -1,6 +1,7 @@
 import { useSelector } from "@xstate/react";
 import { AppServicesProvider, I18nProvider, useAppServices, useI18n, useLang, type AppActor } from "./context";
 import type { Api } from "../api/client";
+import { FlowsScreen } from "./FlowsScreen";
 import { GuardrailsScreen } from "./GuardrailsScreen";
 import { HandoffScreen } from "./HandoffScreen";
 import { LoginScreen } from "./LoginScreen";
@@ -19,6 +20,8 @@ function Screens() {
       return <GuardrailsScreen />;
     case "metrics":
       return <MetricsScreen />;
+    case "flows":
+      return <FlowsScreen />;
     case "queue":
       return <QueueScreen />;
   }

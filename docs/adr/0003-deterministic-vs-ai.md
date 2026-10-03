@@ -111,7 +111,7 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 | `transaction.list_recent` | Read | `VERIFIED` | Retrieves recent transaction history for the pinned customer or a specific card referenced by `card_ref`. Contains amounts, timestamps, merchants, and dispute eligibility indicators. |
 | `account.get_summary` | Read | `VERIFIED` | Returns balance and status summaries for accounts belonging to the pinned customer. Read-only; enables the secondary workflow (inquiries) via configuration alone without code changes (ADR-0002). |
 | `card.block` | state-changing: requires idempotency key, returns a receipt | `VERIFIED` | Blocks a payment card identified by its opaque `card_ref`. Requires an idempotency key and policy engine authorization. Permitted strictly in `VERIFIED` only (owner confirmed). Takes an optional opaque `transaction_id` (from `transaction.list_recent`): the charge the customer disputes, which must belong to the pinned holder and to that card. The risk threshold reads that charge's amount and currency from the database, never from the customer's words or the model's arguments. Returns a verified `Receipt` re-read from the database and the `handoff_requirement` (`NONE`, `RECOMMENDED` or `REQUIRED`, with priority, department and reason) the policy decided. |
-| `handoff.create` | state-changing: requires idempotency key, returns a receipt | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Escalates the session to a human representative in the back-office queue with reason, priority, and department routing. Available in every state, including `LOCKED`. Takes the same optional `transaction_id` with the same ownership check, honored only in a `VERIFIED` session (dropped otherwise); the charge's amount, currency, merchant, date and masked card go into the server-built `verified_facts` from the database. A session that remembers a `handoff_requirement` gets at least that priority and always that department: banking-core raises, the model cannot lower. |
+| `handoff.create` | state-changing: requires idempotency key, returns a receipt | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Escalates the session to a human representative in the back-office queue with reason, priority, and department routing. Available in every state, including `LOCKED`; from `ANONYMOUS`, a configured set of reasons needs one identity attempt first (amendment 2026-10-02). Takes the same optional `transaction_id` with the same ownership check, honored only in a `VERIFIED` session (dropped otherwise); the charge's amount, currency, merchant, date and masked card go into the server-built `verified_facts` from the database. A session that remembers a `handoff_requirement` gets at least that priority and always that department: banking-core raises, the model cannot lower. |
 | `kb.search` | Read / Public | All states (`ANONYMOUS`, `IDENTIFIED`, `OTP_PENDING`, `VERIFIED`, `LOCKED`, `HANDED_OFF`) | Vector search over the public knowledge base; BM25 or hybrid only when configured (ADR-0006). Never handles or returns customer PII. Available in all states. |
 
 ### State × Tool Authorization Matrix
@@ -130,6 +130,8 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 | `kb.search` | Allowed | Allowed | Allowed | Allowed | Allowed | Allowed |
 
 *Note: In `OTP_PENDING`, `otp.send` is allowed to support legitimate "resend code" requests within rate limits.*
+
+*Note: `handoff.create` is allowed in every state, but from `ANONYMOUS` the policy engine refuses the reasons listed in `handoff_reasons_requiring_identity_attempt` until one `customer.match` has been tried (amendment 2026-10-02).*
 
 ### State Transitions
 
@@ -155,7 +157,7 @@ While ADR-0002 allows operators to edit which tools each state enables through c
 5. **`OTP_PENDING` → `VERIFIED`**: `otp.verify` confirms the customer submitted the correct OTP within expiry.
 6. **`OTP_PENDING` → `LOCKED`**: Repeated failed OTP verification attempts exceed the configured threshold.
 7. **`IDENTIFIED` → `LOCKED`**: Repeated failed match attempts or rate limit violations trigger lock to prevent enumeration.
-8. **Any state → `HANDED_OFF`**: `handoff.create` is invoked (either requested by customer, recommended by policy, or automatically following `LOCKED` state).
+8. **Any state → `HANDED_OFF`**: `handoff.create` is invoked (either requested by customer, recommended by policy, or automatically following `LOCKED` state). From `ANONYMOUS`, a dispute reason needs one identity attempt first (amendment 2026-10-02).
 
 ---
 
@@ -235,3 +237,18 @@ The stored values stay `flag` and `block` (database, admin API, environment seed
 **Decision.** This adds a row to the split above and changes none of the others. The engine applies a decision point only through a closed set of effects that can record, choose among values banking-core already accepts, or withhold a write. None can authorize, create a call, or make one succeed that the state machine and the policy engine refuse; and when a decision point abstains or is unavailable the outcome is the LLM's own argument or a withheld write, never an action. The gate is a control in the untrusted zone and not an authorization: banking-core still requires `VERIFIED`, ownership and an idempotency key for every block. "The engine never alters model arguments" becomes "except the `select` allowlist of the effects file, which cannot touch `priority`, `card_ref`, an identity or a secret".
 
 **Consequences.** Every decision point ships in `shadow` (computed and recorded, nothing changes) and flips to `enforce` only by its own reviewed diff. A fail-closed gate adds a turn when the model abstains on a colloquial "yes": the same trade this ADR already accepts for unnecessary escalation, measured instead of assumed. What is not built and why is in [limitations.md](../limitations.md).
+
+## Amendment 2026-10-02: a dispute handoff needs one identity attempt first
+
+**Context.** A customer who wrote "he detectado una compra que no hice con mi tarjeta" was handed off to Disputes on the first turn, unidentified, with a reply saying the assistant "could not complete the verification" it never attempted. `handoff.create` runs in every state and is never rate limited, so the shortest path for the model was to escalate. The agent then receives a dispute with nothing verified: no holder, no charge, no block. The flow this ADR is built for (identify, verify, find the charge, block, hand off the dispute with verified facts) was skipped.
+
+**Options considered.**
+
+- *Tell the model in the prompt to verify first.* A guardrail in the prompt is not a guardrail ([ADR-0002](0002-config-code-boundary.md)).
+- *Refuse every handoff from `ANONYMOUS` until an identity attempt.* It breaks the cases where escalating at once is right: a customer who asks for a person, and a third party reporting someone else's lost card (`not_the_holder` scenarios), who must not be matched at all.
+- *Refuse only `VERIFICATION_FAILED` before an attempt.* It keeps the reason truthful but would not have stopped the case above, which went out as a dispute.
+- *(chosen)* **Refuse a configured set of reasons from `ANONYMOUS` until one `customer.match` has been tried.**
+
+**Decision.** The policy engine refuses `handoff.create` with `POLICY_BLOCKED` (audit flag `HANDOFF_NEEDS_IDENTITY_ATTEMPT`) when the session is `ANONYMOUS`, no `customer.match` has been tried in it (no attempt counted), and the reason is in `handoff_reasons_requiring_identity_attempt`. That list is policy configuration ([ADR-0002](0002-config-code-boundary.md)), seeded from `POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT`, default `DISPUTE_CLAIM`, `UNRECOGNIZED_TRANSACTION`, `VERIFICATION_FAILED`. `CUSTOMER_REQUEST`, `SUSPECTED_FRAUD` and `CUSTOMER_LOCKED` stay outside it: a customer can always reach a person, and a third party can always be handed off. The refusal's flow hint ([ADR-0016](0016-banking-core-states-the-next-step.md)) names `customer.match` as the next step. One failed match is enough; the rule applies only in `ANONYMOUS`, so an `IDENTIFIED` session whose code cannot be sent (no OTP channel) still escalates with any reason.
+
+**Consequences.** A dispute reaches the agent with an identity attempt behind it, and usually with a verified holder, the charge and the block receipt. A `customer.match` that errors or times out moves no counter, so in that session a dispute reason stays refused until a match is tried again; `CUSTOMER_REQUEST` still goes through. The model may relabel a dispute as `CUSTOMER_REQUEST` to escalate: the department and priority rules still apply, and the attempt counter is in the audit log. Declared in [limitations.md](../limitations.md).

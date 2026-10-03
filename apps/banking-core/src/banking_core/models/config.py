@@ -64,6 +64,14 @@ class PolicyConfigRecord(Base):
     document_match_window_seconds: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=3600
     )
+    handoff_reasons_requiring_identity_attempt: Mapped[list[str]] = mapped_column(
+        postgresql.JSONB(astext_type=sa.Text()),
+        server_default=sa.text(
+            '\'["DISPUTE_CLAIM", "UNRECOGNIZED_TRANSACTION", '
+            '"VERIFICATION_FAILED"]\'::jsonb'
+        ),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.func.now(),

@@ -1,308 +1,389 @@
 import { describe, expect, test } from "bun:test";
-import type { Lang } from "@pattern-blue/contracts";
+import type { HandoffDetail, Lang } from "@pattern-blue/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
-import { Composer, TranscriptLog } from "../src/app/Conversation";
-import { I18nProvider } from "../src/app/context";
+import type { Api } from "../src/api/client";
+import { Composer, ComposerLocked, TranscriptLog } from "../src/app/Conversation";
+import { AppServicesProvider, I18nProvider, type AppActor } from "../src/app/context";
+import { useDecisions, type DecisionsProps } from "../src/app/Decisions";
+import { FLOWS, FlowCard, StateMachine, ToolsByState } from "../src/app/FlowsScreen";
 import { HandoffCard } from "../src/app/HandoffCard";
-import { HandoffTables, ToolCallsTable } from "../src/app/MetricsScreen";
-import { ModeGroup, RefusalBanner, ThresholdRow, ToolRow } from "../src/app/PolicyControl";
+import { CaseMeta } from "../src/app/HandoffScreen";
+import { GlanceNumbers, HandoffTables, NotHelpfulList, ToolCallsTable, ToReviewList } from "../src/app/MetricsScreen";
+import { MatrixLegend, ModeGroup, RefusalBanner, ThresholdRow, ToolMatrix } from "../src/app/PolicyControl";
 import { QueueRow, QueueTable } from "../src/app/QueueRow";
-import { Alert } from "../src/app/ui";
+import { Alert, CaseRef } from "../src/app/ui";
 import { floorOf } from "../src/machines/policy-draft";
-import { AGENT_EMAIL, handoffDetail, handoffItems, metrics, toolPolicy, transcript } from "./support/fixtures";
+import { AGENT_EMAIL, closedDetail, handoffDetail, handoffItems, metrics, toolPolicy, transcript } from "./support/fixtures";
 
 const NOW = Date.UTC(2026, 8, 29, 10, 0, 0);
 const html = (element: ReactElement, lang: Lang = "es") => renderToStaticMarkup(<I18nProvider lang={lang}>{element}</I18nProvider>);
 const count = (text: string, needle: string | RegExp) => (typeof needle === "string" ? text.split(needle).length - 1 : (text.match(needle) ?? []).length);
+/** What a reader sees: the markup without its tags and attributes. */
+const visible = (markup: string) => markup.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
 const items = handoffItems(NOW);
-const [urgent, high, assigned] = items as [(typeof items)[number], (typeof items)[number], (typeof items)[number]];
+const [urgent, high, assigned, queued] = items as [(typeof items)[number], (typeof items)[number], (typeof items)[number], (typeof items)[number]];
+const noop = () => {};
+const rowProps = { now: NOW, me: AGENT_EMAIL, open: false, pinned: false, up: false, decided: false, onOpen: noop, onClose: noop, onDecided: noop };
+
+describe("the case id", () => {
+  test("is mono in groups of four, and its text is the plain id", () => {
+    const markup = html(<CaseRef value="hnd_kfjwqzrtmvnpaxeb" />);
+    expect(markup).toBe('<span class="pb-caseref"><span>hnd_</span><span>kfjw</span><span>qzrt</span><span>mvnp</span><span>axeb</span></span>');
+    expect(markup.replace(/<[^>]*>/g, "")).toBe("hnd_kfjwqzrtmvnpaxeb");
+    expect(html(<CaseRef value="hnd_kfjwqzrtmvnpaxeb" large />)).toContain('class="pb-caseref pb-caseref--lg"');
+  });
+});
 
 describe("QueueRow", () => {
-  test("is the design system's row: role, cells, the case id as a stencil link", () => {
-    const markup = html(<QueueRow item={urgent} now={NOW} />);
-    expect(markup).toContain('class="pb-qrow" role="row"');
-    for (const col of ["id", "pri", "dept", "status", "wait", "agent"]) expect(markup).toContain(`data-col="${col}"`);
-    expect(markup).toContain('<a class="pb-caseid" href="#/handoffs/hnd_qwertyuiopasdfgh"');
-    expect(markup).toContain(">hnd_qwertyuiopasdfgh</a>");
-  });
-
-  test("shows priority and department in words and as the raw enum", () => {
-    const markup = html(<QueueRow item={urgent} now={NOW} />);
-    expect(markup).toContain('<span class="pb-chip" data-tone="danger">');
-    expect(markup).toContain("URGENT</span>");
-    expect(markup).toContain("Urgente");
+  test("leads with the priority, then the case in words, with the id in mono on the second line", () => {
+    const markup = html(<QueueRow item={urgent} {...rowProps} />);
+    expect(markup).toContain('class="pb-crow" role="row"');
+    for (const col of ["pri", "case", "who", "wait", "peek"]) expect(markup).toContain(`data-col="${col}"`);
+    expect(markup.indexOf('data-col="pri"')).toBeLessThan(markup.indexOf('data-col="case"'));
+    expect(markup).toContain('<a class="pb-crow__title" href="#/handoffs/hnd_qwertyuiopasdfgh"');
+    expect(markup).toContain(">Fraude sospechado</a>");
     expect(markup).toContain("Operaciones de fraude");
-    expect(markup).toContain("FRAUD_OPERATIONS");
+    expect(markup).toContain('<span class="pb-crow__amount">USD 139.99</span>');
+    expect(markup).toContain('<span class="pb-caseref"><span>hnd_</span><span>qwer</span>');
   });
 
-  test("shows the status with the queue position, and the wait as mm:ss", () => {
-    const markup = html(<QueueRow item={urgent} now={NOW} />);
-    expect(markup).toContain("QUEUED");
-    expect(markup).toContain("En cola · Posición 1");
-    expect(markup).toContain("07:42");
-    expect(markup).toContain("Sin asignar");
+  test("speaks words, and keeps the raw enums for the tooltip only", () => {
+    const markup = html(<QueueRow item={urgent} {...rowProps} />);
+    expect(markup).toContain('data-tone="danger" title="URGENT"');
+    expect(markup).toContain("Urgente");
+    for (const raw of ["URGENT", "FRAUD_OPERATIONS", "SUSPECTED_FRAUD", "QUEUED"]) expect(visible(markup)).not.toContain(raw);
   });
 
-  test("an assigned case shows its agent and no position", () => {
-    const markup = html(<QueueRow item={assigned} now={NOW} />);
-    expect(markup).toContain("ASSIGNED");
-    expect(markup).toContain("marta@demo.local");
-    expect(markup).not.toContain("Posición");
-    expect(markup).toContain('data-tone="success"');
-    expect(markup).toContain('data-tone="neutral"'); // NORMAL
+  test("says who: the place in line, you, or the agent who holds it", () => {
+    expect(html(<QueueRow item={urgent} {...rowProps} />)).toContain("En cola · 1.º");
+    expect(html(<QueueRow item={queued} {...rowProps} />)).toContain("En cola · 3.º");
+    const other = html(<QueueRow item={assigned} {...rowProps} />);
+    expect(other).toContain('data-other=""');
+    expect(other).toContain("marta@demo.local");
+    const mine = html(<QueueRow item={{ ...assigned, assigned_agent: AGENT_EMAIL }} {...rowProps} />);
+    expect(mine).toContain('data-me=""');
+    expect(mine).toContain(">Tú</span>");
   });
 
-  test("HIGH is a warning chip", () => {
-    expect(html(<QueueRow item={high} now={NOW} />)).toContain('data-tone="warning"');
+  test("shows the wait in mm:ss and a closed chevron that opens the summary", () => {
+    const markup = html(<QueueRow item={urgent} {...rowProps} />);
+    expect(markup).toContain('class="pb-wait">07:42</span>');
+    expect(markup).toContain('class="pb-peekbtn" aria-expanded="false" aria-controls="peek-hnd_qwertyuiopasdfgh" aria-label="Resumen del caso"');
+    expect(markup).not.toContain("pb-peek ");
+  });
+
+  test("a row without a disputed charge has no amount; a decided one is dimmed", () => {
+    expect(html(<QueueRow item={assigned} {...rowProps} />)).not.toContain("pb-crow__amount");
+    expect(html(<QueueRow item={high} {...rowProps} decided />)).toContain('data-closed=""');
   });
 
   test("speaks the language it is given", () => {
-    const markup = html(<QueueRow item={urgent} now={NOW} />, "en");
-    expect(markup).toContain("Fraud operations");
-    expect(markup).toContain("Queued · Position 1");
-    expect(markup).toContain("Unassigned");
-    expect(html(<QueueRow item={urgent} now={NOW} />, "pt")).toContain("Operações de fraude");
+    const markup = html(<QueueRow item={high} {...rowProps} />, "en");
+    expect(markup).toContain("Dispute claim");
+    expect(markup).toContain("Queued · #2");
+    expect(markup).toContain(">High<");
   });
 
-  test("the table has a labelled frame, six column headers and one row per case", () => {
-    const markup = html(<QueueTable items={items} now={NOW} />);
-    expect(markup).toContain('class="pb-queue bo-queue" role="table" aria-label="Cola de handoff"');
-    expect(count(markup, 'role="columnheader"')).toBe(6);
-    expect(count(markup, 'class="pb-qrow"')).toBe(4);
+  test("the table has a labelled frame, four named columns and one row per case", () => {
+    const markup = html(
+      <QueueTable items={items} now={NOW} me={AGENT_EMAIL} openRef={null} pinned={false} decided={new Set()} onOpen={noop} onClose={noop} onDecided={noop} />,
+    );
+    expect(markup).toContain('class="pb-cases" role="table" aria-label="Cola de casos"');
+    expect(count(markup, 'role="columnheader"')).toBe(5);
+    for (const label of ["Prioridad", "Caso", "Quién", "Espera"]) expect(markup).toContain(`>${label}<`);
+    expect(count(markup, 'class="pb-crow"')).toBe(items.length);
   });
 });
 
-describe("HandoffCard", () => {
+describe("HandoffCard, the case summary", () => {
   const detail = handoffDetail({}, NOW);
 
-  test("carries the stored summary: verified facts, actions taken, the method and the open questions", () => {
-    const markup = html(<HandoffCard detail={detail} now={NOW} me={AGENT_EMAIL} />);
-    expect(markup).toContain('class="pb-card pb-handoff"');
-    expect(markup).toContain("Hechos verificados");
-    expect(markup).toContain("Acciones tomadas");
-    expect(markup).toContain("Preguntas abiertas");
-    // The verification method: in words and as stored.
-    expect(markup).toContain("Documento y código OTP");
-    expect(markup).toContain("(document_match_and_otp)");
-    // Facts, from the stored record.
-    expect(markup).toContain("VERIFIED</span>");
+  test("opens with what the customer asks, marked as the assistant's unverified summary", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup.indexOf("Lo que pide el cliente")).toBeLessThan(markup.indexOf("Cargo disputado"));
+    expect(markup).toContain('class="pb-said"');
+    expect(markup).toContain("Resumen del asistente, sin verificar");
+    expect(markup).not.toContain("model_unverified");
+  });
+
+  test("the disputed charge leads with the amount, then the merchant, the date, the card and a short id", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup).toContain('<span class="pb-txn__amount">USD 139.99</span>');
     expect(markup).toContain("Global Electronics Megastore");
-    expect(markup).toContain("USD 139.99");
-    expect(markup).toContain("•••• •••• •••• 4821");
-    expect(markup).toContain("HANDOFF_REQUIRED");
-    // Actions, with the refusal as a refusal.
-    expect(markup).toContain("card.block");
+    expect(markup).toContain("2026-09-27 14:03 UTC");
+    expect(markup).toContain("•••• 4821");
+    expect(markup).toContain('title="txn_4f2a91"');
+  });
+
+  test("what the bank verified reads as sentences, with no raw enum on screen", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup).toContain("Verificado por el banco");
+    expect(markup).toContain("Identidad verificada con documento y código");
+    expect(markup).toContain("La política exige revisión humana.");
+    expect(markup).toContain("La política pide prioridad.");
+    for (const raw of ["VERIFIED", "document_match_and_otp", "HANDOFF_REQUIRED", "PRIORITY"]) expect(visible(markup)).not.toContain(raw);
+  });
+
+  test("an unidentified or locked customer is said so", () => {
+    const anonymous = handoffDetail({ summary: { ...detail.summary, verified_facts: { verification_state: "ANONYMOUS" }, verification_method: "none" } }, NOW);
+    const locked = handoffDetail({ summary: { ...detail.summary, verified_facts: { verification_state: "LOCKED" } } }, NOW);
+    expect(html(<HandoffCard detail={anonymous} />)).toContain("Cliente sin identificar");
+    expect(html(<HandoffCard detail={locked} />)).toContain("Bloqueado tras fallar la verificación");
+  });
+
+  test("what the assistant did lists its writes with the audit id, then the customer's answer", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup).toContain("Bloqueó la tarjeta");
     expect(markup).toContain("aud_00020481");
-    expect(markup).toContain("Rechazada (refused) · Estado no permitido (STATE_NOT_ALLOWED) · aud_00020482");
-    // The open question, marked as the model's unverified proposal.
-    expect(markup).toContain("The customer says they do not recognize");
-    expect(markup).toContain("Fuente: model_unverified (propuesta por el modelo, sin verificar)");
-    expect(markup).toContain('<ol class="pb-questions">');
+    expect(markup).toContain("El cliente no respondió si el asistente le ayudó");
+    const rated = html(<HandoffCard detail={handoffDetail({ feedback: { helpful: false, recorded_at: "2026-09-29T09:56:00Z" } }, NOW)} />);
+    expect(rated).toContain("El cliente dijo que el asistente no le ayudó · 09:56");
   });
 
-  test("shows priority, department, reason and status as words beside the raw enums", () => {
-    const markup = html(<HandoffCard detail={detail} now={NOW} />);
-    expect(markup).toContain('<span class="pb-tag">FRAUD_OPERATIONS</span>');
-    expect(markup).toContain('<span class="pb-tag">SUSPECTED_FRAUD</span>');
-    expect(markup).toContain("Operaciones de fraude · Fraude sospechado · en espera 07:42 · posición 1 en la cola");
-    expect(markup).toContain("URGENT</span>");
-    expect(markup).toContain("QUEUED</span>");
+  test("the full log starts closed, one line per call with the result in words and the codes in a tooltip", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup).toContain('class="pb-more" aria-expanded="false"');
+    expect(markup).toContain("Registro de llamadas (5)");
+    expect(markup).toMatch(/<div id="case-hnd_qwertyuiopasdfgh-log" hidden="">/);
+    expect(count(markup, "<tr")).toBe(5);
+    expect(markup).toContain('<tr data-refused=""><td>account.get_summary</td><td title="refused · STATE_NOT_ALLOWED">Rechazada, estado no permitido</td>');
+    expect(html(<HandoffCard detail={detail} initiallyOpenLog />)).toContain('aria-expanded="true"');
   });
 
-  test("the hazard stripe is for URGENT only", () => {
-    expect(html(<HandoffCard detail={detail} now={NOW} />)).toContain('<span class="pb-hazard" aria-hidden="true"></span>');
-    expect(html(<HandoffCard detail={handoffDetail({ priority: "HIGH" }, NOW)} now={NOW} />)).not.toContain("pb-hazard");
-    expect(html(<HandoffCard detail={handoffDetail({ priority: "NORMAL" }, NOW)} now={NOW} />)).not.toContain("pb-hazard");
-  });
-
-  test("never proposes a resolution and says the assistant does not resolve disputes", () => {
-    const markup = html(<HandoffCard detail={detail} now={NOW} />);
-    expect(markup).toContain("El asistente no resuelve disputas.");
-    expect(markup).not.toMatch(/reembols|refund|resolver el caso/i);
-  });
-
-  test("puts the actions it is given in the design system's action row, and none when it is given none", () => {
-    const withAction = html(<HandoffCard detail={detail} now={NOW} actions={<button className="pb-btn pb-btn--primary pb-btn--sm">Tomar caso</button>} />);
-    expect(withAction).toContain('<div class="pb-handoff__actions"><button class="pb-btn pb-btn--primary pb-btn--sm">Tomar caso</button></div>');
-    expect(html(<HandoffCard detail={detail} now={NOW} />)).not.toContain("pb-handoff__actions");
-  });
-
-  test("says who holds an assigned case, and 'you' when it is you", () => {
-    const mine = handoffDetail({ status: "ASSIGNED", queue_position: null, assigned_agent: AGENT_EMAIL }, NOW);
-    expect(html(<HandoffCard detail={mine} now={NOW} me={AGENT_EMAIL} />)).toContain("Asignado a ti");
-    expect(html(<HandoffCard detail={mine} now={NOW} me="other@demo.local" />)).toContain(`Asignado a ${AGENT_EMAIL}`);
-  });
-
-  test("keeps facts it has no label for, by their own key", () => {
-    const odd = handoffDetail({}, NOW);
-    odd.summary.verified_facts = { branch_code: "BOG-014", nested: { a: 1 }, none: null };
-    const markup = html(<HandoffCard detail={odd} now={NOW} />);
-    expect(markup).toContain("<dt>branch_code</dt>");
-    expect(markup).toContain("BOG-014");
-    expect(markup).toContain('{&quot;a&quot;:1}');
-  });
-
-  test("empty sections say so instead of disappearing", () => {
-    const empty = handoffDetail({}, NOW);
-    empty.summary = { verified_facts: {}, actions_taken: [], verification_method: "none", open_questions: [] };
-    const markup = html(<HandoffCard detail={empty} now={NOW} />);
-    expect(markup).toContain("No hay hechos verificados.");
-    expect(markup).toContain("Todavía no hay acciones registradas.");
-    expect(markup).toContain("No hay preguntas abiertas.");
+  test("never proposes a resolution and says whose decision it is", () => {
+    const markup = html(<HandoffCard detail={detail} />);
+    expect(markup).toContain("El asistente no resuelve disputas. La decisión es tuya.");
+    expect(markup).not.toMatch(/recomend.*aprob|sugerimos/i);
   });
 
   test("an English card", () => {
-    const markup = html(<HandoffCard detail={detail} now={NOW} />, "en");
-    expect(markup).toContain("Verified facts");
-    expect(markup).toContain("Actions taken");
-    expect(markup).toContain("Open questions");
-    expect(markup).toContain("The assistant does not resolve disputes.");
+    const markup = html(<HandoffCard detail={detail} />, "en");
+    expect(markup).toContain("What the customer asks");
+    expect(markup).toContain("Identity verified with a document and a code");
+    expect(markup).toContain("The assistant does not resolve disputes. The decision is yours.");
   });
 });
 
-describe("the tool by state matrix", () => {
+describe("the case header line", () => {
+  test("priority, department, who and the wait, then the id with Copiar", () => {
+    const mine = html(<CaseMeta detail={handoffDetail({ status: "ASSIGNED", queue_position: null, assigned_agent: AGENT_EMAIL, assigned_at: "2026-09-29T09:55:00Z" }, NOW)} me={AGENT_EMAIL} now={NOW} />);
+    expect(mine).toContain("Urgente");
+    expect(mine).toContain("Operaciones de fraude");
+    expect(mine).toContain('data-me="">Tuyo desde 09:55');
+    expect(mine).toContain("esperó");
+    expect(mine).toContain('class="pb-caseref pb-caseref--lg"');
+    expect(mine).toContain('<button type="button" class="pb-linkbtn">Copiar</button>');
+    const waiting = html(<CaseMeta detail={handoffDetail({}, NOW)} me={AGENT_EMAIL} now={NOW} />);
+    expect(waiting).toContain("En cola, 1.º");
+    expect(waiting).toContain("espera 07:42");
+  });
+});
+
+const fakeApi = {} as Api;
+const fakeActor = {} as AppActor;
+
+function DecisionsProbe(props: DecisionsProps) {
+  const view = useDecisions(props);
+  return (
+    <div>
+      <div data-part="buttons">{view.buttons}</div>
+      <div data-part="panel">{view.panel}</div>
+    </div>
+  );
+}
+const decisions = (detail: HandoffDetail, lang: Lang = "es") =>
+  html(
+    <AppServicesProvider actor={fakeActor} api={fakeApi}>
+      <DecisionsProbe detail={detail} me={AGENT_EMAIL} conversationAlive messageLang={lang} />
+    </AppServicesProvider>,
+    lang,
+  );
+
+describe("the decisions", () => {
+  test("Aprobar and Rechazar look the same, Escalar is quieter, and nothing is preselected", () => {
+    const markup = decisions(handoffDetail({}, NOW));
+    expect(markup).toContain('class="pb-btn pb-btn--sm pb-btn--secondary"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>Aprobar</button>');
+    expect(markup).toContain('class="pb-btn pb-btn--sm pb-btn--secondary"><i class="pb-ico pb-ico--x" aria-hidden="true"></i>Rechazar</button>');
+    expect(markup).toContain('class="pb-btn pb-btn--sm pb-btn--ghost"><i class="pb-ico pb-ico--chev2" aria-hidden="true"></i>Escalar</button>');
+    expect(markup).not.toContain("pb-btn--primary");
+    expect(markup).not.toContain("pb-confirm");
+  });
+
+  test("only the outcomes banking-core lists are offered, and a blocked approval says why", () => {
+    const rejectOnly = decisions(handoffDetail({ decisions: { ...handoffDetail().decisions, outcomes: ["REJECTED"] } }, NOW));
+    expect(rejectOnly).not.toContain(">Aprobar<");
+    expect(rejectOnly).toContain("Aprobar pide un cliente verificado.");
+    const request = decisions(handoffDetail({ reason: "CUSTOMER_REQUEST", decisions: { outcomes: ["RESOLVED"], reject_reasons: [], escalate_to: ["DISPUTES"], closing_messages: {} } }, NOW));
+    expect(request).toContain(">Cerrar</button>");
+    expect(request).not.toContain(">Rechazar<");
+    expect(request).not.toContain("Aprobar pide");
+  });
+
+  test("another agent's case offers nothing to decide, and says who has it", () => {
+    const markup = decisions(handoffDetail({ status: "ASSIGNED", queue_position: null, assigned_agent: "marta@demo.local", assigned_at: new Date(NOW).toISOString() }, NOW));
+    expect(markup).toContain("Lo tiene marta@demo.local.");
+    expect(markup).not.toContain("pb-btn");
+  });
+
+  test("a closed case shows its outcome, who closed it and that the customer was told", () => {
+    const markup = decisions(closedDetail("REJECTED", AGENT_EMAIL, NOW));
+    expect(markup).toContain('class="pb-done" role="status"');
+    expect(markup).toContain("Rechazado por ti");
+    expect(markup).toContain("Otro motivo");
+    expect(markup).toContain("El cliente recibió el mensaje de cierre.");
+    expect(markup).not.toContain("pb-btn");
+  });
+});
+
+describe("the transcript", () => {
+  const data = transcript({ takeover: { active: true, since: new Date(NOW).toISOString(), agent_ref: AGENT_EMAIL }, withAgentMessage: true }, NOW);
+
+  test("puts the customer on the left and the bank on the right, each name once per run", () => {
+    const markup = html(<TranscriptLog messages={data.messages} me={AGENT_EMAIL} holder={AGENT_EMAIL} />);
+    expect(markup).toContain('role="log"');
+    expect(count(markup, '<div class="pb-convo__grp">')).toBe(2);
+    expect(count(markup, '<div class="pb-convo__grp pb-convo__grp--bank">')).toBe(3);
+    expect(count(markup, "pb-msg--customer")).toBe(2);
+    expect(count(markup, "pb-msg--assistant")).toBe(2);
+    expect(count(markup, "pb-msg--agent")).toBe(1);
+    expect(markup).toContain('<span class="pb-convo__who" data-me="">Tú</span>');
+    expect(count(markup, ">Cliente</span>")).toBe(2);
+  });
+
+  test("the time sits at the end of each bubble", () => {
+    const markup = html(<TranscriptLog messages={data.messages} me={AGENT_EMAIL} holder={AGENT_EMAIL} />);
+    expect(count(markup, 'class="pb-msg__time"')).toBe(5);
+    expect(markup).not.toContain("pb-msg__meta");
+  });
+
+  test("a receipt is one line with its audit id; joining is a line in the agent's words", () => {
+    const markup = html(<TranscriptLog messages={data.messages} me={AGENT_EMAIL} holder={AGENT_EMAIL} />);
+    expect(markup).toContain('<div class="pb-sys" data-tone="locked">');
+    expect(markup).toContain("Tarjeta •••• 4821 bloqueada");
+    expect(markup).toContain('<span class="pb-sys__ref">· aud_00020481</span>');
+    expect(markup).toContain("Tomaste la conversación");
+    expect(markup).not.toContain("pb-cmsg");
+  });
+
+  test("another agent is named by the first part of the e-mail", () => {
+    const markup = html(<TranscriptLog messages={data.messages} me={AGENT_EMAIL} holder="marta@demo.local" />);
+    expect(markup).toContain(">marta</span>");
+    expect(markup).toContain("marta tomó la conversación");
+  });
+
+  test("a block it does not know degrades to a line, and an empty transcript says so", () => {
+    const odd = [{ role: "assistant" as const, content: "x", blocks: [{ type: "carousel", items: [] }], created_at: new Date(NOW).toISOString() }];
+    expect(html(<TranscriptLog messages={odd} me={AGENT_EMAIL} holder={null} />)).toContain("Bloque no mostrado (carousel)");
+    expect(html(<TranscriptLog messages={[]} me={AGENT_EMAIL} holder={null} />)).toContain("Todavía no hay mensajes.");
+  });
+});
+
+describe("the composer", () => {
+  const props = { sending: false, failed: false, outbox: null, error: null, onSend: noop, onRetry: noop, onDiscard: noop };
+
+  test("before the case is taken, one line and the way to take it", () => {
+    const markup = html(<ComposerLocked reason="take" onTake={noop} />);
+    expect(markup).toContain("Para responder y ver la conversación en vivo, toma el caso.");
+    expect(markup).toContain(">Tomar caso</button>");
+    expect(html(<ComposerLocked reason="other" />)).toContain("Otra persona tiene la conversación.");
+  });
+
+  test("once taken it is a labelled text area of up to 2000 characters, with one short note", () => {
+    const markup = html(<Composer {...props} />);
+    expect(markup).toContain('<span class="pb-sr">Respuesta al cliente</span>');
+    expect(markup).toContain("<textarea");
+    expect(markup).toContain('maxLength="2000"');
+    expect(markup).toContain("El cliente lee tu texto tal cual. El asistente no lo ve.");
+  });
+
+  test("a message that was not sent stays visible with a retry that resends the same one", () => {
+    const markup = html(<Composer {...props} failed outbox={{ text: "Hola", client_message_id: "abcd1234" }} error="turnInProgress" />);
+    expect(markup).toContain('data-status="failed"');
+    expect(markup).toContain("Hola");
+    expect(markup).toContain("Reintenta y se reenvía el mismo mensaje.");
+  });
+});
+
+describe("the tools by state matrix", () => {
   const policy = toolPolicy();
-  const row = (tool: string, enabled = policy.tools[tool] ?? []) =>
-    html(<ToolRow tool={tool} floor={floorOf(policy, tool)} enabled={enabled as never} onCell={() => {}} onMaster={() => {}} />);
-  const cells = (markup: string) => [...markup.matchAll(/<button[^>]*role="switch"[^>]*>/g)].map((match) => match[0]);
+  const matrix = (lang: Lang = "es") =>
+    html(<ToolMatrix tools={Object.keys(policy.code_floor)} floorOf={(tool) => floorOf(policy, tool)} enabled={(tool) => (policy.tools[tool] ?? []) as never} onCell={noop} onMaster={noop} />, lang);
 
-  test("a cell outside the code floor is aria-disabled with an x, and the ones inside are not", () => {
-    const markup = row("card.block");
-    const all = cells(markup);
-    expect(all).toHaveLength(6);
-    const disabled = all.filter((cell) => cell.includes('aria-disabled="true"'));
-    expect(disabled).toHaveLength(5);
-    const toggleable = all.filter((cell) => !cell.includes("aria-disabled"));
-    expect(toggleable).toHaveLength(1);
-    expect(toggleable[0]).toContain('data-fsm="VERIFIED"');
-    expect(toggleable[0]).toContain('aria-checked="true"');
-    // Outside the floor: the reason is in the accessible name, and the glyph is the x.
-    for (const state of ["ANONYMOUS", "IDENTIFIED", "OTP_PENDING", "LOCKED", "HANDED_OFF"]) {
-      expect(markup).toContain(`aria-label="${state}: fuera del piso del código"`);
-    }
-    expect(count(markup, "pb-ico--x")).toBe(5);
+  test("names the states once, in words, with the raw enum as the tooltip", () => {
+    const markup = matrix();
+    expect(count(markup, "<th scope")).toBe(8);
+    expect(markup).toContain('title="OTP_PENDING"');
+    expect(markup).toContain("Código pendiente");
+    expect(count(visible(markup), "Código pendiente")).toBe(1); // the cells carry it in their accessible names only
   });
 
-  test("the floor is shown, and where the tool is active", () => {
-    const markup = row("otp.send");
-    expect(markup).toContain('data-floor="IDENTIFIED, OTP_PENDING"');
-    expect(markup).toContain("Piso del código: <b>IDENTIFIED, OTP_PENDING</b>");
-    expect(markup).toContain("Activa en:");
-    expect(markup).toContain("<b>IDENTIFIED, OTP_PENDING</b>");
+  test("a state outside the floor is a dot, not a button; one inside is a switch", () => {
+    const markup = matrix();
+    const card = markup.slice(markup.indexOf('data-tool="card.block"'), markup.indexOf("</tr>", markup.indexOf('data-tool="card.block"')));
+    expect(count(card, 'class="pb-mx__cell" role="switch"')).toBe(1);
+    expect(card).toContain('aria-checked="true" aria-label="card.block en Verificado"');
+    expect(count(card, 'class="pb-mx__off"')).toBe(5);
+    expect(card).toContain('aria-label="Sin identificar, fuera del piso del código"');
   });
 
-  test.each(Object.entries(toolPolicy().code_floor))("%s: exactly the states outside its floor are aria-disabled", (tool, floor) => {
-    const markup = row(tool);
-    const disabled = cells(markup).filter((cell) => cell.includes('aria-disabled="true"'));
-    expect(disabled).toHaveLength(6 - floor.length);
-    for (const cell of disabled) {
-      const state = /data-fsm="(\w+)"/.exec(cell)?.[1] as never;
-      expect(floor).not.toContain(state);
-    }
+  test("a disabled tool has its cells off and its switch off", () => {
+    const markup = matrix();
+    const summary = markup.slice(markup.indexOf('data-tool="account.get_summary"'), markup.indexOf("</tr>", markup.indexOf('data-tool="account.get_summary"')));
+    expect(summary).toContain('aria-checked="false" aria-label="account.get_summary en Verificado"');
+    expect(summary).toContain("Resumen de la cuenta. Empieza apagada.");
   });
 
-  test("a tool available in every state has nothing outside its floor", () => {
-    const markup = row("handoff.create");
-    expect(cells(markup).some((cell) => cell.includes("aria-disabled"))).toBe(false);
-    expect(markup).toContain("Piso del código: <b>todos los estados</b>");
-    expect(markup).toContain("<b>todos</b>");
+  test("each switch is named by its tool", () => {
+    expect(matrix()).toContain('aria-labelledby="tool-card-block"');
   });
 
-  test("a disabled tool says so in words, not only in the switch", () => {
-    const off = row("account.get_summary");
-    expect(off).toContain("<span>Apagada</span>");
-    expect(off).toContain("<b>ninguno</b>");
-    expect(off).toContain('data-state="unchecked"');
-    expect(off).not.toContain('data-state="checked"');
-    const on = row("card.block");
-    expect(on).toContain("<span>Activa</span>");
-    expect(on).toContain('data-state="checked"');
-  });
-
-  test("the switch is the design system's, on Ark UI's parts, and has a name", () => {
-    const markup = row("card.block");
-    expect(markup).toContain('class="pb-switch"');
-    expect(markup).toContain('class="pb-switch__thumb"');
-    expect(markup).toContain('type="checkbox"');
-    expect(markup).toContain('aria-labelledby="tool-card-block"');
-    expect(markup).toContain('id="tool-card-block"');
-  });
-
-  test("the legend and the note of a tool are there", () => {
-    expect(row("card.block")).toContain("Bloqueo de tarjeta con comprobante.");
-    expect(html(<ToolRow tool="card.block" floor={["VERIFIED"]} enabled={["VERIFIED"]} onCell={() => {}} onMaster={() => {}} />, "en")).toContain("Card block with a receipt.");
+  test("the legend shows the three kinds of cell", () => {
+    const markup = html(<MatrixLegend />);
+    for (const word of ["Encendida", "Apagada", "Fuera del piso del código"]) expect(markup).toContain(word);
   });
 
   test("a refused widening is a caution banner with the hazard stripe, and names the floor", () => {
-    const markup = html(<RefusalBanner refusal={{ source: "local", tool: "card.block", state: "ANONYMOUS", floor: ["VERIFIED"] }} onDismiss={() => {}} />);
-    expect(markup).toContain('class="pb-alert pb-alert--stripe"');
-    expect(markup).toContain('data-tone="caution"');
-    expect(markup).toContain('class="pb-hazard"');
-    expect(markup).toContain("card.block no puede habilitarse en ANONYMOUS.");
-    expect(markup).toContain("El código lo permite solo en VERIFIED.");
-    expect(markup).toContain("422");
-  });
-
-  test("the API's own 422 is shown the same way", () => {
-    const markup = html(<RefusalBanner refusal={{ source: "api", messages: ["otp.send cannot be enabled in VERIFIED"] }} onDismiss={() => {}} />);
-    expect(markup).toContain("pb-alert--stripe");
-    expect(markup).toContain("otp.send cannot be enabled in VERIFIED");
+    const markup = html(<RefusalBanner refusal={{ source: "local", tool: "card.block", state: "IDENTIFIED", floor: ["VERIFIED"] }} onDismiss={noop} />);
+    expect(markup).toContain("pb-hazard");
+    expect(markup).toContain("card.block no puede habilitarse en IDENTIFIED.");
+    expect(markup).toContain("solo en VERIFIED");
   });
 });
 
 describe("thresholds and mode", () => {
-  test("a threshold row shows the value in force and 'sin cambios' when it is untouched", () => {
-    const markup = html(<ThresholdRow currency="EUR" value="500.00" savedMinor={50000} onChange={() => {}} />);
+  test("an untouched row is just the field", () => {
+    const markup = html(<ThresholdRow currency="EUR" value="500.00" savedMinor={50000} onChange={noop} />);
     expect(markup).toContain('class="pb-thr"');
-    expect(markup).toContain("Vigente <b>EUR 500.00</b>");
-    expect(markup).toContain("· sin cambios");
-    expect(markup).not.toContain("Editado");
+    expect(markup).not.toContain("Sin guardar");
+    expect(markup).not.toContain("antes");
     expect(markup).not.toContain("pb-gauge");
   });
 
-  test("an edited row is marked, and the USD row compares the demo charge with the threshold", () => {
-    const markup = html(<ThresholdRow currency="USD" value="100" savedMinor={50000} onChange={() => {}} />);
-    expect(markup).toContain("Editado");
-    expect(markup).toContain("Vigente <b>USD 500.00</b>");
-    expect(markup).toContain('class="pb-gauge pb-gauge--sm"');
+  test("an edited row says so and shows the old value; the USD row compares the demo charge", () => {
+    const markup = html(<ThresholdRow currency="USD" value="100" savedMinor={50000} onChange={noop} />);
+    expect(markup).toContain("Sin guardar");
+    expect(markup).toContain("antes USD 500.00");
+    expect(markup).toContain("El cargo de demo, USD 139.99, queda por encima.");
     expect(markup).toContain('data-state="caution"');
-    expect(markup).toContain("POR ENCIMA");
-    expect(markup).toContain('role="meter"');
-    expect(markup).toContain('aria-valuetext="Cargo de demo USD 139.99, umbral USD 100.00: por encima"');
-    expect(markup).toContain("--tau:0.5");
-  });
-
-  test("a threshold above the demo charge reads 'below' and the gauge is not in caution", () => {
-    const markup = html(<ThresholdRow currency="USD" value="500.00" savedMinor={50000} onChange={() => {}} />);
-    expect(markup).toContain("POR DEBAJO");
-    expect(markup).toContain('data-state="decided"');
+    expect(markup).toContain('aria-valuetext="Cargo de demo USD 139.99, umbral USD 100.00, por encima"');
+    expect(html(<ThresholdRow currency="USD" value="500.00" savedMinor={50000} onChange={noop} />)).toContain("queda por debajo.");
   });
 
   test("an invalid threshold is marked invalid, with the reason, and shows no demo comparison", () => {
-    const markup = html(<ThresholdRow currency="USD" value="cien" savedMinor={10000} onChange={() => {}} />);
+    const markup = html(<ThresholdRow currency="USD" value="cien" savedMinor={10000} onChange={noop} />);
     expect(markup).toContain('aria-invalid="true"');
-    expect(markup).toContain('class="pb-help pb-help--error"');
     expect(markup).toContain("mayor que cero");
     expect(markup).not.toContain("pb-gauge");
   });
 
-  test("the input has a label for screen readers", () => {
-    expect(html(<ThresholdRow currency="COP" value="2,000,000" savedMinor={200000000} onChange={() => {}} />)).toContain('<span class="pb-sr">Umbral en COP</span>');
-  });
-
-  test("the modes are labelled 'handoff recomendado (flag)' and 'handoff requerido (block)', one checked", () => {
-    const markup = html(<ModeGroup mode="block" onChange={() => {}} />);
-    expect(markup).toContain('role="radiogroup"');
-    expect(markup).toContain('data-mode="flag"');
-    expect(markup).toContain('data-mode="block"');
-    expect(markup).toContain('aria-checked="false" data-mode="flag"');
-    expect(markup).toContain('aria-checked="true" data-mode="block"');
-    expect(markup).toContain('handoff recomendado <span class="bo-raw">(flag)</span>');
-    expect(markup).toContain('handoff requerido <span class="bo-raw">(block)</span>');
-    expect(markup).toContain("No bloquea la tarjeta.");
-    expect(html(<ModeGroup mode="flag" onChange={() => {}} />)).toContain("sobre el umbral se recomienda un handoff");
+  test("the modes are words; the raw value is their tooltip", () => {
+    const markup = html(<ModeGroup mode="block" onChange={noop} />);
+    expect(markup).toContain('aria-checked="true" data-mode="block" title="block">Exigir handoff</button>');
+    expect(markup).toContain('data-mode="flag" title="flag">Recomendar handoff</button>');
+    expect(visible(markup)).not.toContain("(block)");
+    expect(markup).toContain("La tarjeta no se bloquea por esto.");
   });
 });
 
@@ -320,107 +401,112 @@ describe("AlertBanner", () => {
   });
 });
 
-describe("the transcript", () => {
-  test("shows customer, assistant and agent messages in the chat's own classes", () => {
-    const data = transcript({ takeover: { active: true, since: new Date(NOW).toISOString(), agent_ref: AGENT_EMAIL }, withAgentMessage: true }, NOW);
-    const markup = html(<TranscriptLog messages={data.messages} agent="agent" />);
-    expect(markup).toContain('role="log"');
-    expect(count(markup, "pb-msg--customer")).toBe(2);
-    expect(count(markup, "pb-msg--assistant")).toBe(2);
-    expect(count(markup, "pb-msg--agent")).toBe(1);
-    // The customer's messages are masked at the source and shown as stored; the agent's own text is as written.
-    expect(markup).toContain("[EMAIL_1]");
-    expect(markup).toContain("[OTP_1]");
-    expect(markup).toContain("Hola, soy Ana, del equipo de fraude.");
-    expect(markup).not.toContain("[NAME_1]");
-    // A human's message follows a "joined" line and is labelled.
-    expect(markup).toContain('<div class="pb-sys" data-tone="joined">');
-    expect(markup).toContain("agent tomó la conversación");
-    expect(markup).toContain("Agente humano · agent");
-  });
-
-  test("renders a receipt block as a receipt, with masked target and the audit id", () => {
-    const markup = html(<TranscriptLog messages={transcript({}, NOW).messages} agent={null} />);
-    expect(markup).toContain('data-tone="receipt"');
-    expect(markup).toContain("Comprobante · card.block");
-    expect(markup).toContain("ACTIVE");
-    expect(markup).toContain("BLOCKED");
-    expect(markup).toContain("••••4821");
-    expect(markup).toContain("aud_00020481");
-  });
-
-  test("a block it does not know degrades to a line, not a blank chat", () => {
-    const messages = [{ role: "assistant" as const, content: "Mira esto.", blocks: [{ type: "carousel", items: [] }], created_at: new Date(NOW).toISOString() }];
-    const markup = html(<TranscriptLog messages={messages} agent={null} />);
-    expect(markup).toContain("Mira esto.");
-    expect(markup).toContain("Bloque no mostrado (carousel)");
-  });
-
-  test("an empty transcript says so", () => {
-    expect(html(<TranscriptLog messages={[]} agent={null} />)).toContain("Todavía no hay mensajes.");
-  });
-});
-
-describe("the composer", () => {
-  const props = { lockedReason: "locked" as const, sending: false, failed: false, outbox: null, error: null, onSend: () => {}, onRetry: () => {}, onDiscard: () => {} };
-
-  test("is locked until the case is taken", () => {
-    const markup = html(<Composer {...props} enabled={false} />);
-    expect(markup).toContain("disabled");
-    expect(markup).toContain('placeholder="Toma el caso para poder responder."');
-    expect(html(<Composer {...props} enabled={false} lockedReason="lockedOther" />)).toContain("Otro agente tiene la conversación.");
-  });
-
-  test("once taken it is a labelled input limited to 2000 characters, and says what the customer and the assistant see", () => {
-    const markup = html(<Composer {...props} enabled />);
-    expect(markup).toContain('maxLength="2000"');
-    expect(markup).toContain('<span class="pb-sr">Respuesta al cliente</span>');
-    expect(markup).toContain("El cliente ve el texto exactamente como lo escribes.");
-    expect(markup).toContain("El asistente no lo ve.");
-    expect(markup).toContain("Escribe solo lo que el cliente necesita.");
-    // The text is not masked any more, so the note must not say that it is.
-    expect(markup).not.toContain("enmascar");
-    expect(markup).not.toContain('placeholder="Toma el caso');
-  });
-
-  test("a message that was not sent stays visible with a retry that resends the same one", () => {
-    const markup = html(<Composer {...props} enabled failed outbox={{ text: "Hola", client_message_id: "msg_123456789" }} error="turnInProgress" />);
-    expect(markup).toContain("No enviado");
-    expect(markup).toContain("Hola");
-    expect(markup).toContain("Un turno del cliente sigue en curso. Reintenta: se reenvía el mismo mensaje.");
-    expect(markup).toContain("Reintentar el mismo mensaje");
-    expect(markup).toContain("Descartar");
-  });
-});
-
-describe("metrics tables", () => {
+describe("metrics at a glance", () => {
   const data = metrics(24, NOW);
 
-  test("tool calls: an action, its decision in words and as the enum, the reason, the count and the share", () => {
-    const markup = html(<ToolCallsTable rows={data.tool_calls} />);
-    expect(markup).toContain('role="table"');
-    expect(count(markup, 'class="pb-qrow"')).toBe(data.tool_calls.length);
-    expect(markup).toContain("STATE_NOT_ALLOWED");
-    expect(markup).toContain("Estado no permitido");
-    expect(markup).toContain("Rechazada");
-    expect(markup).toContain("Permitida");
-    expect(markup).toContain('data-state="blocked"'); // the one error
-    expect(markup).toContain('data-state="caution"'); // refusals
-    expect(markup).toContain('data-state="decided"'); // allowed
-    // Grouped by action.
-    expect(markup.indexOf("account.get_summary")).toBeLessThan(markup.indexOf("card.block"));
-    expect(markup.indexOf("card.block")).toBeLessThan(markup.indexOf("otp.send"));
+  test("whether the assistant helped leads, with its share, its split, the change and how it was asked", () => {
+    const markup = html(<GlanceNumbers data={data} />);
+    expect(markup.indexOf("¿Ayudó el asistente?")).toBeLessThan(markup.indexOf("Identidad verificada"));
+    expect(markup).toContain("pb-kpi pb-kpi--lead");
+    expect(markup).toContain("78%<small>dijo que sí</small>");
+    expect(markup).toContain("7 sí · 2 no");
+    expect(markup).toContain('data-dir="up"');
+    expect(markup).toContain("+7 pts");
+    expect(markup).toContain("frente a las 24 h anteriores");
+    expect(markup).toContain("El chat lo pregunta tras un traspaso. Respondieron 9 de 12 clientes.");
   });
 
-  test("handoff distributions list every value of the enum, with 0 where the API left it out", () => {
+  test("verification, cards blocked and cases to a person, each against the window before", () => {
+    const markup = html(<GlanceNumbers data={data} />);
+    expect(markup).toContain(">84%<");
+    expect(markup).toContain("31 de 37 códigos enviados");
+    expect(markup).toContain("−5 pts");
+    expect(markup).toContain('data-dir="down"');
+    expect(markup).toContain(">26<");
+    expect(markup).toContain("+8");
+    expect(markup).toContain("En cola ahora: 3");
+    expect(markup).toContain("igual");
+  });
+
+  test("a counted change is neutral: more blocks or more cases are neither good nor bad", () => {
+    const markup = html(<GlanceNumbers data={data} />);
+    expect(count(markup, 'data-neutral=""')).toBe(2);
+  });
+
+  test("with no answers the lead number says so instead of a share", () => {
+    const quiet = { ...data, feedback: { helpful: 0, not_helpful: 0 } };
+    expect(html(<GlanceNumbers data={quiet} />)).toContain("Nadie respondió en esta ventana.");
+  });
+
+  test("the cases that got a no link to the case", () => {
+    const markup = html(<NotHelpfulList data={data} />);
+    expect(count(markup, 'data-tone="no"')).toBe(2);
+    expect(markup).toContain("Reclamo de disputa");
+    expect(markup).toContain('href="#/handoffs/hnd_zxcvbnmasdfghjkl"');
+    expect(html(<NotHelpfulList data={{ ...data, recent_not_helpful: [] }} />)).toContain("Nadie respondió que no en esta ventana.");
+  });
+
+  test("what needs a look shows only counts above zero", () => {
+    const markup = html(<ToReviewList data={data} now={NOW} onOpenTools={noop} />);
+    expect(markup).toContain("Una llamada terminó en error interno");
+    expect(markup).toContain("card.block");
+    expect(markup).toContain("La política frenó 12 llamadas");
+    expect(markup).toContain("8 % de 158");
+    expect(markup).toContain("3 casos esperan a una persona");
+    const calm = { ...data, tool_calls: data.tool_calls.filter((row) => row.decision === "allowed"), queue: { waiting: 0, urgent: 0, oldest_created_at: null } };
+    expect(html(<ToReviewList data={calm} now={NOW} onOpenTools={noop} />)).toContain("Nada pendiente.");
+  });
+
+  test("the tool table names each tool once and reads the result in words", () => {
+    const markup = html(<ToolCallsTable rows={data.tool_calls} />);
+    expect(count(markup, '<td data-col="name">card.block</td>')).toBe(1);
+    expect(count(markup, "<tbody")).toBe(6); // one per tool
+    expect(markup).toContain('title="refused · NOT_MATCHED"');
+    expect(markup).toContain('<span class="pb-reason">sin coincidencia</span>');
+    expect(visible(markup)).not.toContain("NOT_MATCHED");
+  });
+
+  test("the case tables list every value in words, outcomes included", () => {
     const markup = html(<HandoffTables handoffs={data.handoffs} />);
-    for (const value of ["QUEUED", "ASSIGNED", "PENDING", "URGENT", "HIGH", "NORMAL", "LOW", "FRAUD_OPERATIONS", "CUSTOMER_SUPPORT", "DISPUTES"]) {
-      expect(markup).toContain(value);
+    for (const title of ["Por estado", "Por prioridad", "Por departamento", "Por resultado"]) expect(markup).toContain(title);
+    expect(markup).toContain('<td title="PENDING">Pendiente</td><td data-col="count">0</td>');
+    expect(markup).toContain('<td title="APPROVED">Aprobado</td>');
+    expect(markup).toContain("25%"); // 3 of 12 queued
+  });
+});
+
+describe("the flows screen", () => {
+  test("the state machine walks the path to VERIFIED with the tool of each step, and names both exits", () => {
+    const markup = html(<StateMachine />);
+    for (const state of ["ANONYMOUS", "IDENTIFIED", "OTP_PENDING", "VERIFIED", "LOCKED", "HANDED_OFF"]) expect(markup).toContain(state);
+    expect(markup.indexOf("customer.match")).toBeLessThan(markup.indexOf("otp.send"));
+    expect(markup.indexOf("otp.send")).toBeLessThan(markup.indexOf("otp.verify"));
+    expect(markup).toContain("pedir una persona siempre pasa");
+  });
+
+  test("the matrix draws the policy in force: a disabled tool reads as disabled, every cell says what it is", () => {
+    const tools = toolPolicy();
+    const markup = html(<ToolsByState tools={tools} />);
+    expect(count(markup, "<tr")).toBe(Object.keys(tools.code_floor).length + 1);
+    expect(markup).toContain("account.get_summary<span");
+    expect(markup).toContain("desactivada");
+    expect(markup).toContain('aria-label="Permitida en VERIFIED"');
+    expect(markup).toContain('aria-label="No permitida en ANONYMOUS"');
+    expect(markup).toContain('href="#/guardrails"');
+  });
+
+  test("every flow has its steps in order, its outcomes and, for fraud, the example conversation", () => {
+    for (const flow of FLOWS) {
+      const markup = html(<FlowCard flow={flow} balanceEnabled={false} />);
+      expect(count(markup, 'class="bo-step bo-flowstate"')).toBe(flow.steps.length);
+      expect(count(markup, 'class="bo-outcome"')).toBe(flow.outcomes.length);
+      expect(markup.includes('class="bo-example"')).toBe(flow.example !== undefined);
     }
-    expect(markup).toContain("Por estado");
-    expect(markup).toContain("Por prioridad");
-    expect(markup).toContain("Por departamento");
-    expect(markup).toMatch(/PENDING<\/span><\/span><\/span><span role="cell" data-col="count">0</);
-    expect(markup).toContain("44%"); // 4 of 9
+    const fraud = html(<FlowCard flow={FLOWS.find((flow) => flow.id === "fraud")!} balanceEnabled={false} />, "pt");
+    expect(fraud).toContain("SUSPECTED_FRAUD");
+    expect(fraud).toContain("Exemplo");
+    const balance = (enabled: boolean) => html(<FlowCard flow={FLOWS.find((flow) => flow.id === "balance")!} balanceEnabled={enabled} />, "en");
+    expect(balance(false)).toContain("Today: account.get_summary disabled");
+    expect(balance(true)).toContain("Today: account.get_summary enabled");
   });
 });

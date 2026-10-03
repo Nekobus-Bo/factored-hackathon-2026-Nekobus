@@ -189,6 +189,7 @@ services:
       POLICY_SEED_THRESHOLDS_MINOR: '${POLICY_SEED_THRESHOLDS_MINOR:-{"USD": 50000, "EUR": 50000, "BRL": 250000, "COP": 200000000, "ARS": 17795642}}'
       POLICY_SEED_AMOUNT_MODE: ${POLICY_SEED_AMOUNT_MODE:-flag}
       POLICY_SEED_DISABLED_TOOLS: ${POLICY_SEED_DISABLED_TOOLS-account.get_summary}
+      POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT: ${POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT-DISPUTE_CLAIM,UNRECOGNIZED_TRANSACTION,VERIFICATION_FAILED}
       # Development defaults: the admin API is on with a public, development-only
       # token so the back office demo steps work with no .env. banking-core refuses
       # to start with this token under APP_ENV=production, and the production

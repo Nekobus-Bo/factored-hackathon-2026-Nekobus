@@ -9,6 +9,10 @@ export type ErrorCategory =
   | "notFound"
   /** Another agent holds the handoff or its conversation. */
   | "heldByAnother"
+  /** The case was closed by another call (ADR-0018). */
+  | "alreadyClosed"
+  /** The case does not allow that decision (any more): outcome, reason or escalation refused. */
+  | "notAllowed"
   /** The claim succeeded, the takeover did not; repeating the call is safe. */
   | "claimedButTakeoverFailed"
   /** The conversation is not (or no longer) taken over by this agent. */
@@ -24,6 +28,13 @@ export type ErrorCategory =
 
 const TURN_IN_PROGRESS = "turn_in_progress";
 
+const NOT_ALLOWED = new Set<string>([
+  ERROR_DETAIL.outcomeNotAllowed,
+  ERROR_DETAIL.reasonRequired,
+  ERROR_DETAIL.reasonNotAllowed,
+  ERROR_DETAIL.nothingToEscalate,
+]);
+
 export function categorize(error: unknown): ErrorCategory {
   if (!isApiError(error)) return "other";
   if (error.kind === "network") return "unavailable";
@@ -34,6 +45,8 @@ export function categorize(error: unknown): ErrorCategory {
   if (status === 403) return "forbidden";
   if (status === 409) {
     if (detail === ERROR_DETAIL.noActiveTakeover) return "noActiveTakeover";
+    if (detail === ERROR_DETAIL.alreadyClosed) return "alreadyClosed";
+    if (typeof detail === "string" && NOT_ALLOWED.has(detail)) return "notAllowed";
     return "heldByAnother";
   }
   if (status === 422) return "validation";

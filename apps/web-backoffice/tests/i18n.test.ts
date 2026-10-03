@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { DepartmentSchema, HandoffPrioritySchema, HandoffReasonSchema, HandoffStatusSchema, ReasonCodeSchema } from "@pattern-blue/contracts";
+import {
+  DepartmentSchema,
+  HandoffOutcomeSchema,
+  HandoffPrioritySchema,
+  HandoffReasonSchema,
+  HandoffStatusSchema,
+  ReasonCodeSchema,
+  RejectReasonSchema,
+  VerificationStateSchema,
+} from "@pattern-blue/contracts";
 import { LANGUAGES, dictionaries, fill, toolNote, translator } from "../src/i18n";
 import { es } from "../src/i18n/es";
 import { toolPolicy } from "./support/fixtures";
@@ -68,6 +77,9 @@ describe("dictionaries", () => {
     expect(Object.keys(dictionary.reason).sort()).toEqual([...HandoffReasonSchema.options].sort());
     expect(Object.keys(dictionary.reasonCode).sort()).toEqual([...ReasonCodeSchema.options].sort());
     expect(Object.keys(dictionary.decision).sort()).toEqual(["allowed", "error", "refused"]);
+    expect(Object.keys(dictionary.outcome).sort()).toEqual([...HandoffOutcomeSchema.options].sort());
+    expect(Object.keys(dictionary.rejectReason).sort()).toEqual([...RejectReasonSchema.options].sort());
+    expect(Object.keys(dictionary.state).sort()).toEqual([...VerificationStateSchema.options].sort());
   });
 
   test.each(LANGUAGES)("%s has a note for every tool the code floor lists", (lang) => {
@@ -77,27 +89,39 @@ describe("dictionaries", () => {
     expect(toolNote(lang, "no.such.tool")).toBeUndefined();
   });
 
-  test("the labels the spec fixes are there", () => {
+  test("the labels the review fixed are there", () => {
     expect(dictionaries.es.handoff.take).toBe("Tomar caso");
-    expect(dictionaries.es.handoff.heldByOther).toBe("Otro agente ya tomó este caso");
-    expect(dictionaries.es.guardrails.mode.flagLabel).toBe("handoff recomendado");
-    expect(dictionaries.es.guardrails.mode.blockLabel).toBe("handoff requerido");
-    expect(dictionaries.en.guardrails.mode.flagLabel).toBe("handoff recommended");
-    expect(dictionaries.en.guardrails.mode.blockLabel).toBe("handoff required");
+    expect(dictionaries.es.decide.approve).toBe("Aprobar");
+    expect(dictionaries.es.decide.reject).toBe("Rechazar");
+    expect(dictionaries.es.decide.escalate).toBe("Escalar");
+    expect(dictionaries.es.handoff.footnote).toBe("El asistente no resuelve disputas. La decisión es tuya.");
+    expect(dictionaries.es.guardrails.mode.flagLabel).toBe("Recomendar handoff");
+    expect(dictionaries.es.guardrails.mode.blockLabel).toBe("Exigir handoff");
+    expect(dictionaries.en.guardrails.mode.flagLabel).toBe("Recommend a handoff");
+    expect(dictionaries.en.guardrails.mode.blockLabel).toBe("Require a handoff");
   });
 
-  test("the composer tells the agent that the customer sees the text as written and the assistant does not see it", () => {
+  test("the composer tells the agent that the customer reads the text as written and the assistant does not see it", () => {
     const expected = {
-      es: ["exactamente como lo escribes", "El asistente no lo ve", "Escribe solo lo que el cliente necesita"],
-      pt: ["exatamente como você o escreve", "O assistente não o vê", "Escreva só o que o cliente precisa"],
-      en: ["exactly as you write it", "The assistant does not see it", "Write only what the customer needs"],
+      es: ["tal cual", "El asistente no lo ve"],
+      pt: ["tal como está", "O assistente não o vê"],
+      en: ["as you write it", "The assistant does not see it"],
     } as const;
     for (const lang of LANGUAGES) {
       const note = dictionaries[lang].handoff.composer.note;
-      expect(note.length).toBeGreaterThan(60);
       for (const part of expected[lang]) expect(note, lang).toContain(part);
       // The text is stored masked but shown as written: the note must not claim it is masked.
       expect(note, lang).not.toMatch(/mask|mascar|enmascar/i);
+    }
+  });
+
+  test("the screens show no raw enum in running text: a word stands for it", () => {
+    for (const lang of LANGUAGES) {
+      for (const [key, text] of leaves(dictionaries[lang])) {
+        if (key.startsWith("guardrails/reset")) continue; // names the environment variable to set
+        if (key.startsWith("flows/")) continue; // draws the state machine: its states are the subject
+        expect(text, `${lang}: ${key}`).not.toMatch(/\b(QUEUED|ASSIGNED|VERIFIED|ANONYMOUS|model_unverified|amount_mode|thresholds_minor|ops\.audit_log)\b/);
+      }
     }
   });
 });
@@ -109,9 +133,9 @@ describe("translator", () => {
   });
 
   test("translates by dotted key in the language asked", () => {
-    expect(translator("es")("queue.title")).toBe("Cola de handoff");
-    expect(translator("pt")("queue.title")).toBe("Fila de handoff");
-    expect(translator("en")("queue.title")).toBe("Handoff queue");
-    expect(translator("en")("queue.position", { position: 2 })).toBe("Position 2");
+    expect(translator("es")("queue.title")).toBe("Cola");
+    expect(translator("pt")("queue.title")).toBe("Fila");
+    expect(translator("en")("queue.title")).toBe("Queue");
+    expect(translator("en")("queue.waiting", { position: 2 })).toBe("Queued · #2");
   });
 });

@@ -37,7 +37,7 @@ const url = routePath(clientBffRoutes.getTranscript, { id: answer.conversation_i
 | `ts/orchestrator-chat.ts` | The customer chat API, with the `agent` role and the `takeover` object: `LangSchema`, `TranscriptRoleSchema`, `CreateConversation*`, `SendMessage*`, `TranscriptResponseSchema`, `InboxResponseSchema`, `orchestratorChatRoutes` |
 | `ts/orchestrator-agent.ts` | The agent API (human takeover): `AgentTranscriptResponseSchema`, `TakeoverRequestSchema`/`TakeoverResponseSchema`, `AgentMessage*`, `SessionConversationResponseSchema`, `orchestratorAgentRoutes` |
 | `ts/banking-admin.ts` | The banking-core admin API: `HandoffItemSchema`, `HandoffDetailSchema`, `HandoffListQuerySchema`, `ClaimHandoffRequestSchema`, `MetricsQuerySchema`/`MetricsResponseSchema`, `PolicyConfig*`, `ToolPolicy*`, `DemoResetResponseSchema`, `bankingAdminRoutes` |
-| `ts/bff-client.ts` | `clientBffRoutes`: the four `/api` routes of `apps/web-client` |
+| `ts/bff-client.ts` | `clientBffRoutes`: the five `/api` routes of `apps/web-client` |
 | `ts/bff-backoffice.ts` | `backofficeBffRoutes`: the `/api` routes of `apps/web-backoffice`; `LoginRequestSchema`, `SessionResponseSchema`, `BackofficeHandoffDetailSchema`, `ClaimHandoffResponseSchema` |
 | `ts/route.ts` | `defineRoute`, `routePath`, `toQueryString`, `queryFromSearchParams`, `patternParams` |
 

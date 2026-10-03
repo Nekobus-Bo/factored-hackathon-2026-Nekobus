@@ -77,6 +77,8 @@ describe("loading the case", () => {
     expect(actor.getSnapshot().context.conversationId).toBeNull();
     expect(actor.getSnapshot().matches({ transcript: "none" })).toBe(true);
     expect(network.count("GET /api/conversations/:id")).toBe(0);
+    // Nothing to take over, so no "Tomar caso" that could only fail.
+    expect(canClaim(actor.getSnapshot().context)).toBe(false);
     actor.stop();
   });
 

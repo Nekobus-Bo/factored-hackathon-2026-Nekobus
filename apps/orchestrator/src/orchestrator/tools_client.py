@@ -6,7 +6,13 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from contracts.envelope import ReasonCode, ToolCall, ToolResult, ToolResultStatus
+from contracts.envelope import (
+    FlowHint,
+    ReasonCode,
+    ToolCall,
+    ToolResult,
+    ToolResultStatus,
+)
 from pydantic import BaseModel, Field, ValidationError
 
 from orchestrator.config import Settings, get_settings
@@ -22,8 +28,39 @@ class SessionCreationError(BankingCoreError):
     """Raised when creating a session with banking-core fails."""
 
 
+class OpenedSession(BaseModel):
+    """A new banking-core session and the flow hint it starts with (ADR-0016)."""
+
+    session_id: str
+    flow: FlowHint | None = None
+
+
 class InboxUnavailableError(BankingCoreError):
     """Raised when the simulated inbox cannot be read from banking-core."""
+
+
+class FeedbackRefusedError(BankingCoreError):
+    """banking-core refused the answer: no handoff to rate, or another answer stands."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class FeedbackUnavailableError(BankingCoreError):
+    """The answer could not be stored: banking-core unreachable or off contract."""
+
+
+# The 409 details banking-core gives for an answer it will not store (ADR-0017).
+FEEDBACK_REFUSALS = frozenset({"no_handoff", "already_answered"})
+
+
+class FeedbackRecord(BaseModel):
+    """The customer's answer as banking-core stored it, re-read (ADR-0017)."""
+
+    handoff_ref: str
+    helpful: bool
+    recorded_at: datetime
 
 
 class InboxMessage(BaseModel):
@@ -113,6 +150,14 @@ class BankingCoreClient:
 
     async def create_session(self) -> str:
         """Issue POST /v1/sessions to obtain an opaque session_id from banking-core."""
+        return (await self.open_session()).session_id
+
+    async def open_session(self) -> OpenedSession:
+        """POST /v1/sessions: the session id and its flow hint (ADR-0016).
+
+        The hint is advisory: one that is missing or does not validate leaves it
+        None and never fails the session.
+        """
         client = self._get_client()
         url = f"{self.base_url}/v1/sessions"
         try:
@@ -124,10 +169,16 @@ class BankingCoreClient:
                 raise SessionCreationError(
                     f"Invalid session response from banking-core: {data}"
                 )
-            return session_id
         except Exception as exc:
             logger.error("Failed to create banking-core session: %s", exc)
             raise SessionCreationError(f"Session creation failed: {exc}") from exc
+        flow: FlowHint | None = None
+        if data.get("flow") is not None:
+            try:
+                flow = FlowHint.model_validate(data["flow"])
+            except ValidationError:
+                logger.warning("Ignoring an invalid flow hint on session creation")
+        return OpenedSession(session_id=session_id, flow=flow)
 
     async def simulated_inbox(self, session_id: str) -> list[InboxMessage]:
         """Unexpired simulated OTP messages of this banking session, newest first.
@@ -170,6 +221,35 @@ class BankingCoreClient:
             )
             for m in inbox.messages
         ]
+
+    async def record_feedback(
+        self, session_id: str, *, helpful: bool
+    ) -> FeedbackRecord:
+        """Store the customer's answer for this banking session's handoff.
+
+        banking-core decides: a 409 with a known detail (no handoff, another
+        answer already stored) raises FeedbackRefusedError with that reason.
+        Anything else that is not a valid 200 raises FeedbackUnavailableError.
+        """
+        client = self._get_client()
+        url = f"{self.base_url}/v1/sessions/{quote(session_id, safe='')}/feedback"
+        try:
+            response = await client.post(url, json={"helpful": helpful})
+        except httpx.HTTPError as exc:
+            logger.error("Feedback request failed (%s)", type(exc).__name__)
+            raise FeedbackUnavailableError("banking-core is unreachable") from exc
+        if response.status_code == httpx.codes.CONFLICT:
+            reason = _detail_of(response)
+            if reason in FEEDBACK_REFUSALS:
+                raise FeedbackRefusedError(reason)
+        if response.status_code != httpx.codes.OK:
+            logger.error("Feedback request refused: HTTP %s", response.status_code)
+            raise FeedbackUnavailableError("banking-core did not store the answer")
+        try:
+            return FeedbackRecord.model_validate_json(response.content)
+        except ValidationError as exc:
+            logger.error("Feedback response is outside the contract")
+            raise FeedbackUnavailableError("off-contract answer") from exc
 
     async def call_tool(
         self,
@@ -365,3 +445,13 @@ class BankingCoreSyncClient:
                 reason_code=ReasonCode.INTERNAL_ERROR,
                 data=None,
             )
+
+
+def _detail_of(response: httpx.Response) -> str | None:
+    """The `detail` string of a FastAPI error body, or None."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail if isinstance(detail, str) else None

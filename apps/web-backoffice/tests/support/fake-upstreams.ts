@@ -8,7 +8,9 @@ import {
   agentMessageResponse,
   backofficeDetail,
   claimedDetail,
+  closedDetail,
   demoReset,
+  escalatedDetail,
   handoffDetail,
   handoffItems,
   metrics,
@@ -107,6 +109,11 @@ export function startFakeBankingCore(token = "test-admin-token"): FakeService {
     },
     "POST /v1/admin/handoffs/:handoff_ref/claim": (request) =>
       json(claimedDetail((request.body as { agent_ref: string }).agent_ref)),
+    "POST /v1/admin/handoffs/:handoff_ref/close": (request) => {
+      const body = request.body as { agent_ref: string; outcome: "APPROVED" | "REJECTED" };
+      return json(closedDetail(body.outcome, body.agent_ref));
+    },
+    "POST /v1/admin/handoffs/:handoff_ref/escalate": () => json(escalatedDetail()),
     "GET /v1/admin/metrics": (request) => json(metrics(Number(new URLSearchParams(request.search).get("hours") ?? 24))),
     "GET /v1/admin/policy-config": () => json(policyConfig()),
     "PUT /v1/admin/policy-config": (request) => {
@@ -147,6 +154,14 @@ export function startFakeOrchestrator(token = "test-agent-token"): FakeService {
       if (holder && holder !== agentRef) return json({ detail: "taken_over_by_another_agent" }, 409);
       holder = agentRef;
       return json(takeoverResponse(agentRef));
+    },
+    "POST /v1/agent/conversations/:id/release": (request) => {
+      const agentRef = (request.body as { agent_ref: string }).agent_ref;
+      if (holder && holder !== agentRef) return json({ detail: "taken_over_by_another_agent" }, 409);
+      const since = new Date().toISOString();
+      const wasTaken = holder !== null;
+      holder = null;
+      return json({ conversation_id: CONVERSATION_ID, takeover: wasTaken ? { active: true, since, agent_ref: null } : { active: false, since: null, agent_ref: null } });
     },
     "POST /v1/agent/conversations/:id/messages": (request) => {
       const agentRef = request.headers["x-agent-ref"];

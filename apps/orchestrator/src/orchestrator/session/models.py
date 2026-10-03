@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
+from contracts.envelope import FlowHint
 from contracts.locale import Locale
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -80,6 +81,10 @@ class Takeover(BaseModel):
     Once active it stays active: there is no hand-back to the assistant. While
     active the LLM never sees the conversation again (see
     conversation/engine.py) and the customer's messages only reach the agent.
+
+    An active takeover with no `agent_ref` was released by its agent when the
+    case went back to the queue (ADR-0018): the assistant stays off, nobody may
+    write, and the next agent's takeover picks it up.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -98,8 +103,10 @@ class Takeover(BaseModel):
 
     @model_validator(mode="after")
     def _active_names_its_holder(self) -> "Takeover":
-        if self.active and (self.since is None or not self.agent_ref):
-            raise ValueError("an active takeover needs since and agent_ref")
+        if self.active and self.since is None:
+            raise ValueError("an active takeover needs since")
+        if self.active and self.agent_ref == "":
+            raise ValueError("an active takeover names its agent, or None if released")
         if not self.active and (self.since is not None or self.agent_ref is not None):
             raise ValueError("an inactive takeover carries no since or agent_ref")
         return self
@@ -188,7 +195,16 @@ class ConversationState(BaseModel):
         default=None,
         description=(
             "Catalog tools banking-core's latest flow hint says the configuration "
-            "enables (ADR-0016); None until the first tool result. Tool names only"
+            "enables (ADR-0016); from session creation on, None if banking-core "
+            "gave no hint then. Tool names only"
+        ),
+    )
+    opening_flow: FlowHint | None = Field(
+        default=None,
+        description=(
+            "The flow hint banking-core returned when the session was created "
+            "(ADR-0016 amendment 2026-10-02): the model reads it until the first "
+            "tool result. Tool names and states only"
         ),
     )
     takeover: Takeover = Field(
