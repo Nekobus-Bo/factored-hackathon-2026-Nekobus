@@ -45,3 +45,11 @@ The causes are in the harness, not the model:
 - Each result costs one more read of the tool matrix. The configuration repository already serves it per call to the authorizer.
 - The model learns the state names and the tool matrix of the current state. Neither is customer data, and both were inferable from refusals.
 - The hint changes what the model sees, so it changes the replay key of recorded conversations (none are recorded yet).
+
+## Amendment 2026-10-02: the hint at session creation
+
+**Context.** The hint arrived only inside a tool result, so the first completion of a conversation saw none: no `next`, and every catalog tool, disabled ones included (a gap declared in [limitations.md](../limitations.md)). On a first message such as "he detectado una compra que no hice con mi tarjeta" the model had nothing pointing at `customer.match` and escalated instead ([ADR-0003](0003-deterministic-vs-ai.md), amendment 2026-10-02).
+
+**Decision.** `POST /v1/sessions` returns the same `flow` hint for the new `ANONYMOUS` session, computed by the same function. The orchestrator keeps it with the conversation and, until the first tool result is in the history, gives the model one system line naming the state and `next` (in the tool names it offers), and offers only the tools `flow.enabled` lists. From the first tool result on, the hint travels in the results as before. A banking-core that returns no hint leaves the first completion as it was.
+
+**Consequences.** The opening line changes what the model sees on the first completion, so it is part of the prompt version and the replay key. It states only what banking-core said; the orchestrator computes nothing from it.
