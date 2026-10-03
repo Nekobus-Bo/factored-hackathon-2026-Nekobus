@@ -1,24 +1,22 @@
 /* Layout glue for the back office. Everything visual comes from @pattern-blue/design-tokens (the pb-*
-   classes and the tokens): this file only places things. Its few colors are token references, never new
-   values: the dialog overlay, and the focus ring of the Ark UI switch (the design system draws focus on
-   `.pb-switch:focus-visible`, and Ark keeps focus on a hidden input, so it exposes `data-focus-visible`). */
+   classes, local.css included, and the tokens): this file only places things. Its few colors are token
+   references, never new values: the dialog overlay, and the focus ring of the Ark UI switch (the design
+   system draws focus on `.pb-switch:focus-visible`, and Ark keeps focus on a hidden input, so it exposes
+   `data-focus-visible`). */
 
 .bo-main { max-width: 1200px; margin: 0 auto; padding: var(--space-6) var(--space-4) var(--space-16); }
 .bo-screen { display: grid; gap: var(--space-4); align-content: start; }
 .bo-screen h1, .bo-screen h2, .bo-dialog h2 { margin: 0; }
 .bo-section-tag { margin-right: auto; }
-.bo-session { display: inline-flex; align-items: center; gap: var(--space-3); }
-.bo-bar { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-4); }
+.bo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .bo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.bo-toolbar .pb-tabs { border-bottom: 0; }
 .bo-notices { display: grid; gap: var(--space-3); }
 .bo-notices:empty { display: none; }
 .bo-back { justify-self: start; }
 .bo-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .bo-empty { margin: 0; padding: var(--space-8) var(--space-4); text-align: center; }
 .bo-help { margin: var(--space-3) 0 0; }
-.bo-legend { margin: 0 0 var(--space-3); }
-.bo-raw { font-family: var(--font-mono); letter-spacing: 0; text-transform: none; }
-.bo-filter { margin: 0; }
 .bo-modes { margin-bottom: 0; }
 
 /* Login */
@@ -28,39 +26,19 @@
 .bo-login__card p { margin: 0; }
 .bo-field { display: grid; gap: 6px; }
 
-/* Queue: the design's six-column row, with the columns this API can fill (status and agent instead of language and customer). */
-.bo-queue .pb-queue__head, .bo-queue .pb-qrow { grid-template-columns: minmax(230px, 1.5fr) 120px minmax(160px, 1.2fr) minmax(150px, 1fr) 100px minmax(150px, 1fr); }
-.bo-queue [data-col="status"], .bo-queue [data-col="agent"] { font: 500 13px/20px var(--font-mono); overflow-wrap: anywhere; }
-.bo-queue .pb-caseid { overflow-wrap: anywhere; }
-.bo-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-@media (max-width: 720px) {
-  .bo-queue .pb-qrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id pri" "dept dept" "status agent" "wait wait"; }
-  .bo-queue [data-col="status"] { grid-area: status; }
-  .bo-queue [data-col="agent"] { grid-area: agent; justify-self: end; text-align: right; }
-}
-
-/* Case: the card and the conversation side by side */
+/* Case: the summary and the conversation side by side */
 .bo-split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--space-5); align-items: start; }
 @media (max-width: 960px) { .bo-split { grid-template-columns: minmax(0, 1fr); } }
-.bo-handoff--flat { padding-top: var(--space-4); }
-.bo-case-id { margin: 0; }
-.bo-note { margin: var(--space-4) 0 0; }
-.bo-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.bo-kv-nested { margin: 0; }
-.bo-source { display: block; }
 
 /* Conversation */
-.bo-chat { max-width: none; min-height: 0; }
-.bo-chat .pb-chat__title { margin: 0; }
-.bo-log { min-height: 240px; max-height: 60vh; overflow-y: auto; }
-.bo-turn { display: flex; flex-direction: column; gap: var(--space-3); }
 .bo-panel-note { margin: 0; padding: var(--space-4); }
-.bo-failed { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; }
+.bo-failed { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; justify-items: end; }
 .bo-composer-wrap .pb-chat__composer { border-top: 1px solid var(--line); }
-.bo-composer-note { margin: 0; padding: 0 var(--space-4) var(--space-4); }
 
 /* Guardrails */
 .pb-switch[data-focus-visible] { outline: 2px solid var(--focus); outline-offset: 3px; }
+.bo-tools { display: grid; gap: var(--space-3); }
+.bo-tools > h3, .bo-tools > p { margin: 0; }
 .bo-changes { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); font: 500 13px/20px var(--font-mono); }
 
 /* Dialog: Ark UI parts, the design system's card */
@@ -70,31 +48,10 @@
 .bo-dialog__text { margin: 0; }
 .bo-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 
-/* Metrics: the queue frame as a plain table */
+/* Metrics: two lists side by side, then the tables on demand */
+.bo-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--space-4); align-items: start; }
 .bo-section { display: grid; gap: var(--space-3); }
 .bo-section p { margin: 0; }
-.bo-table [data-col="name"], .bo-table [data-col="decision"], .bo-table [data-col="reason"] { font: 500 13px/20px var(--font-mono); overflow-wrap: anywhere; }
-.bo-table [data-col="count"], .bo-table [data-col="share"] { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
-.bo-cols-tools .pb-queue__head, .bo-cols-tools .pb-qrow { grid-template-columns: minmax(180px, 1.4fr) 150px minmax(170px, 1.2fr) 80px minmax(170px, 1fr); }
-.bo-cols-dist .pb-queue__head, .bo-cols-dist .pb-qrow { grid-template-columns: minmax(0, 2fr) 70px 70px; }
-.bo-share { display: flex; align-items: center; gap: var(--space-2); }
-.bo-share .pb-gauge { flex: 1; min-width: 60px; }
-.bo-dists { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4); align-items: start; }
+.bo-dists { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--space-4); align-items: start; }
 .bo-dist { display: grid; gap: var(--space-2); }
-.bo-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4); align-items: start; }
-.bo-tile { display: grid; gap: var(--space-2); }
-.bo-tile h2, .bo-tile p { margin: 0; }
-.bo-stats { display: flex; flex-wrap: wrap; gap: var(--space-8); }
-.bo-stat { display: grid; gap: 4px; }
-@media (max-width: 720px) {
-  .bo-cols-tools .pb-qrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name count" "decision decision" "reason reason" "share share"; }
-  .bo-cols-tools [data-col="name"] { grid-area: name; }
-  .bo-cols-tools [data-col="decision"] { grid-area: decision; }
-  .bo-cols-tools [data-col="reason"] { grid-area: reason; }
-  .bo-cols-tools [data-col="count"] { grid-area: count; justify-self: end; }
-  .bo-cols-tools [data-col="share"] { grid-area: share; }
-  .bo-cols-dist .pb-qrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name count" "name share"; }
-  .bo-cols-dist [data-col="name"] { grid-area: name; }
-  .bo-cols-dist [data-col="count"] { grid-area: count; justify-self: end; }
-  .bo-cols-dist [data-col="share"] { grid-area: share; justify-self: end; }
-}
+.bo-dist h3 { margin: 0; }

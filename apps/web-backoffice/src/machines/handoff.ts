@@ -77,10 +77,14 @@ export function heldByAnother(context: Pick<HandoffContext, "detail" | "takeover
   return holder !== null && holder !== context.agentRef;
 }
 
-/** "Tomar caso" is offered when the case is queued, or is mine but the conversation is not yet in my hands. */
-export function canClaim(context: Pick<HandoffContext, "detail" | "takeover" | "agentRef">): boolean {
+/**
+ * "Tomar caso" is offered when the case is queued, or is mine but the conversation is not yet in my hands,
+ * and only while the conversation exists: an expired one has nothing to take over, so the claim's second
+ * step could never succeed.
+ */
+export function canClaim(context: Pick<HandoffContext, "detail" | "takeover" | "agentRef" | "conversationId">): boolean {
   const { detail } = context;
-  if (!detail || heldByMe(context) || heldByAnother(context)) return false;
+  if (!detail || context.conversationId === null || heldByMe(context) || heldByAnother(context)) return false;
   return detail.status === "QUEUED" || detail.assigned_agent === context.agentRef;
 }
 
