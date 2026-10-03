@@ -423,4 +423,4 @@ make gcp-backoffice-close           # IAP back on, the judge logins dropped
 
 ### Not yet exercised
 
-Like section 6: checked offline, never run against a real project. Opening and closing the back office is checked offline too (`tests/judging.tftest.hcl`); that the IAP switch changes the running service in place has not been tried on a real project.
+Like section 6: checked offline, never run against a real project. Opening and closing the back office is checked offline too (`tests/judging.tftest.hcl`). The IAP switch itself was tried on 2026-10-03 on a throwaway Cloud Run service (Google's hello image, the same `google_cloud_run_v2_service` settings, provider 8.5) in a separate project: closed, open and closed again were each an in-place update, with no replacement and no new revision. An anonymous visitor was refused while closed and got 200 within seconds of opening, and the Run v2 API reported `iapEnabled` the way the smoke test reads it. Not tried: the real back office in this environment, the judge logins' new revision, and IAP's Google login screen (that project has no OAuth client).

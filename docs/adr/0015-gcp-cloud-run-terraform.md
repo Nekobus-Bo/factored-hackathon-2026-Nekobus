@@ -80,7 +80,7 @@ Option A is cheaper to write and B is cheaper to run well. The deciding factor i
 3. [ ] Encoder image with the pinned embedding weights baked in
 4. [ ] First real deploy, logged in [deployment.md](../deployment.md); until then, section 6 stays marked as not yet exercised
 5. [ ] The web-client BFF forwards the client address, the hop count measured on Cloud Run, and the stopgap removed
-6. [ ] The back office opened and closed once on a real project, with `make gcp-smoke` passing in both states (amendment of 2026-10-03)
+6. [ ] The back office opened and closed once on a real project, with `make gcp-smoke` passing in both states (amendment of 2026-10-03). The IAP switch alone has been tried in place on a throwaway service ([deployment.md](../deployment.md), section 7)
 
 ## Amendment 2026-10-03: the back office can be opened to judges for an evaluation window
 
