@@ -91,10 +91,13 @@ const PROOF_LOOK: Record<string, { icon: IconName; tone?: "blocked" | "violet" }
   "otp.send": { icon: "mail", tone: "violet" },
 };
 
-function receiptTitle(action: string, dict: Dictionary): string {
+/** A card.block on a card that was already blocked changed nothing: it says so, never "I blocked". */
+function receiptTitle(receipt: Receipt, dict: Dictionary): string {
   const t = dict.chat.receipt;
-  if (action === "card.block") return t.titleCardBlock;
-  if (action === "otp.send") return t.titleOtpSend;
+  if (receipt.action === "card.block") {
+    return receipt.state_before === "BLOCKED" ? t.titleCardAlreadyBlocked : t.titleCardBlock;
+  }
+  if (receipt.action === "otp.send") return t.titleOtpSend;
   return t.titleOther;
 }
 
@@ -145,7 +148,7 @@ function ProofCard({ receipt, dict, lang, foot }: { receipt: Receipt; dict: Dict
         <Icon name={look.icon} />
       </span>
       <p className="pb-proof__title" id={`${id}-title`}>
-        {withTarget(receiptTitle(receipt.action, dict), displayTarget(receipt.target_masked))}
+        {withTarget(receiptTitle(receipt, dict), displayTarget(receipt.target_masked))}
       </p>
       <button className="pb-proof__ref" type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((value) => !value)}>
         <Icon name="shield-check" />
@@ -155,11 +158,18 @@ function ProofCard({ receipt, dict, lang, foot }: { receipt: Receipt; dict: Dict
         <Icon name="chev1" />
       </button>
       <div className="pb-proof__more" id={id} hidden={!open}>
-        <span className="pb-transition">
-          <ResourceChip state={receipt.state_before} label={dict.chat.states[receipt.state_before]} />
-          <Icon name="arrow" label={t.changedTo} />
-          <ResourceChip state={receipt.state_after} label={dict.chat.states[receipt.state_after]} />
-        </span>
+        {receipt.state_before === receipt.state_after ? (
+          <span className="pb-transition">
+            <ResourceChip state={receipt.state_after} label={dict.chat.states[receipt.state_after]} />
+            <span>{t.unchanged}</span>
+          </span>
+        ) : (
+          <span className="pb-transition">
+            <ResourceChip state={receipt.state_before} label={dict.chat.states[receipt.state_before]} />
+            <Icon name="arrow" label={t.changedTo} />
+            <ResourceChip state={receipt.state_after} label={dict.chat.states[receipt.state_after]} />
+          </span>
+        )}
         <span>{format(t.verified, { time: formatClockSeconds(receipt.verified_at, lang) })}</span>
       </div>
       {foot}

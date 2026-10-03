@@ -85,6 +85,18 @@ describe("receipts", () => {
     expect(html).not.toMatch(/>ACTIVE<|>BLOCKED<|>OTP_PENDING</);
   });
 
+  test("card.block on a card that was already blocked says so, and shows no change", () => {
+    const already = { type: "receipt", receipt: { ...CARD_BLOCK_RECEIPT.receipt, state_before: "BLOCKED" } };
+    const html = render([already]);
+    expect(html).toContain('Tu tarjeta <span class="pb-proof__data">•••• 4821</span> ya estaba bloqueada');
+    expect(html).not.toContain("Bloqueé");
+    expect(html).toContain("Sin cambios");
+    expect(html).not.toContain("cambió a");
+    expect(html).not.toContain('data-state="active"');
+    expect(render([already], "pt")).toContain("já estava bloqueado");
+    expect(render([already], "en")).toContain("was already blocked");
+  });
+
   test("otp.send: where the code went, and the customer wording of both states", () => {
     const html = render([OTP_SEND_RECEIPT]);
     expect(html).toContain('Te envié un código a <span class="pb-proof__data">d***@example.com</span>');

@@ -170,11 +170,13 @@ export const en: Dictionary = {
     },
     receipt: {
       titleCardBlock: "I blocked your card {target}",
+      titleCardAlreadyBlocked: "Your card {target} was already blocked",
       titleOtpSend: "I sent a code to {target}",
       titleOtpVerify: "Identity verified",
       titleOther: "Action confirmed",
       reference: "Receipt",
       changedTo: "changed to",
+      unchanged: "No change",
       verified: "Verified against the database · {time}",
     },
     states: {

@@ -206,11 +206,13 @@ export const es = {
     },
     receipt: {
       titleCardBlock: "Bloqueé tu tarjeta {target}",
+      titleCardAlreadyBlocked: "Tu tarjeta {target} ya estaba bloqueada",
       titleOtpSend: "Te envié un código a {target}",
       titleOtpVerify: "Identidad verificada",
       titleOther: "Acción confirmada",
       reference: "Comprobante",
       changedTo: "cambió a",
+      unchanged: "Sin cambios",
       verified: "Verificado contra la base de datos · {time}",
     },
     states: resourceStates,
