@@ -491,9 +491,9 @@ describe("the landing", () => {
     expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale="es-(AR|CO)"/);
   });
 
-  test("a Spanish browser that names no market shows the switch with nothing checked", () => {
+  test("a Spanish browser that names no market starts in Colombia", () => {
     const html = page("es-ES");
-    expect(html).toContain('data-locale="es-CO"');
-    expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale=/);
+    expect(html.match(/aria-checked="true"[^>]*data-locale="es-CO"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale="es-(AR|MX)"/);
   });
 });

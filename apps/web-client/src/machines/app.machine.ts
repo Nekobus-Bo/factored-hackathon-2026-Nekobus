@@ -5,10 +5,10 @@
 //          wrapped: the storage can be missing, blocked or throw, and the page works without it).
 //   lang   es | pt | en, from `navigator.language`, Spanish when it is none of them. It is not
 //          remembered: the page follows the browser on load, and the switch changes it for this visit.
-//   locale the customer's market (ADR-0014): es-CO | es-MX | es-AR | pt-BR | en-US, or null when unknown.
-//          From `navigator.language` when it names a market exactly, or the market switch. It always
-//          belongs to `lang`: picking a market sets its language, and switching to another language
-//          drops it. The page text does not change with it (one Spanish for every Spanish market); the
+//   locale the customer's market (ADR-0014): es-CO | es-MX | es-AR | pt-BR | en-US.
+//          From `navigator.language` when it names a market exactly, else the default market of `lang`
+//          (es-CO for Spanish), or the market switch. It always belongs to `lang`: picking a market sets
+//          its language, and switching to another language moves to that language's default market. The page text does not change with it (one Spanish for every Spanish market); the
 //          chat sends it when it creates the conversation, so the encoder uses that market's thresholds.
 //          Not remembered, like `lang`.
 //
@@ -18,7 +18,7 @@
 import type { Lang, Locale } from "@pattern-blue/contracts";
 import { isThemeId, themeAttribute } from "@pattern-blue/design-tokens/tokens";
 import { assign, createMachine } from "xstate";
-import { detectLang, detectLocale, langOf } from "../i18n";
+import { DEFAULT_LOCALES, langOf, startLocale } from "../i18n";
 
 export type ThemeChoice = "system" | "light" | "dark";
 
@@ -88,8 +88,8 @@ export function createAppMachine(env: AppEnv) {
     id: "app",
     context: (): AppContext => ({
       theme: readStoredTheme(env.storage),
-      lang: detectLang(env.navigatorLanguage),
-      locale: detectLocale(env.navigatorLanguage),
+      lang: langOf(startLocale(env.navigatorLanguage)),
+      locale: startLocale(env.navigatorLanguage),
     }),
     initial: "ready",
     // What the page starts with reaches <html> once, so the attributes never depend on a component mounting.
@@ -114,7 +114,7 @@ export function createAppMachine(env: AppEnv) {
               assign({
                 lang: ({ event }) => event.lang,
                 locale: ({ context, event }) =>
-                  context.locale && langOf(context.locale) === event.lang ? context.locale : null,
+                  context.locale && langOf(context.locale) === event.lang ? context.locale : DEFAULT_LOCALES[event.lang],
               }),
               ({ event }) => env.root?.setAttribute("lang", event.lang),
             ],

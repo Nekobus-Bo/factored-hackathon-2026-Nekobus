@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_LANG,
+  DEFAULT_LOCALES,
   detectLang,
   detectLocale,
+  startLocale,
   dictionaries,
   format,
   formatWait,
@@ -203,6 +205,16 @@ describe("helpers", () => {
     for (const none of ["es", "es-ES", "es-CL", "pt", "pt-PT", "en-GB", "fr-FR", "", undefined, null]) {
       expect(detectLocale(none), String(none)).toBeNull();
     }
+  });
+
+  test("startLocale falls back to the language's default market, and to es-CO for none", () => {
+    expect(startLocale("es-MX")).toBe("es-MX");
+    expect(startLocale("es")).toBe("es-CO");
+    expect(startLocale("es-419")).toBe("es-CO");
+    expect(startLocale("pt-PT")).toBe("pt-BR");
+    expect(startLocale("en-GB")).toBe("en-US");
+    for (const none of ["fr-FR", "", undefined, null]) expect(startLocale(none), String(none)).toBe("es-CO");
+    for (const lang of LANGS) expect(langOf(DEFAULT_LOCALES[lang])).toBe(lang);
   });
 
   test("every market belongs to a supported language, and Spanish has three", () => {

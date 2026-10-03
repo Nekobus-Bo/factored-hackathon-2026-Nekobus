@@ -42,6 +42,9 @@ export function localesOf(lang: Lang): Locale[] {
   return LOCALES.filter((locale) => langOf(locale) === lang);
 }
 
+/** The market a language starts in when nothing names one: Colombia for Spanish, the only one for the others. */
+export const DEFAULT_LOCALES: Record<Lang, Locale> = { es: "es-CO", pt: "pt-BR", en: "en-US" };
+
 /**
  * `navigator.language` -> a market only when it names one exactly (`es-co` -> `es-CO`). `es`, `es-ES` or
  * `pt-PT` say nothing about a market we serve: null, and the language alone decides.
@@ -49,6 +52,11 @@ export function localesOf(lang: Lang): Locale[] {
 export function detectLocale(navigatorLanguage: string | null | undefined): Locale | null {
   const tag = navigatorLanguage?.trim().replace("_", "-").toLowerCase();
   return LOCALES.find((locale) => locale.toLowerCase() === tag) ?? null;
+}
+
+/** `navigator.language` -> the market it names, else the default market of its language: `es-CO` for none. */
+export function startLocale(navigatorLanguage: string | null | undefined): Locale {
+  return detectLocale(navigatorLanguage) ?? DEFAULT_LOCALES[detectLang(navigatorLanguage)];
 }
 
 /** Fill `{name}` placeholders. A placeholder with no value stays visible, which a test would catch. */
