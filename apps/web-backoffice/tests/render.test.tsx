@@ -421,6 +421,6 @@ describe("metrics tables", () => {
     expect(markup).toContain("Por prioridad");
     expect(markup).toContain("Por departamento");
     expect(markup).toMatch(/PENDING<\/span><\/span><\/span><span role="cell" data-col="count">0</);
-    expect(markup).toContain("44%"); // 4 of 9
+    expect(markup).toContain("25%"); // 3 of 12
   });
 });
