@@ -147,11 +147,11 @@ A case counts as unsafe if any of these occur, regardless of whether the convers
 
 Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`. Because they reside directly in the repository and do not depend on the organization's external dataset, `make eval` (⚠️ pending) is fully reproducible on any machine without external dependencies.
 
-**63 scenarios**, distributed across Spanish (23), Portuguese (20), and English (20). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
+**66 scenarios**, distributed across Spanish (24), Portuguese (21), and English (21). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
 
 | Group | What it tests |
 |---|---|
-| Happy path | Clear report, verifiable customer, authorized action; also verification asked for first, before any goal (`happy_path_008`–`010`) |
+| Happy path | Clear report, verifiable customer, authorized action; also verification asked for first, before any goal (`happy_path_008`–`010`), and a first message about an unrecognized purchase answered by starting verification, never by an unidentified handoff (`happy_path_011`–`013`) |
 | Account inquiry | Verified balance and recent-payment requests, restricted to the session holder; and the same request with the tool switched off by configuration, which must not run |
 | Ambiguity | Request open to several readings: must ask for clarification |
 | Out of scope | Request from another workflow: must abstain or route |

@@ -15,7 +15,7 @@ eval/scenarios/
 ├── README.md
 ├── schema.json
 ├── account_inquiry/      (8 scenarios)
-├── happy_path/           (10 scenarios)
+├── happy_path/           (13 scenarios)
 ├── ambiguity/            (6 scenarios)
 ├── out_of_scope/         (5 scenarios)
 ├── failed_identity/      (5 scenarios)
@@ -28,11 +28,11 @@ eval/scenarios/
 
 ### Scenario Distribution
 
-The suite comprises **63 scenarios**: 10 groups distributed across the three supported customer languages (23 Spanish, 20 Portuguese, 20 English). Four of them also name a market with `locale` (ADR-0014): `ambiguity_006_es` and `messy_conversation_006_es` (es-MX, the second with a CURP that must be masked), `happy_path_006_es` (es-AR) and `happy_path_007_pt` (pt-BR); the runner's `--locale` filters them and its report adds a by-market table. The `risk_threshold` group also covers a currency without a configured threshold and a dispute with no identified charge (see [Policy Mode & Threshold Semantics](#policy-mode--threshold-semantics)):
+The suite comprises **66 scenarios**: 10 groups distributed across the three supported customer languages (24 Spanish, 21 Portuguese, 21 English). Four of them also name a market with `locale` (ADR-0014): `ambiguity_006_es` and `messy_conversation_006_es` (es-MX, the second with a CURP that must be masked), `happy_path_006_es` (es-AR) and `happy_path_007_pt` (pt-BR); the runner's `--locale` filters them and its report adds a by-market table. The `risk_threshold` group also covers a currency without a configured threshold and a dispute with no identified charge (see [Policy Mode & Threshold Semantics](#policy-mode--threshold-semantics)):
 
 | Evaluation Group | Spanish (`es`) | Portuguese (`pt`) | English (`en`) | Total |
 |---|---|---|---|---|
-| `happy_path` | 4 | 4 | 2 | **10** |
+| `happy_path` | 5 | 5 | 3 | **13** |
 | `account_inquiry` | 3 | 2 | 3 | **8** |
 | `ambiguity` | 2 | 2 | 2 | **6** |
 | `out_of_scope` | 2 | 1 | 2 | **5** |
@@ -42,7 +42,7 @@ The suite comprises **63 scenarios**: 10 groups distributed across the three sup
 | `adversarial` | 2 | 2 | 1 | **5** |
 | `degradation` | 1 | 2 | 2 | **5** |
 | `messy_conversation` | 3 | 1 | 2 | **6** |
-| **Total** | **23** | **20** | **20** | **63** |
+| **Total** | **24** | **21** | **21** | **66** |
 
 ---
 
@@ -183,7 +183,7 @@ with open(os.path.join(root, "schema.json")) as f:
     schema = json.load(f)
 
 files = glob.glob(os.path.join(root, "*", "*.yaml"))
-assert len(files) == 63, f"Expected 63 scenarios, found {len(files)}"
+assert len(files) == 66, f"Expected 66 scenarios, found {len(files)}"
 
 for path in files:
     with open(path) as f:
