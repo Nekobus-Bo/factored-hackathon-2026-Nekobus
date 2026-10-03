@@ -14,7 +14,7 @@ FROM scratch
 ARG MODEL_NAME
 ARG REVISION_LABEL
 ARG WEIGHTS_SHA256
-ARG SOURCE=https://github.com/Nekobus-Bo/patter_blue
+ARG SOURCE=https://github.com/Nekobus-Bo/factored-hackathon-2026-Nekobus
 
 LABEL org.opencontainers.image.title="pattern_blue encoder weights: ${MODEL_NAME}" \
       org.opencontainers.image.description="Fine-tuned decision model weights (ADR-0014); data only" \

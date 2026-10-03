@@ -12,7 +12,7 @@ How to download, run and test the system in your own environment.
 ## 1. Quick start
 
 ```bash
-git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
+git clone https://github.com/Nekobus-Bo/factored-hackathon-2026-Nekobus.git && cd factored-hackathon-2026-Nekobus
 make demo
 ```
 
@@ -99,8 +99,8 @@ make seed
 ## 6. Step by step
 
 ```bash
-git clone https://github.com/Nekobus-Bo/pattern_blue.git
-cd pattern_blue
+git clone https://github.com/Nekobus-Bo/factored-hackathon-2026-Nekobus.git
+cd factored-hackathon-2026-Nekobus
 cp .env.example .env    # only to use live mode (section 4); not needed otherwise
 
 make demo               # everything below, in one command

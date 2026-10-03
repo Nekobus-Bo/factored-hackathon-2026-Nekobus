@@ -11,7 +11,7 @@ Not a chatbot with database access. An engine where the model proposes and a det
 ## Quick start
 
 ```bash
-git clone https://github.com/Nekobus-Bo/pattern_blue.git && cd pattern_blue
+git clone https://github.com/Nekobus-Bo/factored-hackathon-2026-Nekobus.git && cd factored-hackathon-2026-Nekobus
 make demo               # one command: build, start, migrate, seed, preload models, print URLs and demo customers
 ```
 
