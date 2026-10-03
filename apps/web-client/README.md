@@ -73,7 +73,7 @@ Blocks stay raw on the wire (`RawBlock[]`); the page runs `parseBlocks`. Every `
   - `rateLimited` (429): the wait is in minutes, from `Retry-After`; the composer is off until then, and then the message can be retried.
   - `gone` (404, the conversation expired): "Empezar de nuevo" opens a new conversation and sends the message that was not sent.
 - *followup*: after every completed turn, the transcript is read once (to detect a takeover) and so is the inbox.
-- *takeover*: once the transcript says an agent holds the conversation, the status "Un agente está atendiendo tu caso" appears, the agent's messages join the log in the agent style, and the transcript is polled every 2 s **while the tab is visible**. A send during a takeover returns `blocks: []` by design; that is a normal answer.
+- *takeover*: from the handoff block on, the transcript is polled every 2 s **while the tab is visible**, so the agent's first message arrives without the customer writing again. Once the transcript says an agent holds the conversation, the status "Un agente está atendiendo tu caso" appears and the agent's messages join the log in the agent style. Starting over stops the polling. A send during a takeover returns `blocks: []` by design; that is a normal answer.
 - *inbox*: see below.
 - *feedback*: after a handoff block the log asks "¿Te ayudó el asistente?" with two equal buttons. The answer goes to `POST /api/conversations/:id/feedback`; banking-core keeps one per handoff and refuses it when there is none (ADR-0017). A failed answer can be sent again.
 

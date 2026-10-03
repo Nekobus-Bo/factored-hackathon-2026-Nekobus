@@ -34,7 +34,7 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
 7. **Live updates by polling, no WebSocket:**
    - back-office queue: every 3 s;
    - back-office open conversation: every 2 s;
-   - customer chat while a takeover is active: every 2 s;
+   - customer chat from the handoff on (while it waits for an agent and while one holds the conversation): every 2 s, so the agent's first message arrives without the customer writing again;
    - OTP inbox: **not polled**. The code is delivered synchronously during the turn that calls `otp.send`, so it is already in the inbox when that turn's answer arrives. The customer app reads the inbox once after every completed turn (with the transcript, to detect a takeover); an unexpired message received after the last successful verification shows the notice, and the notice hides itself at `expires_at`.
    - The polling above stops when the tab is hidden and resumes when it is visible.
 8. **Shared TypeScript contracts:**

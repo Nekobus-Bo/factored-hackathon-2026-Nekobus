@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { selectChip, selectFeedback, selectSendDisabled, selectTyping } from "../src/machines/chat.machine";
+import { POLL_INTERVAL_MS, selectChip, selectFeedback, selectSendDisabled, selectTyping } from "../src/machines/chat.machine";
 import {
   CARD_BLOCK_RECEIPT,
   CONVERSATION_ID,
+  CREATE_RESPONSE,
   HANDOFF_BLOCK,
   INBOX_CODE,
   inboxResponse,
@@ -386,6 +387,69 @@ describe("takeover", () => {
     const agentTexts = world.snapshot.context.entries.flatMap((e) => (e.kind === "agent" ? [e.text] : []));
     expect(agentTexts).toEqual(["Hola", "Ya revisé tu caso."]);
     expect(world.snapshot.context.entries.filter((e) => e.kind === "system")).toHaveLength(1);
+  });
+
+  test("after a handoff the agent's first message arrives within one interval, with no other send", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK, HANDOFF_BLOCK));
+    world.send("quiero hablar con una persona");
+    await world.settle();
+    // The follow-up read comes before an agent claims the conversation.
+    expect(world.callsTo("getTranscript")).toHaveLength(1);
+    expect(world.snapshot.context.takeover.active).toBe(false);
+
+    world.script("getTranscript", takeoverTranscript(["Hola, soy del equipo de Disputas.", "2026-09-29T15:50:05Z"]));
+    world.advance(POLL_INTERVAL_MS);
+    await world.settle();
+    expect(world.callsTo("sendMessage")).toHaveLength(1);
+    expect(world.callsTo("getTranscript")).toHaveLength(2);
+    const { entries, takeover } = world.snapshot.context;
+    expect(takeover.active).toBe(true);
+    expect(entries.map((e) => e.kind)).toEqual(["customer", "assistant", "system", "agent"]);
+    expect(entries[2]).toMatchObject({ kind: "system", code: "takeover" });
+    expect(entries[3]).toMatchObject({ kind: "agent", text: "Hola, soy del equipo de Disputas." });
+  });
+
+  test("while waiting for an agent the transcript is read every interval, and not while the tab is hidden", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK, HANDOFF_BLOCK));
+    world.send("quiero hablar con una persona");
+    await world.settle();
+    for (let poll = 2; poll <= 4; poll += 1) {
+      world.advance(POLL_INTERVAL_MS);
+      await world.settle();
+      expect(world.callsTo("getTranscript")).toHaveLength(poll);
+    }
+    expect(world.snapshot.context.takeover.active).toBe(false);
+    expect(world.snapshot.context.entries.map((e) => e.kind)).toEqual(["customer", "assistant"]);
+
+    world.actor.send({ type: "HIDDEN" });
+    world.advance(10_000);
+    await world.tick();
+    expect(world.callsTo("getTranscript")).toHaveLength(4);
+    world.actor.send({ type: "VISIBLE" });
+    await world.settle();
+    expect(world.callsTo("getTranscript")).toHaveLength(5);
+  });
+
+  test("starting over after a handoff stops reading the old conversation", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK, HANDOFF_BLOCK), json({ detail: "Conversation not found" }, 404), json(SEND_RESPONSE));
+    world.script("createConversation", json(CREATE_RESPONSE, 201), json({ conversation_id: "conv_ffffffffffffffffffffffffffffffff", language: "es" }, 201));
+    world.send("quiero hablar con una persona");
+    await world.settle();
+    world.send("¿sigues ahí?");
+    await world.settle();
+    expect(world.state).toBe("gone");
+
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    expect(world.state).toBe("ready");
+    expect(world.snapshot.matches({ takeover: "off" })).toBe(true);
+    const reads = world.callsTo("getTranscript").length;
+    world.advance(60_000);
+    await world.tick();
+    expect(world.callsTo("getTranscript")).toHaveLength(reads);
   });
 
   test("a message sent during a takeover comes back with no blocks: not an error, no follow-up reads", async () => {
