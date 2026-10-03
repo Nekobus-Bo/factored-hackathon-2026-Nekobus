@@ -3,6 +3,8 @@
 POST /v1/sessions                        open an anonymous session
 GET  /v1/sessions/{id}/simulated-inbox   the session's simulated OTP messages
                                          (only while OTP_CHANNEL_MODE=simulated)
+POST /v1/sessions/{id}/feedback          the customer's answer to "did the assistant
+                                         help?", for the session's handoff (ADR-0017)
 """
 
 import uuid
@@ -10,11 +12,18 @@ from datetime import datetime
 from typing import Annotated
 
 from contracts.envelope import VerificationState
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from banking_core.control.config import get_control_config_repository
 from banking_core.control.session import RedisSessionStore, SessionState
+from banking_core.db import get_session_maker
+from banking_core.handoff.feedback import (
+    AlreadyAnsweredError,
+    NoHandoffError,
+    read_feedback,
+    record_feedback,
+)
 from banking_core.identity.config import simulated_inbox_enabled
 from banking_core.identity.simulated_inbox import SimulatedInbox, get_simulated_inbox
 
@@ -116,4 +125,52 @@ def read_simulated_inbox(
             )
             for message in inbox.messages(session_id)
         ]
+    )
+
+
+class AssistantFeedbackRequest(BaseModel):
+    """The customer's answer, as the orchestrator relays it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    helpful: StrictBool
+
+
+class AssistantFeedbackResponse(BaseModel):
+    """The answer as stored, re-read after the commit."""
+
+    handoff_ref: str
+    helpful: bool
+    recorded_at: datetime
+
+
+@router.post("/{session_id}/feedback", response_model=AssistantFeedbackResponse)
+def record_assistant_feedback(
+    request: AssistantFeedbackRequest,
+    session_id: Annotated[str, Path(max_length=128, pattern=r"^sess_[0-9a-f]{32}$")],
+) -> AssistantFeedbackResponse:
+    """Store the answer for the session's newest handoff, once (ADR-0017).
+
+    The handoff decides, not the session in Redis: the answer may come after the
+    session has expired. 409 `no_handoff` when the session has none, 409
+    `already_answered` when it holds the other answer; the same answer again is a
+    200 with the stored row and no second write.
+    """
+    with get_session_maker()() as db_session:
+        try:
+            result = record_feedback(db_session, session_id, request.helpful)
+        except NoHandoffError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, "no_handoff") from exc
+        except AlreadyAnsweredError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, "already_answered") from exc
+        db_session.commit()
+        db_session.expire_all()
+        stored = read_feedback(db_session, result.handoff_ref)
+    # Committed above: only a handoff deleted in between lands here.
+    if stored is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no_handoff")
+    return AssistantFeedbackResponse(
+        handoff_ref=stored.handoff_ref,
+        helpful=stored.helpful,
+        recorded_at=stored.recorded_at,
     )

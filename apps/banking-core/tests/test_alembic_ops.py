@@ -347,3 +347,50 @@ def test_alembic_0008_handoff_assignment_down_and_up(
         sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_migrationcheck'")
     )
     db_session.commit()
+
+
+def test_alembic_0009_assistant_feedback_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0009 adds ops.assistant_feedback, one answer per handoff; downgrade drops it."""
+
+    def tables() -> set[str]:
+        rows = db_session.execute(
+            sa.text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'ops'"
+            )
+        ).fetchall()
+        db_session.commit()
+        return {row[0] for row in rows}
+
+    command.downgrade(alembic_cfg, "0008_handoff_assignment")
+    assert "assistant_feedback" not in tables()
+
+    command.upgrade(alembic_cfg, "head")
+    assert "assistant_feedback" in tables()
+    db_session.execute(
+        sa.text(
+            "INSERT INTO ops.handoff (id, handoff_ref, session_ref, reason, priority, "
+            "department, summary, idempotency_scope) VALUES (gen_random_uuid(), "
+            "'hnd_feedbackmigration', 'session-x', 'FRAUD', 'HIGH', "
+            "'FRAUD_OPERATIONS', '{}', 'scope')"
+        )
+    )
+    insert_answer = sa.text(
+        "INSERT INTO ops.assistant_feedback (id, handoff_id, helpful) "
+        "SELECT gen_random_uuid(), id, :helpful FROM ops.handoff "
+        "WHERE handoff_ref = 'hnd_feedbackmigration'"
+    )
+    db_session.execute(insert_answer, {"helpful": True})
+    db_session.commit()
+    with pytest.raises(sa.exc.IntegrityError):
+        db_session.execute(insert_answer, {"helpful": False})
+    db_session.rollback()
+
+    command.downgrade(alembic_cfg, "0008_handoff_assignment")
+    assert "assistant_feedback" not in tables()
+    db_session.execute(
+        sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_feedbackmigration'")
+    )
+    db_session.commit()

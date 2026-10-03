@@ -5,10 +5,11 @@ from banking_core.models.chat import Conversation, Message
 from banking_core.models.config import PolicyConfigRecord, ToolPolicyRecord
 from banking_core.models.core_bank import Account, Card, Customer, Transaction
 from banking_core.models.enums import BlockReason, DocumentType
-from banking_core.models.ops import AuditLog, Handoff, IdempotencyKey
+from banking_core.models.ops import AssistantFeedback, AuditLog, Handoff, IdempotencyKey
 
 __all__ = [
     "Account",
+    "AssistantFeedback",
     "AuditLog",
     "Base",
     "BlockReason",
