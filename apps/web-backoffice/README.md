@@ -59,10 +59,11 @@ Read once at start. The defaults are the development values of `.env.example`; t
 | `AGENT_API_TOKEN` | `dev-only-agent-token` | bearer for the orchestrator |
 | `DEMO_AGENT_EMAIL` | `agent@demo.local` | the agent's login, and the `agent_ref` of every claim, takeover and audit row |
 | `DEMO_AGENT_PASSWORD` | `demo-only-change-me` | |
+| `DEMO_EXTRA_AGENTS` | empty | more logins, as a JSON object of e-mail to password (`{"judge1@demo.local": "..."}`); each e-mail is that login's `agent_ref`. On Cloud Run, one per judge ([docs/deployment.md](../../docs/deployment.md), section 7) |
 | `BACKOFFICE_SESSION_SECRET` | a development default | HMAC key of the session cookie |
 | `UPSTREAM_TIMEOUT_MS` | `10000` | how long an upstream may take before the BFF answers 503 |
 
-Under `APP_ENV=production` the server refuses to start with the default password, the default secret, or either development token (unset and empty count as the default).
+Under `APP_ENV=production` the server refuses to start with the default password, the default secret, or either development token (unset and empty count as the default), and with an extra agent whose password is shorter than 16 characters.
 
 ## Security notes
 
@@ -110,7 +111,7 @@ The header has one theme button (system, light or dark, `data-theme` on `<html>`
 - **No SLA marker in the queue.** The design's late marker needs an SLA from configuration and no service provides one. The design's language and masked-customer columns are replaced by status and agent: `HandoffItem` carries neither language nor customer.
 - **No seed values in the thresholds.** The admin API does not return the `.env` seed, so an edited row shows the value in force before the edit. The API needs a threshold above zero; the design's README says "non-negative".
 - **The masked transcript before the takeover is a snapshot**, not live. A queued case is not polled either: a claim by someone else shows up as the 409.
-- **One demo agent.** There is one login (`DEMO_AGENT_*`), no user store, no roles, no login rate limiting, no CSRF token beyond `SameSite=Strict` and the JSON content type. It is meant to run inside the private network, or behind its own login in the presentation environment.
+- **A fixed list of logins.** The demo agent (`DEMO_AGENT_*`) plus the optional `DEMO_EXTRA_AGENTS`, read at start: no user store, no roles (every login can do everything, the guardrails included), no login rate limiting, no CSRF token beyond `SameSite=Strict` and the JSON content type. It is meant to run inside the private network, or behind Identity-Aware Proxy in the presentation environment; opened to judges, this login is its only lock ([docs/deployment.md](../../docs/deployment.md), section 7).
 - **No decision-point numbers** in the metrics: nothing feeds them yet. The only figures the page derives are shares and differences of the counts banking-core returns.
 - **Fonts load from Google Fonts**; offline the fallback stacks apply.
 - **Not published in production.** The production compose overlay gives it no host port: it is reached through a proxy with its own login, or a loopback port the operator publishes and tunnels to ([docs/deployment.md](../../docs/deployment.md)).

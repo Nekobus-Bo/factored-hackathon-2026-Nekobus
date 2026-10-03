@@ -158,6 +158,28 @@ describe("constant-time comparison", () => {
     expect(response.status).toBe(401);
     expect(calls).toEqual(["agent@demo.local", "demo-only-change-me"]);
   });
+
+  test("with extra agents, every account is compared, even after a match", async () => {
+    const calls: string[] = [];
+    const { createBff } = await import("../src/bff/app");
+    const { makeConfig } = await import("./support/harness");
+    const bff = createBff(makeConfig({ DEMO_EXTRA_AGENTS: '{"judge1@demo.local": "pw-one", "judge2@demo.local": "pw-two"}' }), {
+      log: () => {},
+      compare: (supplied, expected) => {
+        calls.push(expected);
+        return safeEqual(supplied, expected);
+      },
+    });
+    const response = await bff.handle(
+      new Request("http://backoffice.test/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "agent@demo.local", password: "demo-only-change-me" }),
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(calls).toEqual(["agent@demo.local", "demo-only-change-me", "judge1@demo.local", "pw-one", "judge2@demo.local", "pw-two"]);
+  });
 });
 
 describe("login and logout through the BFF", () => {
@@ -218,6 +240,44 @@ describe("login and logout through the BFF", () => {
     } finally {
       harness.stop();
     }
+  });
+
+  describe("with extra agents", () => {
+    const env = { DEMO_EXTRA_AGENTS: '{"Judge1@demo.local": "pw-one", "judge2@demo.local": "pw-two"}' };
+
+    test("each one logs in as itself, spelled the configured way", async () => {
+      const harness = makeHarness({ env });
+      try {
+        for (const [email, password, agentRef] of [
+          ["judge1@demo.local", "pw-one", "Judge1@demo.local"],
+          ["judge2@demo.local", "pw-two", "judge2@demo.local"],
+          ["agent@demo.local", "demo-only-change-me", "agent@demo.local"],
+        ] as const) {
+          const response = await harness.request("/api/session", { method: "POST", body: { email, password } });
+          expect(response.status).toBe(204);
+          const cookie = (response.headers.get("set-cookie") as string).split(";")[0] as string;
+          const session = await harness.request("/api/session", { cookie });
+          expect(await session.json()).toEqual({ agent_ref: agentRef });
+        }
+      } finally {
+        harness.stop();
+      }
+    });
+
+    test.each([
+      ["another judge's password", { email: "judge1@demo.local", password: "pw-two" }],
+      ["the demo agent's password", { email: "judge1@demo.local", password: "demo-only-change-me" }],
+      ["a judge's password for the demo agent", { email: "agent@demo.local", password: "pw-one" }],
+    ])("%s is 401", async (_label, body) => {
+      const harness = makeHarness({ env });
+      try {
+        const response = await harness.request("/api/session", { method: "POST", body });
+        expect(response.status).toBe(401);
+        expect(response.headers.get("set-cookie")).toBeNull();
+      } finally {
+        harness.stop();
+      }
+    });
   });
 
   test("the session belongs to the configured agent, spelled the configured way", async () => {

@@ -21,7 +21,7 @@ import {
   type ValidationIssue,
 } from "@pattern-blue/contracts";
 import type { z } from "zod";
-import type { Config } from "./config";
+import { agentAccounts, type Config } from "./config";
 import {
   SESSION_COOKIE,
   cookieValue,
@@ -160,11 +160,15 @@ export function createBff(config: Config, deps: BffDeps = {}): Bff {
   // --- Session ---------------------------------------------------------------------------------------
 
   const login = async (body: z.output<typeof backofficeBffRoutes.login.body>): Promise<Response> => {
-    const matches = credentialsMatch(body, { email: config.agentEmail, password: config.agentPassword }, compare);
-    if (!matches) return json(401, errorBody("invalid_credentials"));
+    // Every account is compared, even after a match, so the time taken does not say which one matched.
+    let agentRef: string | undefined;
+    for (const account of agentAccounts(config)) {
+      if (credentialsMatch(body, account, compare) && agentRef === undefined) agentRef = account.email;
+    }
+    if (agentRef === undefined) return json(401, errorBody("invalid_credentials"));
     const exp = Math.floor(now() / 1000) + config.sessionTtlSeconds;
     // The agent is whoever the server configured, spelled the configured way, not whatever was typed.
-    const value = signSession({ agent_ref: config.agentEmail, exp }, config.sessionSecret);
+    const value = signSession({ agent_ref: agentRef, exp }, config.sessionSecret);
     return empty(204, { "Set-Cookie": sessionSetCookie(value, { secure: config.production, maxAgeSeconds: config.sessionTtlSeconds }) });
   };
 

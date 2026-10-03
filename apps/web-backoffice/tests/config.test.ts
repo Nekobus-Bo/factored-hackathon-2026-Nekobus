@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, DEVELOPMENT_DEFAULTS, loadConfig } from "../src/bff/config";
+import { ConfigError, DEVELOPMENT_DEFAULTS, EXTRA_AGENT_MIN_PASSWORD, loadConfig } from "../src/bff/config";
 
 const production = {
   APP_ENV: "production",
@@ -62,6 +62,39 @@ describe("configuration", () => {
     expect(problems.join("\n")).toContain("DEMO_AGENT_EMAIL");
   });
 
+  describe("DEMO_EXTRA_AGENTS", () => {
+    test("unset or blank is no extra agent", () => {
+      expect(loadConfig({}).extraAgents).toEqual([]);
+      expect(loadConfig({ DEMO_EXTRA_AGENTS: "  " }).extraAgents).toEqual([]);
+      expect(loadConfig({ DEMO_EXTRA_AGENTS: "{}" }).extraAgents).toEqual([]);
+    });
+
+    test("reads a JSON object of e-mail to password", () => {
+      const config = loadConfig({ DEMO_EXTRA_AGENTS: '{"judge1@demo.local": "pw-one", "judge2@demo.local": "pw-two"}' });
+      expect(config.extraAgents).toEqual([
+        { email: "judge1@demo.local", password: "pw-one" },
+        { email: "judge2@demo.local", password: "pw-two" },
+      ]);
+    });
+
+    test.each(["not json", "[]", '"text"', "null", "42"])("refuses %p without echoing it", (value) => {
+      const problems = problemsOf({ DEMO_EXTRA_AGENTS: value });
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain("DEMO_EXTRA_AGENTS must be a JSON object");
+    });
+
+    test("refuses a bad e-mail or a password that is not a non-empty string", () => {
+      const problems = problemsOf({ DEMO_EXTRA_AGENTS: '{"no at sign": "pw", "judge1@demo.local": "", "judge2@demo.local": 7}' });
+      expect(problems).toHaveLength(3);
+      expect(problems.join("\n")).not.toContain('"pw"');
+    });
+
+    test("refuses an e-mail that is already a login, in any case", () => {
+      expect(problemsOf({ DEMO_EXTRA_AGENTS: '{"Agent@Demo.Local": "pw"}' })).toHaveLength(1);
+      expect(problemsOf({ DEMO_EXTRA_AGENTS: '{"judge1@demo.local": "a", "JUDGE1@demo.local": "b"}' })).toHaveLength(1);
+    });
+  });
+
   describe("under APP_ENV=production", () => {
     test("starts with real secrets", () => {
       expect(loadConfig(production)).toMatchObject({ production: true, appEnv: "production" });
@@ -89,6 +122,17 @@ describe("configuration", () => {
         expect(problemsOf({ ...production, [name]: "" })).toHaveLength(1);
       },
     );
+
+    test("an extra agent needs a password of 16 characters or more, never the public default", () => {
+      const strong = "x".repeat(EXTRA_AGENT_MIN_PASSWORD);
+      expect(problemsOf({ ...production, DEMO_EXTRA_AGENTS: JSON.stringify({ "judge1@demo.local": strong }) })).toEqual([]);
+      const problems = problemsOf({
+        ...production,
+        DEMO_EXTRA_AGENTS: JSON.stringify({ "judge1@demo.local": "short", "judge2@demo.local": "demo-only-change-me" }),
+      });
+      expect(problems).toHaveLength(2);
+      expect(problems.join("\n")).not.toContain("short");
+    });
 
     test("names every development value it finds", () => {
       const problems = problemsOf({ APP_ENV: "production" });
