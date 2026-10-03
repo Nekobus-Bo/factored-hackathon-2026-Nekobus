@@ -25,27 +25,19 @@ export function Hero({ onOpenChat }: { onOpenChat: () => void }) {
               <Icon name="chat" />
               {t.ctaPrimary}
             </button>
-            <a className="pb-btn pb-btn--secondary" href="#como-funciona">
+            <a className="pb-btn pb-btn--secondary" href="#productos">
               {t.ctaSecondary}
             </a>
           </div>
-          <ul className="pb-hero__facts">
-            {t.facts.map((fact) => (
-              <li key={fact}>
-                <Icon name="check" />
-                <span>{fact}</span>
-              </li>
-            ))}
-          </ul>
+          <p className="pb-hero__fact">
+            <Icon name="check" />
+            {t.fact}
+          </p>
         </div>
         <div className="pb-hero__visual" aria-hidden="true">
           <span className="pb-hero__slab pb-hero__slab--a" />
           <span className="pb-hero__slab pb-hero__slab--b" />
-          <CardVisual />
-          <span className="pb-stamp pb-hero__stamp">
-            <Icon name="shield-check" />
-            {t.stamp}
-          </span>
+          <CardVisual state="active" />
         </div>
       </div>
     </section>

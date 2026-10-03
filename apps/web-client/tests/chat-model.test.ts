@@ -6,6 +6,10 @@ import {
   deriveChip,
   displayTarget,
   formatClock,
+  formatClockSeconds,
+  isHandoff,
+  isOtpSendReceipt,
+  lastEntryWith,
   formatCountdown,
   isOtpPending,
   maskCardNumbers,
@@ -229,5 +233,33 @@ describe("formatClock", () => {
   });
   test("an unreadable time is empty, not a crash", () => {
     expect(formatClock("nope", "es")).toBe("");
+  });
+});
+
+describe("formatClockSeconds", () => {
+  test("24 h to the second, in the given zone; an unreadable time is empty", () => {
+    expect(formatClockSeconds("2026-09-29T15:42:18Z", "es", "UTC")).toBe("15:42:18");
+    expect(formatClockSeconds("2026-09-29T15:42:18Z", "en", "America/Bogota")).toBe("10:42:18");
+    expect(formatClockSeconds("nope", "pt")).toBe("");
+  });
+});
+
+describe("lastEntryWith", () => {
+  const otpSend = { type: "receipt", receipt: { action: "otp.send", target_masked: "d***@example.com", state_before: "IDENTIFIED", state_after: "OTP_PENDING", verified_at: "2026-09-29T15:40:00Z", audit_id: "aud_00000001" } };
+  const entries = [
+    { id: "a", kind: "assistant", blocks: [otpSend], at: "2026-09-29T15:40:00Z", lang: "es" },
+    { id: "b", kind: "customer", text: "Código: ••••••", at: "2026-09-29T15:41:00Z", lang: "es", status: "sent" },
+    { id: "c", kind: "assistant", blocks: [otpSend, { type: "text", text: "Otra vez." }], at: "2026-09-29T15:42:00Z", lang: "es" },
+  ] as const;
+
+  test("the newest assistant entry with a matching block, or null", () => {
+    expect(lastEntryWith(entries as never, isOtpSendReceipt)).toBe("c");
+    expect(lastEntryWith(entries as never, isHandoff)).toBeNull();
+    expect(lastEntryWith([], isOtpSendReceipt)).toBeNull();
+  });
+
+  test("a block that fails its schema does not count", () => {
+    const broken = [{ id: "x", kind: "assistant", blocks: [{ type: "receipt", receipt: { action: "otp.send" } }], at: "2026-09-29T15:40:00Z", lang: "es" }];
+    expect(lastEntryWith(broken as never, isOtpSendReceipt)).toBeNull();
   });
 });

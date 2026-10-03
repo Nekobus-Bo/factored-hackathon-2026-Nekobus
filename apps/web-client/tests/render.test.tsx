@@ -7,7 +7,7 @@ import { createActor } from "xstate";
 import { ActorsProvider } from "../src/app/actors";
 import { Blocks } from "../src/app/chat/Blocks";
 import { ChatDock } from "../src/app/chat/ChatDock";
-import { OtpNotice } from "../src/app/chat/Notices";
+import { OtpFoot, OtpSheet } from "../src/app/chat/Notices";
 import { Transcript } from "../src/app/chat/Transcript";
 import { Landing } from "../src/app/landing/Landing";
 import { dictionaries } from "../src/i18n";
@@ -33,11 +33,13 @@ const render = (blocks: unknown[], lang: "es" | "pt" | "en" = "es", turnLang: "e
   renderToStaticMarkup(<Blocks blocks={blocks as never} lang={lang} turnLang={turnLang} at={AT} />);
 
 describe("text", () => {
-  test("an assistant bubble with the sender and the time", () => {
+  test("an assistant bubble: the sender for screen readers only, then the text and the time", () => {
     const html = render([TEXT_BLOCK]);
     expect(html).toContain("pb-msg pb-msg--assistant");
-    expect(html).toContain("Asistente · ");
+    expect(html).toContain('<span class="pb-sr">Asistente: </span>');
+    expect(html).not.toContain("pb-msg__meta");
     expect(html).toContain("Hola, puedo ayudarte con tu tarjeta.");
+    expect(html).toMatch(/<span class="pb-msg__time">\d{2}:\d{2}<\/span>/);
   });
 
   test("text is escaped, not interpreted", () => {
@@ -59,51 +61,63 @@ describe("text", () => {
 });
 
 describe("receipts", () => {
-  test("card.block: what was done, from which state to which, the masked card, the reference, the proof line", () => {
+  test("card.block: the result with the masked card, and the receipt reference", () => {
     const html = render([CARD_BLOCK_RECEIPT]);
-    expect(html).toContain('data-tone="receipt"');
-    expect(html).toContain("Comprobante · card.block");
-    expect(html).toContain("Bloqueé tu tarjeta");
+    expect(html).toContain("pb-cut pb-proof");
+    expect(html).toContain('Bloqueé tu tarjeta <span class="pb-proof__data">•••• 4821</span>');
+    expect(html).not.toContain("****");
+    expect(html).toContain('Comprobante <span class="pb-proof__data">aud_20481abc</span>');
+    // the tool name is back-office vocabulary
+    expect(html).not.toContain("card.block");
+  });
+
+  test("the state change and the database check are in the markup, hidden until the reference is opened", () => {
+    const html = render([CARD_BLOCK_RECEIPT]);
+    expect(html).toContain('aria-expanded="false" aria-controls="receipt-aud_20481abc"');
+    expect(html).toMatch(/<div class="pb-proof__more" id="receipt-aud_20481abc" hidden="">/);
     expect(html).toContain('data-state="active"');
     expect(html).toContain('data-state="blocked"');
     expect(html).toContain("Activa");
     expect(html).toContain("Bloqueada");
-    expect(html).toContain("•••• 4821");
-    expect(html).not.toContain("****");
-    expect(html).toContain("aud_20481abc");
-    expect(html).toContain("Verificado contra la base de datos");
+    expect(html).toMatch(/Verificado contra la base de datos · \d{2}:\d{2}:\d{2}/);
     // customer wording, never the raw enums
     expect(html).not.toMatch(/>ACTIVE<|>BLOCKED<|>OTP_PENDING</);
   });
 
-  test("otp.send: the masked destination and the customer wording of both states", () => {
+  test("otp.send: where the code went, and the customer wording of both states", () => {
     const html = render([OTP_SEND_RECEIPT]);
-    expect(html).toContain("Te envié un código");
-    expect(html).toContain("Destino");
-    expect(html).toContain("d***@example.com");
+    expect(html).toContain('Te envié un código a <span class="pb-proof__data">d***@example.com</span>');
     expect(html).toContain("Identificado");
     expect(html).toContain("Código pendiente");
     expect(html).toContain('data-state="otp-pending"');
   });
 
-  test("otp.verify: no internal challenge reference on screen", () => {
+  test("otp.verify: a verified system line with its reference, no internal challenge reference", () => {
     const html = render([OTP_VERIFY_RECEIPT]);
+    expect(html).toContain('<p class="pb-sys" data-tone="verified">');
     expect(html).toContain("Identidad verificada");
-    expect(html).toContain('data-state="verified"');
-    expect(html).not.toContain("chal_");
     expect(html).toContain("aud_20480abc");
+    expect(html).not.toContain("chal_");
+    expect(html).not.toContain("pb-proof");
+  });
+
+  test("otp.verify that locks the session says so, not that the identity was verified", () => {
+    const html = render([{ type: "receipt", receipt: { ...OTP_VERIFY_RECEIPT.receipt, state_after: "LOCKED" } }]);
+    expect(html).toContain('data-tone="locked"');
+    expect(html).toContain("Sesión bloqueada");
+    expect(html).not.toContain("Identidad verificada");
   });
 
   test("in Portuguese and English, with the design system's wording", () => {
     const pt = render([CARD_BLOCK_RECEIPT], "pt");
-    expect(pt).toContain("Comprovante · card.block");
     expect(pt).toContain("Bloqueei seu cartão");
+    expect(pt).toContain("Comprovante");
     expect(pt).toContain("Ativo");
     expect(pt).toContain("Bloqueado");
     expect(pt).toContain("Verificado no banco de dados");
     const en = render([CARD_BLOCK_RECEIPT], "en");
-    expect(en).toContain("Receipt · card.block");
     expect(en).toContain("I blocked your card");
+    expect(en).toContain("Receipt");
     expect(en).toContain("Active");
     expect(en).toContain("Blocked");
     expect(en).toContain("Verified against the database");
@@ -115,21 +129,27 @@ describe("receipts", () => {
     expect(html).toContain("Congelada");
     expect(html).toContain("aud_20481abc");
   });
+
+  test("the countdown goes inside the otp.send receipt it belongs to, and nowhere else", () => {
+    const foot = <i data-test="otp-foot" />;
+    expect(renderToStaticMarkup(<Blocks blocks={[OTP_SEND_RECEIPT] as never} lang="es" turnLang="es" at={AT} otpFoot={foot} />)).toContain('data-test="otp-foot"');
+    expect(renderToStaticMarkup(<Blocks blocks={[CARD_BLOCK_RECEIPT] as never} lang="es" turnLang="es" at={AT} otpFoot={foot} />)).not.toContain('data-test="otp-foot"');
+  });
 });
 
 describe("handoff, customer view", () => {
   const html = render([HANDOFF_BLOCK]);
 
-  test("the department and the priority in words, the status, the position and the case reference", () => {
+  test("the department in words, the case reference and the closing sentence", () => {
     expect(html).toContain('data-tone="handoff"');
     expect(html).toContain("Te pasé con un agente de Disputas");
-    expect(html).toContain("Urgente");
-    expect(html).toContain("En la fila");
-    expect(html).toContain("2 en la fila");
-    expect(html).toContain("hnd_abcd1234efgh");
-    expect(html).toContain("El agente ya sabe");
+    expect(html).toContain('Caso <span class="pb-proof__data">hnd_abcd1234efgh</span>');
     expect(html).toContain("Desde aquí el asistente deja de actuar");
     expect(html).not.toMatch(/>URGENT<|>DISPUTES<|>QUEUED</);
+  });
+
+  test("no queue details: status, position and priority belong to the back office", () => {
+    for (const detail of ["Urgente", "En la fila", "2 en la fila", "Prioridad", "Posición"]) expect(html, detail).not.toContain(detail);
   });
 
   test("never the summary, the audit id or the receipt of the handoff", () => {
@@ -138,13 +158,7 @@ describe("handoff, customer view", () => {
     }
   });
 
-  test("a queue position that is not known is not guessed", () => {
-    const withoutPosition = render([{ ...HANDOFF_BLOCK, queue_position: null }]);
-    expect(withoutPosition).not.toContain("Posición");
-    expect(withoutPosition).not.toContain("en la fila");
-  });
-
-  test("every department, priority and status has words in every language", () => {
+  test("every department has words in every language, and no enum leaks", () => {
     for (const lang of ["es", "pt", "en"] as const) {
       for (const department of ["FRAUD_OPERATIONS", "CUSTOMER_SUPPORT", "DISPUTES"]) {
         for (const priority of ["URGENT", "HIGH", "NORMAL", "LOW"]) {
@@ -156,6 +170,12 @@ describe("handoff, customer view", () => {
         }
       }
     }
+  });
+
+  test("what follows the handoff (the feedback line) comes right after it", () => {
+    const out = renderToStaticMarkup(<Blocks blocks={[HANDOFF_BLOCK, TEXT_BLOCK] as never} lang="es" turnLang="es" at={AT} afterHandoff={<i data-test="after" />} />);
+    expect(out.indexOf('data-test="after"')).toBeGreaterThan(out.indexOf("hnd_abcd1234efgh"));
+    expect(out.indexOf('data-test="after"')).toBeLessThan(out.indexOf("Hola, puedo ayudarte"));
   });
 });
 
@@ -188,13 +208,16 @@ describe("the transcript", () => {
     { id: "6", kind: "system", code: "codeExpired", at: AT },
     { id: "7", kind: "customer", text: "sin enviar", at: AT, lang: "es", status: "failed" },
   ];
-  const html = renderToStaticMarkup(<Transcript entries={entries} lang="es" retryEntryId="7" onRetry={() => {}} />);
+  const html = renderToStaticMarkup(
+    <Transcript entries={entries} lang="es" failure={{ entryId: "7", retry: true, reason: "El asistente no está disponible." }} onRetry={() => {}} />,
+  );
 
   test("customer, assistant, agent and system entries each in their own markup", () => {
     expect(html).toContain("pb-msg pb-msg--customer");
     expect(html).toContain("pb-msg pb-msg--assistant");
     expect(html).toContain("pb-msg pb-msg--agent");
-    expect(html).toContain("Agente humano · ");
+    expect(html).toContain('<span class="pb-sr">Tú: </span>');
+    expect(html).toContain("Agente humano");
     expect(html).toContain('<div class="pb-sys" data-tone="joined">');
     expect(html).toContain("Un agente está atendiendo tu caso");
     expect(html).toContain("El código venció");
@@ -204,10 +227,25 @@ describe("the transcript", () => {
     expect(html).toContain("Código: ••••••");
   });
 
-  test("a message that was not sent says so and offers the retry", () => {
+  test("the message that just failed says why under it, as an alert, and offers the retry", () => {
     expect(html).toContain('data-status="failed"');
-    expect(html).toContain("No enviado");
+    expect(html).toContain('<p class="pb-unsent" role="alert">');
+    expect(html).toContain("No pudimos enviar tu mensaje. El asistente no está disponible.");
     expect(html).toContain("Reintentar");
+  });
+
+  test("an older failed message only says it was not sent", () => {
+    const old = renderToStaticMarkup(<Transcript entries={entries} lang="es" onRetry={() => {}} />);
+    expect(old).toContain("No pudimos enviar tu mensaje.");
+    expect(old).not.toContain("Reintentar");
+    expect(old).not.toContain('role="alert"');
+  });
+
+  test("the countdown goes to the newest otp.send receipt only", () => {
+    const twice: Entry[] = [entries[1]!, { ...entries[1]!, id: "2b", blocks: [OTP_SEND_RECEIPT] } as Entry];
+    const out = renderToStaticMarkup(<Transcript entries={twice} lang="es" otpFoot={<i data-test="otp-foot" />} />);
+    expect(out.match(/data-test="otp-foot"/g)).toHaveLength(1);
+    expect(out.lastIndexOf("pb-proof")).toBeLessThan(out.indexOf('data-test="otp-foot"'));
   });
 
   test("the agent's identity is not a thing the markup could hold", () => {
@@ -250,28 +288,38 @@ describe("the one-time code", () => {
     expect(dock).not.toContain(INBOX_CODE);
   });
 
-  test("the notice: masked destination, the countdown, and the code only once it is asked for", () => {
+  test("the receipt's foot: the countdown and the action, never the code", () => {
     const dict = dictionaries.es;
     const message = { channel: "email", destination_masked: "d***@example.com", code: INBOX_CODE, received_at: "2026-09-29T15:40:02Z", expires_at: "2026-09-29T15:45:02Z" };
     const now = Date.parse("2026-09-29T15:40:30Z");
-    const closed = renderToStaticMarkup(<OtpNotice dict={dict} notice={{ message, revealed: false }} now={now} open={false} onToggle={() => {}} onReveal={() => {}} onHide={() => {}} />);
-    expect(closed).toContain("Te llegó un correo con el código");
-    expect(closed).toContain("d***@example.com");
-    expect(closed).toContain('role="timer"');
-    expect(closed).toContain("04:32");
-    expect(closed).not.toContain(INBOX_CODE);
-    expect(closed).not.toContain("pb-inbox");
+    const foot = renderToStaticMarkup(<OtpFoot dict={dict} notice={{ message, revealed: false }} now={now} open={false} onToggle={() => {}} />);
+    expect(foot).toContain("Vence en");
+    expect(foot).toContain('role="timer"');
+    expect(foot).toContain("04:32");
+    expect(foot).toContain("Abrir bandeja");
+    expect(foot).toContain('aria-controls="otp-inbox"');
+    expect(foot).not.toContain(INBOX_CODE);
+  });
 
-    const hidden = renderToStaticMarkup(<OtpNotice dict={dict} notice={{ message, revealed: false }} now={now} open onToggle={() => {}} onReveal={() => {}} onHide={() => {}} />);
+  test("the sheet: simulated and demo in sight, and the code only once it is asked for", () => {
+    const dict = dictionaries.es;
+    const message = { channel: "email", destination_masked: "d***@example.com", code: INBOX_CODE, received_at: "2026-09-29T15:40:02Z", expires_at: "2026-09-29T15:45:02Z" };
+    const now = Date.parse("2026-09-29T15:40:30Z");
+    const sheet = (revealed: boolean) =>
+      renderToStaticMarkup(<OtpSheet dict={dict} notice={{ message, revealed }} now={now} onClose={() => {}} onReveal={() => {}} onHide={() => {}} />);
+
+    const hidden = sheet(false);
+    expect(hidden).toContain('id="otp-inbox"');
     expect(hidden).toContain("Bandeja simulada");
     expect(hidden).toContain("DEMO");
-    expect(hidden).toContain("Entrega simulada para la demo");
+    expect(hidden).toContain("Entrega simulada");
+    expect(hidden).toContain("nunca te pedirá este código");
     expect(hidden).toContain("Mostrar código");
     expect(hidden).toContain("Código oculto");
     expect(hidden).not.toContain(INBOX_CODE);
     expect(hidden).not.toMatch(/>4<|>8<|>2<|>9<|>1<|>6</);
 
-    const shown = renderToStaticMarkup(<OtpNotice dict={dict} notice={{ message, revealed: true }} now={now} open onToggle={() => {}} onReveal={() => {}} onHide={() => {}} />);
+    const shown = sheet(true);
     expect(shown).toContain("Código: 4 8 2 9 1 6");
     expect(shown).toContain("Ocultar código");
     for (const digit of INBOX_CODE) expect(shown).toContain(`>${digit}<`);
@@ -280,11 +328,12 @@ describe("the one-time code", () => {
   test("the countdown turns to the alert state in the last minute and never goes negative", () => {
     const dict = dictionaries.en;
     const message = { channel: "email", destination_masked: "d***@example.com", code: INBOX_CODE, received_at: "2026-09-29T15:40:00Z", expires_at: "2026-09-29T15:45:00Z" };
-    const late = renderToStaticMarkup(<OtpNotice dict={dict} notice={{ message, revealed: false }} now={Date.parse("2026-09-29T15:44:30Z")} open onToggle={() => {}} onReveal={() => {}} onHide={() => {}} />);
+    const sheet = (now: string) =>
+      renderToStaticMarkup(<OtpSheet dict={dict} notice={{ message, revealed: false }} now={Date.parse(now)} onClose={() => {}} onReveal={() => {}} onHide={() => {}} />);
+    const late = sheet("2026-09-29T15:44:30Z");
     expect(late).toContain('data-state="abstained"');
     expect(late).toContain("00:30");
-    const over = renderToStaticMarkup(<OtpNotice dict={dict} notice={{ message, revealed: false }} now={Date.parse("2026-09-29T15:50:00Z")} open onToggle={() => {}} onReveal={() => {}} onHide={() => {}} />);
-    expect(over).toContain("00:00");
+    expect(sheet("2026-09-29T15:50:00Z")).toContain("00:00");
   });
 });
 
@@ -303,9 +352,9 @@ describe("the landing", () => {
 
   test("follows the browser's language and carries the demo note and the S² small print in each", () => {
     for (const [navigatorLanguage, title, demo, tag] of [
-      ["es-CO", "Tu tarjeta", "datos sintéticos", "Solo demo"],
-      ["pt-BR", "Seu cartão", "dados sintéticos", "Somente demo"],
-      ["en-US", "Your card", "synthetic data", "Demo only"],
+      ["es-CO", "Tu banco", "datos sintéticos", "Solo demo"],
+      ["pt-BR", "Seu banco", "dados sintéticos", "Somente demo"],
+      ["en-US", "Your bank", "synthetic data", "Demo only"],
     ] as const) {
       const html = page(navigatorLanguage);
       expect(html).toContain(title);
@@ -317,12 +366,22 @@ describe("the landing", () => {
     }
   });
 
-  test("the composition of the design system: the sections, in order, and the dock last", () => {
+  test("a bank's home page: the sections, in order, and the dock last", () => {
     const html = page("es");
-    const order = ['class="pb-nav"', 'id="top"', 'id="funciones"', 'id="como-funciona"', 'id="s2"', 'id="ayuda"', 'class="pb-footer"', 'class="pb-dock"'];
+    const order = ['class="pb-nav"', 'id="top"', 'id="productos"', 'id="tarjeta-perdida"', 'id="s2"', 'id="ayuda"', 'class="pb-footer"', 'class="pb-dock"'];
     const positions = order.map((needle) => html.indexOf(needle));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
+  test("the hero shows an active card and no system vocabulary", () => {
+    const html = page("es");
+    expect(html).toContain('class="pb-cardvis" data-state="active"');
+    expect(html).not.toContain("base de datos");
+  });
+
+  test("the navbar and the hero open the chat", () => {
+    expect(page("es").match(/data-open-chat/g)).toHaveLength(2);
   });
 
   test("the FAQ is the design system's accordion: five items, the first open, no div inside a trigger", () => {
@@ -347,10 +406,12 @@ describe("the landing", () => {
     world.stop();
   });
 
-  test("the language and theme switches are radio groups, in the navbar and the footer", () => {
+  test("the language switch is a radio group and the theme one button whose label says what it does", () => {
     const html = page("pt-BR");
-    expect(html.match(/role="radiogroup"/g)).toHaveLength(4);
+    expect(html.match(/role="radiogroup"/g)).toHaveLength(1);
     expect(html).toContain('data-lang="pt"');
     expect(html).toMatch(/aria-checked="true"[^>]*data-lang="pt"/);
+    expect(html.match(/pb-theme--single/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-label="Mudar para o tema (escuro|claro)"/);
   });
 });

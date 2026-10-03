@@ -58,6 +58,21 @@ function chipOfBlock(block: MessageBlock): ChipState | null {
   return null;
 }
 
+/**
+ * The id of the newest assistant entry with a block that matches, or null. The log uses it to attach things to
+ * one block: the countdown to the `otp.send` receipt whose code is still live, the feedback line to the handoff.
+ */
+export function lastEntryWith(entries: readonly Entry[], matches: (block: MessageBlock) => boolean): string | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.kind === "assistant" && parseBlocks(entry.blocks).blocks.some(matches)) return entry.id;
+  }
+  return null;
+}
+
+export const isOtpSendReceipt = (block: MessageBlock): boolean => block.type === "receipt" && block.receipt.action === "otp.send";
+export const isHandoff = (block: MessageBlock): boolean => block.type === "handoff";
+
 /** True while a code was sent and no verification has succeeded since: the next digits are the code. */
 export function isOtpPending(entries: readonly Entry[]): boolean {
   let pending = false;
@@ -183,7 +198,16 @@ export function newAgentMessages(
 
 /** `10:39` in 24 h, in the viewer's time zone (or `timeZone`, for tests). */
 export function formatClock(iso: string, lang: Lang, timeZone?: string): string {
+  return clock(iso, lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+}
+
+/** `10:39:07`: when a receipt was verified, to the second. */
+export function formatClockSeconds(iso: string, lang: Lang, timeZone?: string): string {
+  return clock(iso, lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone });
+}
+
+function clock(iso: string, lang: Lang, options: Intl.DateTimeFormatOptions): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(date);
+  return new Intl.DateTimeFormat(lang, options).format(date);
 }

@@ -1,4 +1,4 @@
-// The language and theme controls, in the Navbar and repeated in the Footer. Both are radio groups.
+// The language and theme controls of the Navbar: the language is a radio group, the theme one toggle button.
 
 import type { Lang } from "@pattern-blue/contracts";
 import { LANG_NAMES, LANGS } from "../../i18n";
@@ -29,35 +29,22 @@ export function LangSwitch() {
   );
 }
 
-export function ThemeSwitch() {
+/** One button that switches to the other theme; its label says which. Follows the system until it is pressed. */
+export function ThemeToggle() {
   const { dict } = useI18n();
   const { theme, setTheme } = useTheme();
   const systemDark = useSystemDark();
-  // `system` has no button of its own: the one that matches what the browser prefers shows as checked.
-  const effective = theme === "system" ? (systemDark ? "dark" : "light") : theme;
+  const dark = (theme === "system" ? (systemDark ? "dark" : "light") : theme) === "dark";
   return (
-    <div className="pb-theme" role="radiogroup" aria-label={dict.nav.themeLabel}>
+    <div className="pb-theme pb-theme--single">
       <button
         className="pb-theme__btn"
         type="button"
-        role="radio"
-        aria-checked={effective === "light"}
-        data-theme-set="light"
-        aria-label={dict.nav.themeLight}
-        onClick={() => setTheme("light")}
+        data-theme-set={dark ? "light" : "dark"}
+        aria-label={dark ? dict.nav.themeToLight : dict.nav.themeToDark}
+        onClick={() => setTheme(dark ? "light" : "dark")}
       >
-        <Icon name="sun" />
-      </button>
-      <button
-        className="pb-theme__btn"
-        type="button"
-        role="radio"
-        aria-checked={effective === "dark"}
-        data-theme-set="dark"
-        aria-label={dict.nav.themeDark}
-        onClick={() => setTheme("dark")}
-      >
-        <Icon name="moon" />
+        <Icon name={dark ? "sun" : "moon"} />
       </button>
     </div>
   );

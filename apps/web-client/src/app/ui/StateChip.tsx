@@ -1,7 +1,7 @@
 // StatusChip: a word, a glyph and a color, never a color alone. The state comes from the machine or the
 // receipt; the word is the customer's (never the raw enum: that belongs to the back office).
 
-import type { HandoffPriority, ResourceState } from "@pattern-blue/contracts";
+import type { ResourceState } from "@pattern-blue/contracts";
 import { Icon, type IconName } from "./Icon";
 
 export type ChipStateName =
@@ -55,23 +55,6 @@ export function ResourceChip({ state, label }: { state: ResourceState; label: st
   return (
     <span className="pb-chip" data-tone="neutral">
       <Icon name="minus" />
-      {label}
-    </span>
-  );
-}
-
-const PRIORITY: Record<HandoffPriority, { tone: "danger" | "warning" | "neutral"; icon: IconName }> = {
-  URGENT: { tone: "danger", icon: "chev2" },
-  HIGH: { tone: "warning", icon: "chev1" },
-  NORMAL: { tone: "neutral", icon: "minus" },
-  LOW: { tone: "neutral", icon: "minus" },
-};
-
-export function PriorityChip({ priority, label }: { priority: HandoffPriority; label: string }) {
-  const { tone, icon } = PRIORITY[priority];
-  return (
-    <span className="pb-chip" data-tone={tone}>
-      <Icon name={icon} />
       {label}
     </span>
   );

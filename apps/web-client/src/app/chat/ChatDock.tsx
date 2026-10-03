@@ -1,6 +1,7 @@
-// The dock: the launcher and the panel, pinned bottom-right. The panel is not modal (the page stays
-// usable); opening it focuses the composer, and Escape or the close button closes it and returns focus to
-// the launcher. This file connects the chat machine to the views; the views themselves take props.
+// The dock: the launcher and the panel, pinned bottom-right (full screen on a phone). The panel is not modal
+// (the page stays usable); opening it focuses the composer, and Escape or the close button closes it and
+// returns focus to the launcher. The simulated inbox opens as a sheet over the messages; Escape closes the
+// sheet first. This file connects the chat machine to the views; the views themselves take props.
 
 import { useSelector } from "@xstate/react";
 import { useEffect, useRef, useState } from "react";
@@ -9,16 +10,19 @@ import {
   selectChip,
   selectSendDisabled,
   selectTyping,
+  type ConversationState,
+  type PendingSend,
 } from "../../machines/chat.machine";
+import { isOtpSendReceipt, lastEntryWith } from "../../machines/chat-model";
 import { useActors, useI18n } from "../actors";
 import { useNow } from "../hooks";
 import { Icon } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
+import { MessageText, Sender } from "./Blocks";
 import { Composer } from "./Composer";
-import { GoneCard, OtpNotice, RateLimitedCard, UnavailableCard, type OtpNoticeProps } from "./Notices";
-import { Transcript } from "./Transcript";
+import { GoneStrip, OtpFoot, OtpNoticeStrip, OtpSheet, RateLimitedStrip, type OtpFootProps, type OtpSheetProps } from "./Notices";
+import { Transcript, type PendingFailure } from "./Transcript";
 import type { Dictionary } from "../../i18n";
-import { MessageText } from "./Blocks";
 
 const CHIP_LABEL: Record<ChipStateName, (dict: Dictionary) => string> = {
   anonymous: (dict) => dict.chat.chip.anonymous,
@@ -31,6 +35,15 @@ const CHIP_LABEL: Record<ChipStateName, (dict: Dictionary) => string> = {
   blocked: (dict) => dict.chat.chip.blocked,
 };
 
+/** The message that just failed and what its line says: the reason only for a 503, the retry once allowed. */
+function failureOf(state: ConversationState, pending: PendingSend | null, dict: Dictionary): PendingFailure | null {
+  if (!pending) return null;
+  if (state === "unavailable") return { entryId: pending.entryId, retry: true, reason: dict.chat.unavailable.text };
+  if (state === "retryable") return { entryId: pending.entryId, retry: true, reason: null };
+  if (state === "rateLimited" || state === "gone") return { entryId: pending.entryId, retry: false, reason: null };
+  return null;
+}
+
 export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { chat } = useActors();
   const { lang, dict } = useI18n();
@@ -39,10 +52,11 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const { entries, inbox, pending, retryUntil } = snapshot.context;
   const chip = selectChip(snapshot);
 
-  const panelRef = useRef<HTMLElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const revealRef = useRef<HTMLButtonElement>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
 
   // The machine polls only while the tab is visible.
@@ -59,33 +73,53 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
     wasOpen.current = open;
   }, [open]);
 
-  // The notice closes with the message it belongs to.
+  // The sheet closes with the code it shows.
   useEffect(() => {
     if (!inbox) setInboxOpen(false);
   }, [inbox]);
+
+  // Opening the sheet moves focus to "Mostrar código".
+  useEffect(() => {
+    if (inboxOpen) revealRef.current?.focus();
+  }, [inboxOpen]);
 
   // New things arrive at the bottom of the log.
   const typing = selectTyping(snapshot);
   useEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [entries.length, typing, state, inbox, inboxOpen, open]);
+  }, [entries.length, typing, state, inbox, open]);
 
   const close = () => {
     onOpenChange(false);
     launcherRef.current?.focus();
   };
+  /** Closed by the customer (the button, Escape, the scrim): focus goes back to the action that opened it. */
+  const closeSheet = () => {
+    setInboxOpen(false);
+    openerRef.current?.focus();
+  };
+
+  const hasOtpReceipt = lastEntryWith(entries, isOtpSendReceipt) !== null;
+  const inboxProps = inbox
+    ? { dict, notice: inbox, open: inboxOpen, onToggle: () => setInboxOpen((value) => !value), openerRef }
+    : null;
 
   return (
     <div className="pb-dock">
       <section
-        ref={panelRef}
         className="pb-chat pb-dock__panel"
         id="dock-panel"
         aria-label={dict.chat.panel}
         hidden={!open}
         onKeyDown={(event) => {
-          if (event.key === "Escape") close();
+          if (event.key !== "Escape") return;
+          if (inboxOpen) {
+            event.stopPropagation();
+            closeSheet();
+          } else {
+            close();
+          }
         }}
       >
         <header className="pb-chat__head">
@@ -101,49 +135,58 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
             <Icon name="x" />
           </button>
         </header>
-        <div ref={logRef} className="pb-chat__log" role="log" aria-live="polite" aria-label={dict.chat.log}>
-          <div className="pb-msg pb-msg--assistant">
-            <span className="pb-msg__meta">{dict.chat.roles.assistant}</span>
-            <MessageText text={dict.chat.greeting} />
-          </div>
-          <Transcript
-            entries={entries}
-            lang={lang}
-            retryEntryId={state === "retryable" ? (pending?.entryId ?? null) : null}
-            onRetry={() => chat.send({ type: "RETRY" })}
-          />
-          {inbox && (
-            <LiveOtpNotice
-              dict={dict}
-              notice={inbox}
-              open={inboxOpen}
-              onToggle={() => setInboxOpen((value) => !value)}
-              onReveal={() => chat.send({ type: "CODE.REVEAL" })}
-              onHide={() => chat.send({ type: "CODE.HIDE" })}
-            />
-          )}
-          {typing && (
-            <div className="pb-typing" role="status">
-              <span className="pb-sr">{dict.chat.typing}</span>
-              <i />
-              <i />
-              <i />
+        <div className="pb-chat__body">
+          <div ref={logRef} className="pb-chat__log" role="log" aria-live="polite" aria-label={dict.chat.log}>
+            <div className="pb-msg pb-msg--assistant">
+              <Sender name={dict.chat.roles.assistant} />
+              <MessageText text={dict.chat.greeting} />
             </div>
+            <Transcript
+              entries={entries}
+              lang={lang}
+              failure={failureOf(state, pending, dict)}
+              onRetry={() => chat.send({ type: "RETRY" })}
+              otpFoot={inboxProps && hasOtpReceipt ? <LiveOtpFoot {...inboxProps} /> : undefined}
+            />
+            {inboxProps && !hasOtpReceipt && <LiveOtpNoticeStrip {...inboxProps} />}
+            {typing && (
+              <div className="pb-typing" role="status">
+                <span className="pb-sr">{dict.chat.typing}</span>
+                <i />
+                <i />
+                <i />
+              </div>
+            )}
+            {state === "rateLimited" && <LiveRateLimited dict={dict} retryUntil={retryUntil} />}
+            {state === "gone" && <GoneStrip dict={dict} onStartOver={() => chat.send({ type: "RETRY" })} />}
+          </div>
+          {inbox && inboxOpen && (
+            <>
+              <div className="pb-chat__scrim" aria-hidden="true" onClick={closeSheet} />
+              <LiveOtpSheet
+                dict={dict}
+                notice={inbox}
+                onClose={closeSheet}
+                onReveal={() => chat.send({ type: "CODE.REVEAL" })}
+                onHide={() => chat.send({ type: "CODE.HIDE" })}
+                revealRef={revealRef}
+              />
+            </>
           )}
-          {state === "unavailable" && <UnavailableCard dict={dict} onRetry={() => chat.send({ type: "RETRY" })} />}
-          {state === "rateLimited" && <LiveRateLimited dict={dict} retryUntil={retryUntil} />}
-          {state === "gone" && <GoneCard dict={dict} onStartOver={() => chat.send({ type: "RETRY" })} />}
         </div>
         <Composer
           dict={dict}
           inputRef={inputRef}
           sendDisabled={selectSendDisabled(snapshot)}
-          onSend={(text) => chat.send({ type: "SEND", text, lang })}
+          onSend={(text) => {
+            setInboxOpen(false);
+            chat.send({ type: "SEND", text, lang });
+          }}
         />
       </section>
       <button
         ref={launcherRef}
-        className="pb-launcher pb-dock__launcher"
+        className="pb-launcher pb-launcher--label pb-dock__launcher"
         id="dock-launcher"
         type="button"
         aria-label={dict.chat.launcher}
@@ -152,20 +195,29 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
         onClick={() => onOpenChange(!open)}
       >
         <Icon name="chat" />
+        <span aria-hidden="true">{dict.chat.launcherLabel}</span>
       </button>
     </div>
   );
 }
 
-/** The notice with a countdown that ticks once a second, and only while the notice is on screen. */
-function LiveOtpNotice(props: Omit<OtpNoticeProps, "now">) {
-  const now = useNow(1000);
-  return <OtpNotice {...props} now={now} />;
+// The countdowns tick once a second, and only while they are on screen.
+
+function LiveOtpFoot(props: Omit<OtpFootProps, "now">) {
+  return <OtpFoot {...props} now={useNow(1000)} />;
+}
+
+function LiveOtpNoticeStrip(props: Omit<OtpFootProps, "now">) {
+  return <OtpNoticeStrip {...props} now={useNow(1000)} />;
+}
+
+function LiveOtpSheet(props: Omit<OtpSheetProps, "now">) {
+  return <OtpSheet {...props} now={useNow(1000)} />;
 }
 
 /** The wait a 429 asked for, counting down. */
 function LiveRateLimited({ dict, retryUntil }: { dict: Dictionary; retryUntil: number | null }) {
   const now = useNow(1000);
   const seconds = Math.max(0, Math.ceil(((retryUntil ?? now) - now) / 1000));
-  return <RateLimitedCard dict={dict} seconds={seconds} />;
+  return <RateLimitedStrip dict={dict} seconds={seconds} />;
 }

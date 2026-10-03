@@ -29,7 +29,7 @@ describe("dictionaries", () => {
     const es = [...flat.es.keys()].sort();
     expect([...flat.pt.keys()].sort()).toEqual(es);
     expect([...flat.en.keys()].sort()).toEqual(es);
-    expect(es.length).toBeGreaterThan(150);
+    expect(es.length).toBeGreaterThan(140);
   });
 
   test("no string is empty", () => {
@@ -49,23 +49,17 @@ describe("dictionaries", () => {
   test("pt and en are translated, not copied from es", () => {
     // Where the same string is the right translation: names, symbols, and words Spanish and Portuguese
     // share. Anything else equal to the Spanish is a string somebody forgot to translate.
-    const sameInBoth = [
-      "nav.s2",
-      "s2.label",
-      "s2.ticker",
-      "features.items[3].fact",
-      "footer.legalGroup",
-      "chat.handoff.priorities.NORMAL",
-      "chat.inbox.demoTag",
-    ];
+    const sameInBoth = ["nav.s2", "s2.label", "s2.ticker", "chat.inbox.demoTag"];
     const sameInPt = [
       ...sameInBoth,
+      "meta.documentTitle",
+      "hero.kicker",
+      "hero.title[1]",
+      "nav.openChat",
+      "chat.handoff.caseLabel",
       "nav.linksLabel",
       "nav.languageLabel",
-      "nav.themeLabel",
-      "nav.themeLight",
       "card.holder",
-      "flow.title[1]",
       "flow.steps[0].chip",
       "flow.steps[1].chip",
       "s2.top",
@@ -76,24 +70,20 @@ describe("dictionaries", () => {
       "chat.chip.verified",
       "chat.rateLimited.minutesOne",
       "chat.rateLimited.minutesOther",
-      "chat.receipt.destination",
       "chat.states.VERIFIED",
       "chat.states.EXPIRED",
       "chat.states.LOCKED",
       "chat.states.IDENTIFIED",
       "chat.handoff.departments.DISPUTES",
-      "chat.handoff.priorities.URGENT",
-      "chat.handoff.priorities.HIGH",
-      "chat.inbox.from",
-      "chat.inbox.to",
       "chat.inbox.codeAria",
       "chat.inbox.codeHiddenAria",
       "chat.inbox.reveal",
       "chat.inbox.hide",
     ];
+    const sameInEn = [...sameInBoth, "chat.feedback.no"];
     for (const [lang, allowed] of [
       ["pt", sameInPt],
-      ["en", sameInBoth],
+      ["en", sameInEn],
     ] as const) {
       const copied = [...flat.es].filter(([key, text]) => flat[lang].get(key) === text).map(([key]) => key);
       expect(copied.sort(), lang).toEqual([...allowed].filter((key) => copied.includes(key)).sort());
@@ -104,7 +94,7 @@ describe("dictionaries", () => {
 });
 
 describe("landing rules hold in every language", () => {
-  const landingKeys = (key: string) => /^(nav|hero|card|features|flow|s2|faq|footer)\b/.test(key);
+  const landingKeys = (key: string) => /^(nav|hero|card|products|flow|s2|faq|footer)\b/.test(key);
 
   test("every number is a product fact: 6 digits, 5 minutes, S2, the year of the hackathon", () => {
     const allowed = new Set(["6", "5", "2", "2026"]);
@@ -141,15 +131,37 @@ describe("landing rules hold in every language", () => {
 
   test("the hero headline is three lines, as the design system fixes", () => {
     for (const lang of LANGS) expect(dictionaries[lang].hero.title).toHaveLength(3);
-    expect(dictionaries.pt.hero.title).toEqual(["Seu cartão", "bloqueado", "com comprovante"]);
-    expect(dictionaries.en.hero.title).toEqual(["Your card", "blocked", "with a receipt"]);
+    expect(dictionaries.pt.hero.title).toEqual(["Seu banco", "responde", "no chat"]);
+    expect(dictionaries.en.hero.title).toEqual(["Your bank", "answers", "in the chat"]);
   });
 
-  test("the FAQ has the five questions and the flow the four steps, in the same order", () => {
+  test("the FAQ has the five questions, the lost-card section the four steps, and the bank its three products", () => {
     for (const lang of LANGS) {
       expect(dictionaries[lang].faq.items).toHaveLength(5);
       expect(dictionaries[lang].flow.steps).toHaveLength(4);
-      expect(dictionaries[lang].features.items).toHaveLength(4);
+      expect(dictionaries[lang].products.items).toHaveLength(3);
+    }
+  });
+
+  test("the landing describes the bank, not the system behind it", () => {
+    const system = /(base de datos|banco de dados|database|releído|relido|re-read)/i;
+    const ai = /\b(IA|AI)\b/;
+    for (const lang of LANGS) {
+      for (const [key, text] of flat[lang]) {
+        if (!landingKeys(key)) continue;
+        // The hackathon's own name is not a claim about the bank.
+        const claim = text.replace("Factored AI & Data Hackathon", "");
+        expect(system.test(claim) || ai.test(claim), `${lang}:${key}: ${text}`).toBe(false);
+      }
+    }
+  });
+
+  test("plain copy: no colon used to join two clauses, no em dash, no curly quotes", () => {
+    for (const lang of LANGS) {
+      for (const [key, text] of flat[lang]) {
+        expect(/[—“”‘’]/.test(text), `${lang}:${key}: ${text}`).toBe(false);
+        if (landingKeys(key)) expect(/[a-záéíóúãõç]: [a-záéíóúãõç]/i.test(text), `${lang}:${key}: ${text}`).toBe(false);
+      }
     }
   });
 });
