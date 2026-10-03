@@ -47,5 +47,6 @@ In this order, about 15 minutes:
 | [0014](adr/0014-distilbert-intent-backend.md) | Pooled DistilBERT as the decision backend, locale-keyed thresholds, hint and clarification effects | Accepted |
 | [0015](adr/0015-gcp-cloud-run-terraform.md) | The presentation environment on Google Cloud Run, defined in Terraform | Accepted |
 | [0016](adr/0016-banking-core-states-the-next-step.md) | banking-core states the next step: every tool result carries an advisory flow hint | Accepted |
+| [0017](adr/0017-assistant-feedback-after-handoff.md) | The customer rates the assistant after a handoff: one answer per handoff, stored and audited by banking-core | Accepted |
 
 Every ADR follows the same format: context, decision, options considered, trade-off analysis, consequences and action items.
