@@ -33,11 +33,21 @@ import {
   ToolPolicyResponseSchema,
   TranscriptResponseSchema,
   parseBlocks,
+  CloseCaseRequestSchema,
+  CloseCaseResponseSchema,
+  CloseHandoffRequestSchema,
+  EscalateCaseRequestSchema,
+  EscalateCaseResponseSchema,
+  EscalateHandoffRequestSchema,
+  ReleaseRequestSchema,
+  ReleaseResponseSchema,
 } from "../index";
 import {
   AGENT_REF,
   CLAIMED_DETAIL,
+  CLOSED_DETAIL,
   CONVERSATION_ID,
+  DECISIONS,
   DEMO_RESET,
   HANDOFF_BLOCK,
   HANDOFF_DETAIL,
@@ -213,6 +223,14 @@ describe("orchestrator agent API", () => {
     expect(ok(TakeoverResponseSchema, { ...TAKEOVER_RESPONSE, takeover: { ...TAKEOVER_RESPONSE.takeover, active: false } })).toBe(false);
   });
 
+  test("release: the holder lets go; the answer may name nobody", () => {
+    expect(ok(ReleaseRequestSchema, { agent_ref: AGENT_REF, handoff_ref: HANDOFF_REF })).toBe(true);
+    expect(ok(ReleaseRequestSchema, { agent_ref: AGENT_REF })).toBe(false);
+    const released = ReleaseResponseSchema.parse({ conversation_id: CONVERSATION_ID, takeover: { active: true, since: LATER, agent_ref: null } });
+    expect(released.takeover.agent_ref).toBeNull();
+    expect(ok(ReleaseResponseSchema, { conversation_id: CONVERSATION_ID, takeover: { active: false, since: null, agent_ref: null } })).toBe(true);
+  });
+
   test("agent message: the retry handle is required, the reply is an `agent` message with no blocks", () => {
     expect(ok(AgentMessageRequestSchema, { text: "hola", client_message_id: "abcd1234" })).toBe(true);
     expect(ok(AgentMessageRequestSchema, { text: "hola" })).toBe(false);
@@ -268,8 +286,38 @@ describe("banking-core admin API", () => {
     expect(claimed.assigned_at).toBe(LATER);
   });
 
+  test("the detail lists what the case allows, and the customer's answer", () => {
+    const detail = HandoffDetailSchema.parse(HANDOFF_DETAIL);
+    expect(detail.decisions.outcomes).toEqual(["APPROVED", "REJECTED"]);
+    expect(detail.decisions.closing_messages.APPROVED?.pt).toBe("Encerramos seu caso.");
+    expect(detail.disputed_amount).toEqual({ amount_minor: 125000, currency: "COP" });
+    const closed = HandoffDetailSchema.parse(CLOSED_DETAIL);
+    expect(closed.outcome).toBe("REJECTED");
+    expect(closed.feedback).toEqual({ helpful: false, recorded_at: NOW });
+    expect(ok(HandoffDetailSchema, { ...HANDOFF_DETAIL, decisions: { ...DECISIONS, outcomes: ["MAYBE"] } })).toBe(false);
+    expect(ok(HandoffDetailSchema, { ...HANDOFF_DETAIL, decisions: { ...DECISIONS, closing_messages: { APPROVED: { es: "x" } } } })).toBe(false);
+    expect(ok(HandoffDetailSchema, { ...HANDOFF_DETAIL, disputed_amount: { amount_minor: 1, currency: "pesos" } })).toBe(false);
+    expect(ok(HandoffDetailSchema, { ...HANDOFF_DETAIL, feedback: { helpful: "no", recorded_at: NOW } })).toBe(false);
+  });
+
+  test("close and escalate: closed lists, the agent named, nothing free-form", () => {
+    expect(ok(CloseHandoffRequestSchema, { agent_ref: AGENT_REF, outcome: "APPROVED" })).toBe(true);
+    expect(ok(CloseHandoffRequestSchema, { agent_ref: AGENT_REF, outcome: "REJECTED", reason: "OUT_OF_TIME" })).toBe(true);
+    expect(ok(CloseHandoffRequestSchema, { agent_ref: AGENT_REF, outcome: "REJECTED", reason: "BECAUSE" })).toBe(false);
+    expect(ok(CloseHandoffRequestSchema, { agent_ref: AGENT_REF, outcome: "APPROVED", note: "free text" })).toBe(false);
+    expect(ok(EscalateHandoffRequestSchema, { agent_ref: AGENT_REF, department: "DISPUTES", raise_to_urgent: true })).toBe(true);
+    expect(ok(EscalateHandoffRequestSchema, { agent_ref: AGENT_REF, department: "LEGAL", raise_to_urgent: false })).toBe(false);
+    expect(ok(EscalateHandoffRequestSchema, { agent_ref: AGENT_REF, department: "DISPUTES", raise_to_urgent: "yes" })).toBe(false);
+  });
+
   test("metrics", () => {
     const metrics = MetricsResponseSchema.parse(METRICS);
+    expect(metrics.feedback).toEqual({ helpful: 4, not_helpful: 1 });
+    expect(metrics.recent_not_helpful[0]?.reason).toBe("SUSPECTED_FRAUD");
+    expect(metrics.queue.urgent).toBe(2);
+    expect(metrics.previous.handoffs_total).toBe(7);
+    expect(ok(MetricsResponseSchema, { ...METRICS, previous: undefined })).toBe(false);
+    expect(ok(MetricsResponseSchema, { ...METRICS, recent_not_helpful: [{ handoff_ref: HANDOFF_REF, reason: "BORED", recorded_at: NOW }] })).toBe(false);
     expect(metrics.tool_calls[1]?.reason_code).toBe("STATE_NOT_ALLOWED");
     expect(metrics.handoffs.by_status.QUEUED).toBe(6);
     // A status with no handoffs may be absent: the reader defaults it to 0.
@@ -329,6 +377,23 @@ describe("web-backoffice BFF shapes", () => {
     );
     expect(BackofficeHandoffDetailSchema.parse({ ...HANDOFF_DETAIL, conversation_id: null }).conversation_id).toBeNull();
     expect(ok(BackofficeHandoffDetailSchema, HANDOFF_DETAIL)).toBe(false);
+  });
+
+  test("close: an outcome and maybe a reason; the answer says whether the customer heard", () => {
+    expect(ok(CloseCaseRequestSchema, { outcome: "RESOLVED" })).toBe(true);
+    expect(ok(CloseCaseRequestSchema, { outcome: "REJECTED", reason: "OTHER" })).toBe(true);
+    // The agent comes from the session, never from the browser.
+    expect(ok(CloseCaseRequestSchema, { outcome: "RESOLVED", agent_ref: AGENT_REF })).toBe(false);
+    const answer = CloseCaseResponseSchema.parse({ handoff: CLOSED_DETAIL, customer_notified: true });
+    expect(answer.handoff.status).toBe("CLOSED");
+    expect(ok(CloseCaseResponseSchema, { handoff: CLOSED_DETAIL })).toBe(false);
+  });
+
+  test("escalate: a department and the urgency flag", () => {
+    expect(ok(EscalateCaseRequestSchema, { department: "FRAUD_OPERATIONS", raise_to_urgent: false })).toBe(true);
+    expect(ok(EscalateCaseRequestSchema, { department: "FRAUD_OPERATIONS" })).toBe(false);
+    expect(ok(EscalateCaseRequestSchema, { department: "FRAUD_OPERATIONS", raise_to_urgent: false, agent_ref: AGENT_REF })).toBe(false);
+    expect(EscalateCaseResponseSchema.parse({ handoff: HANDOFF_DETAIL }).handoff.handoff_ref).toBe(HANDOFF_REF);
   });
 
   test("claim answers with the handoff and the takeover, verbatim from the agent API", () => {

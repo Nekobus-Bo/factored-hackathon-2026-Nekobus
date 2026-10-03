@@ -12,9 +12,12 @@
 
 import { z } from "zod";
 import { AgentRefSchema, ConversationIdSchema, HandoffRefSchema } from "./common";
+import { DepartmentSchema } from "./enums";
 import {
   DemoResetResponseSchema,
   HandoffDetailSchema,
+  HandoffOutcomeSchema,
+  RejectReasonSchema,
   HandoffListQuerySchema,
   HandoffListResponseSchema,
   MetricsQuerySchema,
@@ -76,6 +79,38 @@ export const ClaimHandoffResponseSchema = z.object({
 });
 export type ClaimHandoffResponse = z.infer<typeof ClaimHandoffResponseSchema>;
 
+/**
+ * `POST /api/handoffs/:ref/close` (ADR-0018). The BFF closes the case in banking-core for the agent of the
+ * session, then takes the conversation over for that agent (idempotent) and sends the closing message in the
+ * conversation's language with `client_message_id = close_<ref>`, so a retry cannot send it twice.
+ * `customer_notified` is false when the conversation has expired or another agent holds it; the case is
+ * closed either way. banking-core's 404 and 409 codes pass through.
+ */
+export const CloseCaseRequestSchema = z.strictObject({
+  outcome: HandoffOutcomeSchema,
+  reason: RejectReasonSchema.nullable().optional(),
+});
+export type CloseCaseRequest = z.infer<typeof CloseCaseRequestSchema>;
+
+export const CloseCaseResponseSchema = z.object({
+  handoff: HandoffDetailSchema,
+  customer_notified: z.boolean(),
+});
+export type CloseCaseResponse = z.infer<typeof CloseCaseResponseSchema>;
+
+/**
+ * `POST /api/handoffs/:ref/escalate`. The case goes back to the queue in banking-core, then the BFF
+ * releases the conversation if this agent held it, so the next agent can take it over.
+ */
+export const EscalateCaseRequestSchema = z.strictObject({
+  department: DepartmentSchema,
+  raise_to_urgent: z.boolean(),
+});
+export type EscalateCaseRequest = z.infer<typeof EscalateCaseRequestSchema>;
+
+export const EscalateCaseResponseSchema = z.object({ handoff: HandoffDetailSchema });
+export type EscalateCaseResponse = z.infer<typeof EscalateCaseResponseSchema>;
+
 // --- Routes -------------------------------------------------------------------------------------------------------
 
 /** The closed list of routes the BFF answers under `/api`. */
@@ -117,6 +152,22 @@ export const backofficeBffRoutes = {
     successStatus: 200,
     params: HandoffRefParamsSchema,
     response: ClaimHandoffResponseSchema,
+  }),
+  closeHandoff: defineRoute({
+    method: "POST",
+    pattern: "/api/handoffs/:ref/close",
+    successStatus: 200,
+    params: HandoffRefParamsSchema,
+    body: CloseCaseRequestSchema,
+    response: CloseCaseResponseSchema,
+  }),
+  escalateHandoff: defineRoute({
+    method: "POST",
+    pattern: "/api/handoffs/:ref/escalate",
+    successStatus: 200,
+    params: HandoffRefParamsSchema,
+    body: EscalateCaseRequestSchema,
+    response: EscalateCaseResponseSchema,
   }),
   getConversation: defineRoute({
     method: "GET",
