@@ -1,13 +1,15 @@
 // The dock: the launcher and the panel, pinned bottom-right (full screen on a phone). The panel is not modal
 // (the page stays usable); opening it focuses the composer, and Escape or the close button closes it and
 // returns focus to the launcher. The simulated inbox opens as a sheet over the messages; Escape closes the
-// sheet first. This file connects the chat machine to the views; the views themselves take props.
+// sheet first. After a handoff the log asks whether the assistant helped. This file connects the chat
+// machine to the views; the views themselves take props.
 
 import { useSelector } from "@xstate/react";
 import { useEffect, useRef, useState } from "react";
 import {
   conversationState,
   selectChip,
+  selectFeedback,
   selectSendDisabled,
   selectTyping,
   type ConversationState,
@@ -20,6 +22,7 @@ import { Icon } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
 import { MessageText, Sender } from "./Blocks";
 import { Composer } from "./Composer";
+import { FeedbackLine } from "./Feedback";
 import { GoneStrip, OtpFoot, OtpNoticeStrip, OtpSheet, RateLimitedStrip, type OtpFootProps, type OtpSheetProps } from "./Notices";
 import { Transcript, type PendingFailure } from "./Transcript";
 import type { Dictionary } from "../../i18n";
@@ -147,6 +150,13 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
               failure={failureOf(state, pending, dict)}
               onRetry={() => chat.send({ type: "RETRY" })}
               otpFoot={inboxProps && hasOtpReceipt ? <LiveOtpFoot {...inboxProps} /> : undefined}
+              afterHandoff={
+                <FeedbackLine
+                  dict={dict}
+                  state={selectFeedback(snapshot)}
+                  onAnswer={(helpful) => chat.send({ type: "FEEDBACK.SEND", helpful })}
+                />
+              }
             />
             {inboxProps && !hasOtpReceipt && <LiveOtpNoticeStrip {...inboxProps} />}
             {typing && (

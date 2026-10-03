@@ -379,6 +379,7 @@ describe("the closed list of routes", () => {
       "/api/conversations/",
       `/api/conversations/${CONVERSATION_ID}/other`,
       `/api/conversations/${CONVERSATION_ID}/inbox/extra`,
+      `/api/conversations/${CONVERSATION_ID}/feedback/extra`,
       "/api/v1/conversations",
       "/api/admin/policy-config",
     ];

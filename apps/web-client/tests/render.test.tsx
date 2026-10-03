@@ -8,6 +8,7 @@ import { ActorsProvider } from "../src/app/actors";
 import { Blocks } from "../src/app/chat/Blocks";
 import { ChatDock } from "../src/app/chat/ChatDock";
 import { OtpFoot, OtpSheet } from "../src/app/chat/Notices";
+import { FeedbackLine } from "../src/app/chat/Feedback";
 import { Transcript } from "../src/app/chat/Transcript";
 import { Landing } from "../src/app/landing/Landing";
 import { dictionaries } from "../src/i18n";
@@ -334,6 +335,58 @@ describe("the one-time code", () => {
     expect(late).toContain('data-state="abstained"');
     expect(late).toContain("00:30");
     expect(sheet("2026-09-29T15:50:00Z")).toContain("00:00");
+  });
+});
+
+describe("feedback after a handoff", () => {
+  const dict = dictionaries.es;
+  const line = (state: "asking" | "sending" | "sent" | "failed") =>
+    renderToStaticMarkup(<FeedbackLine dict={dict} state={state} onAnswer={() => {}} />);
+
+  test("the question and two equal buttons whose labels say what they mean", () => {
+    const html = line("asking");
+    expect(html).toContain("¿Te ayudó el asistente?");
+    expect(html).toContain('aria-label="Sí, el asistente me ayudó"');
+    expect(html).toContain('aria-label="No, el asistente no me ayudó"');
+    expect(html.match(/pb-rate__face/g)).toHaveLength(2);
+    expect(html).not.toContain("pb-btn--primary");
+    expect(html).not.toContain("disabled");
+  });
+
+  test("sending disables both; a failure says so, as an alert, and keeps them", () => {
+    expect(line("sending").match(/disabled=""/g)).toHaveLength(2);
+    const failed = line("failed");
+    expect(failed).toContain("No pudimos guardar tu respuesta.");
+    expect(failed).toContain('role="alert"');
+    expect(failed).not.toContain("disabled");
+  });
+
+  test("once answered: the thanks, as a status, and no buttons", () => {
+    const html = line("sent");
+    expect(html).toContain("Gracias por tu respuesta.");
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain("<button");
+  });
+
+  test("the dock asks only after a handoff block", async () => {
+    const dock = async (blocks: unknown[]) => {
+      const world = createWorld();
+      world.script("sendMessage", json({ conversation_id: "conv_0123456789abcdef0123456789abcdef", blocks }));
+      world.send("hola");
+      await world.settle();
+      const env: AppEnv = { storage: null, root: null, navigatorLanguage: "es" };
+      const html = renderToStaticMarkup(
+        <ActorsProvider actors={{ app: createActor(createAppMachine(env)).start(), chat: world.actor }}>
+          <ChatDock open onOpenChange={() => {}} />
+        </ActorsProvider>,
+      );
+      world.stop();
+      return html;
+    };
+    expect(await dock([TEXT_BLOCK])).not.toContain("¿Te ayudó el asistente?");
+    const after = await dock([TEXT_BLOCK, HANDOFF_BLOCK]);
+    expect(after).toContain("¿Te ayudó el asistente?");
+    expect(after.indexOf("¿Te ayudó el asistente?")).toBeGreaterThan(after.indexOf("hnd_abcd1234efgh"));
   });
 });
 

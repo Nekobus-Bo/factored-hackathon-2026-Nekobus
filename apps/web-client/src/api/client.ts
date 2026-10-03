@@ -1,4 +1,4 @@
-// The browser's side of the BFF: the four routes of `clientBffRoutes`, built from the same table the
+// The browser's side of the BFF: the five routes of `clientBffRoutes`, built from the same table the
 // server registers. Each call validates the answer with the route's schema and returns a result, never
 // throws: the machines branch on `kind`, and a network failure is the same as a 503.
 //
@@ -12,7 +12,9 @@ import {
   routePath,
   type CreateConversationRequest,
   type CreateConversationResponse,
+  type FeedbackResponse,
   type InboxResponse,
+  type SendFeedbackRequest,
   type SendMessageRequest,
   type SendMessageResponse,
   type TranscriptResponse,
@@ -30,6 +32,7 @@ export interface ApiClient {
   sendMessage(conversationId: string, body: SendMessageRequest): Promise<ApiResult<SendMessageResponse>>;
   getTranscript(conversationId: string): Promise<ApiResult<TranscriptResponse>>;
   getInbox(conversationId: string): Promise<ApiResult<InboxResponse>>;
+  sendFeedback(conversationId: string, body: SendFeedbackRequest): Promise<ApiResult<FeedbackResponse>>;
 }
 
 export const DEFAULT_RETRY_AFTER_SECONDS = 60;
@@ -105,5 +108,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       call(clientBffRoutes.sendMessage, routePath(clientBffRoutes.sendMessage, { id }), body),
     getTranscript: (id) => call(clientBffRoutes.getTranscript, routePath(clientBffRoutes.getTranscript, { id })),
     getInbox: (id) => call(clientBffRoutes.getInbox, routePath(clientBffRoutes.getInbox, { id })),
+    sendFeedback: (id, body) =>
+      call(clientBffRoutes.sendFeedback, routePath(clientBffRoutes.sendFeedback, { id }), body),
   };
 }

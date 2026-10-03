@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { selectChip, selectSendDisabled, selectTyping } from "../src/machines/chat.machine";
+import { selectChip, selectFeedback, selectSendDisabled, selectTyping } from "../src/machines/chat.machine";
 import {
   CARD_BLOCK_RECEIPT,
   CONVERSATION_ID,
@@ -305,6 +305,47 @@ describe("a conversation that expired", () => {
     const texts = world.snapshot.context.entries.flatMap((e) => (e.kind === "customer" ? [e.text] : []));
     expect(texts).toEqual(["dos"]);
     expect((world.callsTo("sendMessage").at(-1)!.body as { text: string }).text).toBe("dos");
+  });
+});
+
+describe("feedback after a handoff", () => {
+  test("nothing is sent before an answer, and an answer before any conversation is ignored", async () => {
+    fresh();
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: true });
+    await world.tick();
+    expect(world.callsTo("sendFeedback")).toHaveLength(0);
+    expect(selectFeedback(world.snapshot)).toBe("asking");
+  });
+
+  test("the answer goes to the conversation's feedback route, once, and the line says thanks", async () => {
+    fresh();
+    world.script("sendMessage", json({ conversation_id: CONVERSATION_ID, blocks: [TEXT_BLOCK, HANDOFF_BLOCK] }));
+    world.send("quiero hablar con una persona");
+    await world.settle();
+
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: false });
+    await world.until((snapshot) => selectFeedback(snapshot) === "sent");
+    expect(world.callsTo("sendFeedback")).toHaveLength(1);
+    expect(world.callsTo("sendFeedback")[0]!.path).toBe(`/api/conversations/${CONVERSATION_ID}/feedback`);
+    expect(world.callsTo("sendFeedback")[0]!.body).toEqual({ helpful: false });
+
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: true });
+    await world.tick();
+    expect(world.callsTo("sendFeedback")).toHaveLength(1);
+  });
+
+  test("a failed answer can be sent again", async () => {
+    fresh();
+    world.script("sendMessage", json({ conversation_id: CONVERSATION_ID, blocks: [HANDOFF_BLOCK] }));
+    world.script("sendFeedback", json({ detail: "unavailable" }, 503), json({ helpful: true, recorded_at: "2026-09-29T15:50:00Z" }));
+    world.send("hola");
+    await world.settle();
+
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: true });
+    await world.until((snapshot) => selectFeedback(snapshot) === "failed");
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: true });
+    await world.until((snapshot) => selectFeedback(snapshot) === "sent");
+    expect(world.callsTo("sendFeedback")).toHaveLength(2);
   });
 });
 

@@ -1,11 +1,11 @@
-// A scripted browser for the machine tests: a fake `fetch` that answers the four BFF routes from queues
+// A scripted browser for the machine tests: a fake `fetch` that answers the five BFF routes from queues
 // (the last answer of a queue repeats), a clock the tests move by hand, and a chat actor wired to both.
 
 import { clientBffRoutes } from "@pattern-blue/contracts";
 import { createActor, SimulatedClock, waitFor } from "xstate";
 import { createApiClient } from "../src/api/client";
 import { chatMachine, conversationState, type ChatSnapshot } from "../src/machines/chat.machine";
-import { CONVERSATION_ID, CREATE_RESPONSE, SEND_RESPONSE, TRANSCRIPT } from "./fixtures";
+import { CONVERSATION_ID, CREATE_RESPONSE, FEEDBACK_RESPONSE, SEND_RESPONSE, TRANSCRIPT } from "./fixtures";
 
 export type RouteKey = keyof typeof clientBffRoutes;
 export type Responder = Response | "network" | ((call: Call) => Response | "network");
@@ -27,6 +27,7 @@ function classify(method: string, path: string): RouteKey {
   if (method === "POST" && path === "/api/conversations") return "createConversation";
   if (method === "POST" && /^\/api\/conversations\/[^/]+\/messages$/.test(path)) return "sendMessage";
   if (method === "GET" && /^\/api\/conversations\/[^/]+\/inbox$/.test(path)) return "getInbox";
+  if (method === "POST" && /^\/api\/conversations\/[^/]+\/feedback$/.test(path)) return "sendFeedback";
   if (method === "GET" && /^\/api\/conversations\/[^/]+$/.test(path)) return "getTranscript";
   throw new Error(`the machine called a route that is not in the contract: ${method} ${path}`);
 }
@@ -38,6 +39,7 @@ export function createWorld(options: { visible?: boolean } = {}) {
     sendMessage: [json(SEND_RESPONSE)],
     getTranscript: [json(TRANSCRIPT)],
     getInbox: [json({ messages: [] })],
+    sendFeedback: [json(FEEDBACK_RESPONSE)],
   };
   let nowMs = START;
   let ids = 0;

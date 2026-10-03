@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApiClient, DEFAULT_RETRY_AFTER_SECONDS, parseRetryAfter } from "../src/api/client";
-import { CONVERSATION_ID, CREATE_RESPONSE, inboxResponse, SEND_RESPONSE, TRANSCRIPT } from "./fixtures";
+import { CONVERSATION_ID, CREATE_RESPONSE, FEEDBACK_RESPONSE, inboxResponse, SEND_RESPONSE, TRANSCRIPT } from "./fixtures";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers });
@@ -60,6 +60,20 @@ describe("the four routes", () => {
     const inbox = client(json(inboxResponse("2026-09-29T15:45:00Z")));
     expect((await inbox.api.getInbox(CONVERSATION_ID)).ok).toBe(true);
     expect(inbox.seen[0]!.url).toBe(`/api/conversations/${CONVERSATION_ID}/inbox`);
+  });
+
+  test("sendFeedback posts the answer to the conversation's feedback route", async () => {
+    const { api, seen } = client(json(FEEDBACK_RESPONSE));
+    const result = await api.sendFeedback(CONVERSATION_ID, { helpful: false });
+    expect(result).toEqual({ ok: true, data: FEEDBACK_RESPONSE });
+    expect(seen[0]!.url).toBe(`/api/conversations/${CONVERSATION_ID}/feedback`);
+    expect(seen[0]!.init).toMatchObject({ method: "POST", cache: "no-store" });
+    expect(JSON.parse(seen[0]!.init!.body as string)).toEqual({ helpful: false });
+  });
+
+  test("a feedback refusal (409) is unavailable, like any other answer the client cannot use", async () => {
+    const { api } = client(json({ detail: "already_answered" }, 409));
+    expect(await api.sendFeedback(CONVERSATION_ID, { helpful: true })).toEqual({ ok: false, kind: "unavailable" });
   });
 
   test("the id is encoded into the path", async () => {

@@ -1,4 +1,4 @@
-// The same-origin BFF: the four chat routes of the orchestrator, and nothing else (ADR-0004, ADR-0013).
+// The same-origin BFF: the five chat routes of the orchestrator, and nothing else (ADR-0004, ADR-0013).
 //
 // It registers exactly the routes of `clientBffRoutes`. For each request it
 //   1. validates the path parameter and the body with the route's own schemas (requests are strict),
