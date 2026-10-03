@@ -12,6 +12,9 @@ GET  /v1/conversations/{id}            the transcript, agent messages included, 
 GET  /v1/conversations/{id}/inbox      the simulated OTP messages of this conversation
                                        (ADR-0007): the code shown to the browser
                                        that types it, never stored or sent to the LLM
+POST /v1/conversations/{id}/feedback   the customer's answer to "did the assistant
+                                       help?" after a handoff (ADR-0017), relayed to
+                                       banking-core, which stores one per handoff
 
 While a takeover is active (agent API) the LLM, the encoder and the banking-core
 tools are out of the loop: the customer's message is masked and stored, and the
@@ -23,9 +26,10 @@ the writes of a re-run turn reuse their idempotency keys, and a retry of the
 last completed turn gets its stored outcome back without running again. A
 message without one is not deduplicated.
 
-The inbox is a pass-through to banking-core for the conversation's own banking
-session. It reads the conversation only for that id and saves nothing: the code
-never enters the LLM history, the transcript, the turn metadata or the logs.
+The inbox and the feedback are pass-throughs to banking-core for the
+conversation's own banking session. They read the conversation only for that id
+and save nothing: the code never enters the LLM history, the transcript, the
+turn metadata or the logs, and neither does the answer.
 """
 
 import logging
@@ -35,7 +39,14 @@ from typing import Any
 from contracts import MESSAGE_BLOCK_ADAPTER
 from contracts.locale import Locale, lang_of
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    ValidationError,
+    model_validator,
+)
 from redis.exceptions import RedisError
 
 from orchestrator.chat.client_ip import client_ip
@@ -60,6 +71,8 @@ from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import (
     BankingCoreClient,
+    FeedbackRefusedError,
+    FeedbackUnavailableError,
     InboxUnavailableError,
     SessionCreationError,
 )
@@ -142,6 +155,21 @@ class InboxMessageResponse(BaseModel):
 
 class InboxResponse(BaseModel):
     messages: list[InboxMessageResponse]
+
+
+class FeedbackRequest(BaseModel):
+    """The customer's answer to "did the assistant help?" (ADR-0017)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    helpful: StrictBool
+
+
+class FeedbackResponse(BaseModel):
+    """The answer as banking-core stored it. The handoff ref stays behind."""
+
+    helpful: bool
+    recorded_at: datetime
 
 
 def _store(request: Request) -> SessionStore:
@@ -391,6 +419,33 @@ async def get_inbox(
             for message in messages
         ]
     )
+
+
+@router.post("/{conversation_id}/feedback", response_model=FeedbackResponse)
+async def send_feedback(
+    request: Request, response: Response, conversation_id: str, answer: FeedbackRequest
+) -> FeedbackResponse:
+    """Relay the customer's answer for this conversation's handoff to banking-core.
+
+    The conversation is loaded only to find its own banking session; banking-core
+    decides whether there is a handoff to rate. Its refusals (409 `no_handoff`,
+    409 `already_answered`) pass through; anything else it cannot do is a 503.
+    Nothing is saved here and nothing reaches the model.
+    """
+    state = await _load(_store(request), conversation_id)
+    try:
+        record = await _banking(request).record_feedback(
+            state.banking_session_id, helpful=answer.helpful
+        )
+    except FeedbackRefusedError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=exc.reason) from exc
+    except FeedbackUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Feedback is temporarily unavailable",
+        ) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return FeedbackResponse(helpful=record.helpful, recorded_at=record.recorded_at)
 
 
 def _mask_block_values(value: Any, placeholder_map: dict[str, str]) -> Any:
