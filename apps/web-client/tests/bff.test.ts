@@ -403,10 +403,12 @@ describe("the closed list of routes", () => {
 });
 
 describe("the rest of the server", () => {
-  test("GET /healthz", async () => {
-    const res = await fetch(`${base}/healthz`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+  test("GET /healthz and /health", async () => {
+    for (const path of ["/healthz", "/health"]) {
+      const res = await fetch(`${base}${path}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ status: "ok" });
+    }
   });
 
   test("any other path outside /api is a 404", async () => {

@@ -6,7 +6,7 @@
 # netcheck job. deploy.yml runs it after every rollout.
 #
 #   positive  every service is ready and runs a real image, not the bootstrap one; the web
-#             client answers /healthz and opens a conversation, which goes through the
+#             client answers /health and opens a conversation, which goes through the
 #             orchestrator and banking-core without calling the LLM
 #   negative  the orchestrator, banking-core and the model server do not answer from the
 #             internet; the back office does not answer without passing IAP
@@ -55,11 +55,12 @@ done
 # Positive: the customer path.
 web_client=$(url web-client)
 if [ -n "$web_client" ]; then
-  code=$(http_status "$web_client/healthz")
+  # /health, not /healthz: Cloud Run's front end answers some paths ending in "z" itself (404).
+  code=$(http_status "$web_client/health")
   if [ "$code" = "200" ]; then
-    pass "web-client /healthz" "200"
+    pass "web-client /health" "200"
   else
-    fail "web-client /healthz" "HTTP $code"
+    fail "web-client /health" "HTTP $code"
   fi
 
   body=$(curl -s --max-time 60 -X POST -H 'Content-Type: application/json' -d '{}' \

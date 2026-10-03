@@ -1,4 +1,4 @@
-// The web-client server: the page, `GET /healthz` and the BFF (`/api/*`).
+// The web-client server: the page, `GET /healthz` (and `/health`) and the BFF (`/api/*`).
 //
 //   bun --hot src/server.ts     development (bun run dev)
 //   bun dist/server.js          production, after bun run build (bun run start)
@@ -13,6 +13,8 @@ export interface StartOptions extends Config {
   log?: (line: string) => void;
   development?: boolean;
 }
+
+const health = () => Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } });
 
 export function startServer(options: StartOptions) {
   const bff = createBff({
@@ -30,7 +32,10 @@ export function startServer(options: StartOptions) {
     maxRequestBodySize: 64 * 1024,
     routes: {
       "/": index,
-      "/healthz": () => Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } }),
+      "/healthz": health,
+      // Cloud Run's front end keeps some paths ending in "z" for itself: from the internet `/healthz` is
+      // its 404, so the deploy smoke asks `/health`. The probes run inside and keep `/healthz`.
+      "/health": health,
     },
     // Everything else: `/api` and below belong to the BFF (which answers its own 404 and 405), the rest is a 404.
     fetch(req, server) {
