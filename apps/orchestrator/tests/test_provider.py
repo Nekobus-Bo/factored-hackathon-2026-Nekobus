@@ -201,6 +201,62 @@ def test_tool_result_masking_preserves_contract_integer_amounts(tmp_path: Path) 
     assert account["account_ref"] == "[DOC_1]"
 
 
+def test_tool_result_with_flow_hint_preserves_integer_amounts(tmp_path: Path) -> None:
+    """The engine renames the flow hint's tools (`otp_send`), which fails
+    ToolResult validation: the envelope must still be masked field by field, or a
+    COP balance in minor units is masked as a document number."""
+    provider = LLMProvider(
+        settings=Settings(llm_model="test-model", replay_dir=str(tmp_path))
+    )
+    result = {
+        "reason_code": None,
+        "tool": "account.get_summary",
+        "status": "ok",
+        "data": {
+            "accounts": [
+                {
+                    "account_ref": "acc_12345678",
+                    "account_type": "CHECKING",
+                    "currency": "COP",
+                    "available_balance_minor": 209948894,
+                    "ledger_balance_minor": 209948894,
+                    "status": "ACTIVE",
+                }
+            ]
+        },
+        "flow": {"next": ["card_list"], "allowed": ["kb_search"]},
+    }
+
+    masked, state = provider.mask_outbound_messages(
+        [{"role": "tool", "content": json.dumps(result)}]
+    )
+    account = json.loads(masked[0]["content"])["data"]["accounts"][0]
+
+    assert account["available_balance_minor"] == 209948894
+    assert account["ledger_balance_minor"] == 209948894
+    assert "209948894" not in state.values()
+
+
+def test_provider_placeholders_never_reuse_the_engines(tmp_path: Path) -> None:
+    """The engine's history already holds `[DOC_1]`; a value the provider masks
+    must get a new index, or the engine unmasks the model's echo of it to the
+    engine's `[DOC_1]` (another value)."""
+    provider = LLMProvider(
+        settings=Settings(llm_model="test-model", replay_dir=str(tmp_path))
+    )
+    masked, state = provider.mask_outbound_messages(
+        [
+            {"role": "user", "content": "Mi cédula es [DOC_1]"},
+            {"role": "assistant", "content": "Tu saldo es 209948894"},
+        ]
+    )
+
+    assert masked[0]["content"] == "Mi cédula es [DOC_1]"
+    assert masked[1]["content"] == "Tu saldo es [DOC_2]"
+    assert state["[DOC_1]"] == "[DOC_1]"
+    assert state["[DOC_2]"] == "209948894"
+
+
 @pytest.mark.asyncio
 async def test_provider_tool_calls_server_side_rehydration(
     tmp_path: Path,

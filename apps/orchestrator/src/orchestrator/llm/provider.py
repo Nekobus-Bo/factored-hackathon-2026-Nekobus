@@ -28,6 +28,7 @@ from orchestrator.llm.replay import (
     compute_tool_schema_hash,
 )
 from orchestrator.privacy.masking import (
+    PLACEHOLDER_RE,
     Masker,
     MaskingError,
     RegexMasker,
@@ -67,6 +68,22 @@ class LLMResponse(BaseModel):
     model: str = Field(..., description="Model identifier used")
     recording_key: str = Field(..., description="Deterministic replay key")
     cached: bool = Field(default=False, description="True if served from replay")
+
+
+def _reserve_placeholders(messages: list[Any]) -> dict[str, str]:
+    """Reserve the placeholders the engine already put in the messages.
+
+    The engine masks with the conversation's mapping, which this provider does
+    not hold. A placeholder minted here must not reuse one of those indexes: the
+    engine would unmask the model's echo of it to a different value (a balance
+    shown as the customer's document number). Each placeholder maps to itself,
+    so the masker's counters start past it and unmasking leaves it unchanged.
+    """
+    try:
+        text = json.dumps(messages, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return {}
+    return {m.group(0): m.group(0) for m in PLACEHOLDER_RE.finditer(text)}
 
 
 class LLMProvider:
@@ -127,7 +144,14 @@ class LLMProvider:
     def _is_tool_result_envelope(payload: object) -> bool:
         if not isinstance(payload, dict):
             return False
-        if set(payload) != {"tool", "status", "reason_code", "data"}:
+        # The engine renames the flow hint's tools to function names (`otp_send`),
+        # so the hint fails ToolResult validation; it is still part of the envelope.
+        # Without it, the result is masked as text and a COP balance in minor units
+        # (7+ digits) reads as a document number.
+        keys = set(payload)
+        if keys - {"flow"} != {"tool", "status", "reason_code", "data"}:
+            return False
+        if not isinstance(payload.get("flow", {}), dict | None):
             return False
         tool = payload.get("tool")
         status = payload.get("status")
@@ -185,7 +209,7 @@ class LLMProvider:
             )
 
         masked_messages: list[dict[str, Any]] = []
-        accumulated_state: dict[str, str] = {}
+        accumulated_state = _reserve_placeholders(messages)
 
         for i, msg in enumerate(messages):
             if not isinstance(msg, dict):
