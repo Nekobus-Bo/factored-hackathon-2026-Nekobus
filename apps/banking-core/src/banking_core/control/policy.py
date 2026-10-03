@@ -12,7 +12,8 @@ import os
 import re
 from typing import Any, Literal
 
-from contracts.envelope import ReasonCode
+from contracts.envelope import ReasonCode, VerificationState
+from contracts.tools.handoff_create import HandoffReason
 from contracts.tools.otp_send import OtpSendOutput
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -21,6 +22,8 @@ from banking_core.control.session import SessionState
 # Verification tools subject to per-session rate limits.
 # ADR-0003 Appendix A: handoff.create and kb.search are NEVER rate-limited
 # so a customer (even locked or rate-limited) can always reach a human or search KB.
+# A handoff from ANONYMOUS with a dispute reason needs one identity attempt first
+# (amendment 2026-10-02); CUSTOMER_REQUEST always goes through.
 RATE_LIMITED_TOOLS: frozenset[str] = frozenset(
     {
         "customer.match",
@@ -68,6 +71,18 @@ DEFAULT_THRESHOLDS_MINOR: dict[str, int] = {
     "BRL": 250000,
     "COP": 200000000,
 }
+
+# Handoff reasons refused from ANONYMOUS until one customer.match has been tried
+# (ADR-0003 amendment 2026-10-02): a dispute handed off unidentified gives the
+# agent nothing verified, and VERIFICATION_FAILED must be true. CUSTOMER_REQUEST,
+# SUSPECTED_FRAUD and CUSTOMER_LOCKED stay out: a customer can always reach a
+# person, and a third party reporting someone else's card is never matched.
+DEFAULT_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT: tuple[HandoffReason, ...] = (
+    HandoffReason.DISPUTE_CLAIM,
+    HandoffReason.UNRECOGNIZED_TRANSACTION,
+    HandoffReason.VERIFICATION_FAILED,
+)
+HANDOFF_IDENTITY_ATTEMPT_ENV = "POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT"
 
 
 class Decision(BaseModel):
@@ -213,6 +228,15 @@ class PolicyConfig(BaseModel):
             "customer.match attempts on one claimed document are counted"
         ),
     )
+    handoff_reasons_requiring_identity_attempt: list[HandoffReason] = Field(
+        default_factory=lambda: list(
+            DEFAULT_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT
+        ),
+        description=(
+            "handoff.create reasons refused from ANONYMOUS until one customer.match "
+            "has been tried in the session; empty disables the rule"
+        ),
+    )
 
     @field_validator("amount_mode", mode="before")
     @classmethod
@@ -247,6 +271,28 @@ class PolicyConfig(BaseModel):
                 normalized[code] = threshold
             return normalized
         raise ValueError("thresholds_minor must be a dict or valid JSON string")
+
+    @field_validator("handoff_reasons_requiring_identity_attempt", mode="before")
+    @classmethod
+    def normalize_handoff_reasons(cls, v: Any) -> list[str]:
+        """Accept a list or a comma separated string; uppercase, drop repeats."""
+        if isinstance(v, str):
+            v = v.split(",")
+        if not isinstance(v, list | tuple):
+            raise ValueError(
+                "handoff_reasons_requiring_identity_attempt must be a list of "
+                "handoff reasons"
+            )
+        normalized: list[str] = []
+        for raw in v:
+            reason = (
+                raw.value
+                if isinstance(raw, HandoffReason)
+                else str(raw).strip().upper()
+            )
+            if reason and reason not in normalized:
+                normalized.append(reason)
+        return normalized
 
     @model_validator(mode="after")
     def sync_thresholds(self) -> "PolicyConfig":
@@ -350,6 +396,13 @@ class PolicyConfig(BaseModel):
             document_match_window_seconds=int(
                 os.getenv("RATE_LIMIT_DOCUMENT_MATCH_WINDOW_SECONDS", "3600")
             ),
+            # Unset means the default list; an empty value means none.
+            handoff_reasons_requiring_identity_attempt=os.getenv(
+                HANDOFF_IDENTITY_ATTEMPT_ENV,
+                ",".join(
+                    r.value for r in DEFAULT_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT
+                ),
+            ),
         )
 
 
@@ -374,7 +427,12 @@ class PolicyEngine:
         Evaluates:
         1. Rate limits per session: applies ONLY to verification tools.
            handoff.create and kb.search are never rate limited.
-        2. Amount threshold rule for card.block, from the trusted context
+        2. Identity attempt before a dispute handoff (ADR-0003 amendment
+           2026-10-02): handoff.create from ANONYMOUS, with no customer.match
+           tried in the session and a reason in
+           `handoff_reasons_requiring_identity_attempt`, is refused with
+           POLICY_BLOCKED. Any other reason, or any other state, passes.
+        3. Amount threshold rule for card.block, from the trusted context
            (`disputed_amount_minor` and `currency`, the disputed transaction's
            row in the database):
            - ALWAYS returns allowed=True (other rules: FSM state, code floor apply).
@@ -404,12 +462,42 @@ class PolicyEngine:
                 flags=["RATE_LIMIT_EXCEEDED"],
             )
 
-        # 2. Risk threshold rule for card.block
+        # 2. One identity attempt before a dispute handoff from ANONYMOUS
+        if tool == "handoff.create" and self._handoff_needs_identity_attempt(
+            session, args
+        ):
+            return Decision(
+                allowed=False,
+                reason_code=ReasonCode.POLICY_BLOCKED,
+                flags=["HANDOFF_NEEDS_IDENTITY_ATTEMPT"],
+            )
+
+        # 3. Risk threshold rule for card.block
         if tool == "card.block":
             return self._card_block_decision(args, context)
 
         # Default: allowed, no flags
         return Decision(allowed=True, reason_code=None, flags=[])
+
+    def _handoff_needs_identity_attempt(
+        self, session: SessionState, args: dict[str, Any]
+    ) -> bool:
+        """A gated reason from ANONYMOUS before any customer.match was tried.
+
+        Only a failed match moves a counter in ANONYMOUS (a successful one leaves
+        it), so zero attempts means no match was tried. Scoped to ANONYMOUS: an
+        IDENTIFIED session whose code cannot be sent moves no counter either, and
+        must still be able to escalate.
+        """
+        if session.state is not VerificationState.ANONYMOUS:
+            return False
+        if session.attempts > 0 or session.failed_matches > 0:
+            return False
+        reason = args.get("reason")
+        reason = reason.value if isinstance(reason, HandoffReason) else reason
+        return reason in {
+            r.value for r in self.config.handoff_reasons_requiring_identity_attempt
+        }
 
     def _card_block_decision(
         self, args: dict[str, Any], context: dict[str, Any]

@@ -850,3 +850,116 @@ def test_authorizer_integrates_card_block_semantics() -> None:
     )
     assert dec_not_verified.allowed is False
     assert dec_not_verified.reason_code == ReasonCode.STATE_NOT_ALLOWED
+
+
+# ADR-0003 amendment 2026-10-02: a dispute handoff needs one identity attempt first.
+
+GATED_HANDOFF_REASONS = [
+    "DISPUTE_CLAIM",
+    "UNRECOGNIZED_TRANSACTION",
+    "VERIFICATION_FAILED",
+]
+UNGATED_HANDOFF_REASONS = ["CUSTOMER_REQUEST", "SUSPECTED_FRAUD", "CUSTOMER_LOCKED"]
+
+
+def _handoff(reason: str) -> dict[str, str]:
+    return {"reason": reason, "summary": "Customer reports a charge"}
+
+
+@pytest.mark.parametrize("reason", GATED_HANDOFF_REASONS)
+def test_dispute_handoff_before_any_identity_attempt_is_refused(reason: str) -> None:
+    engine = PolicyEngine(config=PolicyConfig())
+    fresh = SessionState(session_id="s_fresh", state=VerificationState.ANONYMOUS)
+
+    decision = engine.evaluate("handoff.create", fresh, _handoff(reason))
+
+    assert decision.allowed is False
+    assert decision.reason_code == ReasonCode.POLICY_BLOCKED
+    assert decision.flags == ["HANDOFF_NEEDS_IDENTITY_ATTEMPT"]
+
+
+@pytest.mark.parametrize("reason", UNGATED_HANDOFF_REASONS)
+def test_a_customer_can_always_reach_a_person_unidentified(reason: str) -> None:
+    engine = PolicyEngine(config=PolicyConfig())
+    fresh = SessionState(session_id="s_fresh", state=VerificationState.ANONYMOUS)
+
+    assert engine.evaluate("handoff.create", fresh, _handoff(reason)).allowed is True
+
+
+@pytest.mark.parametrize("reason", GATED_HANDOFF_REASONS)
+def test_one_failed_match_is_enough_for_a_dispute_handoff(reason: str) -> None:
+    engine = PolicyEngine(config=PolicyConfig())
+    tried = SessionState(
+        session_id="s_tried",
+        state=VerificationState.ANONYMOUS,
+        attempts=1,
+        failed_matches=1,
+    )
+
+    assert engine.evaluate("handoff.create", tried, _handoff(reason)).allowed is True
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        VerificationState.IDENTIFIED,
+        VerificationState.OTP_PENDING,
+        VerificationState.VERIFIED,
+        VerificationState.LOCKED,
+    ],
+)
+def test_the_identity_attempt_rule_applies_only_in_anonymous(
+    state: VerificationState,
+) -> None:
+    """IDENTIFIED with no OTP channel moves no counter, and must still escalate."""
+    engine = PolicyEngine(config=PolicyConfig())
+    session = SessionState(session_id="s_state", state=state)
+
+    decision = engine.evaluate(
+        "handoff.create", session, _handoff("VERIFICATION_FAILED")
+    )
+
+    assert decision.allowed is True
+
+
+def test_an_empty_reason_list_disables_the_identity_attempt_rule() -> None:
+    engine = PolicyEngine(
+        config=PolicyConfig(handoff_reasons_requiring_identity_attempt=[])
+    )
+    fresh = SessionState(session_id="s_fresh", state=VerificationState.ANONYMOUS)
+
+    assert engine.evaluate("handoff.create", fresh, _handoff("DISPUTE_CLAIM")).allowed
+
+
+def test_the_authorizer_refuses_a_dispute_handoff_before_an_identity_attempt() -> None:
+    authorizer = Authorizer(config_repo=InMemoryControlConfigRepository())
+    fresh = SessionState(session_id="s_fresh", state=VerificationState.ANONYMOUS)
+    call = ToolCall(
+        tool="handoff.create",
+        args=_handoff("DISPUTE_CLAIM"),
+        idempotency_key="idem_handoff_dispute_01",
+    )
+
+    decision = authorizer.authorize(call, fresh)
+
+    assert decision.allowed is False
+    assert decision.reason_code == ReasonCode.POLICY_BLOCKED
+
+
+def test_handoff_identity_attempt_reasons_seed() -> None:
+    env = "POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT"
+    with patch.dict(os.environ, {}, clear=True):
+        assert PolicyConfig.from_env().handoff_reasons_requiring_identity_attempt == [
+            "DISPUTE_CLAIM",
+            "UNRECOGNIZED_TRANSACTION",
+            "VERIFICATION_FAILED",
+        ]
+    with patch.dict(os.environ, {env: " dispute_claim , DISPUTE_CLAIM"}, clear=True):
+        assert PolicyConfig.from_env().handoff_reasons_requiring_identity_attempt == [
+            "DISPUTE_CLAIM"
+        ]
+    with patch.dict(os.environ, {env: ""}, clear=True):
+        assert PolicyConfig.from_env().handoff_reasons_requiring_identity_attempt == []
+    with patch.dict(os.environ, {env: "NOT_A_REASON"}, clear=True):
+        with pytest.raises(ValidationError, match="handoff_reasons"):
+            PolicyConfig.from_env()

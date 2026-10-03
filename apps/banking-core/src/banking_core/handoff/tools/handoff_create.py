@@ -2,7 +2,10 @@
 
 Rules (ADR-0003 Appendix A, AGENTS rule 4):
 - Available in every verification state, including LOCKED: a locked customer
-  always reaches a human. The holder is optional for that reason.
+  always reaches a human. The holder is optional for that reason. From
+  ANONYMOUS, the policy engine refuses the configured dispute reasons until one
+  customer.match has been tried (ADR-0003 amendment 2026-10-02); a request for
+  a person always goes through.
 - The four elements of the structured handoff are assembled server-side:
   verified facts and verification method come from the session state, actions
   taken from this session's audit rows; only the open questions carry the

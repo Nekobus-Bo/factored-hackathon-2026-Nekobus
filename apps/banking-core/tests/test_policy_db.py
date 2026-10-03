@@ -129,6 +129,28 @@ def test_attempt_limits_are_seeded_persisted_and_versioned(
     assert reloaded.customer_otp_lock_seconds == 900
 
 
+def test_gated_handoff_reasons_are_seeded_persisted_and_versioned(
+    db_session: Session,
+) -> None:
+    env = {"POLICY_SEED_HANDOFF_REASONS_REQUIRING_IDENTITY_ATTEMPT": "DISPUTE_CLAIM"}
+    with patch.dict(os.environ, env, clear=False):
+        seeded = load_policy_config(db_session)
+        db_session.commit()
+
+    record = db_session.query(PolicyConfigRecord).filter_by(is_active=True).one()
+    assert record.handoff_reasons_requiring_identity_attempt == ["DISPUTE_CLAIM"]
+    assert seeded.handoff_reasons_requiring_identity_attempt == ["DISPUTE_CLAIM"]
+
+    updated = seeded.model_copy(
+        update={"handoff_reasons_requiring_identity_attempt": []}
+    )
+    save_policy_config(updated, db_session)
+    db_session.commit()
+    assert (
+        load_policy_config(db_session).handoff_reasons_requiring_identity_attempt == []
+    )
+
+
 def test_policy_loader_returns_persisted_db_config_on_subsequent_runs(
     db_session: Session,
 ) -> None:

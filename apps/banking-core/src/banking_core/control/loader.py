@@ -36,6 +36,9 @@ def record_to_policy_config(record: PolicyConfigRecord) -> PolicyConfig:
         customer_otp_lock_seconds=record.customer_otp_lock_seconds,
         document_match_max_failures=record.document_match_max_failures,
         document_match_window_seconds=record.document_match_window_seconds,
+        handoff_reasons_requiring_identity_attempt=list(
+            record.handoff_reasons_requiring_identity_attempt or []
+        ),
     )
 
 
@@ -95,6 +98,9 @@ def _load_or_seed(session: Session) -> PolicyConfig:
             customer_otp_lock_seconds=seed_config.customer_otp_lock_seconds,
             document_match_max_failures=seed_config.document_match_max_failures,
             document_match_window_seconds=seed_config.document_match_window_seconds,
+            handoff_reasons_requiring_identity_attempt=[
+                r.value for r in seed_config.handoff_reasons_requiring_identity_attempt
+            ],
         )
         .on_conflict_do_nothing(index_elements=["version"])
     )
@@ -142,6 +148,9 @@ def save_policy_config(config: PolicyConfig, session: Session) -> PolicyConfigRe
         customer_otp_lock_seconds=config.customer_otp_lock_seconds,
         document_match_max_failures=config.document_match_max_failures,
         document_match_window_seconds=config.document_match_window_seconds,
+        handoff_reasons_requiring_identity_attempt=[
+            r.value for r in config.handoff_reasons_requiring_identity_attempt
+        ],
     )
     session.add(new_record)
     session.commit()

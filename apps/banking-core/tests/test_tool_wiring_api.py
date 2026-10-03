@@ -1144,3 +1144,68 @@ def test_card_block_state_is_checked_before_any_transaction_lookup(
     db_session.expire_all()
     card = db_session.scalar(sa.select(Card).where(Card.card_ref == "card_demo_es"))
     assert card is not None and card.status == "ACTIVE"
+
+
+def _raw_call(
+    client: TestClient, session_id: str, call: dict[str, object]
+) -> dict[str, Any]:
+    response = client.post(
+        "/v1/tools/call", json=call, headers={"X-Session-Id": session_id}
+    )
+    assert response.status_code == 200, response.text
+    body: Any = response.json()
+    assert isinstance(body, dict)
+    return body
+
+
+def test_a_dispute_handoff_needs_one_identity_attempt_first(
+    seeded_api: tuple[TestClient, Session],
+) -> None:
+    """ADR-0003 amendment 2026-10-02: identify first, escalate the dispute after."""
+    client, db_session = seeded_api
+    created = client.post("/v1/sessions").json()
+    session_id = created["session_id"]
+    # The new session already says where to start (ADR-0016 amendment 2026-10-02).
+    assert created["flow"]["state"] == "ANONYMOUS"
+    assert created["flow"]["next"] == ["customer.match"]
+
+    dispute = {
+        "tool": "handoff.create",
+        "version": "1.0",
+        "args": {"reason": "DISPUTE_CLAIM", "summary": "Unrecognized purchase."},
+        "idempotency_key": "idem_handoff_dispute_first",
+    }
+    refused = _raw_call(client, session_id, dispute)
+    assert (refused["status"], refused["reason_code"]) == ("refused", "POLICY_BLOCKED")
+    assert refused["flow"]["next"] == ["customer.match"]
+    audit = db_session.scalars(
+        sa.select(AuditLog).where(
+            AuditLog.action == "handoff.create", AuditLog.decision == "refused"
+        )
+    ).one()
+    assert audit.payload["details"]["flags"] == ["HANDOFF_NEEDS_IDENTITY_ATTEMPT"]
+
+    # Asking for a person never waits for an identity attempt.
+    person = _raw_call(
+        client,
+        client.post("/v1/sessions").json()["session_id"],
+        {
+            **dispute,
+            "args": {"reason": "CUSTOMER_REQUEST", "summary": "Wants a person."},
+            "idempotency_key": "idem_handoff_person_first",
+        },
+    )
+    assert person["status"] == "ok"
+
+    # One failed match is an attempt: the dispute goes through.
+    missed = _call_tool(
+        client,
+        session_id,
+        "customer.match",
+        {"document_type": "NATIONAL_ID", "document_number": "99999999999"},
+    )
+    assert missed["data"] == {"matched": False}
+    escalated = _raw_call(
+        client, session_id, {**dispute, "idempotency_key": "idem_handoff_dispute_2"}
+    )
+    assert escalated["status"] == "ok"

@@ -394,3 +394,33 @@ def test_alembic_0009_assistant_feedback_down_and_up(
         sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_feedbackmigration'")
     )
     db_session.commit()
+
+
+def test_alembic_0010_handoff_identity_attempt_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0010 adds the gated handoff reasons; rows saved before it take the default."""
+    column = "handoff_reasons_requiring_identity_attempt"
+    command.downgrade(alembic_cfg, "0009_assistant_feedback")
+    assert column not in _policy_columns(db_session)
+    db_session.execute(sa.text("DELETE FROM config.policy_config"))
+    db_session.execute(
+        sa.text(
+            "INSERT INTO config.policy_config (version, is_active) VALUES (1, true)"
+        )
+    )
+    db_session.commit()
+
+    command.upgrade(alembic_cfg, "head")
+    assert column in _policy_columns(db_session)
+    stored = db_session.execute(
+        sa.text(f"SELECT {column} FROM config.policy_config WHERE version = 1")
+    ).scalar_one()
+    assert stored == [
+        "DISPUTE_CLAIM",
+        "UNRECOGNIZED_TRANSACTION",
+        "VERIFICATION_FAILED",
+    ]
+    # Leave no open transaction: it would hold a lock the next migration waits on.
+    db_session.execute(sa.text("DELETE FROM config.policy_config"))
+    db_session.commit()

@@ -9,8 +9,8 @@ Pipeline:
 3. Effective matrix check: config restricted by CODE_FLOOR
    via get_effective_permitted_states
 4. FSM state check: session.state must be in effective permitted states
-5. Policy evaluation: rate limits (verification tools only),
-   risk thresholds (fail-closed)
+5. Policy evaluation: rate limits (verification tools only), one identity
+   attempt before a dispute handoff from ANONYMOUS, risk thresholds (fail-closed)
 -> Decision(allowed: bool, reason_code: ReasonCode | None, flags: list)
 """
 
