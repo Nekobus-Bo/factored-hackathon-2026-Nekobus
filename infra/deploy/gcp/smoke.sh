@@ -9,7 +9,9 @@
 #             client answers /health and opens a conversation, which goes through the
 #             orchestrator and banking-core without calling the LLM
 #   negative  the orchestrator, banking-core and the model server do not answer from the
-#             internet; the back office does not answer without passing IAP
+#             internet; the back office does not answer without passing IAP, or, when it
+#             has been opened for judges (no IAP on the service), its API refuses a request
+#             with no session
 set -u
 
 : "${GCP_PROJECT:?set GCP_PROJECT}" "${GCP_REGION:?set GCP_REGION}" "${GCP_PREFIX:?set GCP_PREFIX}"
@@ -83,12 +85,42 @@ for svc in orchestrator banking-core encoder; do
   esac
 done
 
-# Negative: the back office sends an anonymous visitor to Google's login, never the page.
+# The back office's IAP setting as the service has it, from the Run v2 API (the v1 shape that
+# `describe` prints does not carry it): "true", "false", or nothing if it cannot be read.
+iap_enabled() {
+  curl -s --max-time 30 -H "Authorization: Bearer $(gcloud auth print-access-token 2>/dev/null)" \
+    "https://run.googleapis.com/v2/projects/$GCP_PROJECT/locations/$GCP_REGION/services/$GCP_PREFIX-web-backoffice" |
+    python3 -c 'import json, sys; print(str(json.load(sys.stdin).get("iapEnabled", False)).lower())' 2>/dev/null
+}
+
 if [ -n "$(url web-backoffice)" ]; then
-  code=$(http_status "$(url web-backoffice)/")
-  case "$code" in
-    2??) fail "back office without IAP" "HTTP $code: it must not answer" ;;
-    *) pass "back office without IAP" "refused (HTTP $code)" ;;
+  backoffice=$(url web-backoffice)
+  case "$(iap_enabled)" in
+    true)
+      # Negative: the back office sends an anonymous visitor to Google's login, never the page.
+      code=$(http_status "$backoffice/")
+      case "$code" in
+        2??) fail "back office without IAP" "HTTP $code: it must not answer" ;;
+        *) pass "back office without IAP" "refused (HTTP $code)" ;;
+      esac
+      ;;
+    false)
+      # Opened for judges (backoffice_public, ADR-0015 amendment of 2026-10-03): the page
+      # answers, and its own login is the only lock, so the API must refuse a request with no session.
+      echo "! back office is OPEN: no IAP, its login is the only lock (make gcp-backoffice-close)"
+      code=$(http_status "$backoffice/")
+      case "$code" in
+        2??) pass "back office page (open)" "HTTP $code" ;;
+        *) fail "back office page (open)" "HTTP $code: an open back office must answer" ;;
+      esac
+      code=$(http_status "$backoffice/api/session")
+      if [ "$code" = "401" ]; then
+        pass "back office API, no session" "refused (HTTP 401)"
+      else
+        fail "back office API, no session" "HTTP $code: it must be 401"
+      fi
+      ;;
+    *) fail "back office IAP setting" "could not read iapEnabled from the Run v2 API" ;;
   esac
 fi
 
