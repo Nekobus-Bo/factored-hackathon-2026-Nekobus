@@ -92,8 +92,12 @@ class Handoff(Base):
     __tablename__ = "handoff"
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('QUEUED', 'ASSIGNED', 'PENDING')",
+            "status IN ('QUEUED', 'ASSIGNED', 'PENDING', 'CLOSED')",
             name="ck_handoff_status",
+        ),
+        sa.CheckConstraint(
+            "outcome IS NULL OR outcome IN ('APPROVED', 'REJECTED', 'RESOLVED')",
+            name="ck_handoff_outcome",
         ),
         sa.CheckConstraint(
             "priority IN ('LOW', 'NORMAL', 'HIGH', 'URGENT')",
@@ -134,6 +138,13 @@ class Handoff(Base):
     # Set together by the back-office claim (ADR-0013); empty until then.
     assigned_agent: Mapped[str | None] = mapped_column(sa.String(254), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    # Set together when an agent closes the case (ADR-0018); empty until then.
+    outcome: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    outcome_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    closed_by: Mapped[str | None] = mapped_column(sa.String(254), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
 

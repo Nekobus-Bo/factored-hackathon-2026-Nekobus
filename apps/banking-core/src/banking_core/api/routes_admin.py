@@ -14,11 +14,23 @@ from contracts.envelope import VerificationState
 from contracts.tools import CODE_FLOOR
 from contracts.tools.handoff_create import Department, HandoffPriority, HandoffStatus
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    field_validator,
+)
 from sqlalchemy.orm import Session
 
 from banking_core.api.routes_sessions import get_session_store
-from banking_core.audit.metrics import MetricsSnapshot, collect_metrics
+from banking_core.audit.metrics import (
+    FeedbackCounts,
+    MetricsSnapshot,
+    OtpCounts,
+    collect_metrics,
+)
 from banking_core.audit.service import append
 from banking_core.control.attempt_limits import AttemptLimitStore
 from banking_core.control.loader import (
@@ -36,6 +48,16 @@ from banking_core.control.tool_policy import (
 )
 from banking_core.crypto import compute_blind_index
 from banking_core.db.session import get_session_maker
+from banking_core.handoff.decisions import (
+    AlreadyClosedError,
+    DecisionNotAllowedError,
+    HandoffOutcome,
+    RejectReason,
+    allowed_decisions,
+    close_handoff,
+    escalate_handoff,
+)
+from banking_core.handoff.feedback import read_feedback
 from banking_core.handoff.queue import (
     ClaimedByAnotherAgentError,
     HandoffNotFoundError,
@@ -133,8 +155,15 @@ class DemoResetResponse(BaseModel):
     tool_policy_changed: bool
 
 
+class DisputedAmount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount_minor: int
+    currency: str
+
+
 class HandoffItem(BaseModel):
-    """One open case in the back-office queue."""
+    """One case in the back-office queue."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -149,8 +178,15 @@ class HandoffItem(BaseModel):
     assigned_agent: str | None
     assigned_at: datetime | None
     session_ref: str
+    # Set when an agent closed the case (ADR-0018).
+    outcome: HandoffOutcome | None = None
+    outcome_reason: RejectReason | None = None
+    closed_by: str | None = None
+    closed_at: datetime | None = None
+    # The disputed charge's amount, read from the stored summary, if it has one.
+    disputed_amount: DisputedAmount | None = None
 
-    @field_validator("created_at", "assigned_at")
+    @field_validator("created_at", "assigned_at", "closed_at")
     @classmethod
     def in_utc(cls, value: datetime | None) -> datetime | None:
         # The database session may hand times back in its own zone.
@@ -163,10 +199,38 @@ class HandoffListResponse(BaseModel):
     items: list[HandoffItem]
 
 
+class HandoffFeedback(BaseModel):
+    """The customer's answer to "did the assistant help?" (ADR-0017)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    helpful: bool
+    recorded_at: datetime
+
+    @field_validator("recorded_at")
+    @classmethod
+    def in_utc(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
+
+
+class HandoffDecisions(BaseModel):
+    """What the case allows now (ADR-0018); empty lists once it is closed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcomes: list[HandoffOutcome]
+    reject_reasons: list[RejectReason]
+    escalate_to: list[Department]
+    # Outcome -> language (es, pt, en) -> the message the customer receives.
+    closing_messages: dict[HandoffOutcome, dict[str, str]]
+
+
 class HandoffDetail(HandoffItem):
     """A queue item with the summary exactly as handoff.create stored it."""
 
     summary: dict[str, Any]
+    feedback: HandoffFeedback | None
+    decisions: HandoffDecisions
 
 
 class AdminHandoffClaimRequest(BaseModel):
@@ -179,6 +243,29 @@ class AdminHandoffClaimRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent_ref: str = Field(min_length=3, max_length=128, pattern=r"^[^@\s]+@[^@\s]+$")
+
+
+_AgentRef = Field(min_length=3, max_length=128, pattern=r"^[^@\s]+@[^@\s]+$")
+
+
+class AdminHandoffCloseRequest(BaseModel):
+    """An agent closing a case: the outcome, and the reason when rejecting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_ref: str = _AgentRef
+    outcome: HandoffOutcome
+    reason: RejectReason | None = None
+
+
+class AdminHandoffEscalateRequest(BaseModel):
+    """An agent sending a case back to the queue, elsewhere or more urgent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_ref: str = _AgentRef
+    department: Department
+    raise_to_urgent: StrictBool = False
 
 
 class ToolCallMetric(BaseModel):
@@ -197,6 +284,7 @@ class HandoffMetrics(BaseModel):
     by_status: dict[str, int]
     by_priority: dict[str, int]
     by_department: dict[str, int]
+    by_outcome: dict[str, int]
 
 
 class OtpMetrics(BaseModel):
@@ -205,6 +293,56 @@ class OtpMetrics(BaseModel):
     sent: int
     verified: int
     failed: int
+
+
+class FeedbackMetrics(BaseModel):
+    """Answers to "did the assistant help?" of the handoffs created in the window."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    helpful: int
+    not_helpful: int
+
+
+class NotHelpfulMetric(BaseModel):
+    """A case whose customer answered no: an opaque ref and an enum, no PII."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    handoff_ref: str
+    reason: str
+    recorded_at: datetime
+
+    @field_validator("recorded_at")
+    @classmethod
+    def in_utc(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
+
+
+class QueueMetrics(BaseModel):
+    """The queue as the metrics are read, whatever the window."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    waiting: int
+    urgent: int
+    oldest_created_at: datetime | None
+
+    @field_validator("oldest_created_at")
+    @classmethod
+    def in_utc(cls, value: datetime | None) -> datetime | None:
+        return value.astimezone(UTC) if value is not None else None
+
+
+class WindowSummaryMetrics(BaseModel):
+    """The headline numbers of the window just before this one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cards_blocked: int
+    otp: OtpMetrics
+    handoffs_total: int
+    feedback: FeedbackMetrics
 
 
 class MetricsResponse(BaseModel):
@@ -218,6 +356,10 @@ class MetricsResponse(BaseModel):
     handoffs: HandoffMetrics
     cards_blocked: int
     otp: OtpMetrics
+    feedback: FeedbackMetrics
+    recent_not_helpful: list[NotHelpfulMetric]
+    queue: QueueMetrics
+    previous: WindowSummaryMetrics
 
 
 def _environment_flag(name: str) -> bool:
@@ -417,6 +559,19 @@ def put_tool_policy(request: AdminToolPolicyRequest) -> ToolPolicyResponse:
         return _tool_policy_response(change.version, change.matrix)
 
 
+def _disputed_amount(summary: dict[str, Any] | None) -> DisputedAmount | None:
+    """The amount handoff.create stored with the disputed charge, if any."""
+    facts = (summary or {}).get("verified_facts")
+    disputed = facts.get("disputed_transaction") if isinstance(facts, dict) else None
+    if not isinstance(disputed, dict):
+        return None
+    amount, currency = disputed.get("amount_minor"), disputed.get("currency")
+    if isinstance(amount, int) and not isinstance(amount, bool):
+        if isinstance(currency, str) and _CURRENCY_CODE.fullmatch(currency):
+            return DisputedAmount(amount_minor=amount, currency=currency)
+    return None
+
+
 def _handoff_fields(row: Handoff, position: int | None) -> dict[str, Any]:
     return {
         "handoff_ref": row.handoff_ref,
@@ -429,11 +584,18 @@ def _handoff_fields(row: Handoff, position: int | None) -> dict[str, Any]:
         "assigned_agent": row.assigned_agent,
         "assigned_at": row.assigned_at,
         "session_ref": row.session_ref,
+        "outcome": HandoffOutcome(row.outcome) if row.outcome else None,
+        "outcome_reason": RejectReason(row.outcome_reason)
+        if row.outcome_reason
+        else None,
+        "closed_by": row.closed_by,
+        "closed_at": row.closed_at,
+        "disputed_amount": _disputed_amount(row.summary),
     }
 
 
 def _load_handoff(session: Session, handoff_ref: str) -> HandoffDetail:
-    """The handoff as stored, with its place in line, read now."""
+    """The handoff as stored, with its place in line and its feedback, read now."""
     found = session.execute(
         sa.select(Handoff, queue_position_expression(Handoff)).where(
             Handoff.handoff_ref == handoff_ref
@@ -444,7 +606,36 @@ def _load_handoff(session: Session, handoff_ref: str) -> HandoffDetail:
             status_code=status.HTTP_404_NOT_FOUND, detail="handoff_not_found"
         )
     row, position = found
-    return HandoffDetail(**_handoff_fields(row, position), summary=row.summary)
+    stored = read_feedback(session, handoff_ref)
+    allowed = allowed_decisions(row)
+    return HandoffDetail(
+        **_handoff_fields(row, position),
+        summary=row.summary,
+        feedback=HandoffFeedback(helpful=stored.helpful, recorded_at=stored.recorded_at)
+        if stored
+        else None,
+        decisions=HandoffDecisions(
+            outcomes=allowed.outcomes,
+            reject_reasons=allowed.reject_reasons,
+            escalate_to=allowed.escalate_to,
+            closing_messages=allowed.closing_messages,
+        ),
+    )
+
+
+def _decision_error(exc: Exception) -> HTTPException:
+    """The HTTP answer for a refused decision, claim or close alike."""
+    if isinstance(exc, HandoffNotFoundError):
+        return HTTPException(status.HTTP_404_NOT_FOUND, detail="handoff_not_found")
+    if isinstance(exc, ClaimedByAnotherAgentError):
+        return HTTPException(
+            status.HTTP_409_CONFLICT, detail="claimed_by_another_agent"
+        )
+    if isinstance(exc, AlreadyClosedError):
+        return HTTPException(status.HTTP_409_CONFLICT, detail="already_closed")
+    if isinstance(exc, DecisionNotAllowedError):
+        return HTTPException(status.HTTP_409_CONFLICT, detail=exc.code)
+    raise exc
 
 
 @router.get(
@@ -514,7 +705,83 @@ def claim_handoff_for_agent(
         return _load_handoff(session, handoff_ref)
 
 
+@router.post(
+    "/handoffs/{handoff_ref}/close",
+    response_model=HandoffDetail,
+    dependencies=[Depends(require_admin)],
+)
+def close_handoff_for_agent(
+    handoff_ref: str, request: AdminHandoffCloseRequest
+) -> HandoffDetail:
+    """Close the case with an outcome (ADR-0018), audited, claiming it if queued.
+
+    The same close by the same agent again is a no-op. 409 `claimed_by_another_agent`,
+    `already_closed`, or a code for an outcome or reason the case does not allow.
+    The response is read back after the commit.
+    """
+    with get_session_maker()() as session:
+        try:
+            close_handoff(
+                session, handoff_ref, request.agent_ref, request.outcome, request.reason
+            )
+        except (
+            HandoffNotFoundError,
+            ClaimedByAnotherAgentError,
+            AlreadyClosedError,
+            DecisionNotAllowedError,
+        ) as exc:
+            raise _decision_error(exc) from exc
+        session.commit()
+        session.expire_all()
+        return _load_handoff(session, handoff_ref)
+
+
+@router.post(
+    "/handoffs/{handoff_ref}/escalate",
+    response_model=HandoffDetail,
+    dependencies=[Depends(require_admin)],
+)
+def escalate_handoff_for_agent(
+    handoff_ref: str, request: AdminHandoffEscalateRequest
+) -> HandoffDetail:
+    """Put the case back in the queue, in another department or more urgent.
+
+    409 `claimed_by_another_agent`, `already_closed` or `nothing_to_escalate`.
+    The response is read back after the commit.
+    """
+    with get_session_maker()() as session:
+        try:
+            escalate_handoff(
+                session,
+                handoff_ref,
+                request.agent_ref,
+                request.department,
+                request.raise_to_urgent,
+            )
+        except (
+            HandoffNotFoundError,
+            ClaimedByAnotherAgentError,
+            AlreadyClosedError,
+            DecisionNotAllowedError,
+        ) as exc:
+            raise _decision_error(exc) from exc
+        session.commit()
+        session.expire_all()
+        return _load_handoff(session, handoff_ref)
+
+
+def _otp(counts: OtpCounts) -> OtpMetrics:
+    return OtpMetrics(sent=counts.sent, verified=counts.verified, failed=counts.failed)
+
+
+def _feedback(counts: FeedbackCounts) -> FeedbackMetrics:
+    return FeedbackMetrics(helpful=counts.helpful, not_helpful=counts.not_helpful)
+
+
 def _metrics_response(snapshot: MetricsSnapshot) -> MetricsResponse:
+    previous = snapshot.previous
+    if previous is None:  # collect_metrics always fills it for this route
+        raise RuntimeError("metrics snapshot without the previous window")
     return MetricsResponse(
         generated_at=snapshot.generated_at.astimezone(UTC),
         window_hours=snapshot.window_hours,
@@ -532,12 +799,29 @@ def _metrics_response(snapshot: MetricsSnapshot) -> MetricsResponse:
             by_status=snapshot.handoffs.by_status,
             by_priority=snapshot.handoffs.by_priority,
             by_department=snapshot.handoffs.by_department,
+            by_outcome=snapshot.handoffs.by_outcome,
         ),
         cards_blocked=snapshot.cards_blocked,
-        otp=OtpMetrics(
-            sent=snapshot.otp.sent,
-            verified=snapshot.otp.verified,
-            failed=snapshot.otp.failed,
+        otp=_otp(snapshot.otp),
+        feedback=_feedback(snapshot.feedback),
+        recent_not_helpful=[
+            NotHelpfulMetric(
+                handoff_ref=case.handoff_ref,
+                reason=case.reason,
+                recorded_at=case.recorded_at,
+            )
+            for case in snapshot.recent_not_helpful
+        ],
+        queue=QueueMetrics(
+            waiting=snapshot.queue.waiting,
+            urgent=snapshot.queue.urgent,
+            oldest_created_at=snapshot.queue.oldest_created_at,
+        ),
+        previous=WindowSummaryMetrics(
+            cards_blocked=previous.cards_blocked,
+            otp=_otp(previous.otp),
+            handoffs_total=previous.handoffs_total,
+            feedback=_feedback(previous.feedback),
         ),
     )
 

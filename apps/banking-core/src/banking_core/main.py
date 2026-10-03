@@ -15,6 +15,7 @@ from banking_core.api import (
     validate_admin_api_settings,
 )
 from banking_core.control.config import get_control_config_repository
+from banking_core.handoff.decisions import validate_decision_rules
 from banking_core.identity.config import IdentityConfig, validate_otp_channel_mode
 from banking_core.knowledge.tools.kb_search import get_kb_searcher
 from banking_core.log_redaction import install_redaction
@@ -28,6 +29,7 @@ app.include_router(sessions_router)
 app.include_router(tools_router)
 app.router.add_event_handler("startup", validate_admin_api_settings)
 app.router.add_event_handler("startup", validate_otp_channel_mode)
+app.router.add_event_handler("startup", validate_decision_rules)
 
 
 def mount_admin_router_if_enabled(application: FastAPI) -> None:

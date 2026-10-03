@@ -394,3 +394,63 @@ def test_alembic_0009_assistant_feedback_down_and_up(
         sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_feedbackmigration'")
     )
     db_session.commit()
+
+
+def test_alembic_0010_handoff_decisions_down_and_up(
+    db_session: Session, alembic_cfg: Config
+) -> None:
+    """0010 allows CLOSED and adds the decision columns; downgrade refuses if closed."""
+
+    def columns() -> set[str]:
+        rows = db_session.execute(
+            sa.text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'ops' AND table_name = 'handoff'"
+            )
+        ).fetchall()
+        db_session.commit()
+        return {row[0] for row in rows}
+
+    decision_columns = {"outcome", "outcome_reason", "closed_by", "closed_at"}
+    insert = sa.text(
+        "INSERT INTO ops.handoff (id, handoff_ref, session_ref, reason, priority, "
+        "department, status, summary, idempotency_scope) VALUES (gen_random_uuid(), "
+        ":ref, 'session-y', 'DISPUTE_CLAIM', 'HIGH', 'DISPUTES', :status, '{}', "
+        "'scope')"
+    )
+
+    command.downgrade(alembic_cfg, "0009_assistant_feedback")
+    assert not decision_columns & columns()
+    with pytest.raises(sa.exc.IntegrityError):
+        db_session.execute(insert, {"ref": "hnd_old_closed", "status": "CLOSED"})
+    db_session.rollback()
+
+    command.upgrade(alembic_cfg, "head")
+    assert decision_columns <= columns()
+    db_session.execute(insert, {"ref": "hnd_new_closed", "status": "CLOSED"})
+    db_session.execute(
+        sa.text(
+            "UPDATE ops.handoff SET outcome = 'APPROVED' "
+            "WHERE handoff_ref = 'hnd_new_closed'"
+        )
+    )
+    db_session.commit()
+    with pytest.raises(sa.exc.IntegrityError):
+        db_session.execute(
+            sa.text(
+                "UPDATE ops.handoff SET outcome = 'MAYBE' "
+                "WHERE handoff_ref = 'hnd_new_closed'"
+            )
+        )
+    db_session.rollback()
+
+    # A closed case cannot survive the old constraint: the downgrade says so.
+    with pytest.raises(RuntimeError, match="closed handoff"):
+        command.downgrade(alembic_cfg, "0009_assistant_feedback")
+    db_session.execute(
+        sa.text("DELETE FROM ops.handoff WHERE handoff_ref = 'hnd_new_closed'")
+    )
+    db_session.commit()
+    command.downgrade(alembic_cfg, "0009_assistant_feedback")
+    assert not decision_columns & columns()
+    command.upgrade(alembic_cfg, "head")
