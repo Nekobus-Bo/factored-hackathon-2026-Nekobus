@@ -6,7 +6,7 @@
 // is a product fact (a 6-digit code, 5 minutes of validity, the year of the hackathon), and the demo note
 // and the S² small print are always there.
 
-import type { Department, HandoffPriority, HandoffStatus, ResourceState } from "@pattern-blue/contracts";
+import type { Department, HandoffPriority, HandoffStatus, Locale, ResourceState } from "@pattern-blue/contracts";
 
 const departments = {
   FRAUD_OPERATIONS: "Operaciones de fraude",
@@ -47,6 +47,15 @@ const resourceStates = {
   HANDED_OFF: "Con un agente",
 } as const satisfies Record<ResourceState, string>;
 
+/** The markets, by the country's name: the market switch reads them aloud (it shows only the code). */
+const markets = {
+  "es-CO": "Colombia",
+  "es-MX": "México",
+  "es-AR": "Argentina",
+  "pt-BR": "Brasil",
+  "en-US": "Estados Unidos",
+} as const satisfies Record<Locale, string>;
+
 export const es = {
   meta: {
     documentTitle: "Pattern Blue · Atención bancaria con IA",
@@ -61,6 +70,8 @@ export const es = {
     help: "Ayuda",
     login: "Ingresar",
     languageLabel: "Idioma",
+    marketLabel: "País",
+    markets,
     themeLabel: "Tema",
     themeLight: "Tema claro",
     themeDark: "Tema oscuro",

@@ -59,6 +59,24 @@ describe("a conversation is created lazily", () => {
     expect(world.snapshot.context.pending).toBeNull();
   });
 
+  test("the market goes with the conversation's creation, never with a turn", async () => {
+    fresh();
+    world.send("Perdí mi tarjeta", "es", "es-MX");
+    await world.settle();
+    expect(world.callsTo("createConversation")[0]!.body).toEqual({ lang: "es", locale: "es-MX" });
+    world.send("otra vez", "es", "es-AR");
+    await world.settle();
+    expect(world.callsTo("createConversation")).toHaveLength(1);
+    for (const call of world.callsTo("sendMessage")) expect(call.body).not.toHaveProperty("locale");
+  });
+
+  test("a market of another language than the message is left out", async () => {
+    fresh();
+    world.send("Perdi meu cartão", "pt", "es-CO");
+    await world.settle();
+    expect(world.callsTo("createConversation")[0]!.body).toEqual({ lang: "pt" });
+  });
+
   test("the second message reuses the conversation and sends its own language", async () => {
     fresh();
     world.send("hola", "es");
@@ -179,6 +197,19 @@ describe("failures", () => {
     expect(world.callsTo("createConversation")).toHaveLength(2);
     expect(world.callsTo("sendMessage")).toHaveLength(1);
     expect((world.callsTo("sendMessage")[0]!.body as { client_message_id: string }).client_message_id).toBe("msg_test00000001");
+  });
+
+  test("a retried creation keeps the market of the message", async () => {
+    fresh();
+    world.script("createConversation", json({ detail: "Conversations are temporarily unavailable" }, 503), json({ conversation_id: CONVERSATION_ID, language: "es" }, 201));
+    world.send("hola", "es", "es-CO");
+    await world.settle();
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    expect(world.callsTo("createConversation").map((call) => call.body)).toEqual([
+      { lang: "es", locale: "es-CO" },
+      { lang: "es", locale: "es-CO" },
+    ]);
   });
 
   test("a network failure is treated like a 503", async () => {

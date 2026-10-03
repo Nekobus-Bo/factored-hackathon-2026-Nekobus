@@ -1,6 +1,6 @@
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
-import { LangSwitch, ThemeSwitch } from "./Switches";
+import { LangSwitch, MarketSwitch, ThemeSwitch } from "./Switches";
 
 export function Footer() {
   const { dict } = useI18n();
@@ -80,6 +80,7 @@ export function Footer() {
           </p>
           <div className="pb-footer__controls">
             <LangSwitch />
+            <MarketSwitch />
             <ThemeSwitch />
           </div>
         </div>

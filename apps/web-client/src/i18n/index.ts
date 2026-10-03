@@ -2,7 +2,7 @@
 // type is derived from `es`, so a key missing from `pt` or `en` does not compile, and
 // tests/i18n.test.ts checks the same at run time.
 
-import type { Lang } from "@pattern-blue/contracts";
+import { LocaleSchema, type Lang, type Locale } from "@pattern-blue/contracts";
 import { en } from "./en";
 import { es } from "./es";
 import { pt } from "./pt";
@@ -27,6 +27,28 @@ export const dictionaries: Record<Lang, Dictionary> = { es, pt, en };
 export function detectLang(navigatorLanguage: string | null | undefined): Lang {
   const primary = navigatorLanguage?.trim().toLowerCase().split(/[-_]/)[0];
   return LANGS.find((lang) => lang === primary) ?? DEFAULT_LANG;
+}
+
+/** The markets the system serves (ADR-0014), in the contract's order. The page text stays one per language. */
+export const LOCALES: readonly Locale[] = LocaleSchema.options;
+
+/** `es-MX` -> `es`: a market's language is the part before "-". */
+export function langOf(locale: Locale): Lang {
+  return locale.split("-")[0] as Lang;
+}
+
+/** The markets of one language: three for Spanish, one each for Portuguese and English. */
+export function localesOf(lang: Lang): Locale[] {
+  return LOCALES.filter((locale) => langOf(locale) === lang);
+}
+
+/**
+ * `navigator.language` -> a market only when it names one exactly (`es-co` -> `es-CO`). `es`, `es-ES` or
+ * `pt-PT` say nothing about a market we serve: null, and the language alone decides.
+ */
+export function detectLocale(navigatorLanguage: string | null | undefined): Locale | null {
+  const tag = navigatorLanguage?.trim().replace("_", "-").toLowerCase();
+  return LOCALES.find((locale) => locale.toLowerCase() === tag) ?? null;
 }
 
 /** Fill `{name}` placeholders. A placeholder with no value stays visible, which a test would catch. */

@@ -1,8 +1,8 @@
-// The language and theme controls, in the Navbar and repeated in the Footer. Both are radio groups.
+// The language, market and theme controls, in the Navbar and repeated in the Footer. All are radio groups.
 
-import type { Lang } from "@pattern-blue/contracts";
-import { LANG_NAMES, LANGS } from "../../i18n";
-import { useI18n, useTheme } from "../actors";
+import type { Lang, Locale } from "@pattern-blue/contracts";
+import { LANG_NAMES, LANGS, localesOf } from "../../i18n";
+import { useI18n, useLocale, useTheme } from "../actors";
 import { useSystemDark } from "../hooks";
 import { Icon } from "../ui/Icon";
 
@@ -23,6 +23,36 @@ export function LangSwitch() {
           onClick={() => setLang(code)}
         >
           {code.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The customer's market, for a language served in more than one (today Spanish: MX, AR, CO). It shows the
+ * country code and reads the country's name. None is checked until the browser names one or the customer
+ * picks one: the text is the same in every Spanish market, only what the chat sends changes.
+ */
+export function MarketSwitch() {
+  const { lang, dict } = useI18n();
+  const { locale, setLocale } = useLocale();
+  const markets = localesOf(lang);
+  if (markets.length < 2) return null;
+  return (
+    <div className="pb-lang" role="radiogroup" aria-label={dict.nav.marketLabel}>
+      {markets.map((code: Locale) => (
+        <button
+          key={code}
+          className="pb-lang__btn"
+          type="button"
+          role="radio"
+          aria-checked={locale === code}
+          data-locale={code}
+          aria-label={dict.nav.markets[code]}
+          onClick={() => setLocale(code)}
+        >
+          {code.split("-")[1]}
         </button>
       ))}
     </div>

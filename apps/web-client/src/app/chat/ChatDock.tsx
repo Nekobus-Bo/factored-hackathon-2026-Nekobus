@@ -10,7 +10,7 @@ import {
   selectSendDisabled,
   selectTyping,
 } from "../../machines/chat.machine";
-import { useActors, useI18n } from "../actors";
+import { useActors, useI18n, useLocale } from "../actors";
 import { useNow } from "../hooks";
 import { Icon } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
@@ -34,6 +34,7 @@ const CHIP_LABEL: Record<ChipStateName, (dict: Dictionary) => string> = {
 export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { chat } = useActors();
   const { lang, dict } = useI18n();
+  const { locale } = useLocale();
   const snapshot = useSelector(chat, (value) => value);
   const state = conversationState(snapshot);
   const { entries, inbox, pending, retryUntil } = snapshot.context;
@@ -138,7 +139,7 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
           dict={dict}
           inputRef={inputRef}
           sendDisabled={selectSendDisabled(snapshot)}
-          onSend={(text) => chat.send({ type: "SEND", text, lang })}
+          onSend={(text) => chat.send({ type: "SEND", text, lang, locale })}
         />
       </section>
       <button
