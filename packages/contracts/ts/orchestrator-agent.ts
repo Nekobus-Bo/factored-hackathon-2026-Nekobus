@@ -65,6 +65,22 @@ export const TakeoverResponseSchema = z.object({
 });
 export type TakeoverResponse = z.infer<typeof TakeoverResponseSchema>;
 
+// --- POST /v1/agent/conversations/{id}/release ----------------------------------------------------------------
+
+/** Only the holder may release (409 otherwise). The assistant stays off: `active` stays true with no agent. */
+export const ReleaseRequestSchema = z.strictObject({
+  agent_ref: AgentRefSchema,
+  handoff_ref: HandoffRefSchema,
+});
+export type ReleaseRequest = z.infer<typeof ReleaseRequestSchema>;
+
+/** The takeover after the release; a conversation nobody held is answered as it is. */
+export const ReleaseResponseSchema = z.object({
+  conversation_id: ConversationIdSchema,
+  takeover: AgentTakeoverStateSchema,
+});
+export type ReleaseResponse = z.infer<typeof ReleaseResponseSchema>;
+
 // --- POST /v1/agent/conversations/{id}/messages ---------------------------------------------------------------
 
 export const AgentMessageRequestSchema = z.strictObject({
@@ -115,6 +131,14 @@ export const orchestratorAgentRoutes = {
     params: ConversationParamsSchema,
     body: TakeoverRequestSchema,
     response: TakeoverResponseSchema,
+  }),
+  release: defineRoute({
+    method: "POST",
+    pattern: "/v1/agent/conversations/:id/release",
+    successStatus: 200,
+    params: ConversationParamsSchema,
+    body: ReleaseRequestSchema,
+    response: ReleaseResponseSchema,
   }),
   sendMessage: defineRoute({
     method: "POST",

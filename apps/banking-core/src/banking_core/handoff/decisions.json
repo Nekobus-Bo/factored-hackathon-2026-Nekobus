@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "reasons": ["UNRECOGNIZED_TRANSACTION", "DISPUTE_CLAIM"],
+      "outcomes": ["APPROVED", "REJECTED"],
+      "approve_requires_verified": true,
+      "reject_reasons": ["CUSTOMER_RECOGNIZES_CHARGE", "OUT_OF_TIME", "INSUFFICIENT_EVIDENCE", "IDENTITY_NOT_VERIFIED"],
+      "messages": {
+        "APPROVED": {
+          "es": "Aceptamos tu reclamo por el cargo. Te avisaremos cuando el dinero vuelva a tu cuenta.",
+          "pt": "Aceitamos sua contestação da cobrança. Avisaremos quando o dinheiro voltar para sua conta.",
+          "en": "We accepted your claim on the charge. We will let you know when the money is back in your account."
+        },
+        "REJECTED": {
+          "es": "Revisamos tu reclamo y no podemos aceptarlo. Si tienes más información, escríbenos.",
+          "pt": "Analisamos sua contestação e não podemos aceitá-la. Se tiver mais informações, escreva para nós.",
+          "en": "We reviewed your claim and cannot accept it. If you have more information, write to us."
+        }
+      }
+    },
+    {
+      "reasons": ["SUSPECTED_FRAUD"],
+      "outcomes": ["APPROVED", "REJECTED"],
+      "approve_requires_verified": true,
+      "reject_reasons": ["CUSTOMER_RECOGNIZES_CHARGE", "MADE_BY_FAMILY_MEMBER", "OTHER"],
+      "messages": {
+        "APPROVED": {
+          "es": "Confirmamos que fueron compras fraudulentas. Tu tarjeta sigue bloqueada y te enviaremos una nueva.",
+          "pt": "Confirmamos que foram compras fraudulentas. Seu cartão continua bloqueado e enviaremos um novo.",
+          "en": "We confirmed the purchases were fraudulent. Your card stays blocked and we will send you a new one."
+        },
+        "REJECTED": {
+          "es": "Revisamos las compras y no encontramos fraude. Si tienes más información, escríbenos.",
+          "pt": "Analisamos as compras e não encontramos fraude. Se tiver mais informações, escreva para nós.",
+          "en": "We reviewed the purchases and found no fraud. If you have more information, write to us."
+        }
+      }
+    },
+    {
+      "reasons": ["CUSTOMER_LOCKED", "VERIFICATION_FAILED"],
+      "outcomes": ["APPROVED", "REJECTED"],
+      "approve_requires_verified": false,
+      "reject_reasons": ["IDENTITY_NOT_VERIFIED", "OTHER"],
+      "messages": {
+        "APPROVED": {
+          "es": "Aprobamos tu solicitud para recuperar el acceso. Te avisaremos cuando esté listo.",
+          "pt": "Aprovamos sua solicitação para recuperar o acesso. Avisaremos quando estiver pronto.",
+          "en": "We approved your request to get your access back. We will let you know when it is ready."
+        },
+        "REJECTED": {
+          "es": "Revisamos tu solicitud y por ahora tu acceso sigue bloqueado. Si necesitas ayuda, escríbenos de nuevo.",
+          "pt": "Analisamos sua solicitação e, por enquanto, seu acesso continua bloqueado. Se precisar de ajuda, escreva para nós de novo.",
+          "en": "We reviewed your request and your access stays locked for now. If you need help, write to us again."
+        }
+      }
+    },
+    {
+      "reasons": ["CUSTOMER_REQUEST"],
+      "outcomes": ["RESOLVED"],
+      "approve_requires_verified": false,
+      "reject_reasons": [],
+      "messages": {
+        "RESOLVED": {
+          "es": "Cerramos tu solicitud. Si necesitas algo más, escríbenos.",
+          "pt": "Encerramos sua solicitação. Se precisar de algo mais, escreva para nós.",
+          "en": "We closed your request. If you need anything else, write to us."
+        }
+      }
+    }
+  ]
+}

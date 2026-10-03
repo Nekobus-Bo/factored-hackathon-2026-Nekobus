@@ -42,11 +42,16 @@ class Department(str, Enum):
 
 
 class HandoffStatus(str, Enum):
-    """Status of handoff ticket."""
+    """Status of handoff ticket.
+
+    CLOSED is set only by an agent's decision in the back office (ADR-0018); a
+    closed handoff is not open, so handoff.create never reports it.
+    """
 
     QUEUED = "QUEUED"
     ASSIGNED = "ASSIGNED"
     PENDING = "PENDING"
+    CLOSED = "CLOSED"
 
 
 class HandoffRequirementLevel(str, Enum):

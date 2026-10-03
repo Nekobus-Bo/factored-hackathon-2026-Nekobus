@@ -34,6 +34,11 @@ export function handoffItems(now = Date.now()): HandoffItem[] {
       assigned_agent: null,
       assigned_at: null,
       session_ref: SESSION_REF,
+      outcome: null,
+      outcome_reason: null,
+      closed_by: null,
+      closed_at: null,
+      disputed_amount: { amount_minor: 13999, currency: "USD" },
     },
     {
       handoff_ref: "hnd_zxcvbnmasdfghjkl",
@@ -46,6 +51,11 @@ export function handoffItems(now = Date.now()): HandoffItem[] {
       assigned_agent: null,
       assigned_at: null,
       session_ref: "sess_fedcba9876543210fedcba9876543210",
+      outcome: null,
+      outcome_reason: null,
+      closed_by: null,
+      closed_at: null,
+      disputed_amount: { amount_minor: 245000000, currency: "COP" },
     },
     {
       handoff_ref: "hnd_poiuytrewqlkjhgf",
@@ -58,6 +68,11 @@ export function handoffItems(now = Date.now()): HandoffItem[] {
       assigned_agent: "marta@demo.local",
       assigned_at: isoAgo(1500, now),
       session_ref: "sess_00112233445566778899aabbccddeeff",
+      outcome: null,
+      outcome_reason: null,
+      closed_by: null,
+      closed_at: null,
+      disputed_amount: null,
     },
     {
       handoff_ref: "hnd_mnbvcxzlkjhgfdsa",
@@ -70,14 +85,45 @@ export function handoffItems(now = Date.now()): HandoffItem[] {
       assigned_agent: null,
       assigned_at: null,
       session_ref: "sess_aabbccddeeff00112233445566778899",
+      outcome: null,
+      outcome_reason: null,
+      closed_by: null,
+      closed_at: null,
+      disputed_amount: null,
     },
   ];
+}
+
+/** The decisions.json messages of banking-core, abbreviated: the tests only need their shape. */
+export const CLOSING_MESSAGES = {
+  APPROVED: {
+    es: "Confirmamos que fueron compras fraudulentas. Tu tarjeta sigue bloqueada y te enviaremos una nueva.",
+    pt: "Confirmamos que foram compras fraudulentas. Seu cartão continua bloqueado e enviaremos um novo.",
+    en: "We confirmed the purchases were fraudulent. Your card stays blocked and we will send you a new one.",
+  },
+  REJECTED: {
+    es: "Revisamos las compras y no encontramos fraude. Si tienes más información, escríbenos.",
+    pt: "Analisamos as compras e não encontramos fraude. Se tiver mais informações, escreva para nós.",
+    en: "We reviewed the purchases and found no fraud. If you have more information, write to us.",
+  },
+};
+
+/** What a verified fraud case allows, as banking-core lists it. */
+export function decisions(): HandoffDetail["decisions"] {
+  return {
+    outcomes: ["APPROVED", "REJECTED"],
+    reject_reasons: ["CUSTOMER_RECOGNIZES_CHARGE", "MADE_BY_FAMILY_MEMBER", "OTHER"],
+    escalate_to: ["CUSTOMER_SUPPORT", "DISPUTES"],
+    closing_messages: CLOSING_MESSAGES,
+  };
 }
 
 export function handoffDetail(overrides: Partial<HandoffDetail> = {}, now = Date.now()): HandoffDetail {
   const item = handoffItems(now)[0] as HandoffItem;
   return {
     ...item,
+    feedback: null,
+    decisions: decisions(),
     summary: {
       verified_facts: {
         verification_state: "VERIFIED",
@@ -114,6 +160,34 @@ export function backofficeDetail(overrides: Partial<BackofficeHandoffDetail> = {
 
 export function claimedDetail(agentRef = AGENT_EMAIL, now = Date.now()): HandoffDetail {
   return handoffDetail({ status: "ASSIGNED", queue_position: null, assigned_agent: agentRef, assigned_at: isoAgo(2, now) }, now);
+}
+
+export function closedDetail(
+  outcome: "APPROVED" | "REJECTED" = "APPROVED",
+  agentRef = AGENT_EMAIL,
+  now = Date.now(),
+): HandoffDetail {
+  return handoffDetail(
+    {
+      status: "CLOSED",
+      queue_position: null,
+      assigned_agent: agentRef,
+      assigned_at: isoAgo(2, now),
+      outcome,
+      outcome_reason: outcome === "REJECTED" ? "OTHER" : null,
+      closed_by: agentRef,
+      closed_at: isoAgo(1, now),
+      decisions: { outcomes: [], reject_reasons: [], escalate_to: [], closing_messages: { [outcome]: CLOSING_MESSAGES[outcome] } },
+    },
+    now,
+  );
+}
+
+export function escalatedDetail(now = Date.now()): HandoffDetail {
+  return handoffDetail(
+    { department: "DISPUTES", priority: "URGENT", status: "QUEUED", queue_position: 1, assigned_agent: null, assigned_at: null },
+    now,
+  );
 }
 
 export function takeoverResponse(agentRef = AGENT_EMAIL, now = Date.now()): TakeoverResponse {
@@ -218,13 +292,26 @@ export function metrics(hours = 24, now = Date.now()): MetricsResponse {
       { action: "card.block", decision: "error", reason_code: "INTERNAL_ERROR", count: 1 },
     ],
     handoffs: {
-      total: 9,
-      by_status: { QUEUED: 4, ASSIGNED: 5 },
-      by_priority: { URGENT: 2, HIGH: 3, NORMAL: 4 },
-      by_department: { FRAUD_OPERATIONS: 3, DISPUTES: 3, CUSTOMER_SUPPORT: 3 },
+      total: 12,
+      by_status: { QUEUED: 3, ASSIGNED: 7, CLOSED: 2 },
+      by_priority: { URGENT: 2, HIGH: 4, NORMAL: 6 },
+      by_department: { FRAUD_OPERATIONS: 3, DISPUTES: 5, CUSTOMER_SUPPORT: 4 },
+      by_outcome: { APPROVED: 1, REJECTED: 1, RESOLVED: 0 },
     },
     cards_blocked: 26,
     otp: { sent: 37, verified: 31, failed: 4 },
+    feedback: { helpful: 7, not_helpful: 2 },
+    recent_not_helpful: [
+      { handoff_ref: "hnd_zxcvbnmasdfghjkl", reason: "DISPUTE_CLAIM", recorded_at: isoAgo(1500, now) },
+      { handoff_ref: "hnd_mnbvcxzlkjhgfdsa", reason: "VERIFICATION_FAILED", recorded_at: isoAgo(6800, now) },
+    ],
+    queue: { waiting: 3, urgent: 1, oldest_created_at: isoAgo(725, now) },
+    previous: {
+      cards_blocked: 18,
+      otp: { sent: 35, verified: 31, failed: 2 },
+      handoffs_total: 12,
+      feedback: { helpful: 5, not_helpful: 2 },
+    },
   };
 }
 

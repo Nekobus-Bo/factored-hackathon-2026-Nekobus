@@ -178,7 +178,7 @@ export function FlowsScreen() {
       </div>
       <p className="bo-help">{t("flows.lede")}</p>
       <StateMachine />
-      <ToolMatrix tools={tools} />
+      <ToolsByState tools={tools} />
       {FLOWS.map((flow) => (
         <FlowCard key={flow.id} flow={flow} balanceEnabled={(tools.tools["account.get_summary"] ?? []).length > 0} />
       ))}
@@ -221,7 +221,7 @@ export function StateMachine() {
   );
 }
 
-export function ToolMatrix({ tools }: { tools: ToolPolicyResponse }) {
+export function ToolsByState({ tools }: { tools: ToolPolicyResponse }) {
   const { t } = useI18n();
   return (
     <section className="pb-card bo-section" aria-labelledby="matrix-title">

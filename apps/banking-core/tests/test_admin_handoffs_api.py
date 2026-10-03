@@ -330,7 +330,7 @@ def test_the_list_filters_by_status(
 
 
 def test_the_list_refuses_an_unknown_status(client: TestClient) -> None:
-    response = client.get(f"{HANDOFFS}?status=CLOSED", headers=AUTH)
+    response = client.get(f"{HANDOFFS}?status=DONE", headers=AUTH)
 
     assert response.status_code == 422
 
@@ -357,6 +357,11 @@ def test_a_list_item_has_the_documented_shape(client: TestClient) -> None:
         "assigned_agent": None,
         "assigned_at": None,
         "session_ref": "sess_shape",
+        "outcome": None,
+        "outcome_reason": None,
+        "closed_by": None,
+        "closed_at": None,
+        "disputed_amount": None,
     }
     # The summary belongs to the detail.
     assert "summary" not in item
@@ -464,6 +469,7 @@ def test_the_detail_returns_the_summary_exactly_as_stored(
     assert response.status_code == 200
     body = response.json()
     assert body["summary"] == summary
+    decisions = body.pop("decisions")
     assert {k: v for k, v in body.items() if k != "summary"} == {
         "handoff_ref": "hnd_detail",
         "status": "QUEUED",
@@ -475,7 +481,18 @@ def test_the_detail_returns_the_summary_exactly_as_stored(
         "assigned_agent": None,
         "assigned_at": None,
         "session_ref": "sess_hnd_detail",
+        "outcome": None,
+        "outcome_reason": None,
+        "closed_by": None,
+        "closed_at": None,
+        # Read from the stored summary: no query of its own.
+        "disputed_amount": {"amount_minor": 125000, "currency": "COP"},
+        "feedback": None,
     }
+    # A verified dispute: approve or reject, and any other department (ADR-0018).
+    assert decisions["outcomes"] == ["APPROVED", "REJECTED"]
+    assert decisions["escalate_to"] == ["FRAUD_OPERATIONS", "CUSTOMER_SUPPORT"]
+    assert set(decisions["closing_messages"]) == {"APPROVED", "REJECTED"}
 
 
 def test_the_detail_of_an_assigned_case_names_who_holds_it(
@@ -954,21 +971,35 @@ def test_metrics_over_an_empty_system_are_zero_and_complete(
         "handoffs",
         "cards_blocked",
         "otp",
+        "feedback",
+        "recent_not_helpful",
+        "queue",
+        "previous",
     }
     assert body["window_hours"] == 24
     assert body["tool_calls"] == []
     assert body["handoffs"] == {
         "total": 0,
-        "by_status": {"QUEUED": 0, "ASSIGNED": 0, "PENDING": 0},
+        "by_status": {"QUEUED": 0, "ASSIGNED": 0, "PENDING": 0, "CLOSED": 0},
         "by_priority": {"URGENT": 0, "HIGH": 0, "NORMAL": 0, "LOW": 0},
         "by_department": {
             "FRAUD_OPERATIONS": 0,
             "CUSTOMER_SUPPORT": 0,
             "DISPUTES": 0,
         },
+        "by_outcome": {"APPROVED": 0, "REJECTED": 0, "RESOLVED": 0},
     }
     assert body["cards_blocked"] == 0
     assert body["otp"] == {"sent": 0, "verified": 0, "failed": 0}
+    assert body["feedback"] == {"helpful": 0, "not_helpful": 0}
+    assert body["recent_not_helpful"] == []
+    assert body["queue"] == {"waiting": 0, "urgent": 0, "oldest_created_at": None}
+    assert body["previous"] == {
+        "cards_blocked": 0,
+        "otp": {"sent": 0, "verified": 0, "failed": 0},
+        "handoffs_total": 0,
+        "feedback": {"helpful": 0, "not_helpful": 0},
+    }
     generated = datetime.fromisoformat(body["generated_at"])
     assert generated.utcoffset() == timedelta(0)
     assert abs(datetime.now(UTC) - generated) < timedelta(minutes=1)
@@ -1042,13 +1073,14 @@ def test_metrics_count_the_window_and_only_the_window(client: TestClient) -> Non
     assert body["otp"] == {"sent": 3, "verified": 1, "failed": 2}
     assert body["handoffs"] == {
         "total": 4,
-        "by_status": {"QUEUED": 2, "ASSIGNED": 1, "PENDING": 1},
+        "by_status": {"QUEUED": 2, "ASSIGNED": 1, "PENDING": 1, "CLOSED": 0},
         "by_priority": {"URGENT": 1, "HIGH": 2, "NORMAL": 0, "LOW": 1},
         "by_department": {
             "FRAUD_OPERATIONS": 2,
             "CUSTOMER_SUPPORT": 1,
             "DISPUTES": 1,
         },
+        "by_outcome": {"APPROVED": 0, "REJECTED": 0, "RESOLVED": 0},
     }
 
 

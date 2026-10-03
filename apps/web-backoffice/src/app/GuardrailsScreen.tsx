@@ -4,7 +4,7 @@ import { describeChanges, floorOf, invalidThresholds, type Change, policyDirty, 
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useAppServices, useI18n } from "./context";
 import { money } from "./format";
-import { ModeGroup, RefusalBanner, ThresholdRow, ToolRow } from "./PolicyControl";
+import { MatrixLegend, ModeGroup, RefusalBanner, ThresholdRow, ToolMatrix } from "./PolicyControl";
 import { Alert } from "./ui";
 
 export function GuardrailsScreen() {
@@ -126,24 +126,20 @@ export function GuardrailsScreen() {
 
         <div className="pb-policy__sec">
           <h3>{t("guardrails.mode.title")}</h3>
-          <p>{t("guardrails.mode.help")}</p>
           <ModeGroup mode={draft.mode} onChange={(mode) => send({ type: "MODE.SET", mode })} />
         </div>
 
-        <div className="pb-policy__sec">
+        <div className="pb-policy__sec bo-tools">
           <h3>{t("guardrails.tools.title")}</h3>
           <p>{t("guardrails.tools.intro")}</p>
-          <p className="pb-t-small bo-legend">{t("guardrails.tools.legend")}</p>
-          {Object.keys(tools.code_floor).map((tool) => (
-            <ToolRow
-              key={tool}
-              tool={tool}
-              floor={floorOf(tools, tool)}
-              enabled={draft.tools[tool] ?? []}
-              onCell={(state) => send({ type: "CELL.TOGGLE", tool, state })}
-              onMaster={() => send({ type: "TOOL.TOGGLE", tool })}
-            />
-          ))}
+          <MatrixLegend />
+          <ToolMatrix
+            tools={Object.keys(tools.code_floor)}
+            floorOf={(tool) => floorOf(tools, tool)}
+            enabled={(tool) => draft.tools[tool] ?? []}
+            onCell={(tool, state) => send({ type: "CELL.TOGGLE", tool, state })}
+            onMaster={(tool) => send({ type: "TOOL.TOGGLE", tool })}
+          />
           {context.refusal && <RefusalBanner refusal={context.refusal} onDismiss={() => send({ type: "REFUSAL.DISMISS" })} />}
         </div>
 
@@ -207,7 +203,7 @@ export function GuardrailsScreen() {
 function ChangeLine({ change }: { change: Change }) {
   const { t } = useI18n();
   if (change.kind === "mode") {
-    const word = (mode: "flag" | "block") => `${t(mode === "flag" ? "guardrails.mode.flagLabel" : "guardrails.mode.blockLabel")} (${mode})`;
+    const word = (mode: "flag" | "block") => t(mode === "flag" ? "guardrails.mode.flagLabel" : "guardrails.mode.blockLabel");
     return <>{t("guardrails.confirmSave.mode", { from: word(change.from), to: word(change.to) })}</>;
   }
   if (change.kind === "threshold") {

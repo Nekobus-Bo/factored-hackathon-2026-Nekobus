@@ -81,6 +81,10 @@ class Takeover(BaseModel):
     Once active it stays active: there is no hand-back to the assistant. While
     active the LLM never sees the conversation again (see
     conversation/engine.py) and the customer's messages only reach the agent.
+
+    An active takeover with no `agent_ref` was released by its agent when the
+    case went back to the queue (ADR-0018): the assistant stays off, nobody may
+    write, and the next agent's takeover picks it up.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -99,8 +103,10 @@ class Takeover(BaseModel):
 
     @model_validator(mode="after")
     def _active_names_its_holder(self) -> "Takeover":
-        if self.active and (self.since is None or not self.agent_ref):
-            raise ValueError("an active takeover needs since and agent_ref")
+        if self.active and self.since is None:
+            raise ValueError("an active takeover needs since")
+        if self.active and self.agent_ref == "":
+            raise ValueError("an active takeover names its agent, or None if released")
         if not self.active and (self.since is not None or self.agent_ref is not None):
             raise ValueError("an inactive takeover carries no since or agent_ref")
         return self

@@ -100,5 +100,15 @@ export const ERROR_DETAIL = {
   turnInProgress: "turn_in_progress",
   /** The claim succeeded and the takeover failed; retrying the same call is safe (back-office BFF, 502). */
   claimedButTakeoverFailed: "claimed_but_takeover_failed",
+  /** The case was closed by another call (banking-core admin API, 409; ADR-0018). */
+  alreadyClosed: "already_closed",
+  /** The outcome is not one this case allows, e.g. approving for an unverified customer (409). */
+  outcomeNotAllowed: "outcome_not_allowed",
+  /** A rejection needs a reason (409). */
+  reasonRequired: "reason_required",
+  /** The reason is not one this case allows, or the outcome takes none (409). */
+  reasonNotAllowed: "reason_not_allowed",
+  /** An escalation that would change neither the department nor the priority (409). */
+  nothingToEscalate: "nothing_to_escalate",
 } as const;
 export type ErrorDetailCode = (typeof ERROR_DETAIL)[keyof typeof ERROR_DETAIL];

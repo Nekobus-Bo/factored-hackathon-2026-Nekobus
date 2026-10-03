@@ -69,7 +69,10 @@ from banking_core.transactions.lookup import (
 ACTION = "handoff.create"
 
 # Every status the queue holds is an open one (see ck_handoff_status).
-_OPEN_STATUSES = tuple(status.value for status in HandoffStatus)
+# A closed handoff (ADR-0018) is not open: the session may hand off again.
+_OPEN_STATUSES = tuple(
+    status.value for status in HandoffStatus if status is not HandoffStatus.CLOSED
+)
 
 _VERIFICATION_METHOD = {
     VerificationState.ANONYMOUS: "none",

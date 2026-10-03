@@ -1,7 +1,7 @@
 """Add handoff_reasons_requiring_identity_attempt to config.policy_config.
 
-Revision ID: 0010_handoff_identity_attempt
-Revises: 0009_assistant_feedback
+Revision ID: 0011_handoff_identity_attempt
+Revises: 0010_handoff_decisions
 Create Date: 2026-10-02 23:00:00.000000
 
 From ANONYMOUS, handoff.create with one of these reasons is refused until one
@@ -19,8 +19,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0010_handoff_identity_attempt"
-down_revision: str | None = "0009_assistant_feedback"
+revision: str = "0011_handoff_identity_attempt"
+down_revision: str | None = "0010_handoff_decisions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

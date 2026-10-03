@@ -79,5 +79,5 @@ export const DepartmentSchema = z.enum(["FRAUD_OPERATIONS", "CUSTOMER_SUPPORT", 
 export type Department = z.infer<typeof DepartmentSchema>;
 
 /** contracts.tools.handoff_create.HandoffStatus. */
-export const HandoffStatusSchema = z.enum(["QUEUED", "ASSIGNED", "PENDING"]);
+export const HandoffStatusSchema = z.enum(["QUEUED", "ASSIGNED", "PENDING", "CLOSED"]);
 export type HandoffStatus = z.infer<typeof HandoffStatusSchema>;

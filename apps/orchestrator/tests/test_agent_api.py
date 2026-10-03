@@ -177,6 +177,7 @@ async def test_agent_router_is_mounted_when_enabled(
     assert sorted(p for p in app.openapi()["paths"] if p.startswith("/v1/agent")) == [
         "/v1/agent/conversations/{conversation_id}",
         "/v1/agent/conversations/{conversation_id}/messages",
+        "/v1/agent/conversations/{conversation_id}/release",
         "/v1/agent/conversations/{conversation_id}/takeover",
         "/v1/agent/sessions/{session_ref}/conversation",
     ]
@@ -214,8 +215,13 @@ async def test_agent_router_is_mounted_when_enabled(
             {"agent_ref": ANA, "handoff_ref": HANDOFF},
         ),
         ("POST", "/v1/agent/conversations/conv_x/messages", message_body()),
+        (
+            "POST",
+            "/v1/agent/conversations/conv_x/release",
+            {"agent_ref": ANA, "handoff_ref": HANDOFF},
+        ),
     ],
-    ids=["session", "transcript", "takeover", "message"],
+    ids=["session", "transcript", "takeover", "message", "release"],
 )
 async def test_agent_routes_answer_401_without_the_token(
     redis: fakeredis.FakeAsyncRedis,
@@ -668,6 +674,133 @@ async def test_after_a_takeover_the_turn_lock_is_free(
 
 
 # ---------------------------------------------------------------- agent messages
+
+
+async def release(
+    client: httpx.AsyncClient, conversation_id: str, agent: str = ANA
+) -> httpx.Response:
+    return await client.post(
+        f"/v1/agent/conversations/{conversation_id}/release",
+        json={"agent_ref": agent, "handoff_ref": HANDOFF},
+        headers=AUTH,
+    )
+
+
+async def test_the_holder_releases_and_the_assistant_stays_off(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+    before = await store.get(conversation_id)
+
+    response = await release(client, conversation_id)
+
+    assert response.status_code == 200
+    assert response.json()["takeover"]["active"] is True
+    assert response.json()["takeover"]["agent_ref"] is None
+    after = await store.get(conversation_id)
+    assert after.takeover.active is True
+    assert after.takeover.agent_ref is None
+    assert after.takeover.since == before.takeover.since
+
+
+async def test_after_a_release_another_agent_takes_the_conversation(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+    assert (await release(client, conversation_id)).status_code == 200
+
+    response = await take_over(client, conversation_id, BEN)
+
+    assert response.status_code == 200
+    assert response.json()["takeover"]["agent_ref"] == BEN
+    assert (await store.get(conversation_id)).takeover.agent_ref == BEN
+
+
+async def test_after_a_release_nobody_writes_until_someone_takes_it(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+    await release(client, conversation_id)
+
+    response = await client.post(
+        f"/v1/agent/conversations/{conversation_id}/messages",
+        json=message_body(),
+        headers=agent_headers(),
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "no_active_takeover"}
+
+
+async def test_only_the_holder_may_release(
+    taken: tuple[httpx.AsyncClient, str, SessionStore],
+) -> None:
+    client, conversation_id, store = taken
+    before = await store.get(conversation_id)
+
+    response = await release(client, conversation_id, BEN)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "taken_over_by_another_agent"}
+    assert (await store.get(conversation_id)).takeover == before.takeover
+
+
+async def test_releasing_what_nobody_holds_changes_nothing(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: MakeClient
+) -> None:
+    app = build_app(redis, FakeTurnHandler(), settings=agent_settings())
+    client = make_client(app)
+    conversation_id = await open_conversation(client)
+    store = app.state.session_store
+    before = await store.get(conversation_id)
+
+    never_taken = await release(client, conversation_id)
+    await take_over(client, conversation_id)
+    await release(client, conversation_id)
+    released = await store.get(conversation_id)
+    again = await release(client, conversation_id, BEN)
+
+    assert never_taken.status_code == 200
+    assert never_taken.json()["takeover"] == {
+        "active": False,
+        "since": None,
+        "agent_ref": None,
+    }
+    assert before.takeover.active is False
+    assert again.status_code == 200
+    assert (await store.get(conversation_id)).updated_at == released.updated_at
+
+
+async def test_release_of_an_unknown_conversation_is_404(
+    redis: fakeredis.FakeAsyncRedis, banking: Any, make_client: MakeClient
+) -> None:
+    client = make_client(build_app(redis, FakeTurnHandler(), settings=agent_settings()))
+
+    response = await release(client, "conv_" + "0" * 32)
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"agent_ref": ANA},
+        {"handoff_ref": HANDOFF},
+        {"agent_ref": ANA, "handoff_ref": HANDOFF, "x": 1},
+    ],
+    ids=["no-handoff", "no-agent", "extra-field"],
+)
+async def test_release_rejects_a_malformed_body(
+    taken: tuple[httpx.AsyncClient, str, SessionStore], body: dict[str, Any]
+) -> None:
+    client, conversation_id, store = taken
+
+    response = await client.post(
+        f"/v1/agent/conversations/{conversation_id}/release", json=body, headers=AUTH
+    )
+
+    assert response.status_code == 422
+    assert (await store.get(conversation_id)).takeover.agent_ref == ANA
 
 
 async def test_an_agent_message_needs_a_takeover(

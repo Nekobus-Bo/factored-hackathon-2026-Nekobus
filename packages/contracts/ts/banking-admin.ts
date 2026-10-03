@@ -33,6 +33,28 @@ export type AuditDecision = z.infer<typeof AuditDecisionSchema>;
 
 // --- Handoffs (NEW) ---------------------------------------------------------------------------------------------
 
+/** banking_core.handoff.decisions.HandoffOutcome: how an agent closed a case (ADR-0018). */
+export const HandoffOutcomeSchema = z.enum(["APPROVED", "REJECTED", "RESOLVED"]);
+export type HandoffOutcome = z.infer<typeof HandoffOutcomeSchema>;
+
+/** banking_core.handoff.decisions.RejectReason. decisions.json picks which apply to each reason. */
+export const RejectReasonSchema = z.enum([
+  "CUSTOMER_RECOGNIZES_CHARGE",
+  "MADE_BY_FAMILY_MEMBER",
+  "OUT_OF_TIME",
+  "INSUFFICIENT_EVIDENCE",
+  "IDENTITY_NOT_VERIFIED",
+  "OTHER",
+]);
+export type RejectReason = z.infer<typeof RejectReasonSchema>;
+
+/** The disputed charge's amount, read from the stored summary. */
+export const DisputedAmountSchema = z.object({
+  amount_minor: z.number().int(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
+export type DisputedAmount = z.infer<typeof DisputedAmountSchema>;
+
 /** What the queue shows for one handoff. */
 export const HandoffItemSchema = z.object({
   handoff_ref: HandoffRefSchema,
@@ -47,6 +69,12 @@ export const HandoffItemSchema = z.object({
   assigned_at: IsoDateTimeSchema.nullable(),
   /** The banking-core session the handoff came from. */
   session_ref: SessionRefSchema,
+  /** Set together when an agent closed the case (ADR-0018). */
+  outcome: HandoffOutcomeSchema.nullable(),
+  outcome_reason: RejectReasonSchema.nullable(),
+  closed_by: z.string().min(1).nullable(),
+  closed_at: IsoDateTimeSchema.nullable(),
+  disputed_amount: DisputedAmountSchema.nullable(),
 });
 export type HandoffItem = z.infer<typeof HandoffItemSchema>;
 
@@ -58,8 +86,37 @@ export type HandoffItem = z.infer<typeof HandoffItemSchema>;
 export const StoredHandoffSummarySchema = HandoffSummarySchema.loose();
 export type StoredHandoffSummary = z.infer<typeof StoredHandoffSummarySchema>;
 
+/** The customer's answer to "¿Te ayudó el asistente?" (ADR-0017). */
+export const HandoffFeedbackSchema = z.object({
+  helpful: z.boolean(),
+  recorded_at: IsoDateTimeSchema,
+});
+export type HandoffFeedback = z.infer<typeof HandoffFeedbackSchema>;
+
+/** A closing message in each language the chat speaks. */
+export const ClosingMessageSchema = z.object({
+  es: z.string().min(1).max(2000),
+  pt: z.string().min(1).max(2000),
+  en: z.string().min(1).max(2000),
+});
+export type ClosingMessage = z.infer<typeof ClosingMessageSchema>;
+
+/**
+ * What the case allows now (ADR-0018). Once it is closed the lists are empty and `closing_messages` keeps only
+ * the message of the outcome it was closed with: what the customer was sent.
+ */
+export const HandoffDecisionsSchema = z.object({
+  outcomes: z.array(HandoffOutcomeSchema),
+  reject_reasons: z.array(RejectReasonSchema),
+  escalate_to: z.array(DepartmentSchema),
+  closing_messages: z.partialRecord(HandoffOutcomeSchema, ClosingMessageSchema),
+});
+export type HandoffDecisions = z.infer<typeof HandoffDecisionsSchema>;
+
 export const HandoffDetailSchema = HandoffItemSchema.extend({
   summary: StoredHandoffSummarySchema,
+  feedback: HandoffFeedbackSchema.nullable(),
+  decisions: HandoffDecisionsSchema,
 });
 export type HandoffDetail = z.infer<typeof HandoffDetailSchema>;
 
@@ -89,6 +146,22 @@ export const HandoffParamsSchema = z.object({ handoff_ref: HandoffRefSchema });
 export const ClaimHandoffRequestSchema = z.strictObject({ agent_ref: AgentRefSchema });
 export type ClaimHandoffRequest = z.infer<typeof ClaimHandoffRequestSchema>;
 
+/** `POST /v1/admin/handoffs/:handoff_ref/close`. A reason only, and always, with REJECTED. */
+export const CloseHandoffRequestSchema = z.strictObject({
+  agent_ref: AgentRefSchema,
+  outcome: HandoffOutcomeSchema,
+  reason: RejectReasonSchema.nullable().optional(),
+});
+export type CloseHandoffRequest = z.infer<typeof CloseHandoffRequestSchema>;
+
+/** `POST /v1/admin/handoffs/:handoff_ref/escalate`. The priority only goes up, to URGENT. */
+export const EscalateHandoffRequestSchema = z.strictObject({
+  agent_ref: AgentRefSchema,
+  department: DepartmentSchema,
+  raise_to_urgent: z.boolean(),
+});
+export type EscalateHandoffRequest = z.infer<typeof EscalateHandoffRequestSchema>;
+
 // --- Metrics (NEW) -----------------------------------------------------------------------------------------------
 
 const MetricsHoursSchema = z.number().int().min(1).max(720);
@@ -116,6 +189,7 @@ export const HandoffMetricsSchema = z.object({
   by_status: countsBy(HandoffStatusSchema),
   by_priority: countsBy(HandoffPrioritySchema),
   by_department: countsBy(DepartmentSchema),
+  by_outcome: countsBy(HandoffOutcomeSchema),
 });
 export type HandoffMetrics = z.infer<typeof HandoffMetricsSchema>;
 
@@ -126,6 +200,38 @@ export const OtpMetricsSchema = z.object({
 });
 export type OtpMetrics = z.infer<typeof OtpMetricsSchema>;
 
+/** Answers to "did the assistant help?" for the handoffs created in the window. */
+export const FeedbackMetricsSchema = z.object({
+  helpful: CountSchema,
+  not_helpful: CountSchema,
+});
+export type FeedbackMetrics = z.infer<typeof FeedbackMetricsSchema>;
+
+/** A recent case whose customer answered no: an opaque ref and an enum, no PII. */
+export const NotHelpfulCaseSchema = z.object({
+  handoff_ref: HandoffRefSchema,
+  reason: HandoffReasonSchema,
+  recorded_at: IsoDateTimeSchema,
+});
+export type NotHelpfulCase = z.infer<typeof NotHelpfulCaseSchema>;
+
+/** The queue as the metrics are read, whatever the window. */
+export const QueueMetricsSchema = z.object({
+  waiting: CountSchema,
+  urgent: CountSchema,
+  oldest_created_at: IsoDateTimeSchema.nullable(),
+});
+export type QueueMetrics = z.infer<typeof QueueMetricsSchema>;
+
+/** The headline numbers of the window just before, for the change next to each one. */
+export const WindowSummarySchema = z.object({
+  cards_blocked: CountSchema,
+  otp: OtpMetricsSchema,
+  handoffs_total: CountSchema,
+  feedback: FeedbackMetricsSchema,
+});
+export type WindowSummary = z.infer<typeof WindowSummarySchema>;
+
 /** Aggregated from `ops.audit_log` over the window and from `ops.handoff`. No PII. */
 export const MetricsResponseSchema = z.object({
   generated_at: IsoDateTimeSchema,
@@ -134,6 +240,10 @@ export const MetricsResponseSchema = z.object({
   handoffs: HandoffMetricsSchema,
   cards_blocked: CountSchema,
   otp: OtpMetricsSchema,
+  feedback: FeedbackMetricsSchema,
+  recent_not_helpful: z.array(NotHelpfulCaseSchema),
+  queue: QueueMetricsSchema,
+  previous: WindowSummarySchema,
 });
 export type MetricsResponse = z.infer<typeof MetricsResponseSchema>;
 
@@ -201,7 +311,12 @@ export type DemoResetResponse = z.infer<typeof DemoResetResponseSchema>;
 
 // --- Routes --------------------------------------------------------------------------------------------------------------
 
-/** Every route answers 401 to a bad token. The claim answers 404 (unknown) and 409 `claimed_by_another_agent`. */
+/**
+ * Every route answers 401 to a bad token. The claim answers 404 (unknown) and 409 `claimed_by_another_agent`.
+ * Close and escalate also answer 409 `already_closed`, and close a 409 code for an outcome or reason the
+ * case does not allow (`outcome_not_allowed`, `reason_required`, `reason_not_allowed`); escalate
+ * `nothing_to_escalate`.
+ */
 export const bankingAdminRoutes = {
   listHandoffs: defineRoute({
     method: "GET",
@@ -223,6 +338,22 @@ export const bankingAdminRoutes = {
     successStatus: 200,
     params: HandoffParamsSchema,
     body: ClaimHandoffRequestSchema,
+    response: HandoffDetailSchema,
+  }),
+  closeHandoff: defineRoute({
+    method: "POST",
+    pattern: "/v1/admin/handoffs/:handoff_ref/close",
+    successStatus: 200,
+    params: HandoffParamsSchema,
+    body: CloseHandoffRequestSchema,
+    response: HandoffDetailSchema,
+  }),
+  escalateHandoff: defineRoute({
+    method: "POST",
+    pattern: "/v1/admin/handoffs/:handoff_ref/escalate",
+    successStatus: 200,
+    params: HandoffParamsSchema,
+    body: EscalateHandoffRequestSchema,
     response: HandoffDetailSchema,
   }),
   getMetrics: defineRoute({
