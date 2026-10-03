@@ -63,11 +63,11 @@ Blocks stay raw on the wire (`RawBlock[]`); the page runs `parseBlocks`. Every `
 
 ### Machines (`src/machines/`)
 
-**Global** (`app.machine.ts`): the theme (`system`, `light`, `dark`; `data-theme` on `<html>`, remembered in `localStorage` behind `try/catch`, applied from the head before the first paint) and the language (from `navigator.language`, `es` when it is none of the three; not remembered). Both switches, in the Navbar and the Footer, drive it.
+**Global** (`app.machine.ts`): the theme (`system`, `light`, `dark`; `data-theme` on `<html>`, remembered in `localStorage` behind `try/catch`, applied from the head before the first paint) the language (from `navigator.language`, `es` when it is none of the three; not remembered) and the market (`locale`, [ADR-0014](../../docs/adr/0014-distilbert-intent-backend.md): `es-CO`, `es-MX`, `es-AR`, `pt-BR` or `en-US` when `navigator.language` names one exactly, else none; not remembered). A market always belongs to the language: picking one sets its language, switching to another language drops it. The switches, in the Navbar and the Footer, drive it; the market switch shows only for Spanish, the one language served in more than one market. The text is one neutral Spanish for every Spanish market: the market changes what the chat sends, not what the page says.
 
 **Chat** (`chat.machine.ts`), four regions:
 
-- *conversation*: `idle`, `creating`, `sending`, `ready`, and the failures. **No request is made until the first message**: creating a conversation is rate limited per address. The language goes out on creation and on every message.
+- *conversation*: `idle`, `creating`, `sending`, `ready`, and the failures. **No request is made until the first message**: creating a conversation is rate limited per address. The language goes out on creation and on every message; the market goes out only on creation (the chat API takes none on a turn), and only when it belongs to the message's language.
   - `unavailable` (503, 409, 502, a body outside the contract, a network failure): the message stays in the log marked "No enviado"; Reintentar resends the same `client_message_id`, so the orchestrator answers a turn it already ran from its store.
   - `rateLimited` (429): the wait is in minutes, from `Retry-After`; the composer is off until then, and then the message can be retried.
   - `gone` (404, the conversation expired): "Empezar de nuevo" opens a new conversation and sends the message that was not sent.
@@ -91,7 +91,7 @@ Derived only from what the blocks prove: a receipt for `otp.send` (code pending)
 |---|---|
 | `tests/bff.test.ts` | The BFF and the server against a fake orchestrator (`Bun.serve` on an ephemeral port): forwarding, validation rejects, status and `Retry-After` pass-through, unreachable and invalid upstreams to 503, the closed list of routes, `X-Forwarded-For` |
 | `tests/chat.machine.test.ts` | Every transition that matters, with a fake `fetch` and a simulated clock |
-| `tests/app.machine.test.ts` | Theme and language, with a storage that works, is missing or throws |
+| `tests/app.machine.test.ts` | Theme, language and market, with a storage that works, is missing or throws |
 | `tests/chat-model.test.ts`, `tests/api-client.test.ts` | The pure rules (masking, chip, inbox selection) and the browser client |
 | `tests/render.test.tsx` | Block rendering with `react-dom/server`: text, each receipt, the customer view of a handoff (never the summary), an unknown block ignored, the code absent from the transcript |
 | `tests/i18n.test.ts` | The es, pt and en dictionaries have the same keys, and the landing rules |
@@ -112,6 +112,7 @@ bun -e "fetch('http://127.0.0.1:' + (process.env.PORT ?? 5173) + '/healthz').the
 ## What it does not do
 
 - **No conversation survives a reload.** The id is held in memory; a reload starts a new conversation. The language is not remembered either (the theme is).
+- **A market picked after the first message does not reach that conversation.** The chat API sets the market only when the conversation is created, so the change applies from the next one. Switching to Portuguese or English and back to Spanish forgets the Spanish market. The page text is the same in every Spanish market (no voseo for es-AR).
 - **No sign of a new agent message while the chat is closed.** The transcript is still polled, but the launcher does not change.
 - **No hand-back from the agent to the assistant** (out of scope, [limitations](../../docs/limitations.md)), and none of the "In design" or "Pending" items of `ChatMessage`: quick replies, card and charge pickers, the account summary. The orchestrator's "could not process that message safely" arrives as a plain text block and is shown as one.
 - **No "assistant online" dot** on the launcher: nothing tells the client that the assistant is up.
