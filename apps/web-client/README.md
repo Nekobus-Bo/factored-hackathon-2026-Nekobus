@@ -23,7 +23,7 @@ bun test
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `5173` | Port to listen on |
-| `ORCHESTRATOR_URL` | `http://localhost:8080` | Where the four chat routes are forwarded. Compose sets `http://orchestrator:8080` |
+| `ORCHESTRATOR_URL` | `http://localhost:8080` | Where the five chat routes are forwarded. Compose sets `http://orchestrator:8080` |
 
 A bad value stops the server at startup with the variable's name. The server holds no token and no other secret.
 
@@ -38,12 +38,13 @@ A bad value stops the server at startup with the variable's name. The server hol
 
 ### The BFF
 
-It registers exactly the four routes of `clientBffRoutes` in `@pattern-blue/contracts` and maps each 1:1 to the orchestrator route of the same name:
+It registers exactly the five routes of `clientBffRoutes` in `@pattern-blue/contracts` and maps each 1:1 to the orchestrator route of the same name:
 
 - `POST /api/conversations`
 - `POST /api/conversations/:id/messages`
 - `GET /api/conversations/:id`
 - `GET /api/conversations/:id/inbox`
+- `POST /api/conversations/:id/feedback` (ADR-0017)
 
 For each request it validates the path id (`ConversationIdSchema`, not a UUID) and the body (strict: an unknown key is a 422), forwards to a path it builds itself, validates the answer with the route's response schema and sends the parsed value on. It forwards none of the browser's headers or query string; it sets `Accept`, the content type, and `X-Forwarded-For` to the connection's address (`server.requestIP`), which the orchestrator reads with `TRUSTED_PROXY_HOPS=1`.
 
@@ -59,25 +60,26 @@ Blocks stay raw on the wire (`RawBlock[]`); the page runs `parseBlocks`. Every `
 
 ## The page
 
-`src/app/landing/` is the Landing composition of the design system: Navbar, Hero (with the blocked `CardVisual`), FeatureGrid, HowItWorks, S2PromoCard, FaqAccordion (Ark UI), Footer, and the chat dock last. It is served in es, pt and en from one dictionary per language (`src/i18n/`); a test holds the landing rules in every language (every number is a product fact, no claims about users or speed, the demo note and the S² small print always present).
+`src/app/landing/` is the home page of Pattern Blue, a fictional bank, built from the design system's Landing composition: Navbar (with "Abrir chat" and one theme toggle), Hero (with an active `CardVisual`), FeatureGrid (the bank's products: the checking account, the debit card, help in the chat), HowItWorks (what to do if you lose your card), S2PromoCard, FaqAccordion (Ark UI), Footer, and the chat dock last. The navbar, the hero and the dock open the chat. It is served in es, pt and en from one dictionary per language (`src/i18n/`); a test holds the landing rules in every language (every number is a product fact, no claims about users or speed, no vocabulary of the system behind the bank, no colon joining two clauses, the demo note and the S² small print always present).
 
 ### Machines (`src/machines/`)
 
-**Global** (`app.machine.ts`): the theme (`system`, `light`, `dark`; `data-theme` on `<html>`, remembered in `localStorage` behind `try/catch`, applied from the head before the first paint) and the language (from `navigator.language`, `es` when it is none of the three; not remembered). Both switches, in the Navbar and the Footer, drive it.
+**Global** (`app.machine.ts`): the theme (`system`, `light`, `dark`; `data-theme` on `<html>`, remembered in `localStorage` behind `try/catch`, applied from the head before the first paint) and the language (from `navigator.language`, `es` when it is none of the three; not remembered). The Navbar's language switch and theme toggle drive it.
 
-**Chat** (`chat.machine.ts`), four regions:
+**Chat** (`chat.machine.ts`), five regions:
 
 - *conversation*: `idle`, `creating`, `sending`, `ready`, and the failures. **No request is made until the first message**: creating a conversation is rate limited per address. The language goes out on creation and on every message.
-  - `unavailable` (503, 409, 502, a body outside the contract, a network failure): the message stays in the log marked "No enviado"; Reintentar resends the same `client_message_id`, so the orchestrator answers a turn it already ran from its store.
+  - `unavailable` (503, 409, 502, a body outside the contract, a network failure): the message stays in the log with one line under it, "No pudimos enviar tu mensaje. El asistente no está disponible." and Reintentar, which resends the same `client_message_id`, so the orchestrator answers a turn it already ran from its store.
   - `rateLimited` (429): the wait is in minutes, from `Retry-After`; the composer is off until then, and then the message can be retried.
   - `gone` (404, the conversation expired): "Empezar de nuevo" opens a new conversation and sends the message that was not sent.
 - *followup*: after every completed turn, the transcript is read once (to detect a takeover) and so is the inbox.
 - *takeover*: once the transcript says an agent holds the conversation, the status "Un agente está atendiendo tu caso" appears, the agent's messages join the log in the agent style, and the transcript is polled every 2 s **while the tab is visible**. A send during a takeover returns `blocks: []` by design; that is a normal answer.
 - *inbox*: see below.
+- *feedback*: after a handoff block the log asks "¿Te ayudó el asistente?" with two equal buttons. The answer goes to `POST /api/conversations/:id/feedback`; banking-core keeps one per handoff and refuses it when there is none (ADR-0017). A failed answer can be sent again.
 
 ### The OTP notice
 
-The code is delivered synchronously during the turn that calls `otp.send`, so nothing polls for it. The inbox is read once after each turn; if it holds a message that has not expired and was received after the last successful `otp.verify`, the log shows "Te llegó un correo con el código", the masked destination and a countdown to `expires_at`. "Abrir bandeja" opens the simulated inbox (the words "simulada" and "demo" stay visible); the code is drawn only after "Mostrar código". The notice hides itself at expiry (and the log says so once), and when the code is used. The code lives in the machine's `inbox` context and nowhere else: it is not in any transcript entry, and what the customer types is masked before it is stored (`Código: ••••••` for the code, `•••• 4821` for a card number).
+The code is delivered synchronously during the turn that calls `otp.send`, so nothing polls for it. The inbox is read once after each turn; if it holds a message that has not expired and was received after the last successful `otp.verify`, the `otp.send` receipt in the log gains a countdown to `expires_at` and "Abrir bandeja". That opens the simulated inbox as a sheet over the messages (the words "simulada" and "demo" stay visible; Escape, the close button or sending a message closes it); the code is drawn only after "Mostrar código". The notice hides itself at expiry (and the log says so once), and when the code is used. The code lives in the machine's `inbox` context and nowhere else: it is not in any transcript entry, and what the customer types is masked before it is stored (`Código: ••••••` for the code, `•••• 4821` for a card number).
 
 ### The header chip
 
@@ -93,7 +95,7 @@ Derived only from what the blocks prove: a receipt for `otp.send` (code pending)
 | `tests/chat.machine.test.ts` | Every transition that matters, with a fake `fetch` and a simulated clock |
 | `tests/app.machine.test.ts` | Theme and language, with a storage that works, is missing or throws |
 | `tests/chat-model.test.ts`, `tests/api-client.test.ts` | The pure rules (masking, chip, inbox selection) and the browser client |
-| `tests/render.test.tsx` | Block rendering with `react-dom/server`: text, each receipt, the customer view of a handoff (never the summary), an unknown block ignored, the code absent from the transcript |
+| `tests/render.test.tsx` | Block rendering with `react-dom/server`: text, each receipt (result and reference, details hidden until asked), the customer view of a handoff (never the summary or the queue details), the feedback line, an unknown block ignored, the code absent from the transcript, the landing's sections |
 | `tests/i18n.test.ts` | The es, pt and en dictionaries have the same keys, and the landing rules |
 
 ## Docker

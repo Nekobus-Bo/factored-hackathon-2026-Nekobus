@@ -13,7 +13,7 @@ Read `AGENTS.md` first. Design system: the Claude Artifact "Pattern Blue" (type 
 
 1. **Each front end is a Bun fullstack app.** `Bun.serve` with HTML imports serves the bundle; no Vite. React + TypeScript, Zod on every payload that crosses a boundary, XState v5 (one global app machine for theme, language and, in the back office, the agent session; local machines per feature), Zag.js / Ark UI for accessible headless parts. Styles come only from `@pattern-blue/design-tokens` (`index.css` + `dist/fonts.html`); no CSS framework, no inline colors, no new tokens.
 2. **Same-origin BFF.** Each app's server exposes the bundle and a closed list of `/api/*` routes. The browser never talks to the orchestrator or banking-core directly, so there is no CORS. The BFF forwards only the routes listed here, with typed request and response validation. It never forwards an arbitrary path or body; a generic pass-through would void ADR-0004.
-3. **web-client BFF** (`apps/web-client`, port 5173) forwards the four chat routes of the orchestrator. It holds no tokens. It sets `X-Forwarded-For` to the client address, and compose sets `TRUSTED_PROXY_HOPS=1` on the orchestrator. It also serves `GET /healthz`.
+3. **web-client BFF** (`apps/web-client`, port 5173) forwards the five chat routes of the orchestrator. It holds no tokens. It sets `X-Forwarded-For` to the client address, and compose sets `TRUSTED_PROXY_HOPS=1` on the orchestrator. It also serves `GET /healthz`.
 4. **web-backoffice BFF** (`apps/web-backoffice`, port 5174):
    - The agent logs in with `DEMO_AGENT_EMAIL` / `DEMO_AGENT_PASSWORD`. Compare in constant time.
    - The session is an HttpOnly, `SameSite=Strict` cookie signed with HMAC-SHA256 using `BACKOFFICE_SESSION_SECRET`, with an 8 h expiry.
@@ -66,6 +66,7 @@ All JSON. Times are ISO 8601 UTC. Errors keep FastAPI's `{"detail": ...}`.
   - NEW: for an agent message `content` is the text as the agent wrote it; every other `content` is masked. The shape is unchanged.
   - NEW: `takeover` is `{active: bool, since: time|null}`, with no agent identity.
 - `GET /v1/conversations/{id}/inbox` → `{messages[{channel, destination_masked, code, received_at, expires_at}]}`.
+- NEW (ADR-0017): `POST /v1/conversations/{id}/feedback` `{helpful: bool}` (strict) → `{helpful, recorded_at}`; 404 unknown conversation; 409 `{detail:"no_handoff"}` or `{detail:"already_answered"}`; 503 when banking-core cannot store it. It relays to banking-core `POST /v1/sessions/{session_id}/feedback` for the conversation's own banking session, which keeps one answer per handoff (`ops.assistant_feedback`), audited as `feedback.recorded` and re-read after the commit.
 - NEW behavior: while a takeover is active, `POST .../messages` stores the customer message (masked), does not call the LLM or banking-core tools, and returns `{conversation_id, blocks: []}`.
 
 ### Orchestrator agent API (NEW)
@@ -110,11 +111,12 @@ Routes:
 
 ### web-client BFF (`/api`, same origin)
 
-These map 1:1 to the four orchestrator chat routes:
+These map 1:1 to the five orchestrator chat routes:
 - `POST /api/conversations`
 - `POST /api/conversations/:id/messages`
 - `GET /api/conversations/:id`
 - `GET /api/conversations/:id/inbox`
+- `POST /api/conversations/:id/feedback`
 
 Rules:
 - `:id` is an opaque path-safe token, `^[A-Za-z0-9_-]{1,64}$` (`ConversationIdSchema`). The orchestrator's ids are `conv_<hex>`, not UUIDs. Validate the request, forward, then validate the response with Zod.
@@ -140,7 +142,7 @@ Rules:
 
 ## Customer app (web-client) scope
 
-- **Landing:** the Landing composition (Navbar, Hero, FeatureGrid, HowItWorks, S2PromoCard, FaqAccordion, Footer), with the copy of the previews in es, pt and en. The previews have only es copy for FeatureGrid, HowItWorks, FAQ and Footer; translate them faithfully, keeping every rule: no invented numbers, and a demo note in every language.
+- **Landing:** the home page of a fictional bank, built from the Landing composition (Navbar, Hero, FeatureGrid as its products, HowItWorks as what to do if you lose your card, S2PromoCard, FaqAccordion, Footer), in es, pt and en. Every rule holds: no invented numbers, only the products the demo data has, and a demo note in every language. The changes to the design system's rules this needed are listed in `packages/design-tokens/README.md`, "Local changes not yet in the artifact".
 - **Chat dock:** ChatBubble launcher and panel. Every content type in `components/ChatMessage/README.md` that says "Exists", with the backend source it names:
   - text;
   - receipts;
