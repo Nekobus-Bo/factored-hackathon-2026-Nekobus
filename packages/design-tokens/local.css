@@ -13,6 +13,8 @@
 @media (max-width: 480px) {
   .pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }
   .pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+  /* The panel covers the screen: the header's close button closes it, and the launcher would cover the composer. */
+  .pb-dock__panel:not([hidden]) ~ .pb-dock__launcher { display: none; }
 }
 
 /* Launcher with a word. */
