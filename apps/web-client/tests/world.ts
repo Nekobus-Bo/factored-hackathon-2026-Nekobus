@@ -1,7 +1,7 @@
 // A scripted browser for the machine tests: a fake `fetch` that answers the five BFF routes from queues
 // (the last answer of a queue repeats), a clock the tests move by hand, and a chat actor wired to both.
 
-import { clientBffRoutes } from "@pattern-blue/contracts";
+import { clientBffRoutes, type Locale } from "@pattern-blue/contracts";
 import { createActor, SimulatedClock, waitFor } from "xstate";
 import { createApiClient } from "../src/api/client";
 import { chatMachine, conversationState, type ChatSnapshot } from "../src/machines/chat.machine";
@@ -103,8 +103,8 @@ export function createWorld(options: { visible?: boolean } = {}) {
     get state() {
       return conversationState(actor.getSnapshot());
     },
-    send(text: string, lang: "es" | "pt" | "en" = "es") {
-      actor.send({ type: "SEND", text, lang });
+    send(text: string, lang: "es" | "pt" | "en" = "es", locale: Locale | null = null) {
+      actor.send({ type: "SEND", text, lang, locale });
     },
     /** Wait until no request is in flight: the conversation is at rest and the follow-up is done. */
     async settle() {

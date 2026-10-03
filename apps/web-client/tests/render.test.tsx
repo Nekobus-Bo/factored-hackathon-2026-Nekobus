@@ -467,4 +467,21 @@ describe("the landing", () => {
     expect(html.match(/pb-theme--single/g)).toHaveLength(1);
     expect(html).toMatch(/aria-label="Mudar para o tema (escuro|claro)"/);
   });
+
+  test("Spanish adds the market switch to the navbar, with the browser's market checked", () => {
+    const html = page("es-MX");
+    expect(html.match(/role="radiogroup"/g)).toHaveLength(2);
+    expect(html.match(/aria-label="País"/g)).toHaveLength(1);
+    for (const [locale, name] of [["es-MX", "México"], ["es-AR", "Argentina"], ["es-CO", "Colombia"]] as const) {
+      expect(html).toMatch(new RegExp(`data-locale="${locale}" aria-label="${name}"`));
+    }
+    expect(html.match(/aria-checked="true"[^>]*data-locale="es-MX"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale="es-(AR|CO)"/);
+  });
+
+  test("a Spanish browser that names no market shows the switch with nothing checked", () => {
+    const html = page("es-ES");
+    expect(html).toContain('data-locale="es-CO"');
+    expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale=/);
+  });
 });

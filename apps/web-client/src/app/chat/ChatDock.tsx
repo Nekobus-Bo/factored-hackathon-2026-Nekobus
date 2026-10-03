@@ -16,7 +16,7 @@ import {
   type PendingSend,
 } from "../../machines/chat.machine";
 import { isOtpSendReceipt, lastEntryWith } from "../../machines/chat-model";
-import { useActors, useI18n } from "../actors";
+import { useActors, useI18n, useLocale } from "../actors";
 import { useNow } from "../hooks";
 import { Icon } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
@@ -50,6 +50,7 @@ function failureOf(state: ConversationState, pending: PendingSend | null, dict: 
 export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { chat } = useActors();
   const { lang, dict } = useI18n();
+  const { locale } = useLocale();
   const snapshot = useSelector(chat, (value) => value);
   const state = conversationState(snapshot);
   const { entries, inbox, pending, retryUntil } = snapshot.context;
@@ -190,7 +191,7 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
           sendDisabled={selectSendDisabled(snapshot)}
           onSend={(text) => {
             setInboxOpen(false);
-            chat.send({ type: "SEND", text, lang });
+            chat.send({ type: "SEND", text, lang, locale });
           }}
         />
       </section>

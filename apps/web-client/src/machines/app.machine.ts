@@ -1,18 +1,24 @@
-// The global machine: the theme and the language of the page.
+// The global machine: the theme, the language and the market of the page.
 //
 //   theme  system | light | dark. `system` leaves `data-theme` off `<html>` and the page follows the
 //          browser; the other two pin it. The choice is remembered in localStorage (every access is
 //          wrapped: the storage can be missing, blocked or throw, and the page works without it).
 //   lang   es | pt | en, from `navigator.language`, Spanish when it is none of them. It is not
 //          remembered: the page follows the browser on load, and the switch changes it for this visit.
+//   locale the customer's market (ADR-0014): es-CO | es-MX | es-AR | pt-BR | en-US, or null when unknown.
+//          From `navigator.language` when it names a market exactly, or the market switch. It always
+//          belongs to `lang`: picking a market sets its language, and switching to another language
+//          drops it. The page text does not change with it (one Spanish for every Spanish market); the
+//          chat sends it when it creates the conversation, so the encoder uses that market's thresholds.
+//          Not remembered, like `lang`.
 //
 // The effects (the attribute on `<html>`, the storage) go through the `env` the factory receives, so a
 // test runs the same machine with fakes.
 
-import type { Lang } from "@pattern-blue/contracts";
+import type { Lang, Locale } from "@pattern-blue/contracts";
 import { isThemeId, themeAttribute } from "@pattern-blue/design-tokens/tokens";
 import { assign, createMachine } from "xstate";
-import { detectLang } from "../i18n";
+import { detectLang, detectLocale, langOf } from "../i18n";
 
 export type ThemeChoice = "system" | "light" | "dark";
 
@@ -21,9 +27,13 @@ export const THEME_STORAGE_KEY = "pb-theme";
 export interface AppContext {
   theme: ThemeChoice;
   lang: Lang;
+  locale: Locale | null;
 }
 
-export type AppEvent = { type: "THEME.SET"; theme: ThemeChoice } | { type: "LANG.SET"; lang: Lang };
+export type AppEvent =
+  | { type: "THEME.SET"; theme: ThemeChoice }
+  | { type: "LANG.SET"; lang: Lang }
+  | { type: "LOCALE.SET"; locale: Locale };
 
 export interface AppEnv {
   /** `localStorage`, or null when the browser has none. Any call may throw. */
@@ -79,6 +89,7 @@ export function createAppMachine(env: AppEnv) {
     context: (): AppContext => ({
       theme: readStoredTheme(env.storage),
       lang: detectLang(env.navigatorLanguage),
+      locale: detectLocale(env.navigatorLanguage),
     }),
     initial: "ready",
     // What the page starts with reaches <html> once, so the attributes never depend on a component mounting.
@@ -100,8 +111,18 @@ export function createAppMachine(env: AppEnv) {
           },
           "LANG.SET": {
             actions: [
-              assign({ lang: ({ event }) => event.lang }),
+              assign({
+                lang: ({ event }) => event.lang,
+                locale: ({ context, event }) =>
+                  context.locale && langOf(context.locale) === event.lang ? context.locale : null,
+              }),
               ({ event }) => env.root?.setAttribute("lang", event.lang),
+            ],
+          },
+          "LOCALE.SET": {
+            actions: [
+              assign({ locale: ({ event }) => event.locale, lang: ({ event }) => langOf(event.locale) }),
+              ({ event }) => env.root?.setAttribute("lang", langOf(event.locale)),
             ],
           },
         },

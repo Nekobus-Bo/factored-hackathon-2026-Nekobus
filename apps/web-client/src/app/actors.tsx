@@ -4,7 +4,7 @@
 import { useSelector } from "@xstate/react";
 import { createContext, useContext, type ReactNode } from "react";
 import type { ActorRefFrom } from "xstate";
-import type { Lang } from "@pattern-blue/contracts";
+import type { Lang, Locale } from "@pattern-blue/contracts";
 import { dictionaries, type Dictionary } from "../i18n";
 import type { AppMachine, ThemeChoice } from "../machines/app.machine";
 import type { ChatMachine } from "../machines/chat.machine";
@@ -30,6 +30,13 @@ export function useI18n(): { lang: Lang; dict: Dictionary; setLang: (lang: Lang)
   const { app } = useActors();
   const lang = useSelector(app, (snapshot) => snapshot.context.lang);
   return { lang, dict: dictionaries[lang], setLang: (next) => app.send({ type: "LANG.SET", lang: next }) };
+}
+
+/** The customer's market, or null. Picking one also sets its language. */
+export function useLocale(): { locale: Locale | null; setLocale: (locale: Locale) => void } {
+  const { app } = useActors();
+  const locale = useSelector(app, (snapshot) => snapshot.context.locale);
+  return { locale, setLocale: (next) => app.send({ type: "LOCALE.SET", locale: next }) };
 }
 
 export function useTheme(): { theme: ThemeChoice; setTheme: (theme: ThemeChoice) => void } {

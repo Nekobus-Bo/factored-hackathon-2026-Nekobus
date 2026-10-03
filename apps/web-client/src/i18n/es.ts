@@ -7,7 +7,7 @@
 // debit card), and the demo note and the S² small print are always there. The copy is plain: no colon as a
 // connector, the actor named, one idea per sentence (packages/design-tokens/README.md lists the changes).
 
-import type { Department, ResourceState } from "@pattern-blue/contracts";
+import type { Department, Locale, ResourceState } from "@pattern-blue/contracts";
 
 const departments = {
   FRAUD_OPERATIONS: "Operaciones de fraude",
@@ -35,6 +35,15 @@ const resourceStates = {
   HANDED_OFF: "Con un agente",
 } as const satisfies Record<ResourceState, string>;
 
+/** The markets, by the country's name: the market switch reads them aloud (it shows only the code). */
+const markets = {
+  "es-CO": "Colombia",
+  "es-MX": "México",
+  "es-AR": "Argentina",
+  "pt-BR": "Brasil",
+  "en-US": "Estados Unidos",
+} as const satisfies Record<Locale, string>;
+
 export const es = {
   meta: {
     documentTitle: "Pattern Blue · Banco digital",
@@ -49,6 +58,8 @@ export const es = {
     help: "Ayuda",
     openChat: "Abrir chat",
     languageLabel: "Idioma",
+    marketLabel: "País",
+    markets,
     themeToDark: "Cambiar a tema oscuro",
     themeToLight: "Cambiar a tema claro",
   },

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
-import { LangSwitch, ThemeToggle } from "./Switches";
+import { LangSwitch, MarketSwitch, ThemeToggle } from "./Switches";
 
 export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
   const { dict } = useI18n();
@@ -39,6 +39,7 @@ export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
           </nav>
           <div className="pb-nav__tools">
             <LangSwitch />
+            <MarketSwitch />
             <ThemeToggle />
             {/* The chat is the one thing in the demo that works: it stays one click away while the page scrolls. */}
             <button
