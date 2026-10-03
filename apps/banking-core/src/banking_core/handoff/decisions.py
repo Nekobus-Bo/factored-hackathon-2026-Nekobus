@@ -202,13 +202,18 @@ def _verified_at_handoff(handoff: Handoff) -> bool:
 def allowed_decisions(handoff: Handoff) -> AllowedDecisions:
     """What the back office may offer for this case, whoever looks at it.
 
-    A closed case allows nothing. Approving needs the customer verified when the
-    handoff was created, if the rule says so. Escalating goes to any other
-    department.
+    A closed case allows nothing, and keeps only the message of the outcome it
+    was closed with: what the customer received. Approving needs the customer
+    verified when the handoff was created, if the rule says so. Escalating goes
+    to any other department.
     """
-    if handoff.status == HandoffStatus.CLOSED.value:
-        return AllowedDecisions([], [], [], {})
     rule = decision_rules()[HandoffReason(handoff.reason)]
+    if handoff.status == HandoffStatus.CLOSED.value:
+        closed_as = HandoffOutcome(handoff.outcome) if handoff.outcome else None
+        sent = (
+            {closed_as: rule.messages[closed_as]} if closed_as in rule.messages else {}
+        )
+        return AllowedDecisions([], [], [], sent)
     outcomes = [
         outcome
         for outcome in rule.outcomes

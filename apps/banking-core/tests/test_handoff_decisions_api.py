@@ -184,13 +184,12 @@ def test_closing_a_queued_case_claims_it_closes_it_and_audits_both(
     assert body["assigned_agent"] == ANA
     assert body["closed_at"] is not None
     assert body["queue_position"] is None
-    # A closed case allows nothing more.
-    assert body["decisions"] == {
-        "outcomes": [],
-        "reject_reasons": [],
-        "escalate_to": [],
-        "closing_messages": {},
-    }
+    # A closed case allows nothing more, and keeps what the customer was sent.
+    decisions = body["decisions"]
+    assert decisions["outcomes"] == []
+    assert decisions["reject_reasons"] == []
+    assert decisions["escalate_to"] == []
+    assert set(decisions["closing_messages"]) == {"APPROVED"}
     [audit] = _audits(CLOSED)
     assert audit.actor_type == "agent"
     assert audit.actor_ref == ANA
