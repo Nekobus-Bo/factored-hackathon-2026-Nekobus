@@ -38,6 +38,7 @@ run "secret_access_is_exactly_the_compose_matrix" {
       "pb-web-backoffice pb-agent-api-token",
       "pb-web-backoffice pb-backoffice-session-secret",
       "pb-web-backoffice pb-demo-agent-password",
+      "pb-web-backoffice pb-demo-judge-accounts",
       "pb-migrate pb-database-url",
       "pb-seed pb-database-url",
       "pb-seed pb-master-key",

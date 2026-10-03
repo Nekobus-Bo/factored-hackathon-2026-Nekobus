@@ -13,12 +13,18 @@ locals {
     "session-secret",
   ])
 
-  composed_secrets = toset(["database-url", "redis-core-url", "redis-edge-url"])
+  composed_secrets = toset(["database-url", "demo-judge-accounts", "redis-core-url", "redis-edge-url"])
   manual_secrets   = toset(["llm-api-key"])
 
   # The secrets Terraform writes a version for. The set is keyed by name, never by value.
   written_secrets = setunion(local.generated_secrets, local.composed_secrets)
   all_secrets     = setunion(local.written_secrets, local.manual_secrets)
+
+  # judge1 to judgeN at the demo agent's domain (ADR-0015, amendment of 2026-10-03). Keyed by
+  # e-mail, so adding a judge leaves the others' passwords as they were.
+  judge_emails = [
+    for n in range(1, var.judge_accounts + 1) : "judge${n}@${split("@", var.demo_agent_email)[1]}"
+  ]
 
   redis_urls = {
     for zone, instance in google_redis_instance.zone :
@@ -37,8 +43,19 @@ locals {
         google_sql_database_instance.bank.private_ip_address,
         google_sql_database.bank.name,
       )
+      # The back office's DEMO_EXTRA_AGENTS: e-mail to password, "{}" when there is no judge.
+      "demo-judge-accounts" = jsonencode({ for email in local.judge_emails : email => random_password.judge[email].result })
     },
   )
+}
+
+# Letters and digits, 24 of them: typed by hand from a message, and well over the back
+# office's 16-character floor for an extra login.
+resource "random_password" "judge" {
+  for_each = toset(local.judge_emails)
+
+  length  = 24
+  special = false
 }
 
 # The keys are derived with HKDF from these strings (ADR-0005), and the tokens are compared as

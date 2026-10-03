@@ -20,6 +20,9 @@ locals {
 
   min_instances = var.warm ? 1 : 0
 
+  # Secrets a service reads at a pinned version, so a new value rolls a new revision.
+  rolled_secrets = toset(["demo-judge-accounts"])
+
   embedding_env = {
     EMBEDDING_MODEL    = var.embedding_model
     EMBEDDING_REVISION = var.embedding_revision
@@ -185,6 +188,8 @@ locals {
     }
 
     # The agent back office: behind Identity-Aware Proxy, then its own login (ADR-0013).
+    # backoffice_public drops IAP for a judging window, leaving the login as the only lock
+    # (ADR-0015, amendment of 2026-10-03).
     "web-backoffice" = {
       port        = 8080
       cpu         = "1"
@@ -195,7 +200,7 @@ locals {
       concurrency = 80
       timeout     = "300s"
       ingress     = "INGRESS_TRAFFIC_ALL"
-      iap         = true
+      iap         = !var.backoffice_public
       subnet      = "edge"
       startup     = "/healthz"
       liveness    = "/healthz"
@@ -284,8 +289,11 @@ resource "google_cloud_run_v2_service" "svc" {
 
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.secret[env.value].secret_id
-              version = "latest"
+              secret = google_secret_manager_secret.secret[env.value].secret_id
+              # "latest" is read when an instance starts, so a new version alone reaches no
+              # running instance. The judge logins change with a judging window: pinning their
+              # version makes each change a new revision.
+              version = contains(local.rolled_secrets, env.value) ? google_secret_manager_secret_version.value[env.value].version : "latest"
             }
           }
         }
@@ -351,7 +359,7 @@ resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
 }
 
 resource "google_iap_web_cloud_run_service_iam_member" "access" {
-  for_each = var.services_enabled ? toset(var.iap_members) : toset([])
+  for_each = var.services_enabled && !var.backoffice_public ? toset(var.iap_members) : toset([])
 
   project                = var.project_id
   location               = var.region
