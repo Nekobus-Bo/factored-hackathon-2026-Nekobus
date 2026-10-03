@@ -41,11 +41,12 @@
       "type": "string"
     },
     "HandoffStatus": {
-      "description": "Status of handoff ticket.",
+      "description": "Status of handoff ticket.\n\nCLOSED is set only by an agent's decision in the back office (ADR-0018); a\nclosed handoff is not open, so handoff.create never reports it.",
       "enum": [
         "QUEUED",
         "ASSIGNED",
-        "PENDING"
+        "PENDING",
+        "CLOSED"
       ],
       "title": "HandoffStatus",
       "type": "string"

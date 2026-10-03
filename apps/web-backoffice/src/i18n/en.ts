@@ -83,7 +83,7 @@ export const en: Dictionary = {
       CUSTOMER_SUPPORT: "Customer support",
       DISPUTES: "Disputes",
     },
-    status: { QUEUED: "Queued", ASSIGNED: "Assigned", PENDING: "Pending" },
+    status: { QUEUED: "Queued", ASSIGNED: "Assigned", PENDING: "Pending", CLOSED: "Closed" },
     reason: {
       SUSPECTED_FRAUD: "Suspected fraud",
       DISPUTE_CLAIM: "Dispute claim",

@@ -46,6 +46,7 @@ const STATUS_CHIP: Record<HandoffStatus, { tone: Tone; icon: string }> = {
   QUEUED: { tone: "info", icon: "clock" },
   ASSIGNED: { tone: "success", icon: "user" },
   PENDING: { tone: "neutral", icon: "clock" },
+  CLOSED: { tone: "neutral", icon: "check" },
 };
 
 export function HandoffStatusChip({ status }: { status: HandoffStatus }) {

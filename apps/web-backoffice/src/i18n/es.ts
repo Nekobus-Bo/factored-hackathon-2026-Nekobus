@@ -85,7 +85,7 @@ export const es = {
       CUSTOMER_SUPPORT: "Atención al cliente",
       DISPUTES: "Disputas",
     },
-    status: { QUEUED: "En cola", ASSIGNED: "Asignado", PENDING: "Pendiente" },
+    status: { QUEUED: "En cola", ASSIGNED: "Asignado", PENDING: "Pendiente", CLOSED: "Cerrado" },
     reason: {
       SUSPECTED_FRAUD: "Fraude sospechado",
       DISPUTE_CLAIM: "Reclamo de disputa",

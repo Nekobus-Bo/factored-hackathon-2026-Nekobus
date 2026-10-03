@@ -83,7 +83,7 @@ export const pt: Dictionary = {
       CUSTOMER_SUPPORT: "Atendimento ao cliente",
       DISPUTES: "Disputas",
     },
-    status: { QUEUED: "Na fila", ASSIGNED: "Atribuído", PENDING: "Pendente" },
+    status: { QUEUED: "Na fila", ASSIGNED: "Atribuído", PENDING: "Pendente", CLOSED: "Encerrado" },
     reason: {
       SUSPECTED_FRAUD: "Suspeita de fraude",
       DISPUTE_CLAIM: "Pedido de disputa",
