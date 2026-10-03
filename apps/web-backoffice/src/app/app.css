@@ -98,3 +98,42 @@
   .bo-cols-dist [data-col="count"] { grid-area: count; justify-self: end; }
   .bo-cols-dist [data-col="share"] { grid-area: share; justify-self: end; }
 }
+
+/* Flows: the state machine, the tool matrix and the flows, drawn with lists and the state tokens */
+.bo-flowstate { --tone: var(--line-strong); --tone-bg: var(--surface-200); }
+.bo-flowstate[data-state="anonymous"] { --tone: var(--state-anonymous); --tone-bg: var(--state-anonymous-bg); }
+.bo-flowstate[data-state="identified"] { --tone: var(--state-identified); --tone-bg: var(--state-identified-bg); }
+.bo-flowstate[data-state="otp-pending"] { --tone: var(--state-otp-pending); --tone-bg: var(--state-otp-pending-bg); }
+.bo-flowstate[data-state="verified"] { --tone: var(--state-verified); --tone-bg: var(--state-verified-bg); }
+.bo-flowstate[data-state="locked"] { --tone: var(--state-locked); --tone-bg: var(--state-locked-bg); }
+.bo-flowstate[data-state="handed-off"] { --tone: var(--state-handed-off); --tone-bg: var(--state-handed-off-bg); }
+.bo-path { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.bo-path__item { display: flex; align-items: center; gap: var(--space-2); }
+.bo-node { display: grid; gap: 4px; padding: var(--space-3); border: var(--stroke-strong) solid var(--tone); background: var(--tone-bg); }
+.bo-edge { display: grid; justify-items: center; gap: 2px; padding: 0 var(--space-2); color: var(--ink-muted); font-size: 12px; }
+.bo-edge::after { content: "→"; font-size: 20px; line-height: 1; color: var(--line-strong); }
+.bo-exits { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.bo-exits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.bo-scroll { overflow-x: auto; }
+.bo-matrix { width: 100%; border-collapse: collapse; font-size: 14px; }
+.bo-matrix th, .bo-matrix td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); text-align: center; }
+.bo-matrix thead th { font: 600 12px/16px var(--font-mono); color: var(--ink-muted); }
+.bo-matrix tbody th { text-align: left; font-weight: 500; white-space: nowrap; }
+.bo-matrix td[data-on="true"] { color: var(--tone); font-size: 18px; }
+.bo-matrix td[data-on="false"] { color: var(--line-strong); }
+.bo-matrix tr[data-disabled] th { color: var(--ink-muted); }
+.bo-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.bo-step { display: grid; align-content: start; gap: 4px; padding: var(--space-3); border: 1px solid var(--tone); background: var(--tone-bg); overflow-wrap: anywhere; }
+.bo-section h3 { margin: var(--space-2) 0 0; }
+.bo-outcomes, .bo-flow-notes { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.bo-outcome { padding: var(--space-2) var(--space-3); border-left: 3px solid var(--line-strong); background: var(--surface-200); }
+.bo-outcome[data-tone="success"] { border-left-color: var(--state-verified); }
+.bo-outcome[data-tone="handoff"] { border-left-color: var(--state-handed-off); }
+.bo-outcome[data-tone="fraud"] { border-left-color: var(--state-locked); }
+.bo-flow-notes li { padding: var(--space-2) var(--space-3); border: 1px dashed var(--line-strong); color: var(--ink-muted); font-size: 14px; }
+.bo-flow-notes li[data-pending] { border-color: var(--warning); }
+.bo-example { display: grid; gap: var(--space-2); }
+.bo-example__log { display: flex; flex-direction: column; gap: var(--space-2); max-width: 720px; margin: 0; padding: 0; list-style: none; font-size: 15px; }
+.bo-example__log li { display: grid; gap: 2px; max-width: 80%; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); background: var(--surface-200); }
+.bo-example__log li[data-who="customer"] { align-self: flex-end; border-color: var(--state-handed-off); background: var(--state-handed-off-bg); }
+.bo-example__log li[data-who="trace"] { align-self: center; max-width: none; border: 0; background: none; font: 500 12px/16px var(--font-mono); color: var(--ink-muted); }

@@ -1,6 +1,6 @@
 # web-backoffice
 
-The agent back office of Pattern Blue: login, the handoff queue, the case with its verified summary and the masked conversation, "Tomar caso" (claim and take over) with a reply composer, the guardrails (thresholds, amount mode, tool by state matrix, demo reset) and the metrics. One Bun process serves the page and its same-origin BFF. Spec: [docs/front-ends.md](../../docs/front-ends.md) (decisions 4 to 7, the HTTP contract and "Back office scope").
+The agent back office of Pattern Blue: login, the handoff queue, the case with its verified summary and the masked conversation, "Tomar caso" (claim and take over) with a reply composer, the guardrails (thresholds, amount mode, tool by state matrix, demo reset), the metrics, and the flows (the verification state machine, the tools the policy allows in each state and the main flows, read only). One Bun process serves the page and its same-origin BFF. Spec: [docs/front-ends.md](../../docs/front-ends.md) (decisions 4 to 7, the HTTP contract and "Back office scope").
 
 The browser talks only to this origin. The BFF calls banking-core (`/v1/admin`, queue, claim, guardrails, metrics) and the orchestrator (`/v1/agent`, transcript, takeover, reply) with tokens that never leave the server.
 
@@ -14,7 +14,7 @@ src/
   bff/            config, session cookie, upstream calls, the closed list of routes
   index.html      the page (the fonts link and the theme boot script)
   app/            React: shell, screens, design-system pieces, styles.css and app.css
-  machines/       app (global), queue, handoff, guardrails, metrics, and the pure draft rules
+  machines/       app (global), queue, handoff, guardrails, metrics, flows, and the pure draft rules
   i18n/           es (default), pt, en: same keys, checked by a test
   api/            the browser's typed client of /api, and the error categories
 tests/            bun test (see below)
@@ -93,6 +93,7 @@ A reply carries its own `client_message_id`. If it fails (a customer turn in fli
 - **Queue.** The design system's QueueRow. Polls every 3 s while the tab is visible and refreshes at once when it comes back. Filter: open (both), `QUEUED`, `ASSIGNED`. Priority and department in words and as the raw enum, the status with its queue position, the wait as `mm:ss`, the agent.
 - **Case.** HandoffCard with the stored summary as it is (verified facts, actions taken with their decision and audit id, the verification method, the open questions marked with their source). The masked transcript is loaded once before the takeover and polled every 2 s after it (paused while the tab is hidden). The composer is enabled only while this agent holds the conversation.
 - **Guardrails.** PolicyControl: a threshold per currency (shown in major units, stored in minor units), the mode as "handoff recomendado (`flag`)" or "handoff requerido (`block`)", and the tool by state matrix. A cell outside the code floor is `aria-disabled` and, when clicked, answered with the hazard-striped refusal the API would give (422); the master switch turns a tool off, or back on within its floor. Saving asks for confirmation, sends only what changed (`PUT policy-config`, then `PUT tool-policy`) and shows the new versions. The demo reset asks first.
+- **Flows.** `#/flows`, read only: the path to VERIFIED with the tool of each step and the ways out, the tool by state matrix as the policy in force has it (a disabled tool reads as disabled), and four flows (unrecognized charge, fraud with an example conversation, lost or stolen card, balance) with their outcomes and what is still pending. It reads the same two admin routes as Guardrails and changes nothing.
 - **Metrics.** Tool calls by action, decision and reason, handoffs by status, priority and department, cards blocked, OTP counts; 24 h or 7 d. Only what `GET /v1/admin/metrics` returns.
 
 Theme (system, light or dark, `data-theme` on `<html>`, remembered in `localStorage` with try/catch) and language (es by default, pt, en) are in the header.

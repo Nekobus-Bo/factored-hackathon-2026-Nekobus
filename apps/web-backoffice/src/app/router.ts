@@ -1,4 +1,4 @@
-// A hash router for four screens. The hash keeps deep links working behind any static route (the server
+// A hash router for five screens. The hash keeps deep links working behind any static route (the server
 // answers every non-API path with the page) and needs no history handling.
 
 import { HandoffRefSchema } from "@pattern-blue/contracts";
@@ -8,13 +8,15 @@ export type Route =
   | { name: "queue" }
   | { name: "handoff"; ref: string }
   | { name: "guardrails" }
-  | { name: "metrics" };
+  | { name: "metrics" }
+  | { name: "flows" };
 
 export function parseHash(hash: string): Route {
   const path = hash.replace(/^#/, "").replace(/^\/+/, "").replace(/\/+$/, "");
   const parts = path.split("/");
   if (parts[0] === "guardrails" && parts.length === 1) return { name: "guardrails" };
   if (parts[0] === "metrics" && parts.length === 1) return { name: "metrics" };
+  if (parts[0] === "flows" && parts.length === 1) return { name: "flows" };
   if (parts[0] === "handoffs" && parts.length === 2) {
     let ref: string;
     try {

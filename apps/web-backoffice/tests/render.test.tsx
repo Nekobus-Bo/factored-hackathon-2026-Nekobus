@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { Composer, TranscriptLog } from "../src/app/Conversation";
 import { I18nProvider } from "../src/app/context";
+import { FLOWS, FlowCard, StateMachine, ToolMatrix } from "../src/app/FlowsScreen";
 import { HandoffCard } from "../src/app/HandoffCard";
 import { HandoffTables, ToolCallsTable } from "../src/app/MetricsScreen";
 import { ModeGroup, RefusalBanner, ThresholdRow, ToolRow } from "../src/app/PolicyControl";
@@ -422,5 +423,41 @@ describe("metrics tables", () => {
     expect(markup).toContain("Por departamento");
     expect(markup).toMatch(/PENDING<\/span><\/span><\/span><span role="cell" data-col="count">0</);
     expect(markup).toContain("44%"); // 4 of 9
+  });
+});
+
+describe("the flows screen", () => {
+  test("the state machine walks the path to VERIFIED with the tool of each step, and names both exits", () => {
+    const markup = html(<StateMachine />);
+    for (const state of ["ANONYMOUS", "IDENTIFIED", "OTP_PENDING", "VERIFIED", "LOCKED", "HANDED_OFF"]) expect(markup).toContain(state);
+    expect(markup.indexOf("customer.match")).toBeLessThan(markup.indexOf("otp.send"));
+    expect(markup.indexOf("otp.send")).toBeLessThan(markup.indexOf("otp.verify"));
+    expect(markup).toContain("pedir una persona siempre pasa");
+  });
+
+  test("the matrix draws the policy in force: a disabled tool reads as disabled, every cell says what it is", () => {
+    const tools = toolPolicy();
+    const markup = html(<ToolMatrix tools={tools} />);
+    expect(count(markup, "<tr")).toBe(Object.keys(tools.code_floor).length + 1);
+    expect(markup).toContain("account.get_summary<span");
+    expect(markup).toContain("desactivada");
+    expect(markup).toContain('aria-label="Permitida en VERIFIED"');
+    expect(markup).toContain('aria-label="No permitida en ANONYMOUS"');
+    expect(markup).toContain('href="#/guardrails"');
+  });
+
+  test("every flow has its steps in order, its outcomes and, for fraud, the example conversation", () => {
+    for (const flow of FLOWS) {
+      const markup = html(<FlowCard flow={flow} balanceEnabled={false} />);
+      expect(count(markup, 'class="bo-step bo-flowstate"')).toBe(flow.steps.length);
+      expect(count(markup, 'class="bo-outcome"')).toBe(flow.outcomes.length);
+      expect(markup.includes('class="bo-example"')).toBe(flow.example !== undefined);
+    }
+    const fraud = html(<FlowCard flow={FLOWS.find((flow) => flow.id === "fraud")!} balanceEnabled={false} />, "pt");
+    expect(fraud).toContain("SUSPECTED_FRAUD");
+    expect(fraud).toContain("Exemplo");
+    const balance = (enabled: boolean) => html(<FlowCard flow={FLOWS.find((flow) => flow.id === "balance")!} balanceEnabled={enabled} />, "en");
+    expect(balance(false)).toContain("Today: account.get_summary disabled");
+    expect(balance(true)).toContain("Today: account.get_summary enabled");
   });
 });

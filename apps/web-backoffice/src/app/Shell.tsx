@@ -51,6 +51,7 @@ export function Shell({ route, authenticated, children }: { route: Route; authen
                 {link("#/", t("nav.queue"), route.name === "queue" || route.name === "handoff")}
                 {link("#/guardrails", t("nav.guardrails"), route.name === "guardrails")}
                 {link("#/metrics", t("nav.metrics"), route.name === "metrics")}
+                {link("#/flows", t("nav.flows"), route.name === "flows")}
               </nav>
             )}
             <div className="pb-nav__tools">
