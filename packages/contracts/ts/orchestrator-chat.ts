@@ -1,7 +1,7 @@
 // The orchestrator's customer chat API (apps/orchestrator/src/orchestrator/chat/routes.py), with the
 // two additions of the takeover: the `agent` role and the `takeover` object of the transcript.
 //
-// The web-client BFF forwards exactly these four routes (see bff-client.ts), so the browser sees the
+// The web-client BFF forwards exactly these five routes (see bff-client.ts), so the browser sees the
 // same shapes. `blocks` stay in their wire form (`RawBlock[]`): pass them through `parseBlocks`.
 
 import { z } from "zod";
@@ -114,14 +114,28 @@ export const InboxResponseSchema = z.object({
 });
 export type InboxResponse = z.infer<typeof InboxResponseSchema>;
 
+// --- POST /v1/conversations/{id}/feedback -------------------------------------------------------------------
+
+/** The customer's answer to "did the assistant help?", once the conversation was handed off (ADR-0017). */
+export const SendFeedbackRequestSchema = z.strictObject({ helpful: z.boolean() });
+export type SendFeedbackRequest = z.infer<typeof SendFeedbackRequestSchema>;
+
+/** The answer as banking-core stored it. The handoff it belongs to stays on the trusted side. */
+export const FeedbackResponseSchema = z.object({
+  helpful: z.boolean(),
+  recorded_at: IsoDateTimeSchema,
+});
+export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
+
 // --- Routes --------------------------------------------------------------------------------------------------
 
 export const ConversationParamsSchema = z.object({ id: ConversationIdSchema });
 export type ConversationParams = z.infer<typeof ConversationParamsSchema>;
 
 /**
- * Errors: 404 unknown conversation, 409 a turn is already running, 429 with `Retry-After` (seconds),
- * 502 no banking session could be opened, 503 `replay_miss`, or the turn/inbox is unavailable.
+ * Errors: 404 unknown conversation, 409 a turn is already running (feedback: `no_handoff`,
+ * `already_answered`), 429 with `Retry-After` (seconds), 502 no banking session could be opened,
+ * 503 `replay_miss`, or the turn, the inbox or the feedback store is unavailable.
  */
 export const orchestratorChatRoutes = {
   createConversation: defineRoute({
@@ -153,5 +167,13 @@ export const orchestratorChatRoutes = {
     successStatus: 200,
     params: ConversationParamsSchema,
     response: InboxResponseSchema,
+  }),
+  sendFeedback: defineRoute({
+    method: "POST",
+    pattern: "/v1/conversations/:id/feedback",
+    successStatus: 200,
+    params: ConversationParamsSchema,
+    body: SendFeedbackRequestSchema,
+    response: FeedbackResponseSchema,
   }),
 } as const;

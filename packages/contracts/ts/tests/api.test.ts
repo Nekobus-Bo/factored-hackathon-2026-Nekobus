@@ -12,6 +12,7 @@ import {
   CreateConversationResponseSchema,
   DEFAULT_HANDOFF_STATUSES,
   DemoResetResponseSchema,
+  FeedbackResponseSchema,
   HandoffDetailSchema,
   HandoffItemSchema,
   HandoffListQuerySchema,
@@ -22,6 +23,7 @@ import {
   MetricsResponseSchema,
   PolicyConfigRequestSchema,
   PolicyConfigResponseSchema,
+  SendFeedbackRequestSchema,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
   SessionConversationResponseSchema,
@@ -174,6 +176,15 @@ describe("orchestrator chat API", () => {
     });
     expect(inbox.messages[0]?.code).toBe("123456");
     expect(InboxResponseSchema.parse({ messages: [] }).messages).toEqual([]);
+  });
+
+  test("feedback: a strict yes or no, and the answer back with when it was recorded", () => {
+    expect(SendFeedbackRequestSchema.parse({ helpful: false })).toEqual({ helpful: false });
+    for (const bad of [{ helpful: "yes" }, { helpful: 1 }, {}, { helpful: true, comment: "x" }]) {
+      expect(SendFeedbackRequestSchema.safeParse(bad).success).toBe(false);
+    }
+    expect(FeedbackResponseSchema.parse({ helpful: true, recorded_at: NOW })).toEqual({ helpful: true, recorded_at: NOW });
+    expect(FeedbackResponseSchema.safeParse({ helpful: true, recorded_at: "yesterday" }).success).toBe(false);
   });
 });
 
