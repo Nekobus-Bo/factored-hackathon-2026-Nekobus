@@ -400,6 +400,73 @@ async def test_model_blocks_outside_allowlist_are_dropped(
     assert "Confirmar" not in caplog.text
 
 
+# The reply gpt-6-luna gave on Cloud Run (2026-10-03): the opening flow line,
+# translated, then the answer it meant.
+LEAKED_REPLY = (
+    "banking-core flow: sesión ANONYMOUS; el siguiente paso es `customer_match`. "
+    "Para reportar y bloquear una tarjeta robada, primero necesito verificar tu "
+    "identidad. ¿Qué tipo de documento tienes y cuál es su número?\n"
+    "Lamento que te haya pasado. Para ayudarte a bloquear la tarjeta robada, "
+    "primero necesito verificar tu identidad. ¿Qué tipo de documento tienes y cuál "
+    "es su número?"
+)
+
+
+async def test_a_reply_line_naming_the_flow_never_reaches_the_customer(
+    mock_services: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    mock_services.post(f"{ENCODER_URL}/v1/analyze").mock(
+        return_value=httpx.Response(200, json=ANALYZE_OK)
+    )
+    llm = ScriptedLLM([Step(content=LEAKED_REPLY)])
+    context = new_context()
+
+    with caplog.at_level(logging.WARNING):
+        result = await make_engine(llm).run_turn(context, "me robaron la tarjeta")
+
+    answer = LEAKED_REPLY.split("\n")[1]
+    assert result.blocks == [TextBlock(text=answer)]
+    assert result.metadata.internal_lines_withheld == 1
+    # Nor the history the next completion reads; the log has a count, not the text.
+    remembered = context.history[-1]["content"]
+    assert remembered.startswith("Lamento que te haya pasado.")
+    assert "banking-core" not in remembered and "customer_match" not in remembered
+    assert "Withheld 1 reply line(s)" in caplog.text
+    assert "ANONYMOUS" not in caplog.text
+
+
+async def test_a_reply_made_only_of_internal_lines_becomes_the_fallback(
+    mock_services: Any,
+) -> None:
+    mock_services.post(f"{ENCODER_URL}/v1/analyze").mock(
+        return_value=httpx.Response(200, json=ANALYZE_OK)
+    )
+    content = json.dumps(
+        {"blocks": [{"type": "text", "text": "Next: otp.send, then otp_verify."}]}
+    )
+    llm = ScriptedLLM([Step(content=content)])
+
+    result = await make_engine(llm).run_turn(new_context(), "hola")
+
+    assert result.blocks == [TextBlock(text=FALLBACK_MESSAGES["es"])]
+    assert result.metadata.internal_lines_withheld == 1
+
+
+async def test_an_ordinary_reply_is_left_as_written(mock_services: Any) -> None:
+    mock_services.post(f"{ENCODER_URL}/v1/analyze").mock(
+        return_value=httpx.Response(200, json=ANALYZE_OK)
+    )
+    content = "Your identity is verified.\nThe card is locked now; anything else?"
+    llm = ScriptedLLM([Step(content=content)])
+    context = new_context()
+
+    result = await make_engine(llm).run_turn(context, "thanks")
+
+    assert result.blocks == [TextBlock(text=content)]
+    assert result.metadata.internal_lines_withheld == 0
+    assert context.history[-1] == {"role": "assistant", "content": content}
+
+
 async def test_invalid_or_unknown_tool_calls_never_reach_banking_core(
     mock_services: Any,
 ) -> None:
@@ -1111,8 +1178,10 @@ async def test_the_first_completion_reads_where_the_session_starts(
     first, second = llm.calls
     opening = [line for line in _system_lines(first) if "banking-core flow" in line]
     assert opening == [
-        "banking-core flow (advisory; banking-core decides every call): the session "
-        "is ANONYMOUS; the step that moves it forward is `customer_match`."
+        "banking-core flow (advisory and internal, never for the customer; "
+        "banking-core decides every call): the session is ANONYMOUS; the step that "
+        "moves it forward is `customer_match`, once the customer has given what it "
+        "needs."
     ]
     # Only what the configuration enables is offered, from the first completion.
     offered = {tool["function"]["name"] for tool in first["tools"]}

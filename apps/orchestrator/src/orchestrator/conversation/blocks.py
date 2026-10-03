@@ -2,14 +2,65 @@
 
 import json
 import logging
+import re
 from typing import Any
 
-from contracts import MESSAGE_BLOCK_ADAPTER, MODEL_EMITTABLE_BLOCK_TYPES, TextBlock
+from contracts import (
+    MESSAGE_BLOCK_ADAPTER,
+    MODEL_EMITTABLE_BLOCK_TYPES,
+    TOOL_CATALOG,
+    TextBlock,
+)
+from contracts.envelope import VerificationState
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_LENGTH = 4000
+
+# Names only the model's context uses: banking-core itself, the session states and
+# the tools, in catalog (`customer.match`) and function (`customer_match`) form. A
+# reply line that holds one is the model repeating its context (the flow line, a
+# tool result) to the customer. A guardrail in code, not in the prompt (ADR-0002).
+_INTERNAL_NAMES = re.compile(
+    "|".join(
+        [
+            r"banking[- ]core",
+            r"\bflow\.next\b",
+            *(rf"\b{state.value}\b" for state in VerificationState),
+            *(
+                rf"\b{re.escape(name)}\b"
+                for tool in TOOL_CATALOG
+                for name in (tool, tool.replace(".", "_"))
+            ),
+        ]
+    ),
+    re.IGNORECASE,
+)
+_STATE_NAMES = frozenset(state.value for state in VerificationState)
+
+
+def _names_internal(line: str) -> bool:
+    for match in _INTERNAL_NAMES.finditer(line):
+        # The states are matched as written: "verified" is a word a reply may use,
+        # `VERIFIED` is the engine's.
+        word = match.group(0)
+        if word.upper() in _STATE_NAMES and word not in _STATE_NAMES:
+            continue
+        return True
+    return False
+
+
+def withhold_internal_lines(text: str) -> tuple[str, int]:
+    """Drop the lines of a reply that name the model's context. Returns the text
+    left (possibly empty) and how many lines were dropped; logs the count only,
+    never the text."""
+    lines = text.split("\n")
+    kept = [line for line in lines if not _names_internal(line)]
+    withheld = len(lines) - len(kept)
+    if withheld:
+        logger.warning("Withheld %d reply line(s) naming internal context", withheld)
+    return "\n".join(kept).strip(), withheld
 
 
 def _as_text_block(text: str) -> TextBlock | None:

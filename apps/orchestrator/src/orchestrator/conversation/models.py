@@ -125,6 +125,9 @@ class TurnMetadata(BaseModel):
     max_tool_rounds_reached: bool = False
     tool_outcomes: list[ToolOutcome] = Field(default_factory=list)
     dropped_block_types: list[str] = Field(default_factory=list)
+    # Reply lines withheld for naming the model's context (banking-core, a state, a
+    # tool): a count, never the text.
+    internal_lines_withheld: int = Field(default=0, ge=0)
     llm_recording_keys: list[str] = Field(default_factory=list)
     # Decision points (ADR-0012, I5): what each one decided and what its effect did
     # or, in shadow, would have done. Identifiers, enum values and numbers; never text.

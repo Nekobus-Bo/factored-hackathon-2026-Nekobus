@@ -52,7 +52,11 @@ from contracts.tools.handoff_create import (
 from pydantic import ValidationError
 
 from orchestrator.config import Settings
-from orchestrator.conversation.blocks import MAX_TEXT_LENGTH, filter_model_blocks
+from orchestrator.conversation.blocks import (
+    MAX_TEXT_LENGTH,
+    filter_model_blocks,
+    withhold_internal_lines,
+)
 from orchestrator.conversation.dates import normalize_date_arguments
 from orchestrator.conversation.decisions.catalog import RequestPlan
 from orchestrator.conversation.decisions.effects import DecisionRuntime, TurnDecisions
@@ -860,13 +864,24 @@ class TurnEngine:
             history.append({"role": "assistant", "content": text})
             return [TextBlock(text=text)]
 
-        history.append({"role": "assistant", "content": masked_reply})
         kept, dropped = filter_model_blocks(masked_reply)
         metadata.dropped_block_types.extend(dropped)
+        # A line naming the model's context (the flow line, a state, a tool) never
+        # reaches the customer, nor the history the next completion reads.
+        texts: list[str] = []
+        for block in kept:
+            text, withheld = withhold_internal_lines(block.text)
+            metadata.internal_lines_withheld += withheld
+            if text:
+                texts.append(text)
+        if metadata.internal_lines_withheld:
+            masked_reply = "\n\n".join(texts) or FALLBACK_MESSAGES[lang]
+            texts = texts or [FALLBACK_MESSAGES[lang]]
+        history.append({"role": "assistant", "content": masked_reply})
         # The customer sees their own values back, never placeholders.
         return [
-            TextBlock(text=self.masker.unmask(block.text, mapping)[:MAX_TEXT_LENGTH])
-            for block in kept
+            TextBlock(text=self.masker.unmask(text, mapping)[:MAX_TEXT_LENGTH])
+            for text in texts
         ]
 
     # ---------------------------------------------------------------- guards

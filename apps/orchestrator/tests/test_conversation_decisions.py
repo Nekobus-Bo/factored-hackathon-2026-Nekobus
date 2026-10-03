@@ -784,7 +784,7 @@ async def test_the_eval_hook_carries_the_decision_records(services: Any) -> None
 
 
 def test_the_prompt_explains_the_refusal_and_holds_no_policy() -> None:
-    assert PROMPT_VERSION == "turn-engine/5"
+    assert PROMPT_VERSION == "turn-engine/6"
     assert "CONFIRMATION_REQUIRED" in SYSTEM_PROMPT
     # The next step comes from banking-core's flow hint at run time (ADR-0016),
     # not from a copy of the state machine in the text.
