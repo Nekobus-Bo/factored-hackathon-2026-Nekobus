@@ -9,6 +9,8 @@ import { Blocks } from "../src/app/chat/Blocks";
 import { ChatDock } from "../src/app/chat/ChatDock";
 import { OtpFoot, OtpSheet } from "../src/app/chat/Notices";
 import { FeedbackLine } from "../src/app/chat/Feedback";
+import { TracePanel, TraceStrip, type TracePanelProps } from "../src/app/chat/TracePanel";
+import { tracedTurns } from "../src/app/chat/trace-model";
 import { Transcript } from "../src/app/chat/Transcript";
 import { Landing } from "../src/app/landing/Landing";
 import { dictionaries } from "../src/i18n";
@@ -27,6 +29,7 @@ import {
   TEXT_BLOCK,
   UNKNOWN_BLOCK,
   TRACE,
+  TRACE_TOOL,
 } from "./fixtures";
 import { createWorld, json } from "./world";
 
@@ -503,19 +506,88 @@ describe("detective mode (ADR-0019)", () => {
   afterEach(() => world?.stop());
   let world: ReturnType<typeof createWorld> | undefined;
 
+  const t = dictionaries.es.chat.detective;
   const traced: Entry[] = [
+    { id: "c1", kind: "customer", text: "perdí mi tarjeta", at: "2026-09-29T15:40:00Z", lang: "es", status: "sent" },
     { id: "1", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:40:05Z", lang: "es", trace: TRACE } as Entry,
     { id: "2", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:41:05Z", lang: "es" },
+    { id: "c2", kind: "customer", text: "soy Carlos", at: "2026-09-29T15:42:00Z", lang: "es", status: "sent" },
+    { id: "3", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:42:05Z", lang: "es", trace: TRACE_TOOL } as Entry,
   ];
+  const panel = (props: Partial<TracePanelProps> = {}) =>
+    renderToStaticMarkup(
+      <TracePanel
+        dict={dictionaries.es}
+        turns={tracedTurns(traced)}
+        selectedId={null}
+        view="steps"
+        pane="chat"
+        onSelect={() => {}}
+        onView={() => {}}
+        onBack={() => {}}
+        {...props}
+      />,
+    );
 
-  test("the trace shows only with detective on, and only under a reply that has one", () => {
+  test("a strip only with detective on, under each reply that has a trace; the panel's turn is marked", () => {
     const off = renderToStaticMarkup(<Transcript entries={traced} lang="es" />);
     expect(off).not.toContain("data-detective");
-    const on = renderToStaticMarkup(<Transcript entries={traced} lang="es" detective />);
-    expect(on.match(/data-detective/g)).toHaveLength(1);
-    expect(on).toContain(dictionaries.es.chat.detective.show);
-    expect(on).toContain('aria-expanded="false"');
-    expect(on).toContain("[DOC_1]");
+    const on = renderToStaticMarkup(<Transcript entries={traced} lang="es" detective traceSelectedId="3" />);
+    expect(on.match(/data-detective/g)).toHaveLength(2);
+    expect(on.match(/aria-current="true"/g)).toHaveLength(1);
+    expect(on).toContain('aria-controls="dock-trace"');
+    expect(on).toContain("2.40 s");
+    expect(on).toContain(t.open);
+  });
+
+  test("the strip sums the turn up: steps, LLM calls, tools", () => {
+    const html = renderToStaticMarkup(<TraceStrip dict={dictionaries.es} trace={TRACE_TOOL} selected={false} />);
+    expect(html).toContain("2 pasos · 1 LLM · 1 herr.");
+    expect(html).not.toContain("aria-current");
+  });
+
+  test("the panel follows the newest turn: its tab checked, the bubble it answered, a row per step, details folded", () => {
+    const html = panel();
+    expect(html).toContain('id="dock-trace"');
+    expect(html).toContain(`aria-label="${t.panel}"`);
+    expect(html.match(/data-trace-turn=/g)).toHaveLength(2);
+    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-turn="3"/);
+    expect(html).toContain("Turno 3");
+    expect(html).toContain("soy Carlos");
+    expect(html.match(/data-trace-step=/g)).toHaveLength(2);
+    expect(html).toContain("INVALID_ARGUMENTS");
+    expect(html).not.toContain("pb-trace-code");
+    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="steps"/);
+  });
+
+  test("a picked turn shows instead of the newest", () => {
+    const html = panel({ selectedId: "1" });
+    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-turn="1"/);
+    expect(html).toContain("perdí mi tarjeta");
+    expect(html.match(/data-trace-step=/g)).toHaveLength(1);
+  });
+
+  test("the timeline opens on the LLM call: the call it asked for, masked, and the prompt folded", () => {
+    const html = panel({ view: "timeline" });
+    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="timeline"/);
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("pb-trace-wf__bar");
+    expect(html).toContain("openai/test-model · 2500 → 30 tok · $0.00034 · en vivo");
+    expect(html).toContain('<mark class="pb-trace-ph">[DOC_1]</mark>');
+    expect(html).toContain(`<summary>${t.detail.prompt.replace("{n}", "2")}</summary>`);
+    expect(html).not.toContain("<details open");
+  });
+
+  test("the masking step marks its placeholders", () => {
+    const html = panel({ selectedId: "1", view: "timeline" });
+    expect(html).toContain('<mark class="pb-trace-ph">[DOC_1]</mark>');
+    expect(html).toContain(`${t.detail.minted}: [DOC_1]`);
+  });
+
+  test("with no traced turn yet the panel says what to do", () => {
+    const html = panel({ turns: [] });
+    expect(html).toContain(t.empty);
+    expect(html).not.toContain("data-trace-turn");
   });
 
   const appWith = (stored: Record<string, string>) => {
@@ -551,6 +623,25 @@ describe("detective mode (ADR-0019)", () => {
     expect(off).toContain("data-detective-toggle");
     expect(off).toContain('aria-pressed="false"');
     expect(off).toContain(`aria-label="${dictionaries.es.chat.detective.toggle}"`);
-    expect(dock({ "pb-detective": "on" })).toContain('aria-pressed="true"');
+    expect(off).toContain(`title="${dictionaries.es.chat.detective.toggle}"`);
+    expect(off).toContain("pb-ico--search");
+    expect(off).not.toContain('id="dock-trace"');
+    const on = dock({ "pb-detective": "on" });
+    expect(on).toContain('aria-pressed="true"');
+    expect(on).toContain('id="dock-trace"');
+    expect(on).toContain(dictionaries.es.chat.detective.empty);
+  });
+
+  test("the panel stays out of a closed dock", async () => {
+    world = createWorld();
+    world.script("getCapabilities", json({ detective: true }));
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    const html = renderToStaticMarkup(
+      <ActorsProvider actors={{ app: appWith({ "pb-detective": "on" }), chat: world.actor }}>
+        <ChatDock open={false} onOpenChange={() => {}} />
+      </ActorsProvider>,
+    );
+    expect(html).not.toContain('id="dock-trace"');
   });
 });

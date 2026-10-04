@@ -62,7 +62,18 @@ describe("dictionaries", () => {
   test("pt and en are translated, not copied from es", () => {
     // Where the same string is the right translation: names, symbols, and words Spanish and Portuguese
     // share. Anything else equal to the Spanish is a string somebody forgot to translate.
-    const sameInBoth = ["nav.s2", "s2.label", "s2.ticker", "chat.inbox.demoTag", "nav.markets.es-AR"];
+    const sameInBoth = [
+      "nav.s2",
+      "s2.label",
+      "s2.ticker",
+      "chat.inbox.demoTag",
+      "nav.markets.es-AR",
+      "chat.detective.stats.total",
+      "chat.detective.stats.tokens",
+      "chat.detective.kinds.encoder",
+      "chat.detective.kinds.llm_call",
+      "chat.detective.status.ok",
+    ];
     const sameInPt = [
       ...sameInBoth,
       "meta.documentTitle",
@@ -96,8 +107,13 @@ describe("dictionaries", () => {
       "chat.inbox.codeHiddenAria",
       "chat.inbox.reveal",
       "chat.inbox.hide",
+      "chat.detective.turns",
+      "chat.detective.turn",
+      "chat.detective.detail.chars",
+      "chat.detective.detail.sent",
+      "chat.detective.detail.dropped",
     ];
-    const sameInEn = [...sameInBoth, "nav.markets.es-CO", "chat.feedback.no"];
+    const sameInEn = [...sameInBoth, "nav.markets.es-CO", "chat.feedback.no", "chat.detective.status.error"];
     for (const [lang, allowed] of [
       ["pt", sameInPt],
       ["en", sameInEn],

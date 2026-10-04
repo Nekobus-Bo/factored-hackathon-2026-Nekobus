@@ -30,7 +30,8 @@ export type IconName =
   | "send"
   | "db"
   | "infinity"
-  | "hex";
+  | "hex"
+  | "search";
 
 export function Icon({ name, label, large = false }: { name: IconName; label?: string; large?: boolean }) {
   const className = `pb-ico pb-ico--${name}${large ? " pb-ico--lg" : ""}`;

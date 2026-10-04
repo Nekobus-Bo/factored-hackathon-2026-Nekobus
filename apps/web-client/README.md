@@ -84,7 +84,7 @@ The code is delivered synchronously during the turn that calls `otp.send`, so no
 
 ### Detective mode
 
-Where the orchestrator says detective mode is on, the chat header shows a switch (`aria-pressed`); the viewer's choice is remembered in `localStorage` (`pb-detective`, behind `try/catch`), off by default. With it on, each assistant reply shows its turn's trace (`trace` on the send answer, kept on the reply's entry): for now the raw JSON folded under the reply, to be replaced by the designed panel. The trace holds masked values only ([ADR-0019](../../docs/adr/0019-detective-mode.md)).
+Where the orchestrator says detective mode is on, the chat header shows a switch (`aria-pressed`); the viewer's choice is remembered in `localStorage` (`pb-detective`, behind `try/catch`), off by default. With it on, each assistant reply with a trace (`trace` on the send answer, kept on the reply's entry) gets a one-line strip, and a panel opens left of the chat with its own scroll (`TracePanel.tsx`, styles `pb-trace-*` in `@pattern-blue/design-tokens`' `local.css`). The panel follows the newest turn until a strip or a turn tab picks another, and shows it as a list of steps that open in place or as a timeline; below 900px it covers the chat while a turn is open, with "Volver al chat". The trace holds masked values only; the quote above it is the customer's bubble, already masked for display ([ADR-0019](../../docs/adr/0019-detective-mode.md)).
 
 ### The header chip
 
