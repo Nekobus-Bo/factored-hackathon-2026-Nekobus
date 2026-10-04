@@ -5,6 +5,8 @@ GET  /v1/agent/conversations/{id}                    transcript and takeover
 POST /v1/agent/conversations/{id}/takeover           an agent takes the conversation
 POST /v1/agent/conversations/{id}/messages           an agent writes to the customer
 POST /v1/agent/conversations/{id}/release            the holder lets it go (ADR-0018)
+GET  /v1/agent/detective                             detective mode: offered, and on?
+PUT  /v1/agent/detective                             turn it on or off (ADR-0019)
 
 Mounted only when AGENT_API_ENABLED=true, behind a bearer token (agent/auth.py).
 The caller is the back-office server, which authenticates the agent itself and
@@ -30,6 +32,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from redis.exceptions import RedisError
 
 from orchestrator.agent.auth import require_agent
 from orchestrator.chat.transcript import (
@@ -39,6 +42,7 @@ from orchestrator.chat.transcript import (
     text_as_written,
     transcript_messages,
 )
+from orchestrator.detective import DetectiveSwitch, DetectiveUnavailableError
 from orchestrator.session.crypto import CryptoError
 from orchestrator.session.models import (
     ConversationState,
@@ -61,6 +65,19 @@ _MAX_SESSION_REF = 128
 AgentRef = Annotated[
     str, StringConstraints(min_length=3, max_length=254, pattern=r"^\S+$")
 ]
+
+
+class DetectiveState(BaseModel):
+    """Detective mode (ADR-0019): offered by the environment, and on right now."""
+
+    available: bool
+    enabled: bool
+
+
+class DetectiveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
 
 
 class ConversationRefResponse(BaseModel):
@@ -335,3 +352,32 @@ async def send_agent_message(
             created_at=stored.created_at,
         )
     )
+
+
+@router.get("/detective", response_model=DetectiveState)
+async def get_detective(request: Request) -> DetectiveState:
+    """Whether customer turns come with their trace, for the back office's switch."""
+    switch: DetectiveSwitch = request.app.state.detective
+    return DetectiveState(available=switch.available, enabled=await switch.enabled())
+
+
+@router.put("/detective", response_model=DetectiveState)
+async def set_detective(request: Request, body: DetectiveRequest) -> DetectiveState:
+    """Turn detective mode on or off for every conversation, at once (ADR-0019).
+
+    409 where the environment does not offer it: the switch moves only within
+    what DETECTIVE_MODE allows.
+    """
+    switch: DetectiveSwitch = request.app.state.detective
+    try:
+        enabled = await switch.set(body.enabled)
+    except DetectiveUnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="detective_unavailable"
+        ) from exc
+    except RedisError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail="The change was not saved"
+        ) from exc
+    logger.info("Detective mode switched %s", "on" if enabled else "off")
+    return DetectiveState(available=True, enabled=enabled)

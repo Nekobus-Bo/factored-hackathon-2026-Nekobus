@@ -179,6 +179,7 @@ async def test_agent_router_is_mounted_when_enabled(
         "/v1/agent/conversations/{conversation_id}/messages",
         "/v1/agent/conversations/{conversation_id}/release",
         "/v1/agent/conversations/{conversation_id}/takeover",
+        "/v1/agent/detective",
         "/v1/agent/sessions/{session_ref}/conversation",
     ]
 

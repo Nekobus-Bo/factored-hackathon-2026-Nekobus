@@ -290,3 +290,69 @@ def test_detective_mode_is_allowed_in_production_unlike_the_eval_hook() -> None:
     assert app.state.detective.available is True
     with pytest.raises(ValueError, match="EVAL_EXPOSE_TURN"):
         create_app(settings=Settings(**production, eval_expose_turn=True))
+
+
+# ------------------------------------------------- the back office's switch
+
+
+AGENT_TOKEN = "agent-test-token-0123456789"
+AGENT_AUTH = {"Authorization": f"Bearer {AGENT_TOKEN}"}
+
+
+def agent_app(detective_mode: bool) -> FastAPI:
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        encoder_enabled=False,
+        agent_api_enabled=True,
+        agent_api_token=AGENT_TOKEN,
+        detective_mode=detective_mode,
+    )
+    return build_app(fakeredis.FakeAsyncRedis(), settings)
+
+
+async def test_the_back_office_reads_and_flips_the_switch() -> None:
+    app = agent_app(detective_mode=True)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://orch") as client:
+        state = await client.get("/v1/agent/detective", headers=AGENT_AUTH)
+        assert state.json() == {"available": True, "enabled": True}
+
+        off = await client.put(
+            "/v1/agent/detective", json={"enabled": False}, headers=AGENT_AUTH
+        )
+        assert off.json() == {"available": True, "enabled": False}
+        assert (await client.get("/v1/capabilities")).json() == {"detective": False}
+
+        on = await client.put(
+            "/v1/agent/detective", json={"enabled": True}, headers=AGENT_AUTH
+        )
+        assert on.json() == {"available": True, "enabled": True}
+        assert (await client.get("/v1/capabilities")).json() == {"detective": True}
+
+
+async def test_the_switch_cannot_go_beyond_what_the_environment_offers() -> None:
+    app = agent_app(detective_mode=False)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://orch") as client:
+        state = await client.get("/v1/agent/detective", headers=AGENT_AUTH)
+        assert state.json() == {"available": False, "enabled": False}
+        refused = await client.put(
+            "/v1/agent/detective", json={"enabled": True}, headers=AGENT_AUTH
+        )
+        assert refused.status_code == 409
+        assert refused.json()["detail"] == "detective_unavailable"
+
+
+async def test_the_switch_needs_the_agent_token() -> None:
+    app = agent_app(detective_mode=True)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://orch") as client:
+        assert (await client.get("/v1/agent/detective")).status_code == 401
+        put = await client.put("/v1/agent/detective", json={"enabled": False})
+        assert put.status_code == 401
+        extra = await client.put(
+            "/v1/agent/detective",
+            json={"enabled": False, "who": "x"},
+            headers=AGENT_AUTH,
+        )
+        assert extra.status_code == 422
