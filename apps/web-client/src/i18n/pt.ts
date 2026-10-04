@@ -33,7 +33,7 @@ export const pt: Dictionary = {
     sub: "A Pattern Blue tem conta corrente e cartão de débito. Se você perder o cartão, o assistente o bloqueia no chat. Se vir uma cobrança que não fez, uma pessoa da equipe analisa seu caso.",
     ctaPrimary: "Falar com o assistente",
     ctaSecondary: "Ver produtos",
-    fact: "Atendimento em español, português e English",
+    fact: "Atendimento em español e português",
   },
   card: {
     holder: "Titular",
@@ -109,7 +109,7 @@ export const pt: Dictionary = {
       },
       {
         q: "Em quais idiomas vocês atendem?",
-        a: "Em español, português e English. Você pode mudar de idioma quando quiser.",
+        a: "Em español e português. Você pode mudar de idioma quando quiser.",
       },
       {
         q: "A Pattern Blue é um banco de verdade?",

@@ -32,8 +32,9 @@ export function LangSwitch() {
 
 /**
  * The customer's market, for a language served in more than one (today Spanish: MX, AR, CO). It shows the
- * country code and reads the country's name. None is checked until the browser names one or the customer
- * picks one: the text is the same in every Spanish market, only what the chat sends changes.
+ * country code and reads the country's name. One is always checked: the one the browser names, else the
+ * language's default (CO for Spanish). The text is the same in every Spanish market, only what the chat
+ * sends changes.
  */
 export function MarketSwitch() {
   const { lang, dict } = useI18n();

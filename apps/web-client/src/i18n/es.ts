@@ -69,7 +69,7 @@ export const es = {
     sub: "Pattern Blue tiene cuenta corriente y tarjeta débito. Si pierdes la tarjeta, el asistente la bloquea en el chat. Si ves un cargo que no hiciste, una persona del equipo revisa tu caso.",
     ctaPrimary: "Hablar con el asistente",
     ctaSecondary: "Ver productos",
-    fact: "Atención en español, português y English",
+    fact: "Atención en español y português",
   },
   card: {
     holder: "Titular",
@@ -145,7 +145,7 @@ export const es = {
       },
       {
         q: "¿En qué idiomas me atienden?",
-        a: "En español, português y English. Puedes cambiar de idioma cuando quieras.",
+        a: "En español y português. Puedes cambiar de idioma cuando quieras.",
       },
       {
         q: "¿Pattern Blue es un banco real?",
