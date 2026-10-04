@@ -15,6 +15,7 @@ from contracts.encoder import (
 )
 from contracts.envelope import Receipt, ToolCall, ToolResult
 from contracts.tools import TOOL_CATALOG
+from contracts.trace import TurnTrace
 
 
 def _to_deterministic_json(data: dict[str, Any]) -> str:
@@ -113,7 +114,14 @@ def export_schemas(output_dir: Path | str | None = None) -> dict[str, Path]:
     )
     exported_files["blocks/message_block"] = block_file
 
-    # 5. Export catalog manifest
+    # 5. Export the detective-mode turn trace (ADR-0019)
+    trace_dir = target_dir / "trace"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_file = trace_dir / "turn_trace.json"
+    trace_file.write_text(_to_deterministic_json(TurnTrace.model_json_schema()), encoding="utf-8")
+    exported_files["trace/turn_trace"] = trace_file
+
+    # 6. Export catalog manifest
     catalog_file = target_dir / "catalog.json"
     catalog_file.write_text(_to_deterministic_json(catalog_data), encoding="utf-8")
     exported_files["catalog"] = catalog_file

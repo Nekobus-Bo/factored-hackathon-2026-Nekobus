@@ -10,7 +10,8 @@ export const SCHEMAS_DIR = resolve(import.meta.dir, "../../schemas");
 export interface JsonSchema {
   $ref?: string;
   $defs?: Record<string, JsonSchema>;
-  type?: string;
+  /** A list only from Zod, for an unconstrained nullable scalar: `["string", "null"]`. */
+  type?: string | string[];
   enum?: unknown[];
   const?: unknown;
   default?: unknown;
@@ -99,7 +100,15 @@ export function leaf(schema: JsonSchema, root: JsonSchema): { leaf: Leaf; resolv
       return { leaf: { nullable, kind: `union(${kinds.join(",")})` }, resolved };
     }
   }
-  const description: Leaf = { nullable, kind: resolved.type ?? "unknown" };
+  // Zod writes `z.string().nullable()` as `type: ["string", "null"]` where pydantic writes an `anyOf`
+  // with a null member: the same fact, so it is read the same way.
+  let kind = resolved.type ?? "unknown";
+  if (Array.isArray(kind)) {
+    const types = kind.filter((type) => type !== "null");
+    nullable = nullable || types.length !== kind.length;
+    kind = types.length === 1 ? (types[0] as string) : `union(${[...types].sort().join(",")})`;
+  }
+  const description: Leaf = { nullable, kind };
   if (resolved.enum !== undefined) description.enum = resolved.enum.map(String).sort();
   if (resolved.const !== undefined) description.const = resolved.const;
   for (const key of ["minLength", "maxLength", "format", "minimum", "maximum", "pattern"] as const) {

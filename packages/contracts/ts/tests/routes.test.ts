@@ -29,6 +29,7 @@ describe("the route tables are the spec's closed lists", () => {
         "GET /v1/conversations/:id",
         "GET /v1/conversations/:id/inbox",
         "POST /v1/conversations/:id/feedback",
+        "GET /v1/capabilities",
       ].sort(),
     );
   });
@@ -71,6 +72,7 @@ describe("the route tables are the spec's closed lists", () => {
         "GET /api/conversations/:id",
         "GET /api/conversations/:id/inbox",
         "POST /api/conversations/:id/feedback",
+        "GET /api/capabilities",
       ].sort(),
     );
   });

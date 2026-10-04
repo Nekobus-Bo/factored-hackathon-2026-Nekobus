@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import * as blocks from "../blocks";
 import * as enums from "../enums";
+import * as trace from "../trace";
 import {
   compareSchemas,
   enumDefs,
@@ -98,6 +99,44 @@ describe("message blocks against blocks/message_block.json", () => {
   });
 });
 
+const pythonTrace = await readSchemaFile("trace/turn_trace.json");
+
+describe("the detective-mode trace against trace/turn_trace.json", () => {
+  // Each definition Python exports, and the Zod schema that mirrors it.
+  const models: Record<string, z.ZodType> = {
+    TraceCount: trace.TraceCountSchema,
+    TraceDecisionPoint: trace.TraceDecisionPointSchema,
+    EncoderDetail: trace.EncoderDetailSchema,
+    MaskingDetail: trace.MaskingDetailSchema,
+    TraceDecision: trace.TraceDecisionSchema,
+    TraceEffect: trace.TraceEffectSchema,
+    DecisionsDetail: trace.DecisionsDetailSchema,
+    TraceMessage: trace.TraceMessageSchema,
+    TraceToolRequest: trace.TraceToolRequestSchema,
+    LlmCallDetail: trace.LlmCallDetailSchema,
+    ToolCallDetail: trace.ToolCallDetailSchema,
+    BlocksDetail: trace.BlocksDetailSchema,
+    TraceEvent: trace.TraceEventSchema,
+  };
+
+  test("TurnTrace, the root: field names, required fields, enums and limits agree", () => {
+    const zod = zodSchema(trace.TurnTraceSchema);
+    expect(compareSchemas(pythonTrace, pythonTrace, zod, zod, "TurnTrace")).toEqual([]);
+  });
+
+  for (const [name, schema] of Object.entries(models)) {
+    test(`${name}: field names, required fields, enums and limits agree`, () => {
+      const zod = zodSchema(schema);
+      expect(compareSchemas({ $ref: `#/$defs/${name}` }, pythonTrace, zod, zod, name)).toEqual([]);
+    });
+  }
+
+  test("every definition Python exports has a Zod counterpart", () => {
+    const covered = new Set<string>([...Object.keys(models), ...enumDefs(pythonTrace).keys()]);
+    expect(Object.keys(pythonTrace.$defs ?? {}).filter((name) => !covered.has(name))).toEqual([]);
+  });
+});
+
 describe("enums against every exported schema that defines them", () => {
   // Zod enum -> the Python class it mirrors (the name pydantic gives the definition).
   const mirrored: Record<string, EnumSchema> = {
@@ -109,6 +148,8 @@ describe("enums against every exported schema that defines them", () => {
     HandoffPriority: enums.HandoffPrioritySchema,
     Department: enums.DepartmentSchema,
     HandoffStatus: enums.HandoffStatusSchema,
+    TraceEventKind: enums.TraceEventKindSchema,
+    TraceEventStatus: enums.TraceEventStatusSchema,
   };
 
   for (const [pythonName, schema] of Object.entries(mirrored)) {

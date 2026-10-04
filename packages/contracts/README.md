@@ -32,12 +32,13 @@ const url = routePath(clientBffRoutes.getTranscript, { id: answer.conversation_i
 | File | Exports |
 |---|---|
 | `ts/common.ts` | `IsoDateTimeSchema`; `ConversationIdSchema`, `HandoffRefSchema`, `SessionRefSchema`, `AgentRefSchema`, `ClientMessageIdSchema`, `MessageTextSchema`, `CountSchema`; `ApiErrorSchema`, `ValidationIssueSchema`, `ERROR_DETAIL`; `AGENT_REF_HEADER` |
-| `ts/enums.ts` | The enums that mirror Python: `VerificationStateSchema`, `ToolResultStatusSchema`, `ReasonCodeSchema`, `ResourceStateSchema`, `HandoffReasonSchema`, `HandoffPrioritySchema` (+ `HANDOFF_PRIORITY_ORDER`), `DepartmentSchema`, `HandoffStatusSchema` |
+| `ts/enums.ts` | The enums that mirror Python: `VerificationStateSchema`, `ToolResultStatusSchema`, `ReasonCodeSchema`, `ResourceStateSchema`, `HandoffReasonSchema`, `HandoffPrioritySchema` (+ `HANDOFF_PRIORITY_ORDER`), `DepartmentSchema`, `HandoffStatusSchema`, `TraceEventKindSchema`, `TraceEventStatusSchema` |
 | `ts/blocks.ts` | `TextBlockSchema`, `ReceiptBlockSchema`, `HandoffBlockSchema`, the union `MessageBlockSchema` (discriminated on `type`), `ReceiptSchema`, `HandoffSummarySchema`, `JsonValueSchema`, `RawBlocksSchema`, `BLOCK_TYPES`, `parseBlocks` |
-| `ts/orchestrator-chat.ts` | The customer chat API, with the `agent` role and the `takeover` object: `LangSchema`, `TranscriptRoleSchema`, `CreateConversation*`, `SendMessage*`, `TranscriptResponseSchema`, `InboxResponseSchema`, `orchestratorChatRoutes` |
+| `ts/trace.ts` | The detective-mode turn trace (ADR-0019): `TurnTraceSchema`, `TraceEventSchema` and one detail schema per event kind (`EncoderDetailSchema`, `MaskingDetailSchema`, `DecisionsDetailSchema`, `LlmCallDetailSchema`, `ToolCallDetailSchema`, `BlocksDetailSchema`) |
+| `ts/orchestrator-chat.ts` | The customer chat API, with the `agent` role and the `takeover` object: `LangSchema`, `TranscriptRoleSchema`, `CreateConversation*`, `SendMessage*` (with the optional `trace`), `TranscriptResponseSchema`, `InboxResponseSchema`, `CapabilitiesResponseSchema`, `orchestratorChatRoutes` |
 | `ts/orchestrator-agent.ts` | The agent API (human takeover): `AgentTranscriptResponseSchema`, `TakeoverRequestSchema`/`TakeoverResponseSchema`, `AgentMessage*`, `SessionConversationResponseSchema`, `orchestratorAgentRoutes` |
 | `ts/banking-admin.ts` | The banking-core admin API: `HandoffItemSchema`, `HandoffDetailSchema`, `HandoffListQuerySchema`, `ClaimHandoffRequestSchema`, `MetricsQuerySchema`/`MetricsResponseSchema`, `PolicyConfig*`, `ToolPolicy*`, `DemoResetResponseSchema`, `bankingAdminRoutes` |
-| `ts/bff-client.ts` | `clientBffRoutes`: the five `/api` routes of `apps/web-client` |
+| `ts/bff-client.ts` | `clientBffRoutes`: the six `/api` routes of `apps/web-client` |
 | `ts/bff-backoffice.ts` | `backofficeBffRoutes`: the `/api` routes of `apps/web-backoffice`; `LoginRequestSchema`, `SessionResponseSchema`, `BackofficeHandoffDetailSchema`, `ClaimHandoffResponseSchema` |
 | `ts/route.ts` | `defineRoute`, `routePath`, `toQueryString`, `queryFromSearchParams`, `patternParams` |
 
@@ -53,6 +54,7 @@ Conventions:
 `ts/tests/drift.test.ts` reads the JSON Schemas that `export_schemas.py` writes and Python's own test pins byte for byte (`schemas/`), never the Python source:
 
 - **Blocks.** `schemas/blocks/message_block.json` against `TextBlockSchema`, `ReceiptBlockSchema` and `HandoffBlockSchema`, recursing into the receipt, the handoff summary and the open questions: the same field names, the same required fields, the same enum values, the same length, minimum and pattern limits, and the same members of the discriminated union. The one accepted difference is `type`, which Python defaults and Zod requires because it discriminates. A definition Python exports with no Zod counterpart fails.
+- **Trace.** `schemas/trace/turn_trace.json` against `TurnTraceSchema` and each of its definitions, the same way. Zod writes an unconstrained nullable field as `type: ["string", "null"]` and pydantic as an `anyOf` with null: the comparison reads both as nullable.
 - **Enums.** Every enum in `ts/enums.ts` against every exported schema that defines it (`VerificationState` in `tools/otp_verify.output.json`, `ReasonCode` in `envelope/tool_result.json`, `HandoffPriority` in the block schema, and so on). An enum added to `enums.ts` without a Python source in the table fails.
 
 **Known gap.** The drift test does not cover the HTTP shapes of the orchestrator chat and agent APIs and of the banking-core admin API. Those models live in the apps (`orchestrator/chat/routes.py`, `banking_core/api/routes_admin.py`), which this package cannot import, so no JSON Schema of them is exported and the Zod side is written from the source by hand. The enums used only there (`Lang`, `AmountMode`, the audit decision) are checked by reading, not by a test.

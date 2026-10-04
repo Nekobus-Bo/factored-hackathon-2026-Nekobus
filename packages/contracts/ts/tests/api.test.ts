@@ -5,6 +5,7 @@ import {
   AgentTranscriptResponseSchema,
   ApiErrorSchema,
   BackofficeHandoffDetailSchema,
+  CapabilitiesResponseSchema,
   ClaimHandoffRequestSchema,
   ClaimHandoffResponseSchema,
   ConversationIdSchema,
@@ -33,6 +34,7 @@ import {
   ToolPolicyResponseSchema,
   TranscriptResponseSchema,
   parseBlocks,
+  type TurnTrace,
   CloseCaseRequestSchema,
   CloseCaseResponseSchema,
   CloseHandoffRequestSchema,
@@ -126,6 +128,42 @@ describe("orchestrator chat API", () => {
     const parsed = parseBlocks(answer.blocks);
     expect(parsed.blocks.map((block) => block.type)).toEqual(["text", "handoff"]);
     expect(parsed.unknown.map((entry) => entry.type)).toEqual(["future-thing"]);
+  });
+
+  test("send message: a detective-mode trace passes, checked; the eval block still does not", () => {
+    const trace: TurnTrace = {
+      trace_version: "1",
+      turn_id: "turn_1",
+      prompt_version: "p1",
+      total_ms: 12.5,
+      tool_rounds: 0,
+      events: [
+        {
+          seq: 0,
+          kind: "takeover",
+          label: "takeover",
+          start_ms: 0,
+          duration_ms: null,
+          status: "skipped",
+          note: "an agent holds the conversation",
+          encoder: null,
+          masking: null,
+          decisions: null,
+          llm_call: null,
+          tool_call: null,
+          blocks: null,
+        },
+      ],
+    };
+    const answer = SendMessageResponseSchema.parse({ conversation_id: CONVERSATION_ID, blocks: [], trace, eval: { debug: true } });
+    expect(answer.trace).toEqual(trace);
+    expect("eval" in answer).toBe(false);
+    expect(ok(SendMessageResponseSchema, { conversation_id: CONVERSATION_ID, blocks: [], trace: { ...trace, events: [{ kind: "x" }] } })).toBe(false);
+  });
+
+  test("capabilities: one flag, detective", () => {
+    expect(CapabilitiesResponseSchema.parse({ detective: true, other: 1 })).toEqual({ detective: true });
+    expect(ok(CapabilitiesResponseSchema, {})).toBe(false);
   });
 
   test("transcript: the new agent role and the takeover object", () => {

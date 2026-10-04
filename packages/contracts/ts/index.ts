@@ -3,6 +3,7 @@
 //   common               timestamps, opaque references, error bodies, header names
 //   enums                enums that mirror the Python contracts (drift-tested against the JSON Schemas)
 //   blocks               message blocks and parseBlocks
+//   trace                the detective-mode turn trace (drift-tested against the JSON Schemas)
 //   route                the route table helpers
 //   orchestrator-chat    the customer chat API
 //   orchestrator-agent   the agent API (human takeover)
@@ -13,6 +14,7 @@
 export * from "./common";
 export * from "./enums";
 export * from "./blocks";
+export * from "./trace";
 export * from "./route";
 export * from "./orchestrator-chat";
 export * from "./orchestrator-agent";

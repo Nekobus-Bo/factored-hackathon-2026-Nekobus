@@ -1,7 +1,7 @@
 // The orchestrator's customer chat API (apps/orchestrator/src/orchestrator/chat/routes.py), with the
 // two additions of the takeover: the `agent` role and the `takeover` object of the transcript.
 //
-// The web-client BFF forwards exactly these five routes (see bff-client.ts), so the browser sees the
+// The web-client BFF forwards exactly these six routes (see bff-client.ts), so the browser sees the
 // same shapes. `blocks` stay in their wire form (`RawBlock[]`): pass them through `parseBlocks`.
 
 import { z } from "zod";
@@ -13,6 +13,7 @@ import {
 } from "./common";
 import { RawBlocksSchema } from "./blocks";
 import { defineRoute } from "./route";
+import { TurnTraceSchema } from "./trace";
 
 /** orchestrator.session.models.Lang. */
 export const LangSchema = z.enum(["es", "pt", "en"]);
@@ -58,11 +59,14 @@ export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
 
 /**
  * While a takeover is active the customer message is stored and `blocks` is `[]`: an empty list is a
- * normal answer, not a failure.
+ * normal answer, not a failure. `trace` is there only where detective mode is on (ADR-0019,
+ * `GET /v1/capabilities`): the timeline of the turn, masked values only. Any other extra key (the
+ * eval hook's `eval`) is stripped.
  */
 export const SendMessageResponseSchema = z.object({
   conversation_id: ConversationIdSchema,
   blocks: RawBlocksSchema,
+  trace: TurnTraceSchema.optional(),
 });
 export type SendMessageResponse = z.infer<typeof SendMessageResponseSchema>;
 
@@ -127,6 +131,12 @@ export const FeedbackResponseSchema = z.object({
 });
 export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
 
+// --- GET /v1/capabilities -------------------------------------------------------------------------------------
+
+/** What the chat offers right now. `detective`: turns come with their trace (ADR-0019). */
+export const CapabilitiesResponseSchema = z.object({ detective: z.boolean() });
+export type CapabilitiesResponse = z.infer<typeof CapabilitiesResponseSchema>;
+
 // --- Routes --------------------------------------------------------------------------------------------------
 
 export const ConversationParamsSchema = z.object({ id: ConversationIdSchema });
@@ -175,5 +185,11 @@ export const orchestratorChatRoutes = {
     params: ConversationParamsSchema,
     body: SendFeedbackRequestSchema,
     response: FeedbackResponseSchema,
+  }),
+  getCapabilities: defineRoute({
+    method: "GET",
+    pattern: "/v1/capabilities",
+    successStatus: 200,
+    response: CapabilitiesResponseSchema,
   }),
 } as const;

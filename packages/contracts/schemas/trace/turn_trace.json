@@ -1,0 +1,1075 @@
+{
+  "$defs": {
+    "BlocksDetail": {
+      "additionalProperties": false,
+      "description": "What was kept of the model's reply for the customer.",
+      "properties": {
+        "dropped": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dropped",
+          "type": "array"
+        },
+        "fallback": {
+          "title": "Fallback",
+          "type": "boolean"
+        },
+        "handoffs": {
+          "minimum": 0,
+          "title": "Handoffs",
+          "type": "integer"
+        },
+        "internal_lines_withheld": {
+          "minimum": 0,
+          "title": "Internal Lines Withheld",
+          "type": "integer"
+        },
+        "kept": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Kept",
+          "type": "array"
+        },
+        "receipts": {
+          "minimum": 0,
+          "title": "Receipts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kept",
+        "dropped",
+        "internal_lines_withheld",
+        "receipts",
+        "handoffs",
+        "fallback"
+      ],
+      "title": "BlocksDetail",
+      "type": "object"
+    },
+    "DecisionsDetail": {
+      "additionalProperties": false,
+      "description": "The turn's decision records and effects.",
+      "properties": {
+        "config_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Config Version"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/TraceDecision"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
+        "effects": {
+          "items": {
+            "$ref": "#/$defs/TraceEffect"
+          },
+          "title": "Effects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "config_version",
+        "decisions",
+        "effects"
+      ],
+      "title": "DecisionsDetail",
+      "type": "object"
+    },
+    "EncoderDetail": {
+      "additionalProperties": false,
+      "description": "The encoder's analysis of the customer text. Slot types only: values are customer data.",
+      "properties": {
+        "abstain": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Abstain"
+        },
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "config_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Config Version"
+        },
+        "decision_points": {
+          "items": {
+            "$ref": "#/$defs/TraceDecisionPoint"
+          },
+          "title": "Decision Points",
+          "type": "array"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Intent"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        },
+        "pii_spans": {
+          "items": {
+            "$ref": "#/$defs/TraceCount"
+          },
+          "title": "Pii Spans",
+          "type": "array"
+        },
+        "server_latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Latency Ms"
+        },
+        "slots": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Slots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "available",
+        "intent",
+        "confidence",
+        "abstain",
+        "model_id",
+        "config_version",
+        "server_latency_ms",
+        "slots",
+        "pii_spans",
+        "decision_points"
+      ],
+      "title": "EncoderDetail",
+      "type": "object"
+    },
+    "LlmCallDetail": {
+      "additionalProperties": false,
+      "description": "One completion: what was sent (masked) and what came back.",
+      "properties": {
+        "cached": {
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completion Tokens"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cost Usd"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/TraceMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "messages_from": {
+          "description": "Index of the first message below: 0 on the first call, then the new ones",
+          "minimum": 0,
+          "title": "Messages From",
+          "type": "integer"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prompt Tokens"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "recording_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recording Key"
+        },
+        "response_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Response Content"
+        },
+        "response_tool_calls": {
+          "items": {
+            "$ref": "#/$defs/TraceToolRequest"
+          },
+          "title": "Response Tool Calls",
+          "type": "array"
+        },
+        "round": {
+          "minimum": 1,
+          "title": "Round",
+          "type": "integer"
+        },
+        "tools_offered": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools Offered",
+          "type": "array"
+        },
+        "total_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total Tokens"
+        }
+      },
+      "required": [
+        "round",
+        "model",
+        "prompt_version",
+        "cached",
+        "recording_key",
+        "tools_offered",
+        "messages_from",
+        "messages",
+        "response_content",
+        "response_tool_calls",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cost_usd"
+      ],
+      "title": "LlmCallDetail",
+      "type": "object"
+    },
+    "MaskingDetail": {
+      "additionalProperties": false,
+      "description": "The customer text as the LLM receives it.",
+      "properties": {
+        "encoder_spans_added": {
+          "minimum": 0,
+          "title": "Encoder Spans Added",
+          "type": "integer"
+        },
+        "failed": {
+          "title": "Failed",
+          "type": "boolean"
+        },
+        "masked_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Masked Text"
+        },
+        "otp_pending": {
+          "title": "Otp Pending",
+          "type": "boolean"
+        },
+        "placeholders": {
+          "description": "Placeholders minted this turn, names only",
+          "items": {
+            "type": "string"
+          },
+          "title": "Placeholders",
+          "type": "array"
+        },
+        "regex_only": {
+          "title": "Regex Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "masked_text",
+        "placeholders",
+        "regex_only",
+        "encoder_spans_added",
+        "otp_pending",
+        "failed"
+      ],
+      "title": "MaskingDetail",
+      "type": "object"
+    },
+    "ReasonCode": {
+      "description": "Standard refusal and error reason codes.",
+      "enum": [
+        "STATE_NOT_ALLOWED",
+        "POLICY_BLOCKED",
+        "POLICY_FLAGGED",
+        "RATE_LIMITED",
+        "NOT_MATCHED",
+        "NOT_IMPLEMENTED",
+        "SESSION_BUSY",
+        "INVALID_ARGUMENTS",
+        "CODE_FLOOR_VIOLATION",
+        "CONFIRMATION_REQUIRED",
+        "INTERNAL_ERROR"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "ToolCallDetail": {
+      "additionalProperties": false,
+      "description": "One tool call: the masked arguments, banking-core's answer and what the LLM got back.",
+      "properties": {
+        "arguments": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Masked arguments as JSON, as the model sent them",
+          "title": "Arguments"
+        },
+        "call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Call Id"
+        },
+        "executed": {
+          "description": "False when refused before reaching banking-core",
+          "title": "Executed",
+          "type": "boolean"
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The masked result the LLM received, as JSON",
+          "title": "Feedback"
+        },
+        "flow_allowed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flow Allowed",
+          "type": "array"
+        },
+        "flow_next": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flow Next",
+          "type": "array"
+        },
+        "flow_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerificationState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "llm_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Llm Name"
+        },
+        "local_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why the engine refused it without calling",
+          "title": "Local Reason"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasonCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolResultStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "llm_name",
+        "tool",
+        "arguments",
+        "executed",
+        "local_reason",
+        "status",
+        "reason_code",
+        "flow_state",
+        "flow_next",
+        "flow_allowed",
+        "feedback"
+      ],
+      "title": "ToolCallDetail",
+      "type": "object"
+    },
+    "ToolResultStatus": {
+      "description": "Execution status returned by banking-core.",
+      "enum": [
+        "ok",
+        "refused",
+        "error"
+      ],
+      "title": "ToolResultStatus",
+      "type": "string"
+    },
+    "TraceCount": {
+      "additionalProperties": false,
+      "description": "A category and how many times it occurred (PII spans by type).",
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "count"
+      ],
+      "title": "TraceCount",
+      "type": "object"
+    },
+    "TraceDecision": {
+      "additionalProperties": false,
+      "description": "What a decision point decided (ADR-0012).",
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "dp_id": {
+          "minLength": 1,
+          "title": "Dp Id",
+          "type": "string"
+        },
+        "effect": {
+          "minLength": 1,
+          "title": "Effect",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "mode": {
+          "minLength": 1,
+          "title": "Mode",
+          "type": "string"
+        },
+        "outcome": {
+          "minLength": 1,
+          "title": "Outcome",
+          "type": "string"
+        },
+        "unavailable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unavailable Reason"
+        }
+      },
+      "required": [
+        "dp_id",
+        "effect",
+        "mode",
+        "outcome",
+        "label",
+        "confidence",
+        "unavailable_reason"
+      ],
+      "title": "TraceDecision",
+      "type": "object"
+    },
+    "TraceDecisionPoint": {
+      "additionalProperties": false,
+      "description": "One decision point as the encoder decided it.",
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "dp_id": {
+          "minLength": 1,
+          "title": "Dp Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "outcome": {
+          "minLength": 1,
+          "title": "Outcome",
+          "type": "string"
+        },
+        "raw_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Raw Confidence"
+        },
+        "runner_up_confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runner Up Confidence"
+        },
+        "runner_up_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runner Up Label"
+        },
+        "tau": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tau"
+        }
+      },
+      "required": [
+        "dp_id",
+        "outcome",
+        "label",
+        "confidence",
+        "raw_confidence",
+        "runner_up_label",
+        "runner_up_confidence",
+        "tau"
+      ],
+      "title": "TraceDecisionPoint",
+      "type": "object"
+    },
+    "TraceEffect": {
+      "additionalProperties": false,
+      "description": "What a decision point's effect did, or in shadow would have done.",
+      "properties": {
+        "applied": {
+          "title": "Applied",
+          "type": "boolean"
+        },
+        "dp_id": {
+          "minLength": 1,
+          "title": "Dp Id",
+          "type": "string"
+        },
+        "effect": {
+          "minLength": 1,
+          "title": "Effect",
+          "type": "string"
+        },
+        "mode": {
+          "minLength": 1,
+          "title": "Mode",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool"
+        },
+        "would_apply": {
+          "title": "Would Apply",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dp_id",
+        "effect",
+        "mode",
+        "tool",
+        "applied",
+        "would_apply"
+      ],
+      "title": "TraceEffect",
+      "type": "object"
+    },
+    "TraceEvent": {
+      "additionalProperties": false,
+      "description": "One step of the turn. Times are milliseconds from the start of the turn.",
+      "properties": {
+        "blocks": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlocksDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionsDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Ms"
+        },
+        "encoder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EncoderDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/TraceEventKind"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "llm_call": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LlmCallDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "masking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaskingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "start_ms": {
+          "minimum": 0.0,
+          "title": "Start Ms",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/$defs/TraceEventStatus"
+        },
+        "tool_call": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "seq",
+        "kind",
+        "label",
+        "start_ms",
+        "duration_ms",
+        "status",
+        "note",
+        "encoder",
+        "masking",
+        "decisions",
+        "llm_call",
+        "tool_call",
+        "blocks"
+      ],
+      "title": "TraceEvent",
+      "type": "object"
+    },
+    "TraceEventKind": {
+      "description": "What a trace event records.",
+      "enum": [
+        "encoder",
+        "masking",
+        "decisions",
+        "canned_reply",
+        "llm_call",
+        "tool_call",
+        "engine_handoff",
+        "blocks",
+        "takeover"
+      ],
+      "title": "TraceEventKind",
+      "type": "string"
+    },
+    "TraceEventStatus": {
+      "description": "How the step ended.",
+      "enum": [
+        "ok",
+        "refused",
+        "error",
+        "skipped"
+      ],
+      "title": "TraceEventStatus",
+      "type": "string"
+    },
+    "TraceMessage": {
+      "additionalProperties": false,
+      "description": "One message of a completion request, masked.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Call Id"
+        },
+        "tool_calls": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The assistant's tool calls, as JSON",
+          "title": "Tool Calls"
+        }
+      },
+      "required": [
+        "role",
+        "content",
+        "tool_calls",
+        "tool_call_id"
+      ],
+      "title": "TraceMessage",
+      "type": "object"
+    },
+    "TraceToolRequest": {
+      "additionalProperties": false,
+      "description": "A tool call the model asked for, with its masked arguments as JSON.",
+      "properties": {
+        "arguments": {
+          "title": "Arguments",
+          "type": "string"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "name",
+        "arguments"
+      ],
+      "title": "TraceToolRequest",
+      "type": "object"
+    },
+    "VerificationState": {
+      "description": "Customer identity verification state in banking-core state machine.",
+      "enum": [
+        "ANONYMOUS",
+        "IDENTIFIED",
+        "OTP_PENDING",
+        "VERIFIED",
+        "LOCKED",
+        "HANDED_OFF"
+      ],
+      "title": "VerificationState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The timeline of one customer turn.",
+  "properties": {
+    "events": {
+      "items": {
+        "$ref": "#/$defs/TraceEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "prompt_version": {
+      "minLength": 1,
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "tool_rounds": {
+      "minimum": 0,
+      "title": "Tool Rounds",
+      "type": "integer"
+    },
+    "total_ms": {
+      "minimum": 0.0,
+      "title": "Total Ms",
+      "type": "number"
+    },
+    "trace_version": {
+      "minLength": 1,
+      "title": "Trace Version",
+      "type": "string"
+    },
+    "turn_id": {
+      "minLength": 1,
+      "title": "Turn Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "trace_version",
+    "turn_id",
+    "prompt_version",
+    "total_ms",
+    "tool_rounds",
+    "events"
+  ],
+  "title": "TurnTrace",
+  "type": "object"
+}

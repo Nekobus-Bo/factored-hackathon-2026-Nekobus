@@ -40,6 +40,7 @@ export function createWorld(options: { visible?: boolean } = {}) {
     getTranscript: [json(TRANSCRIPT)],
     getInbox: [json({ messages: [] })],
     sendFeedback: [json(FEEDBACK_RESPONSE)],
+    getCapabilities: [json({ detective: false })],
   };
   let nowMs = START;
   let ids = 0;

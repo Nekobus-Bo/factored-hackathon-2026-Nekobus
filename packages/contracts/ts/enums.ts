@@ -81,3 +81,21 @@ export type Department = z.infer<typeof DepartmentSchema>;
 /** contracts.tools.handoff_create.HandoffStatus. */
 export const HandoffStatusSchema = z.enum(["QUEUED", "ASSIGNED", "PENDING", "CLOSED"]);
 export type HandoffStatus = z.infer<typeof HandoffStatusSchema>;
+
+/** contracts.trace.TraceEventKind: what a detective-mode trace event records (ADR-0019). */
+export const TraceEventKindSchema = z.enum([
+  "encoder",
+  "masking",
+  "decisions",
+  "canned_reply",
+  "llm_call",
+  "tool_call",
+  "engine_handoff",
+  "blocks",
+  "takeover",
+]);
+export type TraceEventKind = z.infer<typeof TraceEventKindSchema>;
+
+/** contracts.trace.TraceEventStatus: how a traced step ended. */
+export const TraceEventStatusSchema = z.enum(["ok", "refused", "error", "skipped"]);
+export type TraceEventStatus = z.infer<typeof TraceEventStatusSchema>;
