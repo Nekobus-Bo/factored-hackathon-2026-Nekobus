@@ -155,6 +155,8 @@ And in the back office:
 
 `pb-s2--band` (S² as a band from 720px) and `pb-hero__fact` are new layouts that change no rule.
 
+Detective mode (ADR-0019) adds parts that change no rule: the trace panel beside the chat (`pb-trace`, placed by `pb-dock__trace`), the strip under a reply (`pb-trace-strip`), the step list, timeline and step detail (`pb-trace-*`), and a magnifier icon (`pb-ico--search`) drawn like the rest of the set.
+
 ## Class-naming rules (from the design system)
 
 - Component classes are prefixed `pb-`. Elements use `__` (`pb-msg__meta`), variants `--` (`pb-btn--ghost`, `pb-ico--lock`). The only unprefixed classes are the type styles above.

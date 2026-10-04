@@ -111,6 +111,96 @@
 .pb-rate__done { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; }
 .pb-rate__done .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--violet); }
 
+/* ---------- Detective mode (ADR-0019): the trace panel beside the chat, a strip under each reply ---------- */
+.pb-ico--search { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5 14 14'/%3E%3C/svg%3E"); }
+
+/* Left of the chat panel and as tall. Below 900px it covers the chat while a turn is open; on a phone, the screen. */
+.pb-dock__trace { position: absolute; bottom: 84px; right: calc(32px + min(420px, 100% - 32px)); width: min(640px, calc(100% - 468px)); height: min(680px, calc(100dvh - 148px)); }
+@media (max-width: 899px) {
+  .pb-dock__trace { right: var(--space-4); width: min(420px, calc(100% - 32px)); }
+  .pb-dock__trace[data-pane="chat"] { display: none; }
+}
+@media (max-width: 480px) { .pb-dock__trace { position: fixed; inset: 0; width: auto; height: auto; } }
+
+/* The panel: the head stays, the body scrolls on its own. */
+.pb-trace { display: grid; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); background: var(--surface-100); color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
+.pb-trace__head { display: grid; gap: var(--space-3); padding: 12px var(--space-4); border-bottom: 1px solid var(--line); }
+.pb-trace__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.pb-trace__title { margin: 0; display: flex; align-items: center; gap: var(--space-2); font: 700 17px/20px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; }
+.pb-trace__back { display: none; }
+@media (max-width: 899px) { .pb-trace__back { display: inline-flex; } }
+.pb-trace__views { border-bottom: 0; }
+.pb-trace__views .pb-tab { min-height: 32px; }
+.pb-trace__turns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pb-trace__turn { display: grid; padding: 4px 10px; border: 1px solid var(--line); background: var(--surface-000); color: var(--ink-muted); cursor: pointer; text-align: left; font: 500 11px/15px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace__turn b { color: var(--ink); font: 600 11px/15px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; }
+.pb-trace__turn[aria-checked="true"] { border-color: var(--pattern); background: var(--pattern-soft); color: var(--ink); }
+.pb-trace__quote { margin: 0; padding-left: 10px; border-left: 3px solid var(--pattern); font: 400 13px/18px var(--font-sans); overflow-wrap: anywhere; }
+.pb-trace__stats { margin: 0; display: flex; flex-wrap: wrap; gap: 2px var(--space-4); font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.pb-trace__stats b { color: var(--ink); font-weight: 700; }
+.pb-trace__body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.pb-trace__empty { margin: 0; padding: var(--space-4); color: var(--ink-muted); }
+.pb-trace__turn:focus-visible, .pb-trace-step:focus-visible, .pb-trace-wf__row:focus-visible, .pb-trace-strip:focus-visible, .pb-trace-more > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* A step's kind gives its color: the dot, its share of the spark, its bar. */
+.pb-trace-dot { display: inline-block; flex: none; width: 8px; height: 8px; }
+.pb-trace-dot, .pb-trace-spark > span, .pb-trace-wf__bar { background: var(--pb-trace-k, var(--ink-muted)); }
+:where(.pb-trace, .pb-trace-strip) [data-kind="encoder"] { --pb-trace-k: var(--pattern); }
+:where(.pb-trace, .pb-trace-strip) [data-kind="masking"] { --pb-trace-k: var(--violet); }
+:where(.pb-trace, .pb-trace-strip) [data-kind="llm_call"] { --pb-trace-k: var(--sync); }
+:where(.pb-trace, .pb-trace-strip) :is([data-kind="tool_call"], [data-kind="engine_handoff"]) { --pb-trace-k: var(--alert); }
+.pb-trace-spark { display: flex; width: 100%; height: 6px; background: var(--surface-200); overflow: hidden; }
+.pb-trace-spark > span { --w: 0%; flex: none; width: var(--w); height: 100%; }
+
+/* Under a reply: the turn in one line, dashed until the panel shows it. */
+.pb-trace-strip { display: grid; gap: 6px; width: 100%; margin-top: calc(-1 * var(--space-2)); padding: 6px 10px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-muted); cursor: pointer; text-align: left; font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-strip__line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pb-trace-strip b { color: var(--ink); font-weight: 700; }
+.pb-trace-strip[aria-current="true"] { border-style: solid; border-color: var(--pattern); background: var(--pattern-soft); color: var(--ink); }
+
+/* Steps: one row each, the detail opens under it. */
+.pb-trace-steps { margin: 0; padding: 0; list-style: none; }
+.pb-trace-step { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; width: 100%; padding: 8px var(--space-4); border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 500 13px/18px var(--font-sans); }
+.pb-trace-step:hover, .pb-trace-step[aria-expanded="true"] { background: var(--surface-200); }
+.pb-trace-step__name { min-width: 0; overflow-wrap: anywhere; }
+.pb-trace-step__name small { display: block; color: var(--ink-muted); font: 500 11px/14px var(--font-mono); }
+/* Tool names are identifiers: their own case. */
+.pb-trace-step__name .pb-tag, .pb-trace-wf__name .pb-tag, .pb-trace-wf__head .pb-tag { margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.pb-trace-step__ms { font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; }
+.pb-trace-step__detail:not([hidden]) { padding: 10px var(--space-4) 14px; border-bottom: 1px solid var(--line); background: var(--surface-000); }
+
+/* Timeline: bars on the turn's clock, the picked step under them. */
+.pb-trace-wf { display: grid; padding: 10px var(--space-4) 4px; }
+.pb-trace-wf__axis, .pb-trace-wf__row { display: grid; grid-template-columns: minmax(104px, 32%) minmax(0, 1fr) 60px; gap: 10px; align-items: center; }
+.pb-trace-wf__axis { padding-bottom: 4px; font: 500 11px/14px var(--font-mono); color: var(--ink-muted); }
+.pb-trace-wf__axis > span:nth-child(2) { display: flex; justify-content: space-between; }
+.pb-trace-wf__row { width: 100%; padding: 5px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 500 13px/18px var(--font-sans); }
+.pb-trace-wf__row:hover, .pb-trace-wf__row[aria-pressed="true"] { background: var(--surface-200); }
+.pb-trace-wf__name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.pb-trace-wf__track { position: relative; height: 14px; background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+.pb-trace-wf__bar { --x: 0%; --w: 0%; position: absolute; top: 2px; bottom: 2px; left: var(--x); width: var(--w); min-width: 3px; }
+.pb-trace-wf__row .pb-trace-step__ms { text-align: right; }
+.pb-trace-wf__detail { display: grid; gap: var(--space-3); margin: 10px var(--space-4) var(--space-4); padding: var(--space-3); border: 1px solid var(--line); background: var(--surface-000); }
+.pb-trace-wf__head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 700 14px/18px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* A step's detail: a line or two in mono, the masked text with its placeholders marked, the long parts folded. */
+.pb-trace-detail { display: grid; gap: var(--space-2); min-width: 0; }
+.pb-trace-detail__line { margin: 0; font: 500 12px/18px var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
+.pb-trace-code { margin: 0; max-height: 220px; overflow: auto; padding: 6px 8px; border: 1px solid var(--line); background: var(--surface-100); color: var(--ink); font: 400 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pb-trace-ph { padding: 0 2px; background: var(--pattern-soft); color: var(--pattern); font: inherit; }
+.pb-trace-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.pb-trace-tags .pb-tag { text-transform: none; letter-spacing: 0; }
+.pb-trace-more > summary { cursor: pointer; font: 600 12px/18px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-more > * + * { margin-top: 6px; }
+.pb-trace-msg { display: grid; gap: 2px; padding-left: 8px; border-left: 3px solid var(--line-strong); }
+.pb-trace-msg[data-role="user"] { border-color: var(--pattern); }
+.pb-trace-msg[data-role="assistant"] { border-color: var(--sync); }
+.pb-trace-msg[data-role="tool"] { border-color: var(--alert); }
+.pb-trace-msg__role { font: 600 11px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-table { width: 100%; border-collapse: collapse; font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-table td { padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.pb-trace-table td:last-child { padding-right: 0; text-align: right; }
+
 /* ---------- Landing ---------- */
 /* Hero: one fact line instead of a checked list. */
 .pb-hero__fact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: var(--space-1) 0 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
