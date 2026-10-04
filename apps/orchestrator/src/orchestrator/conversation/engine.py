@@ -31,6 +31,7 @@ from contracts import (
     TOOL_CATALOG,
     AnalyzeResponse,
     HandoffBlock,
+    Intent,
     PiiSpan,
     PiiType,
     ReasonCode,
@@ -74,7 +75,8 @@ from orchestrator.conversation.models import (
 from orchestrator.conversation.prompt import (
     FALLBACK_MESSAGES,
     FLOW_TEMPLATE,
-    IDENTITY_REQUEST_MESSAGES,
+    IDENTITY_REQUEST_ASK,
+    IDENTITY_REQUEST_OPENINGS,
     PROMPT_VERSION,
     REPHRASE_MESSAGES,
     SYSTEM_PROMPT,
@@ -138,6 +140,28 @@ ENGINE_HANDOFF_SUMMARY = (
     "Automatic escalation: policy requires a human to review this card block. "
     "The disputed charge, when one is linked, is in the verified facts."
 )
+
+# The opening of the fixed identity request names the customer's request: by the
+# tool the model reached for or, when it reached for identification alone, by the
+# intent of the enforced intent_hint (ADR-0014). Each topic comes with the tool that
+# serves it, and a topic whose tool banking-core has not enabled is not named: the
+# opening never offers what this bank does not do. Anything else opens neutrally.
+# Identification steps (customer.match, otp.*) and helpers (card.list) name none.
+IDENTITY_TOPIC_OF_TOOL: dict[str, str] = {
+    "card.block": "card_block",
+    "transaction.list_recent": "transactions",
+    "account.get_summary": "balance",
+}
+IDENTITY_TOPIC_OF_INTENT: dict[str, tuple[str, str]] = {
+    Intent.REQUEST_CARD_BLOCK: ("card_block", "card.block"),
+    Intent.REPORT_LOST_CARD: ("card_block", "card.block"),
+    Intent.REPORT_STOLEN_CARD: ("card_block", "card.block"),
+    Intent.REPORT_SUSPICIOUS_ACTIVITY: ("card_block", "card.block"),
+    Intent.REPORT_UNRECOGNIZED_CHARGE: ("charge", "handoff.create"),
+    Intent.REQUEST_DISPUTE: ("charge", "handoff.create"),
+    Intent.CHECK_RECENT_TRANSACTIONS: ("transactions", "transaction.list_recent"),
+    Intent.CHECK_BALANCE: ("balance", "account.get_summary"),
+}
 _PRIORITY_ORDER = [
     HandoffPriority.LOW,
     HandoffPriority.NORMAL,
@@ -393,6 +417,7 @@ class TurnEngine:
             state=context.opening_flow.state if context.opening_flow else None,
         )
         final: LLMResponse | None = None
+        identity_request: str | None = None
         while True:
             # Before every completion: a card.block of the last round, or of an
             # earlier turn whose handoff failed, may have left one required.
@@ -456,26 +481,31 @@ class TurnEngine:
                 lang,
                 trace=trace,
             )
-            if _needs_a_document(
-                metadata.tool_outcomes[round_start:], mapping, guard.state
-            ):
+            round_outcomes = metadata.tool_outcomes[round_start:]
+            if _needs_a_document(round_outcomes, mapping, guard.state):
                 # Nothing was checked: ask for the document instead of letting the
                 # model relay the refusal, which reads as a failed verification.
-                history.append(
-                    {"role": "assistant", "content": IDENTITY_REQUEST_MESSAGES[lang]}
+                topic = _identity_topic(
+                    round_outcomes, turn_decisions.hinted_intent(), guard.enabled
                 )
+                identity_request = (
+                    f"{IDENTITY_REQUEST_OPENINGS[topic][lang]} "
+                    f"{IDENTITY_REQUEST_ASK[lang]}"
+                )
+                history.append({"role": "assistant", "content": identity_request})
                 metadata.identity_requested = True
                 trace.canned_reply(
-                    note="asked for the document with the fixed identity request: "
-                    "the customer has given none yet, so nothing was checked"
+                    note=f"asked for the document with the fixed identity request "
+                    f"({topic} opening): the customer has given none yet, so "
+                    "nothing was checked"
                 )
                 break
 
         # 6. Final reply through the block allowlist
         blocks_started = trace.now()
         blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = (
-            [TextBlock(text=IDENTITY_REQUEST_MESSAGES[lang])]
-            if metadata.identity_requested
+            [TextBlock(text=identity_request)]
+            if identity_request is not None
             else self._final_blocks(final, history, mapping, metadata, lang)
         )
         blocks.extend(receipts)
@@ -1297,6 +1327,27 @@ def _needs_a_document(
         or outcome.reason_code is ReasonCode.STATE_NOT_ALLOWED
         for outcome in outcomes
     )
+
+
+def _identity_topic(
+    outcomes: list[ToolOutcome],
+    hinted_intent: str | None,
+    enabled: list[str] | None,
+) -> str:
+    """The opening of the fixed identity request: the topic of the first tool the
+    model reached for that serves a request, else the topic of the hinted intent,
+    as long as banking-core has enabled the tool that serves it; else neutral."""
+    candidates = [
+        (IDENTITY_TOPIC_OF_TOOL[outcome.tool], outcome.tool)
+        for outcome in outcomes
+        if outcome.tool in IDENTITY_TOPIC_OF_TOOL
+    ]
+    if hinted_intent is not None and hinted_intent in IDENTITY_TOPIC_OF_INTENT:
+        candidates.append(IDENTITY_TOPIC_OF_INTENT[hinted_intent])
+    for topic, tool in candidates:
+        if enabled is not None and tool in enabled:
+            return topic
+    return "neutral"
 
 
 def _is_placeholder(value: str, kind: PiiType) -> bool:

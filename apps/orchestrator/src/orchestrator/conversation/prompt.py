@@ -83,19 +83,49 @@ FALLBACK_MESSAGES: dict[Lang, str] = {
 
 # The fixed reply when the model reached for a tool that needs an identified customer
 # before the customer gave a document: nothing was checked, so the reply asks for
-# one instead of relaying the refusal, which reads as a failed verification.
-IDENTITY_REQUEST_MESSAGES: dict[Lang, str] = {
+# one instead of relaying the refusal, which reads as a failed verification. It
+# opens with the topic of the customer's request (the engine picks it, see
+# IDENTITY_TOPIC_OF_TOOL), then asks. Nothing has run yet, so no opening states a
+# fact or a result.
+IDENTITY_REQUEST_OPENINGS: dict[str, dict[Lang, str]] = {
+    "card_block": {
+        "es": "Entiendo, vamos a proteger tu tarjeta.",
+        "pt": "Entendo, vamos proteger seu cartão.",
+        "en": "Understood, let's protect your card.",
+    },
+    "charge": {
+        "es": "Entiendo, vamos a revisar ese cargo.",
+        "pt": "Entendo, vamos verificar essa cobrança.",
+        "en": "Understood, let's look into that charge.",
+    },
+    "transactions": {
+        "es": "Claro, te ayudo a revisar tus movimientos recientes.",
+        "pt": "Claro, posso ajudar você a ver suas movimentações recentes.",
+        "en": "Sure, I can help you review your recent transactions.",
+    },
+    "balance": {
+        "es": "Claro, te ayudo a consultar tu saldo.",
+        "pt": "Claro, posso ajudar você a consultar seu saldo.",
+        "en": "Sure, I can help you check your balance.",
+    },
+    "neutral": {
+        "es": "Claro, te ayudo con eso.",
+        "pt": "Claro, posso ajudar com isso.",
+        "en": "Sure, I can help with that.",
+    },
+}
+IDENTITY_REQUEST_ASK: dict[Lang, str] = {
     "es": (
-        "Entiendo, vamos a proteger tu tarjeta. Por tu seguridad, primero necesito "
-        "verificar tu identidad. ¿Me indicas tu tipo y número de documento?"
+        "Por tu seguridad, primero necesito verificar tu identidad. "
+        "¿Me indicas tu tipo y número de documento?"
     ),
     "pt": (
-        "Entendo, vamos proteger seu cartão. Para sua segurança, primeiro preciso "
-        "verificar sua identidade. Pode me informar o tipo e o número do seu documento?"
+        "Para sua segurança, primeiro preciso verificar sua identidade. "
+        "Pode me informar o tipo e o número do seu documento?"
     ),
     "en": (
-        "Understood, let's protect your card. For your security, I first need to "
-        "verify your identity. Could you tell me your document type and number?"
+        "For your security, I first need to verify your identity. "
+        "Could you tell me your document type and number?"
     ),
 }
 
