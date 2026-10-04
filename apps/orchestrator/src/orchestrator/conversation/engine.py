@@ -49,6 +49,7 @@ from contracts.tools.handoff_create import (
     HandoffRequirement,
     HandoffRequirementLevel,
 )
+from contracts.trace import TraceEventKind, TurnTrace
 from pydantic import ValidationError
 
 from orchestrator.config import Settings
@@ -78,6 +79,7 @@ from orchestrator.conversation.prompt import (
     SYSTEM_PROMPT,
 )
 from orchestrator.conversation.tools import build_llm_tools, llm_tool_name
+from orchestrator.conversation.trace import TraceRecorder
 from orchestrator.encoder_client import EncoderClient, EncoderUnavailableError
 from orchestrator.llm.provider import LLMProvider, LLMResponse
 from orchestrator.privacy.masking import (
@@ -214,6 +216,7 @@ class TurnEngine:
         max_tool_rounds: int = 5,
         collect_eval: bool = False,
         decisions: DecisionRuntime | None = None,
+        collect_trace: bool = False,
     ) -> None:
         if max_tool_rounds < 1:
             raise ValueError("max_tool_rounds must be >= 1")
@@ -223,6 +226,8 @@ class TurnEngine:
         self.masker = masker or RegexMasker()
         self.max_tool_rounds = max_tool_rounds
         self.collect_eval = collect_eval
+        # Detective mode (ADR-0019): each turn returns its timeline. Read-only.
+        self.collect_trace = collect_trace
         # Without one, no decision point is configured: the engine is what it was.
         self.decisions = decisions or DecisionRuntime.empty()
         self.tools, self._tool_names = build_llm_tools()
@@ -233,6 +238,7 @@ class TurnEngine:
         settings: Settings,
         banking: ToolCaller | None = None,
         collect_eval: bool = False,
+        collect_trace: bool = False,
     ) -> "TurnEngine":
         """Wire the engine from configuration and an optional shared client.
 
@@ -248,6 +254,7 @@ class TurnEngine:
             max_tool_rounds=settings.max_tool_rounds,
             collect_eval=collect_eval,
             decisions=DecisionRuntime.from_settings(settings),
+            collect_trace=collect_trace,
         )
 
     async def run_turn(
@@ -280,6 +287,11 @@ class TurnEngine:
         lang = lang or context.language
         metadata = TurnMetadata(turn_id=turn_id or uuid4().hex)
         eval_data = TurnEvalData()
+        trace = (
+            TraceRecorder(metadata.turn_id)
+            if self.collect_trace
+            else TraceRecorder.off()
+        )
         mapping = dict(context.placeholder_map)
         previous = frozenset(mapping)
         history = copy.deepcopy(context.history)
@@ -301,12 +313,13 @@ class TurnEngine:
         )
         metadata.locale = locale
         pii_spans = await self._analyze(
-            user_text, lang, metadata, turn_decisions, locale
+            user_text, lang, metadata, turn_decisions, locale, trace=trace
         )
 
         # 2. Mask the user text: the union of the regexes and the encoder's spans
         # (fail closed: nothing goes out if it fails). While an OTP challenge is
         # pending, a bare digit run is the code.
+        mask_started = trace.now()
         text_to_mask = user_text
         otp_pending = otp_challenge_pending(history)
         if otp_pending:
@@ -318,12 +331,24 @@ class TurnEngine:
         except MaskingError:
             logger.warning("Turn %s: user text failed masking", metadata.turn_id)
             metadata.masking_failed = True
+            trace.masking(
+                mask_started, None, [], metadata.masking_regex_only, 0, otp_pending
+            )
             self._copy_decisions(eval_data, metadata)
             return TurnResult(
                 blocks=[TextBlock(text=REPHRASE_MESSAGES[lang])],
                 metadata=metadata,
                 eval=eval_data,
+                trace=self._finish_trace(trace, metadata),
             )
+        trace.masking(
+            mask_started,
+            masked_user,
+            [placeholder for placeholder in mapping if placeholder not in previous],
+            metadata.masking_regex_only,
+            metadata.encoder_spans_added,
+            otp_pending,
+        )
 
         history.append({"role": "user", "content": masked_user})
 
@@ -339,12 +364,16 @@ class TurnEngine:
         if canned is not None:
             history.append({"role": "assistant", "content": canned})
             metadata.canned_reply = True
+            trace.canned_reply()
             context.history = history
             context.placeholder_map = mapping
             context.decisions = turn_decisions.commit()
             self._copy_decisions(eval_data, metadata)
             return TurnResult(
-                blocks=[TextBlock(text=canned)], metadata=metadata, eval=eval_data
+                blocks=[TextBlock(text=canned)],
+                metadata=metadata,
+                eval=eval_data,
+                trace=self._finish_trace(trace, metadata),
             )
         # The classification as context for every completion of the turn; None in
         # `shadow`, so the messages (and the replay keys) stay as they were.
@@ -360,7 +389,13 @@ class TurnEngine:
             # Before every completion: a card.block of the last round, or of an
             # earlier turn whose handoff failed, may have left one required.
             await self._enforce_required_handoff(
-                context.session_id, history, mapping, metadata, handoffs, guard
+                context.session_id,
+                history,
+                mapping,
+                metadata,
+                handoffs,
+                guard,
+                trace=trace,
             )
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -369,11 +404,14 @@ class TurnEngine:
                 *history,
             ]
             context.enabled_tools = guard.enabled
+            offered = self._offered(guard.enabled)
+            llm_started = trace.now()
             response = await self.llm.complete(
                 messages=messages,
                 prompt_version=PROMPT_VERSION,
-                tools=self._offered(guard.enabled),
+                tools=offered,
             )
+            trace.llm_call(llm_started, messages, offered, response, PROMPT_VERSION)
             metadata.llm_recording_keys.append(response.recording_key)
             if self.collect_eval:
                 outbound = response.masked_messages or messages
@@ -407,9 +445,11 @@ class TurnEngine:
                 handoffs,
                 guard,
                 lang,
+                trace=trace,
             )
 
         # 6. Final reply through the block allowlist
+        blocks_started = trace.now()
         blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = self._final_blocks(
             final, history, mapping, metadata, lang
         )
@@ -417,12 +457,29 @@ class TurnEngine:
         blocks.extend(handoffs)
         if not blocks:
             blocks.append(TextBlock(text=FALLBACK_MESSAGES[lang]))
+        trace.blocks(
+            blocks_started,
+            kept=[block.type for block in blocks],
+            dropped=list(metadata.dropped_block_types),
+            internal_lines_withheld=metadata.internal_lines_withheld,
+            receipts=len(receipts),
+            handoffs=len(handoffs),
+            fallback=any(
+                isinstance(block, TextBlock) and block.text == FALLBACK_MESSAGES[lang]
+                for block in blocks
+            ),
+        )
 
         context.history = history
         context.placeholder_map = mapping
         context.decisions = turn_decisions.commit()
         self._copy_decisions(eval_data, metadata)
-        return TurnResult(blocks=blocks, metadata=metadata, eval=eval_data)
+        return TurnResult(
+            blocks=blocks,
+            metadata=metadata,
+            eval=eval_data,
+            trace=self._finish_trace(trace, metadata),
+        )
 
     # ------------------------------------------------------------------ steps
 
@@ -433,6 +490,8 @@ class TurnEngine:
         metadata: TurnMetadata,
         decisions: TurnDecisions,
         locale: Locale | None = None,
+        *,
+        trace: TraceRecorder | None = None,
     ) -> list[PiiSpan]:
         """Record the encoder signal; return its PII spans (none if it failed).
 
@@ -440,8 +499,11 @@ class TurnEngine:
         cost the PII spans, so only ids the encoder lists are named, and a 422
         (the listing went stale) is asked again for the service's default set.
         """
+        trace = trace or TraceRecorder.off()
+        started = trace.now()
         if self.encoder is None:
             self._observe(decisions, RequestPlan(), None, metadata)
+            trace.encoder(started, None)
             return []
         plan = await self.decisions.plan(self.encoder)
         try:
@@ -462,7 +524,13 @@ class TurnEngine:
             metadata.encoder_unavailable = True
             metadata.masking_regex_only = True
             self._observe(decisions, plan, None, metadata)
+            trace.encoder(
+                started,
+                None,
+                failure=f"encoder unavailable ({reason}): masking by the regexes alone",
+            )
             return []
+        trace.encoder(started, analysis)
         self._observe(decisions, plan, analysis, metadata)
         metadata.encoder = EncoderSignal(
             intent=analysis.intent,
@@ -519,6 +587,16 @@ class TurnEngine:
         eval_data.decisions = list(metadata.decisions)
         eval_data.effects = list(metadata.effects)
 
+    @staticmethod
+    def _finish_trace(trace: TraceRecorder, metadata: TurnMetadata) -> TurnTrace | None:
+        """Close the timeline with the turn's decision records; None when it is off."""
+        trace.decisions(
+            metadata.decisions_config_version,
+            list(metadata.decisions),
+            list(metadata.effects),
+        )
+        return trace.build(PROMPT_VERSION, metadata.tool_rounds)
+
     async def _run_tool_round(
         self,
         session_id: str,
@@ -530,7 +608,10 @@ class TurnEngine:
         handoffs: list[HandoffBlock],
         guard: _TurnGuard,
         lang: Lang,
+        *,
+        trace: TraceRecorder | None = None,
     ) -> None:
+        trace = trace or TraceRecorder.off()
         parsed = [
             self._parse_tool_call(i, tc) for i, tc in enumerate(response.tool_calls)
         ]
@@ -552,9 +633,20 @@ class TurnEngine:
         }
         history.append(assistant_msg)
 
-        for call_id, name, args in parsed:
+        for (call_id, name, args), sent in zip(
+            parsed, assistant_msg["tool_calls"], strict=True
+        ):
+            started = trace.now()
             result = await self._execute(
-                session_id, name, args, mapping, history, metadata, guard, lang
+                session_id,
+                name,
+                args,
+                mapping,
+                history,
+                metadata,
+                guard,
+                lang,
+                trace=trace,
             )
             if result is not None:
                 handoff = self._handoff_block_of(result)
@@ -564,12 +656,13 @@ class TurnEngine:
                     receipt = self._receipt_of(result)
                     if receipt is not None:
                         receipts.append(ReceiptBlock(receipt=receipt))
+            feedback = self._tool_feedback(name, result, mapping)
             history.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": self._tool_feedback(name, result, mapping),
-                }
+                {"role": "tool", "tool_call_id": call_id, "content": feedback}
+            )
+            # The strings the history already holds: the trace never masks again.
+            trace.tool_call(
+                started, call_id, name, sent["function"]["arguments"], result, feedback
             )
 
     async def _execute(
@@ -582,9 +675,19 @@ class TurnEngine:
         metadata: TurnMetadata,
         guard: _TurnGuard,
         lang: Lang,
+        *,
+        trace: TraceRecorder | None = None,
     ) -> ToolResult | None:
+        trace = trace or TraceRecorder.off()
         tool = self._tool_names.get(name)
         if tool is None or args is None:
+            trace.tool_outcome(
+                tool or name,
+                executed=False,
+                local_reason="the model named a tool that does not exist"
+                if tool is None
+                else "the arguments were not valid JSON",
+            )
             metadata.tool_outcomes.append(
                 ToolOutcome(
                     tool=tool or name,
@@ -598,6 +701,7 @@ class TurnEngine:
             return self._local_error(tool)
 
         local = self._local_rejection(tool, args, mapping, history, guard)
+        gated = False
         if local is None and guard.decisions is not None:
             # A write the customer has not consented to waits for the question the
             # model is about to ask. Nothing reaches banking-core, and the call
@@ -605,10 +709,19 @@ class TurnEngine:
             withheld = guard.decisions.gate(tool)
             if withheld is not None:
                 guard.refused[tool] = withheld
+                gated = True
                 local = ToolResult(
                     tool=tool, status=ToolResultStatus.REFUSED, reason_code=withheld
                 )
         if local is not None:
+            reason = local.reason_code.value if local.reason_code else "unknown"
+            trace.tool_outcome(
+                tool,
+                executed=False,
+                local_reason=f"withheld by a decision gate until consent ({reason})"
+                if gated
+                else f"refused by the engine before banking-core ({reason})",
+            )
             logger.warning(
                 "Turn %s: %s rejected locally (%s)",
                 metadata.turn_id,
@@ -652,9 +765,15 @@ class TurnEngine:
         except ValidationError:
             result = self._local_error(tool)
             executed = False
+            trace.tool_outcome(
+                tool,
+                executed=False,
+                local_reason="the arguments do not fit the tool contract",
+            )
         else:
             result = await self.banking.call_tool(session_id, tool_call)
             executed = True
+            trace.tool_outcome(tool, executed=True)
             guard.executed.add(tool)
             if result.flow is not None:
                 guard.enabled = list(result.flow.enabled)
@@ -683,6 +802,8 @@ class TurnEngine:
         metadata: TurnMetadata,
         handoffs: list[HandoffBlock],
         guard: _TurnGuard,
+        *,
+        trace: TraceRecorder | None = None,
     ) -> None:
         """Create the handoff a card.block required, if the model has not.
 
@@ -732,7 +853,10 @@ class TurnEngine:
             # required escalation: banking-core still routes and prioritizes it.
             call = ToolCall(tool=tool, args=args, idempotency_key=key)
 
+        trace = trace or TraceRecorder.off()
+        started = trace.now()
         result = await self.banking.call_tool(session_id, call)
+        trace.tool_outcome(tool, executed=True)
         guard.executed.add(tool)
         if result.status is ToolResultStatus.OK:
             guard.written[tool] = guard.written.get(tool, 0) + 1
@@ -776,6 +900,15 @@ class TurnEngine:
                 "tool_call_id": call_id,
                 "content": self._tool_feedback(llm_name, result, mapping),
             }
+        )
+        trace.tool_call(
+            started,
+            call_id,
+            llm_name,
+            history[-2]["tool_calls"][0]["function"]["arguments"],
+            result,
+            history[-1]["content"],
+            kind=TraceEventKind.ENGINE_HANDOFF,
         )
         block = self._handoff_block_of(result)
         if block is not None:

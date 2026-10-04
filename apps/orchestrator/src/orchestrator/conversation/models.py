@@ -11,6 +11,7 @@ from contracts import (
 )
 from contracts.envelope import FlowHint
 from contracts.locale import Locale
+from contracts.trace import TurnTrace
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.conversation.decisions.records import DecisionRecord, EffectRecord
@@ -161,3 +162,5 @@ class TurnResult(BaseModel):
     blocks: list[TextBlock | ReceiptBlock | HandoffBlock]
     metadata: TurnMetadata
     eval: TurnEvalData = Field(default_factory=TurnEvalData)
+    # Detective mode (ADR-0019): the turn's timeline, masked values only; None when off.
+    trace: TurnTrace | None = None

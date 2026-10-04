@@ -40,4 +40,5 @@ class EngineTurnHandler:
             blocks=[block.model_dump(mode="json") for block in result.blocks],
             metadata=result.metadata.model_dump(mode="json"),
             eval=result.eval if self.engine.collect_eval else None,
+            trace=result.trace if self.engine.collect_trace else None,
         )

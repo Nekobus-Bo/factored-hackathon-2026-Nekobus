@@ -1,5 +1,7 @@
 """Orchestrator service entrypoint."""
 
+import logging
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from redis.asyncio import Redis
@@ -8,14 +10,18 @@ from orchestrator.agent.auth import validate_agent_api_settings
 from orchestrator.agent.routes import router as agent_router
 from orchestrator.chat.engine_handler import EngineTurnHandler
 from orchestrator.chat.handler import TurnHandler
+from orchestrator.chat.routes import capabilities_router
 from orchestrator.chat.routes import router as chat_router
 from orchestrator.config import Settings, get_settings
 from orchestrator.conversation import TurnEngine
+from orchestrator.detective import DetectiveSwitch
 from orchestrator.log_redaction import install_redaction
 from orchestrator.session.crypto import PlaceholderEncryptor
 from orchestrator.session.rate_limit import ConversationRateLimiter
 from orchestrator.session.store import SessionStore
 from orchestrator.tools_client import BankingCoreClient
+
+logger = logging.getLogger(__name__)
 
 
 class HealthResponse(BaseModel):
@@ -73,13 +79,24 @@ def create_app(
     banking = banking_client or BankingCoreClient(settings=cfg)
     handler = turn_handler or EngineTurnHandler(
         TurnEngine.from_settings(
-            cfg, banking=banking, collect_eval=cfg.eval_expose_turn
+            cfg,
+            banking=banking,
+            collect_eval=cfg.eval_expose_turn,
+            collect_trace=cfg.detective_mode,
         )
     )
     app.state.banking_client = banking
     app.state.turn_handler = handler
     app.state.default_lang = cfg.default_locale
     app.state.eval_expose_turn = cfg.eval_expose_turn
+    # Detective mode (ADR-0019): offered by the environment, switched at runtime.
+    app.state.detective = DetectiveSwitch(
+        available=cfg.detective_mode,
+        redis=session_store.redis,
+        key=cfg.redis_edge_detective_key,
+    )
+    if cfg.detective_mode:
+        logger.info("Detective mode offered: turns return their masked timeline")
     app.state.agent_lock_wait_seconds = cfg.agent_lock_wait_seconds
     app.state.agent_api_token = cfg.effective_agent_api_token
 
@@ -89,6 +106,7 @@ def create_app(
         return HealthResponse(status="ok", service="orchestrator")
 
     app.include_router(chat_router)
+    app.include_router(capabilities_router)
     # The agent API exists only when switched on; disabled, its paths are 404.
     if cfg.agent_api_enabled:
         app.include_router(agent_router)

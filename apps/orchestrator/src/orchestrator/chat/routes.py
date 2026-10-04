@@ -35,10 +35,13 @@ turn metadata or the logs, and neither does the answer.
 import logging
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from contracts import MESSAGE_BLOCK_ADAPTER
 from contracts.locale import Locale, lang_of
+from contracts.trace import TurnTrace
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -59,6 +62,9 @@ from orchestrator.chat.transcript import (
 )
 from orchestrator.conversation.engine import mask_bare_otps, otp_challenge_pending
 from orchestrator.conversation.models import TurnEvalData
+from orchestrator.conversation.prompt import PROMPT_VERSION
+from orchestrator.conversation.trace import TraceRecorder
+from orchestrator.detective import DetectiveSwitch
 from orchestrator.llm.replay import ReplayMissError
 from orchestrator.session.models import (
     CompletedTurn,
@@ -80,6 +86,8 @@ from orchestrator.tools_client import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/conversations", tags=["chat"])
+# What the chat offers right now, outside the conversation paths.
+capabilities_router = APIRouter(prefix="/v1", tags=["chat"])
 
 
 class CreateConversationRequest(BaseModel):
@@ -126,6 +134,14 @@ class SendMessageResponse(BaseModel):
     conversation_id: str
     blocks: list[dict[str, Any]]
     eval: TurnEvalData | None = None
+    # Detective mode (ADR-0019): only while it is on; masked values only.
+    trace: TurnTrace | None = None
+
+
+class CapabilitiesResponse(BaseModel):
+    """What the chat offers right now. `detective`: turns come with their trace."""
+
+    detective: bool
 
 
 class TakeoverStatus(BaseModel):
@@ -206,6 +222,17 @@ async def _enforce_conversation_limit(request: Request) -> None:
         )
 
 
+async def _detective_on(request: Request) -> bool:
+    switch: DetectiveSwitch | None = getattr(request.app.state, "detective", None)
+    return switch is not None and await switch.enabled()
+
+
+@capabilities_router.get("/capabilities", response_model=CapabilitiesResponse)
+async def get_capabilities(request: Request) -> CapabilitiesResponse:
+    """Whether detective mode is on, so the chat knows to offer its switch."""
+    return CapabilitiesResponse(detective=await _detective_on(request))
+
+
 def _handler(request: Request) -> TurnHandler:
     handler: TurnHandler | None = request.app.state.turn_handler
     if handler is None:
@@ -283,7 +310,7 @@ async def create_conversation(
 )
 async def send_message(
     request: Request, conversation_id: str, body: SendMessageRequest
-) -> SendMessageResponse:
+) -> Response:
     store = _store(request)
     handler = _handler(request)
     known = await _load(store, conversation_id)
@@ -311,7 +338,7 @@ async def send_message(
             # The client is retrying the turn that just completed: answer from
             # the stored outcome. No LLM call, no tool call, nothing appended.
             logger.info("Retried message answered from the stored outcome")
-            return SendMessageResponse(
+            return _send_response(
                 conversation_id=conversation_id,
                 blocks=_validate_blocks(
                     [
@@ -336,11 +363,12 @@ async def send_message(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="The message took too long and was not saved",
                 )
-            return SendMessageResponse(
+            return _send_response(
                 conversation_id=conversation_id,
                 blocks=[],
                 # There is no turn, so no provider evidence: an empty record.
                 eval=TurnEvalData() if request.app.state.eval_expose_turn else None,
+                trace=_takeover_trace() if await _detective_on(request) else None,
             )
         turn_id = (
             derive_turn_id(conversation_id, body.client_message_id)
@@ -373,11 +401,38 @@ async def send_message(
     finally:
         await store.release_turn_lock(conversation_id, token)
 
-    return SendMessageResponse(
+    return _send_response(
         conversation_id=conversation_id,
         blocks=blocks,
         eval=outcome.eval if request.app.state.eval_expose_turn else None,
+        trace=outcome.trace if await _detective_on(request) else None,
     )
+
+
+def _send_response(
+    conversation_id: str,
+    blocks: list[dict[str, Any]],
+    eval: TurnEvalData | None = None,
+    trace: TurnTrace | None = None,
+) -> JSONResponse:
+    """The body as the route's exclude_none writes it, plus the trace whole.
+
+    exclude_none would also strip the trace's nulls, and those are part of its
+    contract: every field is present, null where a value is missing (ADR-0019).
+    """
+    body = SendMessageResponse(
+        conversation_id=conversation_id, blocks=blocks, eval=eval
+    ).model_dump(mode="json", exclude_none=True)
+    if trace is not None:
+        body["trace"] = trace.model_dump(mode="json")
+    return JSONResponse(body)
+
+
+def _takeover_trace() -> TurnTrace | None:
+    """A message while an agent holds the conversation: nothing ran but storing it."""
+    recorder = TraceRecorder(uuid4().hex)
+    recorder.takeover()
+    return recorder.build(PROMPT_VERSION)
 
 
 @router.get("/{conversation_id}", response_model=TranscriptResponse)

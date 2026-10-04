@@ -99,6 +99,18 @@ class Settings(BaseSettings):
 
     eval_expose_turn: bool = Field(default=False, alias="EVAL_EXPOSE_TURN")
 
+    # Detective mode (ADR-0019): each turn comes with its timeline (masked values
+    # only) and the customer chat offers a switch to show it. Off unless an
+    # environment sets it: the local compose does, Cloud Run through the
+    # detective_mode variable. Unlike EVAL_EXPOSE_TURN it is allowed in production.
+    # The back office turns it off and on at runtime; the state is this key on
+    # redis-edge, which the edge ACL (~orch:*) must cover.
+    detective_mode: bool = Field(default=False, alias="DETECTIVE_MODE")
+    redis_edge_detective_key: str = Field(
+        default="orch:detective:enabled",
+        validation_alias=AliasChoices("REDIS_EDGE_DETECTIVE_KEY"),
+    )
+
     # Agent API (/v1/agent): the back office reads a masked transcript and takes a
     # conversation over from the assistant (docs/adr/0013-front-ends-bff-takeover.md).
     # Off by default. When on it needs a bearer token; startup refuses the public

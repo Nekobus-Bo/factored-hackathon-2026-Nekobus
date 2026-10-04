@@ -3,6 +3,7 @@
 import hashlib
 from typing import Any, Protocol
 
+from contracts.trace import TurnTrace
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.conversation.models import TurnEvalData
@@ -22,6 +23,8 @@ class TurnOutcome(BaseModel):
     blocks: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     eval: TurnEvalData | None = None
+    # Detective mode (ADR-0019): the turn's timeline, masked values only.
+    trace: TurnTrace | None = None
 
 
 def derive_turn_id(conversation_id: str, client_message_id: str) -> str:
