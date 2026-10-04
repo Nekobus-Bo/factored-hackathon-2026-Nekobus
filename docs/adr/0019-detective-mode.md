@@ -20,7 +20,8 @@ Judges and the team want to see what happens under the hood of a conversation: w
 - **Passive.** What the provider and banking-core receive, and the LLM recording keys, are identical with the trace on or off (tested). A defect in the recorder drops an event, never the turn.
 - **Availability is per environment** (`DETECTIVE_MODE`, off in code): on in the local compose, off in the production overlay unless set, and the Terraform variable `detective_mode` on Cloud Run (`presentation.tfvars` sets it). Unlike the eval hook it is allowed under `APP_ENV=production`.
 - **Runtime switch in the back office.** The Guardrails screen turns it off and on for every conversation at once, through the agent API (`GET/PUT /v1/agent/detective`); the state is one key on redis-edge. It cannot go beyond what `DETECTIVE_MODE` offers (409).
-- **The chat asks** `GET /v1/capabilities` when it opens and after every turn, and only then shows a switch in its header. The viewer's choice is remembered in the browser, off by default. Turning it on reveals the earlier turns too.
+- **The chat asks** `GET /v1/capabilities` when it opens and after every turn, and only then shows a switch in its header (a magnifier, "Modo detective"). The viewer's choice is remembered in the browser, off by default. Turning it on reveals the earlier turns too.
+- **A panel beside the chat, not inside it.** With the switch on, a panel opens left of the chat with its own scroll, so the conversation reads as the customer sees it. Each reply gets a one-line strip (time, steps, LLM calls, tools) that picks the turn the panel shows; the panel follows the newest turn until another is picked. Two views of the same steps: a list where each step opens in place, and a timeline of bars on the turn's clock. A step's detail is a line or two, with the prompt, the tools offered and what the LLM got back folded. Below 900px the panel covers the chat while a turn is open.
 
 ## Consequences
 
