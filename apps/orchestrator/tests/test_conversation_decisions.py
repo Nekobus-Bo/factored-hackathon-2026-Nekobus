@@ -786,7 +786,7 @@ async def test_the_eval_hook_carries_the_decision_records(services: Any) -> None
 
 
 def test_the_prompt_explains_the_refusal_and_holds_no_policy() -> None:
-    assert PROMPT_VERSION == "turn-engine/7"
+    assert PROMPT_VERSION == "turn-engine/8"
     assert "CONFIRMATION_REQUIRED" in SYSTEM_PROMPT
     # The scope is behavior: nothing off-topic is done, not even in part.
     assert "only help with the customer's banking" in SYSTEM_PROMPT
