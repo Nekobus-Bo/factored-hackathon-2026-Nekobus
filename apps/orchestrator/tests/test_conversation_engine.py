@@ -472,6 +472,42 @@ async def test_an_ordinary_reply_is_left_as_written(mock_services: Any) -> None:
     assert context.history[-1] == {"role": "assistant", "content": content}
 
 
+ASK_DOCUMENT_PT = (
+    "Para bloquear seu cartão, preciso confirmar sua identidade. Informe o tipo e "
+    "o número do seu documento (por exemplo, CPF, RG ou passaporte)."
+)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        f"{ASK_DOCUMENT_PT}\n{ASK_DOCUMENT_PT}",
+        f"{ASK_DOCUMENT_PT}\n\n{ASK_DOCUMENT_PT}  ",
+        json.dumps(
+            {
+                "blocks": [
+                    {"type": "text", "text": ASK_DOCUMENT_PT},
+                    {"type": "text", "text": ASK_DOCUMENT_PT},
+                ]
+            }
+        ),
+    ],
+    ids=["one-block", "blank-line-and-spaces", "two-blocks"],
+)
+async def test_an_answer_written_twice_reaches_the_customer_once(
+    mock_services: Any, content: str
+) -> None:
+    """Seen on gpt-6-luna: the same line twice in one completion."""
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM([Step(content=content)])
+    context = new_context()
+
+    result = await make_engine(llm).run_turn(context, "perdi meu cartão", lang="pt")
+
+    assert result.blocks == [TextBlock(text=ASK_DOCUMENT_PT)]
+    assert context.history[-1] == {"role": "assistant", "content": ASK_DOCUMENT_PT}
+
+
 async def test_invalid_or_unknown_tool_calls_never_reach_banking_core(
     mock_services: Any,
 ) -> None:
@@ -1290,6 +1326,48 @@ async def test_the_identity_request_opens_with_the_request_the_model_reached_for
 
     assert result.blocks == [TextBlock(text=identity_request("transactions"))]
     assert "tarjeta" not in result.blocks[0].text
+
+
+KB_WITH_A_NUMBER = {
+    "results": [
+        {
+            "article_id": "kb_contact",
+            "title": "Línea de atención",
+            "snippet": "Llama al 6012345 desde un fijo o acude a una sucursal.",
+            "category": "contacto",
+            "score": 0.9,
+        }
+    ]
+}
+
+
+async def test_a_document_masked_out_of_a_tool_result_is_not_the_customers(
+    mock_services: Any,
+) -> None:
+    """Seen live: a number in a knowledge-base snippet became [DOC_1], the model
+    passed it to customer_match, the match failed and the customer read "No pude
+    verificar tu identidad". Only a placeholder the customer wrote may identify."""
+    banking = FakeBankingCore(data={"kb.search": KB_WITH_A_NUMBER})
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
+    _mock_encoder(mock_services)
+    search = tool_call("call_kb", "kb_search", {"query": "ver transferencias"})
+    match = tool_call(
+        "call_2",
+        "customer_match",
+        {"document_type": "NATIONAL_ID", "document_number": "[DOC_1]"},
+    )
+    llm = ScriptedLLM([Step(tool_calls=[search]), Step(tool_calls=[match])])
+    context = anonymous_context()
+
+    result = await make_engine(llm).run_turn(
+        context, "quiero ver las trasferencias ultimas"
+    )
+
+    assert "[DOC_1]" in context.placeholder_map  # masked out of the snippet
+    assert banking.calls_to("customer.match") == []
+    assert result.metadata.identity_requested is True
+    assert result.blocks == [TextBlock(text=identity_request("neutral"))]
+    assert_no_dangling_tool_calls(context.history)
 
 
 async def test_the_identity_request_speaks_the_customer_language(

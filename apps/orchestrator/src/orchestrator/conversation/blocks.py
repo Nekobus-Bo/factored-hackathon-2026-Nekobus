@@ -63,6 +63,31 @@ def withhold_internal_lines(text: str) -> tuple[str, int]:
     return "\n".join(kept).strip(), withheld
 
 
+def drop_repeated_lines(texts: list[str]) -> tuple[list[str], int]:
+    """Drop every line that repeats an earlier line of the same reply, across its
+    text blocks: the model sometimes writes its answer twice in one completion.
+    Lines compare with their whitespace collapsed. Returns the texts left (a block
+    left empty is dropped) and how many lines went; logs the count only."""
+    seen: set[str] = set()
+    kept_texts: list[str] = []
+    dropped = 0
+    for text in texts:
+        kept: list[str] = []
+        for line in text.split("\n"):
+            key = " ".join(line.split())
+            if key and key in seen:
+                dropped += 1
+                continue
+            seen.add(key)
+            kept.append(line)
+        left = "\n".join(kept).strip()
+        if left:
+            kept_texts.append(left)
+    if dropped:
+        logger.warning("Dropped %d repeated reply line(s)", dropped)
+    return kept_texts, dropped
+
+
 def _as_text_block(text: str) -> TextBlock | None:
     text = text.strip()
     if not text:
