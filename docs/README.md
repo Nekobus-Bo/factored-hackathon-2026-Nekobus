@@ -8,7 +8,7 @@ AI-first customer service system for banking — Factored AI & Data Hackathon 20
 
 In this order, about 15 minutes:
 
-1. **[00-problem.md](00-problem.md)** — which workflow we chose, why, and what we left out on purpose.
+1. **[00-problem.md](00-problem.md)** — the problem, which workflow we chose and why, how the system solves it today, the measured results and what is still open.
 2. **[adr/0001](adr/0001-cheap-llm-specialized-encoder.md)**, **[adr/0002](adr/0002-config-code-boundary.md)** and **[adr/0003](adr/0003-deterministic-vs-ai.md)** — the three decisions that shape the system.
 3. **[evaluation.md](evaluation.md)** — how we prove it works: baseline, suite, metrics and results.
 4. **[limitations.md](limitations.md)** — what does not work, what is missing, what we would do next.
@@ -18,7 +18,7 @@ In this order, about 15 minutes:
 
 | Document | Contents |
 |---|---|
-| [00-problem.md](00-problem.md) | Problem, users, workflow, scope, KPIs |
+| [00-problem.md](00-problem.md) | Problem, users, workflow, the solution as built, scope, measured results |
 | [data.md](data.md) | Sources, contracts, quality, splits, labeling |
 | [labeling-rubric.md](labeling-rubric.md) | Guidelines and taxonomy for human-written test sets |
 | [evaluation.md](evaluation.md) | Metrics, failure taxonomy, protocol, results |
