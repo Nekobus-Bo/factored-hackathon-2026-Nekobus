@@ -389,6 +389,8 @@ class HintEffect(Effect):
         )
         if line is not None and self.config.enforcing:
             turn.hint_line = line
+            if hint != "uncertain":
+                turn.hint_intent = hint
 
 
 class CannedReplyEffect(Effect):
@@ -484,6 +486,8 @@ class TurnDecisions:
         self.results: dict[str, DecisionRecord] = {}
         # Set by HintEffect in `enforce`; the same line for every completion.
         self.hint_line: str | None = None
+        # The intent that line names; None when it is uncertain or there is none.
+        self.hint_intent: str | None = None
 
     def observe(
         self,
@@ -540,6 +544,10 @@ class TurnDecisions:
     def hint(self) -> str | None:
         """The system line to add to this turn's completions, or None."""
         return self.hint_line
+
+    def hinted_intent(self) -> str | None:
+        """The intent the enforced hint named this turn, or None."""
+        return self.hint_intent
 
     def canned_reply(
         self, lang: Lang, *, otp_pending: bool, tool_seen: bool

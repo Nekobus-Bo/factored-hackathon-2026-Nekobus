@@ -51,7 +51,9 @@ from .test_conversation_engine import (
     BANKING_URL,
     SESSION_ID,
     FakeBankingCore,
+    anonymous_context,
     assert_no_dangling_tool_calls,
+    identity_request,
     new_context,
 )
 from .test_conversation_required_handoff import (
@@ -917,6 +919,60 @@ async def test_no_hint_without_a_decision_or_a_tau(services: Any, outcome: str) 
     )
     await rig.say("hola", "t1")
     assert [m["role"] for m in llm.calls[0]["messages"]][:2] == ["system", "user"]
+
+
+MATCH_WITHOUT_DOCUMENT = Step(
+    tool_calls=[tool_call("call_1", "customer_match", {"document_type": "NATIONAL_ID"})]
+)
+
+
+@pytest.mark.parametrize(
+    ("mode", "label", "topic"),
+    [
+        ("enforce", "check_recent_transactions", "transactions"),
+        ("enforce", "report_stolen_card", "card_block"),
+        ("enforce", "request_dispute", "charge"),
+        # account.get_summary is not enabled in the opening flow: no balance promised
+        ("enforce", "check_balance", "neutral"),
+        ("enforce", ABSTAIN, "neutral"),
+        ("shadow", "check_recent_transactions", "neutral"),
+    ],
+)
+async def test_the_identity_request_opens_with_the_hinted_intent(
+    services: Any, mode: str, label: str, topic: str
+) -> None:
+    """The model reached for identification alone: the opening follows the
+    enforced intent_hint, and only for a topic banking-core has a tool enabled for."""
+    rig = Rig(
+        services,
+        ScriptedLLM([MATCH_WITHOUT_DOCUMENT]),
+        modes={"intent_hint": mode, "clarify_route": "shadow"},
+        script=[{"intent_hint": label}],
+    )
+    rig.context = anonymous_context()
+
+    result = await rig.say("quiero ver las trasferencias ultimas", "t1")
+
+    assert result.metadata.identity_requested is True
+    assert result.blocks[0].text == identity_request(topic)
+
+
+async def test_the_tool_the_model_reached_for_comes_before_the_hint(
+    services: Any,
+) -> None:
+    block = tool_call("call_1", "card_block", BLOCK_ARGS)
+    rig = Rig(
+        services,
+        ScriptedLLM([Step(tool_calls=[block])]),
+        modes={"intent_hint": "enforce", "clarify_route": "shadow"},
+        script=[{"intent_hint": "check_recent_transactions"}],
+        banking=FakeBankingCore(refuse={"card.block": "STATE_NOT_ALLOWED"}),
+    )
+    rig.context = anonymous_context()
+
+    result = await rig.say("bloquea mi tarjeta y muéstrame mis movimientos", "t1")
+
+    assert result.blocks[0].text == identity_request("card_block")
 
 
 async def test_an_enforced_clarify_answers_an_ambiguous_opening_without_the_llm(

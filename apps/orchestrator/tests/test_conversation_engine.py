@@ -18,7 +18,8 @@ from orchestrator.config import Settings
 from orchestrator.conversation import ConversationContext, TurnEngine
 from orchestrator.conversation.prompt import (
     FALLBACK_MESSAGES,
-    IDENTITY_REQUEST_MESSAGES,
+    IDENTITY_REQUEST_ASK,
+    IDENTITY_REQUEST_OPENINGS,
     REPHRASE_MESSAGES,
 )
 from orchestrator.encoder_client import EncoderClient
@@ -1213,7 +1214,7 @@ async def test_without_an_opening_hint_the_first_completion_is_as_before(
 # ---------------------------------------------- the fixed identity request
 
 
-def _anonymous_context(language: str = "es") -> ConversationContext:
+def anonymous_context(language: str = "es") -> ConversationContext:
     return ConversationContext(
         session_id=SESSION_ID,
         language=language,
@@ -1228,15 +1229,23 @@ NO_DOCUMENT_MATCH = tool_call(
 BLOCK = tool_call(
     "call_1", "card_block", {"card_ref": "card_ab12cd34", "reason": "STOLEN"}
 )
+RECENT = tool_call("call_1", "transaction_list_recent", {})
+
+
+def identity_request(topic: str, lang: str = "es") -> str:
+    return f"{IDENTITY_REQUEST_OPENINGS[topic][lang]} {IDENTITY_REQUEST_ASK[lang]}"
 
 
 @pytest.mark.parametrize(
-    ("call", "refuse"),
-    [(NO_DOCUMENT_MATCH, {}), (BLOCK, {"card.block": "STATE_NOT_ALLOWED"})],
+    ("call", "refuse", "topic"),
+    [
+        (NO_DOCUMENT_MATCH, {}, "neutral"),
+        (BLOCK, {"card.block": "STATE_NOT_ALLOWED"}, "card_block"),
+    ],
     ids=["match-without-document", "block-while-anonymous"],
 )
 async def test_a_tool_before_any_document_gets_the_fixed_identity_request(
-    mock_services: Any, call: dict[str, Any], refuse: dict[str, str]
+    mock_services: Any, call: dict[str, Any], refuse: dict[str, str], topic: str
 ) -> None:
     """Nothing was checked: the reply asks for the document, it does not relay
     the refusal (which the model read as a failed verification)."""
@@ -1244,13 +1253,13 @@ async def test_a_tool_before_any_document_gets_the_fixed_identity_request(
     mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(side_effect=banking)
     _mock_encoder(mock_services)
     llm = ScriptedLLM([Step(tool_calls=[call])])
-    context = _anonymous_context()
+    context = anonymous_context()
 
     result = await make_engine(llm).run_turn(
         context, "quiero bloquear mi tarjeta porque no reconozco los ultimos pagos"
     )
 
-    assert result.blocks == [TextBlock(text=IDENTITY_REQUEST_MESSAGES["es"])]
+    assert result.blocks == [TextBlock(text=identity_request(topic))]
     assert result.metadata.identity_requested is True
     assert len(llm.calls) == 1
     assert [r["body"]["tool"] for r in banking.requests] == (
@@ -1258,25 +1267,45 @@ async def test_a_tool_before_any_document_gets_the_fixed_identity_request(
     )
     assert context.history[-1] == {
         "role": "assistant",
-        "content": IDENTITY_REQUEST_MESSAGES["es"],
+        "content": identity_request(topic),
     }
     assert_no_dangling_tool_calls(context.history)
+
+
+async def test_the_identity_request_opens_with_the_request_the_model_reached_for(
+    mock_services: Any,
+) -> None:
+    """Asking to see transfers is not answered with card protection."""
+    mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(
+        side_effect=FakeBankingCore(
+            refuse={"transaction.list_recent": "STATE_NOT_ALLOWED"}
+        )
+    )
+    _mock_encoder(mock_services)
+    llm = ScriptedLLM([Step(tool_calls=[NO_DOCUMENT_MATCH, RECENT])])
+
+    result = await make_engine(llm).run_turn(
+        anonymous_context(), "quiero ver las trasferencias ultimas"
+    )
+
+    assert result.blocks == [TextBlock(text=identity_request("transactions"))]
+    assert "tarjeta" not in result.blocks[0].text
 
 
 async def test_the_identity_request_speaks_the_customer_language(
     mock_services: Any,
 ) -> None:
     mock_services.post(f"{BANKING_URL}/v1/tools/call").mock(
-        side_effect=FakeBankingCore()
+        side_effect=FakeBankingCore(refuse={"card.block": "STATE_NOT_ALLOWED"})
     )
     _mock_encoder(mock_services)
-    llm = ScriptedLLM([Step(tool_calls=[NO_DOCUMENT_MATCH])])
+    llm = ScriptedLLM([Step(tool_calls=[BLOCK])])
 
     result = await make_engine(llm).run_turn(
-        _anonymous_context("pt"), "quero bloquear meu cartão"
+        anonymous_context("pt"), "quero bloquear meu cartão"
     )
 
-    assert result.blocks == [TextBlock(text=IDENTITY_REQUEST_MESSAGES["pt"])]
+    assert result.blocks == [TextBlock(text=identity_request("card_block", "pt"))]
 
 
 async def test_after_a_document_a_refusal_is_explained_by_the_model(
@@ -1287,7 +1316,7 @@ async def test_after_a_document_a_refusal_is_explained_by_the_model(
     _mock_encoder(mock_services)
     reply = "Primero te envío un código para confirmar que eres tú."
     llm = ScriptedLLM([Step(tool_calls=[BLOCK]), Step(content=reply)])
-    context = _anonymous_context()
+    context = anonymous_context()
 
     result = await make_engine(llm).run_turn(
         context, f"Bloquea mi tarjeta, mi cédula es {RAW_DOCUMENT}"
@@ -1336,7 +1365,7 @@ async def test_a_refusal_from_a_handed_off_session_is_not_an_identity_request(
     reply = "Un agente ya está revisando tu caso."
     llm = ScriptedLLM([Step(tool_calls=[BLOCK]), Step(content=reply)])
 
-    result = await make_engine(llm).run_turn(_anonymous_context(), "Bloquéala ya")
+    result = await make_engine(llm).run_turn(anonymous_context(), "Bloquéala ya")
 
     assert result.blocks == [TextBlock(text=reply)]
     assert result.metadata.identity_requested is False
@@ -1356,7 +1385,7 @@ async def test_a_round_with_a_tool_that_ran_is_answered_by_the_model(
     )
 
     result = await make_engine(llm).run_turn(
-        _anonymous_context(), "¿cómo bloqueo mi tarjeta?"
+        anonymous_context(), "¿cómo bloqueo mi tarjeta?"
     )
 
     assert result.blocks == [TextBlock(text=reply)]
