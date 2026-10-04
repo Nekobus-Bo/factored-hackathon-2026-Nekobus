@@ -152,6 +152,7 @@ export const en: Dictionary = {
       steps: "Steps",
       timeline: "Timeline",
       turns: "Turns",
+      conversationTokens: "Tokens in the conversation",
       turn: "Turn {n}",
       empty: "No turns yet.",
       open: "See this turn in detective mode",

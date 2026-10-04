@@ -40,6 +40,11 @@ export function summarize(trace: TurnTrace): TraceSummary {
   return summary;
 }
 
+/** Tokens across every traced turn of the conversation. */
+export function conversationTokens(turns: readonly TracedTurn[]): number {
+  return turns.reduce((total, turn) => total + summarize(turn.trace).tokens, 0);
+}
+
 /** `29 ms`, `1.27 s`; a dash for a step that has no duration. */
 export function formatMs(ms: number | null): string {
   if (ms === null) return "—";

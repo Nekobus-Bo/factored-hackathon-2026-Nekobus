@@ -188,6 +188,7 @@ export const es = {
       steps: "Pasos",
       timeline: "Tiempo",
       turns: "Turnos",
+      conversationTokens: "Tokens en la conversación",
       turn: "Turno {n}",
       empty: "Sin turnos todavía.",
       open: "Ver este turno en el modo detective",

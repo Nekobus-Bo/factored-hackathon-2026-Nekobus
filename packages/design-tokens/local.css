@@ -136,6 +136,7 @@
 .pb-trace__turns { display: flex; flex-wrap: wrap; gap: 4px; }
 .pb-trace__turn { min-width: 28px; height: 28px; padding: 0 6px; border: 1px solid var(--line); background: var(--surface-000); color: var(--ink-muted); cursor: pointer; font: 600 12px/26px var(--font-mono); font-variant-numeric: tabular-nums; }
 .pb-trace__turn[aria-checked="true"] { border-color: var(--pattern); background: var(--pattern-soft); color: var(--ink); }
+.pb-trace__total { font: 500 11px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; }
 .pb-trace__stats { margin: 0; display: flex; flex-wrap: wrap; gap: 2px var(--space-4); font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
 .pb-trace__stats b { color: var(--ink); font-weight: 700; }
 .pb-trace__body { min-height: 0; overflow: auto; overscroll-behavior: contain; }

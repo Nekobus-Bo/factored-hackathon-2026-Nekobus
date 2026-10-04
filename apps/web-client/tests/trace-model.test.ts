@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, tracedTurns } from "../src/app/chat/trace-model";
+import { conversationTokens, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, tracedTurns } from "../src/app/chat/trace-model";
 import type { Entry } from "../src/machines/chat-model";
 import { TEXT_BLOCK, TRACE, TRACE_TOOL } from "./fixtures";
 
@@ -28,6 +28,14 @@ describe("summarize", () => {
   test("time in the LLM, tokens, cost", () => {
     expect(summarize(TRACE_TOOL)).toEqual({ llmMs: 1900, tokens: 2530, costUsd: 0.00034 });
     expect(summarize(TRACE)).toEqual({ llmMs: 0, tokens: 0, costUsd: 0 });
+  });
+});
+
+describe("conversationTokens", () => {
+  test("every traced turn's tokens, added up", () => {
+    const turns = tracedTurns([assistant("a1", TRACE_TOOL), assistant("a2"), assistant("a3", TRACE_TOOL), assistant("a4", TRACE)]);
+    expect(conversationTokens(turns)).toBe(5060);
+    expect(conversationTokens([])).toBe(0);
   });
 });
 

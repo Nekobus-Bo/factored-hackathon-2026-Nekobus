@@ -9,7 +9,7 @@ import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
 import { useId, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { format, type Dictionary } from "../../i18n";
 import { Icon } from "../ui/Icon";
-import { defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
+import { conversationTokens, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
 
 export type TraceView = "steps" | "timeline";
 export type DockPane = "chat" | "trace";
@@ -65,6 +65,11 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
                 </button>
               ))}
             </div>
+          )}
+          {turns.length > 0 && (
+            <span className="pb-trace__total" title={t.conversationTokens}>
+              {`Σ ${conversationTokens(turns)} tok`}
+            </span>
           )}
           <div className="pb-tabs pb-trace__views" role="radiogroup" aria-label={t.views}>
             {(["steps", "timeline"] as const).map((name) => (
