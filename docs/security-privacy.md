@@ -23,6 +23,14 @@ messages, replay keys, token totals, USD cost and the turn's decision-point
 records (identifiers, enum values and numbers, never text: ADR-0012). The hook
 never exposes a banking session ID or the placeholder map.
 
+**Detective mode** ([ADR-0019](adr/0019-detective-mode.md)). Where an environment
+sets `DETECTIVE_MODE` (the local compose; Cloud Run through `detective_mode`), each
+chat turn returns its timeline, shown by a switch in the chat. It holds masked
+values only, the same ones sent to the provider: never the placeholder map's
+values, rehydrated tool arguments, raw tool results or slot values. It does show
+the system prompt and the policy outcomes to whoever uses the chat; the back
+office turns it off for every conversation at once.
+
 **Encryption at rest** at the application level, with envelope encryption. The master key lives in the environment and never in the database. **Known limitation:** in production it belongs in a KMS or HSM.
 
 **Verifiable audit.** Every decision and every action lands in an append-only log with hash chaining. `make verify-audit` (⚠️ pending) walks the chain and detects any later alteration.

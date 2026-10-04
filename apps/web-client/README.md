@@ -66,7 +66,7 @@ Blocks stay raw on the wire (`RawBlock[]`); the page runs `parseBlocks`. Every `
 
 **Global** (`app.machine.ts`): the theme (`system`, `light`, `dark`; `data-theme` on `<html>`, remembered in `localStorage` behind `try/catch`, applied from the head before the first paint) the language (from `navigator.language`, `es` when it is none of the three; not remembered) and the market (`locale`, [ADR-0014](../../docs/adr/0014-distilbert-intent-backend.md): `es-CO`, `es-MX`, `es-AR`, `pt-BR` or `en-US` when `navigator.language` names one exactly, else none; not remembered). A market always belongs to the language: picking one sets its language, switching to another language drops it. The Navbar's language switch, market switch and theme toggle drive it; the market switch shows only for Spanish, the one language served in more than one market. The text is one neutral Spanish for every Spanish market: the market changes what the chat sends, not what the page says.
 
-**Chat** (`chat.machine.ts`), five regions:
+**Chat** (`chat.machine.ts`), six regions:
 
 - *conversation*: `idle`, `creating`, `sending`, `ready`, and the failures. **No request is made until the first message**: creating a conversation is rate limited per address. The language goes out on creation and on every message; the market goes out only on creation (the chat API takes none on a turn), and only when it belongs to the message's language.
   - `unavailable` (503, 409, 502, a body outside the contract, a network failure): the message stays in the log with one line under it, "No pudimos enviar tu mensaje. El asistente no está disponible." and Reintentar, which resends the same `client_message_id`, so the orchestrator answers a turn it already ran from its store.
@@ -75,11 +75,16 @@ Blocks stay raw on the wire (`RawBlock[]`); the page runs `parseBlocks`. Every `
 - *followup*: after every completed turn, the transcript is read once (to detect a takeover) and so is the inbox.
 - *takeover*: from the handoff block on, the transcript is polled every 2 s **while the tab is visible**, so the agent's first message arrives without the customer writing again. Once the transcript says an agent holds the conversation, the status "Un agente está atendiendo tu caso" appears and the agent's messages join the log in the agent style. Starting over stops the polling. A send during a takeover returns `blocks: []` by design; that is a normal answer.
 - *inbox*: see below.
+- *capabilities*: whether detective mode is on ([ADR-0019](../../docs/adr/0019-detective-mode.md)), asked with `GET /api/capabilities` when the chat opens (never on page load) and after every turn, since the back office can turn it off and on.
 - *feedback*: after a handoff block the log asks "¿Te ayudó el asistente?" with two equal buttons. The answer goes to `POST /api/conversations/:id/feedback`; banking-core keeps one per handoff and refuses it when there is none (ADR-0017). A failed answer can be sent again.
 
 ### The OTP notice
 
 The code is delivered synchronously during the turn that calls `otp.send`, so nothing polls for it. The inbox is read once after each turn; if it holds a message that has not expired and was received after the last successful `otp.verify`, the `otp.send` receipt in the log gains a countdown to `expires_at` and "Abrir bandeja". That opens the simulated inbox as a sheet over the messages (the words "simulada" and "demo" stay visible; Escape, the close button or sending a message closes it); the code is drawn only after "Mostrar código". The notice hides itself at expiry (and the log says so once), and when the code is used. The code lives in the machine's `inbox` context and nowhere else: it is not in any transcript entry, and what the customer types is masked before it is stored (`Código: ••••••` for the code, `•••• 4821` for a card number).
+
+### Detective mode
+
+Where the orchestrator says detective mode is on, the chat header shows a switch (`aria-pressed`); the viewer's choice is remembered in `localStorage` (`pb-detective`, behind `try/catch`), off by default. With it on, each assistant reply shows its turn's trace (`trace` on the send answer, kept on the reply's entry): for now the raw JSON folded under the reply, to be replaced by the designed panel. The trace holds masked values only ([ADR-0019](../../docs/adr/0019-detective-mode.md)).
 
 ### The header chip
 
