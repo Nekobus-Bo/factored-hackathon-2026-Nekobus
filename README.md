@@ -137,7 +137,7 @@ All project operations are exposed through `make`:
 | `make eval-baseline` | Baseline system evaluation execution | ⚠️ pending |
 | `make eval-adversarial` | Adversarial injection scenario suite execution | ⚠️ pending |
 | `make clean-models` | Drop cached model weights | ⚠️ pending |
-| `make deploy` | Run `deploy.yml`: build and roll out to the Cloud Run presentation environment ([ADR-0015](docs/adr/0015-gcp-cloud-run-terraform.md)) | ⚠️ not yet exercised |
+| `make deploy` | Run `deploy.yml`: build and roll out to the Cloud Run presentation environment ([ADR-0015](docs/adr/0015-gcp-cloud-run-terraform.md)) | Working (deployed since 2026-10-03) |
 
 ---
 

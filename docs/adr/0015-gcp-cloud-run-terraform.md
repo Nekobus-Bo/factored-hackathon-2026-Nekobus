@@ -78,7 +78,7 @@ Option A is cheaper to write and B is cheaper to run well. The deciding factor i
 1. [ ] Terraform under `infra/deploy/gcp/` with offline tests (`terraform test` with a mocked provider)
 2. [ ] `deploy.yml`: build to Artifact Registry, migrate, roll the services, smoke test; the SSH path removed
 3. [ ] Encoder image with the pinned embedding weights baked in
-4. [ ] First real deploy, logged in [deployment.md](../deployment.md); until then, section 6 stays marked as not yet exercised
+4. [x] First real deploy, logged in [deployment.md](../deployment.md) (2026-10-03)
 5. [ ] The web-client BFF forwards the client address, the hop count measured on Cloud Run, and the stopgap removed
 6. [ ] The back office opened and closed once on a real project, with `make gcp-smoke` passing in both states (amendment of 2026-10-03). The IAP switch alone has been tried in place on a throwaway service ([deployment.md](../deployment.md), section 7)
 

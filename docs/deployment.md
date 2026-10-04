@@ -377,9 +377,9 @@ GitHub Environments are not used: nothing needs one, and a private repository on
 
 `make deploy` runs the latest `main`. To go back, dispatch `deploy.yml` with the `image_tag` of a previous run (`sha-abc1234`, in the Actions log or in Artifact Registry): `build` is skipped and `deploy` rolls every service and job to that tag. Migrations only move forward; a rollback across a migration keeps the newer schema.
 
-### Status: not yet exercised
+### Status: deployed
 
-⚠️ `deploy.yml`, the Terraform and the smoke script are checked offline only: `make gcp-check` (fmt, validate, tflint and 31 `terraform test` runs against a mocked provider), actionlint, shellcheck, and the smoke script against a fake `gcloud` and the local stack. **No apply and no deploy has run against a real project yet.** Until the first run is logged here, this section is a design, not a proven procedure.
+`deploy.yml` has rolled out to the presentation project, with its smoke test passing, since 2026-10-03 (first successful run on commit `3b0454e`; the Actions history of the `deploy` workflow lists every run). The same pieces are still checked offline on every change: `make gcp-check` (fmt, validate, tflint and `terraform test` against a mocked provider), actionlint, shellcheck, and the smoke script against a fake `gcloud` and the local stack. The rollback by `image_tag` has not been exercised.
 
 ---
 
@@ -422,6 +422,6 @@ make gcp-backoffice-close           # IAP back on, the judge logins dropped
 - **Each judge's actions are recorded under their own e-mail**, like the demo agent's. The passwords are 24 random letters and digits in the `pb-demo-judge-accounts` secret, which only the back office reads (`DEMO_EXTRA_AGENTS`).
 - **Locally there is no IAP**: `DEMO_EXTRA_AGENTS` in `.env` adds the same kind of logins to `make demo`.
 
-### Not yet exercised
+### Not yet exercised on this environment
 
-Like section 6: checked offline, never run against a real project. Opening and closing the back office is checked offline too (`tests/judging.tftest.hcl`). The IAP switch itself was tried on 2026-10-03 on a throwaway Cloud Run service (Google's hello image, the same `google_cloud_run_v2_service` settings, provider 8.5) in a separate project: closed, open and closed again were each an in-place update, with no replacement and no new revision. An anonymous visitor was refused while closed and got 200 within seconds of opening, and the Run v2 API reported `iapEnabled` the way the smoke test reads it. Not tried: the real back office in this environment, the judge logins' new revision, and IAP's Google login screen (that project has no OAuth client).
+The environment itself is deployed (section 6), but opening and closing the back office for judges has not been run on it yet. Opening and closing the back office is checked offline too (`tests/judging.tftest.hcl`). The IAP switch itself was tried on 2026-10-03 on a throwaway Cloud Run service (Google's hello image, the same `google_cloud_run_v2_service` settings, provider 8.5) in a separate project: closed, open and closed again were each an in-place update, with no replacement and no new revision. An anonymous visitor was refused while closed and got 200 within seconds of opening, and the Run v2 API reported `iapEnabled` the way the smoke test reads it. Not tried: the real back office in this environment, the judge logins' new revision, and IAP's Google login screen (that project has no OAuth client).

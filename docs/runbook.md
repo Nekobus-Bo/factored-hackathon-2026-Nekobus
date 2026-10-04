@@ -238,7 +238,7 @@ Reports are written to `reports/` and versioned in the repository: you can compa
 The team keeps its own environment for its live presentation. It is not part of the evaluation, no link is published, and no availability is promised. It runs on Google Cloud Run, defined in Terraform under [`infra/deploy/gcp/`](../infra/deploy/gcp/) ([ADR-0015](adr/0015-gcp-cloud-run-terraform.md)); how it is deployed and which demo features it switches on are in **[deployment.md](deployment.md)**, sections 6 and 7, and the first-deploy steps in [infra/deploy/gcp/README.md](../infra/deploy/gcp/README.md). Self-hosting with compose and the scalability limits are in the same document.
 
 ```bash
-make deploy       # runs deploy.yml on main: build, migrate, roll out, smoke (⚠️ not yet exercised)
+make deploy       # runs deploy.yml on main: build, migrate, roll out, smoke
 make gcp-smoke    # check the deployed environment from outside
 ```
 
