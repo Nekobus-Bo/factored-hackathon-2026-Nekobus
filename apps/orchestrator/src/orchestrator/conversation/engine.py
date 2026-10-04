@@ -41,7 +41,7 @@ from contracts import (
     ToolResult,
     ToolResultStatus,
 )
-from contracts.envelope import FlowHint
+from contracts.envelope import FlowHint, VerificationState
 from contracts.locale import Locale, lang_of
 from contracts.tools.handoff_create import (
     HandoffCreateOutput,
@@ -74,6 +74,7 @@ from orchestrator.conversation.models import (
 from orchestrator.conversation.prompt import (
     FALLBACK_MESSAGES,
     FLOW_TEMPLATE,
+    IDENTITY_REQUEST_MESSAGES,
     PROMPT_VERSION,
     REPHRASE_MESSAGES,
     SYSTEM_PROMPT,
@@ -165,6 +166,9 @@ class _TurnGuard:
     decisions: TurnDecisions | None = None
     # Tools banking-core's latest flow hint says are enabled somewhere (ADR-0016).
     enabled: list[str] | None = None
+    # The session state of banking-core's latest flow hint: a tool result's, else
+    # the one of session creation. None when banking-core has stated none.
+    state: VerificationState | None = None
 
 
 @dataclass(frozen=True)
@@ -383,7 +387,11 @@ class TurnEngine:
         # 4-5. LLM <-> tools loop, bounded
         receipts: list[ReceiptBlock] = []
         handoffs: list[HandoffBlock] = []
-        guard = _TurnGuard(decisions=turn_decisions, enabled=context.enabled_tools)
+        guard = _TurnGuard(
+            decisions=turn_decisions,
+            enabled=context.enabled_tools,
+            state=context.opening_flow.state if context.opening_flow else None,
+        )
         final: LLMResponse | None = None
         while True:
             # Before every completion: a card.block of the last round, or of an
@@ -435,6 +443,7 @@ class TurnEngine:
                 )
                 break
             metadata.tool_rounds += 1
+            round_start = len(metadata.tool_outcomes)
             await self._run_tool_round(
                 context.session_id,
                 response,
@@ -447,11 +456,27 @@ class TurnEngine:
                 lang,
                 trace=trace,
             )
+            if _needs_a_document(
+                metadata.tool_outcomes[round_start:], mapping, guard.state
+            ):
+                # Nothing was checked: ask for the document instead of letting the
+                # model relay the refusal, which reads as a failed verification.
+                history.append(
+                    {"role": "assistant", "content": IDENTITY_REQUEST_MESSAGES[lang]}
+                )
+                metadata.identity_requested = True
+                trace.canned_reply(
+                    note="asked for the document with the fixed identity request: "
+                    "the customer has given none yet, so nothing was checked"
+                )
+                break
 
         # 6. Final reply through the block allowlist
         blocks_started = trace.now()
-        blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = self._final_blocks(
-            final, history, mapping, metadata, lang
+        blocks: list[TextBlock | ReceiptBlock | HandoffBlock] = (
+            [TextBlock(text=IDENTITY_REQUEST_MESSAGES[lang])]
+            if metadata.identity_requested
+            else self._final_blocks(final, history, mapping, metadata, lang)
         )
         blocks.extend(receipts)
         blocks.extend(handoffs)
@@ -777,6 +802,7 @@ class TurnEngine:
             guard.executed.add(tool)
             if result.flow is not None:
                 guard.enabled = list(result.flow.enabled)
+                guard.state = result.flow.state
             if result.status is ToolResultStatus.OK and definition.mutates_state:
                 guard.written[tool] = guard.written.get(tool, 0) + 1
             elif result.status is ToolResultStatus.REFUSED:
@@ -1246,6 +1272,31 @@ class TurnEngine:
             f"{session_id}|{turn_id}|{tool}|{ordinal}".encode()
         ).hexdigest()
         return f"pb-{digest[:40]}"
+
+
+def _needs_a_document(
+    outcomes: list[ToolOutcome],
+    mapping: dict[str, str],
+    state: VerificationState | None,
+) -> bool:
+    """True when a tool round only reached for identification before the customer
+    gave a document: banking-core last stated the session ANONYMOUS, there is no
+    `[DOC_n]` in the session mapping, and every call was refused for that, either
+    customer.match by the engine (no document placeholder) or a tool by
+    banking-core's state check. Nothing ran, so the session is where it was."""
+    if state is not VerificationState.ANONYMOUS or not outcomes:
+        return False
+    if any(_is_placeholder(placeholder, PiiType.DOC) for placeholder in mapping):
+        return False
+    return all(
+        (
+            outcome.tool == "customer.match"
+            and not outcome.executed
+            and outcome.reason_code is ReasonCode.INVALID_ARGUMENTS
+        )
+        or outcome.reason_code is ReasonCode.STATE_NOT_ALLOWED
+        for outcome in outcomes
+    )
 
 
 def _is_placeholder(value: str, kind: PiiType) -> bool:

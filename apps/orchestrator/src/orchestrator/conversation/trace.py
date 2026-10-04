@@ -229,13 +229,16 @@ class TraceRecorder:
             ),
         )
 
-    def canned_reply(self) -> None:
+    def canned_reply(
+        self,
+        note: str = "answered by the canned clarification, without the LLM (ADR-0014)",
+    ) -> None:
         self._add(
             TraceEventKind.CANNED_REPLY,
             "canned reply",
             None,
             TraceEventStatus.OK,
-            note="answered by the canned clarification, without the LLM (ADR-0014)",
+            note=note,
         )
 
     def llm_call(

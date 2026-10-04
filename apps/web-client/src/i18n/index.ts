@@ -1,6 +1,8 @@
 // One dictionary per language (es, pt, en), all with the shape of the Spanish one: the `Dictionary`
 // type is derived from `es`, so a key missing from `pt` or `en` does not compile, and
-// tests/i18n.test.ts checks the same at run time.
+// tests/i18n.test.ts checks the same at run time. The page offers only es and pt (`LANGS`): the system was
+// built and measured on es-CO, es-MX, es-AR and pt-BR, and the intent model was never trained on English.
+// The English dictionary stays, because the chat contract still takes `en`.
 
 import { LocaleSchema, type Lang, type Locale } from "@pattern-blue/contracts";
 import { en } from "./en";
@@ -19,30 +21,37 @@ type Widen<T> = T extends string
 export type Dictionary = Widen<typeof es>;
 
 export const DEFAULT_LANG: Lang = "es";
-export const LANGS: readonly Lang[] = ["es", "pt", "en"];
+/** The languages the page offers, in switch order. */
+export const LANGS: readonly Lang[] = ["es", "pt"];
 
 export const dictionaries: Record<Lang, Dictionary> = { es, pt, en };
 
-/** `navigator.language` -> a supported language, else Spanish. `pt-BR` -> `pt`, `EN_us` -> `en`. */
+/** `navigator.language` -> an offered language, else Spanish. `pt-BR` -> `pt`, `en-US` -> `es`. */
 export function detectLang(navigatorLanguage: string | null | undefined): Lang {
   const primary = navigatorLanguage?.trim().toLowerCase().split(/[-_]/)[0];
   return LANGS.find((lang) => lang === primary) ?? DEFAULT_LANG;
 }
-
-/** The markets the system serves (ADR-0014), in the contract's order. The page text stays one per language. */
-export const LOCALES: readonly Locale[] = LocaleSchema.options;
 
 /** `es-MX` -> `es`: a market's language is the part before "-". */
 export function langOf(locale: Locale): Lang {
   return locale.split("-")[0] as Lang;
 }
 
-/** The markets of one language: three for Spanish, one each for Portuguese and English. */
+/**
+ * The markets the page offers: those of the contract (ADR-0014) whose language is offered, in the contract's
+ * order. The page text stays one per language.
+ */
+export const LOCALES: readonly Locale[] = LocaleSchema.options.filter((locale) => LANGS.includes(langOf(locale)));
+
+/** The markets of one language: three for Spanish, one for Portuguese, none for a language not offered. */
 export function localesOf(lang: Lang): Locale[] {
   return LOCALES.filter((locale) => langOf(locale) === lang);
 }
 
-/** The market a language starts in when nothing names one: Colombia for Spanish, the only one for the others. */
+/**
+ * The market a language starts in when nothing names one: Colombia for Spanish, the locale with the best intent
+ * test score (reports/calibration-decision-points-2026-10-01-distilbert.md), the only one for the others.
+ */
 export const DEFAULT_LOCALES: Record<Lang, Locale> = { es: "es-CO", pt: "pt-BR", en: "en-US" };
 
 /**

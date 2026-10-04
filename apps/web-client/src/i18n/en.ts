@@ -33,7 +33,7 @@ export const en: Dictionary = {
     sub: "Pattern Blue has a checking account and a debit card. If you lose the card, the assistant blocks it in the chat. If you see a charge you didn't make, a person on our team reviews your case.",
     ctaPrimary: "Talk to the assistant",
     ctaSecondary: "See products",
-    fact: "Help in español, português and English",
+    fact: "Help in español and português",
   },
   card: {
     holder: "Holder",
@@ -109,7 +109,7 @@ export const en: Dictionary = {
       },
       {
         q: "Which languages do you support?",
-        a: "Español, português and English. You can switch whenever you like.",
+        a: "Español and português. You can switch whenever you like.",
       },
       {
         q: "Is Pattern Blue a real bank?",

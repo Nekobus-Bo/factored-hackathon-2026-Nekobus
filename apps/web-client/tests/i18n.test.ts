@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Lang } from "@pattern-blue/contracts";
 import {
   DEFAULT_LANG,
   DEFAULT_LOCALES,
@@ -31,6 +32,9 @@ function flatten(value: unknown, prefix = ""): Map<string, string> {
   return out;
 }
 
+/** Every dictionary, offered on the page or not: the English one stays (the chat contract still takes `en`). */
+const DICT_LANGS = Object.keys(dictionaries) as Lang[];
+
 const flat = {
   es: flatten(dictionaries.es),
   pt: flatten(dictionaries.pt),
@@ -46,7 +50,7 @@ describe("dictionaries", () => {
   });
 
   test("no string is empty", () => {
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       for (const [key, text] of flat[lang]) expect(text.trim(), `${lang}:${key}`).not.toBe("");
     }
   });
@@ -130,7 +134,7 @@ describe("landing rules hold in every language", () => {
 
   test("every number is a product fact: 6 digits, 5 minutes, S2, the year of the hackathon", () => {
     const allowed = new Set(["6", "5", "2", "2026"]);
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       for (const [key, text] of flat[lang]) {
         if (!landingKeys(key)) continue;
         for (const run of text.match(/\d+/g) ?? []) {
@@ -142,7 +146,7 @@ describe("landing rules hold in every language", () => {
 
   test("no claim about users, ratings, uptime or speed", () => {
     const banned = /(usuarios|utilizadores|users|customers|clientes|rating|estrellas|stars|estrelas|uptime|99|%|instant|inmediat|imediat|ahora mismo|agora mesmo)/i;
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       for (const [key, text] of flat[lang]) {
         if (!landingKeys(key)) continue;
         expect(banned.test(text), `${lang}:${key}: ${text}`).toBe(false);
@@ -151,7 +155,7 @@ describe("landing rules hold in every language", () => {
   });
 
   test("the demo note and the S2 small print are in every language", () => {
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       const dict = dictionaries[lang];
       expect(dict.footer.demoNote).toContain("Factored AI & Data Hackathon 2026");
       expect(dict.footer.demoNote.toLowerCase()).toContain("demo");
@@ -162,13 +166,13 @@ describe("landing rules hold in every language", () => {
   });
 
   test("the hero headline is three lines, as the design system fixes", () => {
-    for (const lang of LANGS) expect(dictionaries[lang].hero.title).toHaveLength(3);
+    for (const lang of DICT_LANGS) expect(dictionaries[lang].hero.title).toHaveLength(3);
     expect(dictionaries.pt.hero.title).toEqual(["Seu banco", "responde", "no chat"]);
     expect(dictionaries.en.hero.title).toEqual(["Your bank", "answers", "in the chat"]);
   });
 
   test("the FAQ has the five questions, the lost-card section the four steps, and the bank its three products", () => {
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       expect(dictionaries[lang].faq.items).toHaveLength(5);
       expect(dictionaries[lang].flow.steps).toHaveLength(4);
       expect(dictionaries[lang].products.items).toHaveLength(3);
@@ -178,7 +182,7 @@ describe("landing rules hold in every language", () => {
   test("the landing describes the bank, not the system behind it", () => {
     const system = /(base de datos|banco de dados|database|releído|relido|re-read)/i;
     const ai = /\b(IA|AI)\b/;
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       for (const [key, text] of flat[lang]) {
         if (!landingKeys(key)) continue;
         // The hackathon's own name is not a claim about the bank.
@@ -189,7 +193,7 @@ describe("landing rules hold in every language", () => {
   });
 
   test("plain copy: no colon used to join two clauses, no em dash, no curly quotes", () => {
-    for (const lang of LANGS) {
+    for (const lang of DICT_LANGS) {
       for (const [key, text] of flat[lang]) {
         expect(/[—“”‘’]/.test(text), `${lang}:${key}: ${text}`).toBe(false);
         if (landingKeys(key)) expect(/[a-záéíóúãõç]: [a-záéíóúãõç]/i.test(text), `${lang}:${key}: ${text}`).toBe(false);
@@ -203,8 +207,9 @@ describe("helpers", () => {
     expect(detectLang("es-CO")).toBe("es");
     expect(detectLang("pt-BR")).toBe("pt");
     expect(detectLang("pt")).toBe("pt");
-    expect(detectLang("en-US")).toBe("en");
-    expect(detectLang("EN_gb")).toBe("en");
+    // English is not offered on the page: an English browser starts in Spanish.
+    expect(detectLang("en-US")).toBe("es");
+    expect(detectLang("EN_gb")).toBe("es");
     expect(detectLang("fr-FR")).toBe(DEFAULT_LANG);
     expect(detectLang("")).toBe("es");
     expect(detectLang(undefined)).toBe("es");
@@ -216,8 +221,7 @@ describe("helpers", () => {
     expect(detectLocale("ES-mx")).toBe("es-MX");
     expect(detectLocale(" es_AR ")).toBe("es-AR");
     expect(detectLocale("pt-BR")).toBe("pt-BR");
-    expect(detectLocale("en-US")).toBe("en-US");
-    for (const none of ["es", "es-ES", "es-CL", "pt", "pt-PT", "en-GB", "fr-FR", "", undefined, null]) {
+    for (const none of ["es", "es-ES", "es-CL", "pt", "pt-PT", "en-US", "en-GB", "fr-FR", "", undefined, null]) {
       expect(detectLocale(none), String(none)).toBeNull();
     }
   });
@@ -227,16 +231,18 @@ describe("helpers", () => {
     expect(startLocale("es")).toBe("es-CO");
     expect(startLocale("es-419")).toBe("es-CO");
     expect(startLocale("pt-PT")).toBe("pt-BR");
-    expect(startLocale("en-GB")).toBe("en-US");
-    for (const none of ["fr-FR", "", undefined, null]) expect(startLocale(none), String(none)).toBe("es-CO");
+    for (const none of ["en-US", "en-GB", "fr-FR", "", undefined, null]) {
+      expect(startLocale(none), String(none)).toBe("es-CO");
+    }
     for (const lang of LANGS) expect(langOf(DEFAULT_LOCALES[lang])).toBe(lang);
   });
 
-  test("every market belongs to a supported language, and Spanish has three", () => {
+  test("the page offers es and pt; every market belongs to one of them, and Spanish has three", () => {
+    expect(LANGS).toEqual(["es", "pt"]);
     for (const locale of LOCALES) expect(LANGS).toContain(langOf(locale));
     expect(localesOf("es")).toEqual(["es-MX", "es-AR", "es-CO"]);
     expect(localesOf("pt")).toEqual(["pt-BR"]);
-    expect(localesOf("en")).toEqual(["en-US"]);
+    expect(localesOf("en")).toEqual([]);
   });
 
   test("format fills placeholders and leaves an unknown one visible", () => {

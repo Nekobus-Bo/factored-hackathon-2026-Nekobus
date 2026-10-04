@@ -451,7 +451,8 @@ describe("the landing", () => {
     for (const [navigatorLanguage, title, demo, tag] of [
       ["es-CO", "Tu banco", "datos sintéticos", "Solo demo"],
       ["pt-BR", "Seu banco", "dados sintéticos", "Somente demo"],
-      ["en-US", "Your bank", "synthetic data", "Demo only"],
+      // English is not offered on the page: an English browser gets the Spanish one.
+      ["en-US", "Tu banco", "datos sintéticos", "Solo demo"],
     ] as const) {
       const html = page(navigatorLanguage);
       expect(html).toContain(title);
@@ -503,10 +504,10 @@ describe("the landing", () => {
     world.stop();
   });
 
-  test("the language switch is a radio group and the theme one button whose label says what it does", () => {
+  test("the language switch is a radio group of ES and PT, and the theme one button whose label says what it does", () => {
     const html = page("pt-BR");
     expect(html.match(/role="radiogroup"/g)).toHaveLength(1);
-    expect(html).toContain('data-lang="pt"');
+    expect([...html.matchAll(/data-lang="(\w+)"/g)].map((match) => match[1])).toEqual(["es", "pt"]);
     expect(html).toMatch(/aria-checked="true"[^>]*data-lang="pt"/);
     expect(html.match(/pb-theme--single/g)).toHaveLength(1);
     expect(html).toMatch(/aria-label="Mudar para o tema (escuro|claro)"/);
