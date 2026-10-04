@@ -130,6 +130,7 @@ They change these design-system rules. Whoever updates the artifact should chang
 | ChatMessage 5: system lines use the `label` style | 13px sentence case, with an optional receipt reference (`pb-sys__ref`) |
 | ChatMessage 6b and 6c: a failed message adds a caution card; a rate limit is a caution card | One `pb-unsent` line under the failed message; `pb-strip` for 429 and 404 |
 | ChatMessage: the list of content types | A new one: feedback after a handoff (`pb-rate`) |
+| ChatMessage: assistant text is plain text | Money in assistant text is mono and never breaks from its currency (`pb-amount`); a dash list of amounts (recent transactions, balances) is a ledger of date, label and amount (`pb-ledger`). Presentation only: the figures are the model's words, and a list it does not recognise stays plain text |
 | Hero: say only what the assistant does | The landing is a fictional bank's home page; the hero names its products and what the chat does |
 | Landing: a section header is a kicker and a title card of two or three lines | The title alone, on one line |
 | FeatureGrid: the assistant's features, a fact line on each card | The bank's products, no fact line |

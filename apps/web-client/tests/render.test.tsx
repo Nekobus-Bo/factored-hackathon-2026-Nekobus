@@ -63,6 +63,28 @@ describe("text", () => {
     expect(html).not.toContain("4111");
     expect(html).toContain("•••• 1111");
   });
+
+  test("a list of transactions is a ledger: date, merchant and amount per row", () => {
+    const text = "Estas son tus últimas transacciones:\n\n- 2 oct.: Local Artisan Bakery — 25.000 COP\n- 1 oct.: Falabella — 214.475,55 COP";
+    const html = render([{ type: "text", text }]);
+    expect(html).toContain('<span class="chat-text">Estas son tus últimas transacciones:</span><ul class="pb-ledger">');
+    expect(html).toContain(
+      '<li class="pb-ledger__row"><span class="pb-ledger__date">2 oct.</span><span class="pb-ledger__label" title="Local Artisan Bakery">Local Artisan Bakery</span><span class="pb-ledger__amount">25.000 COP</span></li>',
+    );
+    expect(html.match(/pb-ledger__row/g)).toHaveLength(2);
+  });
+
+  test("an amount in a sentence stays on one line", () => {
+    const html = render([{ type: "text", text: "Tu saldo disponible es 1.234.567,89 COP." }]);
+    expect(html).toContain('Tu saldo disponible es <span class="pb-amount">1.234.567,89 COP</span>.');
+  });
+
+  test("a ledger row is still escaped and never shows a full card number", () => {
+    const html = render([{ type: "text", text: "- 2 oct.: <b>Tienda</b> 4111 1111 1111 1111 — 25.000 COP" }]);
+    expect(html).not.toContain("<b>");
+    expect(html).not.toContain("4111");
+    expect(html).toContain("&lt;b&gt;Tienda&lt;/b&gt; •••• 1111");
+  });
 });
 
 describe("receipts", () => {
