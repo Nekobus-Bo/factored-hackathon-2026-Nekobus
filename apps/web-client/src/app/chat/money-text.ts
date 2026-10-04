@@ -1,8 +1,9 @@
 // How an assistant bubble shows money: presentation only. The model writes recent transactions and balances as
 // plain text, often a dash list (`- 2 oct.: Local Artisan Bakery — 25.000 COP`). This splits that text into
 // a ledger (one row per list line that ends in an amount) and text whose amounts are marked, so the chat can
-// line the amounts up and keep each one on one line. It never adds, computes or reorders a figure: every
-// character shown is the model's, and a shape it does not recognise stays plain text. Pure functions, no React.
+// line the amounts up and keep each one on one line. It never adds, computes or reorders a figure: every word
+// shown is the model's (only bullets, separators and brackets go), and a shape it does not recognise stays
+// plain text. Pure functions, no React.
 
 /** A piece of a text line: plain words, or an amount with its currency. */
 export interface InlinePart {
@@ -10,11 +11,13 @@ export interface InlinePart {
   text: string;
 }
 
-/** A list line that ends in an amount: `date: label — amount`, the date optional. */
+/** A list line that ends in an amount: `date: label — amount (note)`, the date and the note optional. */
 export interface LedgerRow {
   date: string | null;
   label: string;
   amount: string;
+  /** A short word or two after the amount, without its brackets: `liquidada`, `pending`. */
+  note: string | null;
 }
 
 export type MoneySegment = { kind: "text"; parts: InlinePart[] } | { kind: "ledger"; rows: LedgerRow[] };
@@ -39,6 +42,9 @@ const LIST_ITEM = /^\s*(?:[-•*·]|\d{1,2}[.)])\s+(.*)$/;
 const SEPARATOR_TAIL = /[\s—–\-:,]+$/;
 // A short leading date before a colon: `2 oct.`, `Oct 2`, `2026-10-02`.
 const LEADING_DATE = /^([^:]{1,12}?):\s+(.+)$/;
+// What may follow the amount: nothing, or a short note without digits, in brackets (`(liquidada)`) or after a
+// dash, a dot or a comma (`— pending`).
+const AFTER_AMOUNT = /^\s*(?:\(([^()\d]{1,24})\)|[—–·,|]\s*([^()\d]{1,24}?))?\s*\.?$/;
 
 /** The amounts of a line, marked; the rest kept as is. */
 export function inlineParts(line: string): InlinePart[] {
@@ -53,20 +59,25 @@ export function inlineParts(line: string): InlinePart[] {
   return parts;
 }
 
-/** A list line whose last thing is an amount, as a ledger row; anything else is not one. */
+/**
+ * A list line with one amount, at its end or before a short note, as a ledger row; anything else is not one
+ * (a line with two amounts is a sentence, not a row).
+ */
 export function ledgerRow(line: string): LedgerRow | null {
   const item = LIST_ITEM.exec(line);
   if (!item) return null;
   const content = item[1]!.trimEnd();
-  const found = [...content.matchAll(amounts())].at(-1);
-  if (!found) return null;
-  const rest = content.slice(found.index + found[0].length);
-  if (!/^\s*\.?$/.test(rest)) return null;
-  const left = content.slice(0, found.index).replace(SEPARATOR_TAIL, "");
+  const found = [...content.matchAll(amounts())];
+  if (found.length !== 1) return null;
+  const amount = found[0]!;
+  const after = AFTER_AMOUNT.exec(content.slice(amount.index + amount[0].length));
+  if (!after) return null;
+  const note = (after[1] ?? after[2])?.trim() || null;
+  const left = content.slice(0, amount.index).replace(SEPARATOR_TAIL, "");
   if (!left) return null;
   const dated = LEADING_DATE.exec(left);
-  if (dated && /\d/.test(dated[1]!)) return { date: dated[1]!.trim(), label: dated[2]!.trim(), amount: found[0] };
-  return { date: null, label: left.trim(), amount: found[0] };
+  if (dated && /\d/.test(dated[1]!)) return { date: dated[1]!.trim(), label: dated[2]!.trim(), amount: amount[0], note };
+  return { date: null, label: left.trim(), amount: amount[0], note };
 }
 
 /**

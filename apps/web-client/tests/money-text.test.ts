@@ -32,19 +32,31 @@ describe("ledger rows", () => {
       date: "2 oct.",
       label: "Local Artisan Bakery",
       amount: "25.000 COP",
+      note: null,
     });
-    expect(ledgerRow("• Oct 2: Uber Colombia - $108,448.51")).toEqual({ date: "Oct 2", label: "Uber Colombia", amount: "$108,448.51" });
-    expect(ledgerRow("1. 26 set.: Padaria — R$ 25,00")).toEqual({ date: "26 set.", label: "Padaria", amount: "R$ 25,00" });
+    expect(ledgerRow("• Oct 2: Uber Colombia - $108,448.51")).toEqual({ date: "Oct 2", label: "Uber Colombia", amount: "$108,448.51", note: null });
+    expect(ledgerRow("1. 26 set.: Padaria — R$ 25,00")).toEqual({ date: "26 set.", label: "Padaria", amount: "R$ 25,00", note: null });
   });
 
   test("an account balance, without a date", () => {
-    expect(ledgerRow("- Cuenta de ahorros: 1.234.567,89 COP")).toEqual({ date: null, label: "Cuenta de ahorros", amount: "1.234.567,89 COP" });
+    expect(ledgerRow("- Cuenta de ahorros: 1.234.567,89 COP")).toEqual({ date: null, label: "Cuenta de ahorros", amount: "1.234.567,89 COP", note: null });
   });
 
-  test("a line that is not a list item, has no amount, or goes on after it, is not a row", () => {
+  test("a short note after the amount, in brackets or after a dash, is kept as the row's note", () => {
+    expect(ledgerRow("- 21 sep: Uber Brasil — R$ 248,40 (liquidada)")).toEqual({
+      date: "21 sep",
+      label: "Uber Brasil",
+      amount: "R$ 248,40",
+      note: "liquidada",
+    });
+    expect(ledgerRow("- Oct 1: Falabella — 214.475,55 COP — pending")?.note).toBe("pending");
+  });
+
+  test("a line that is not a list item, has no amount or two, or goes on after it, is not a row", () => {
     expect(ledgerRow("2 oct.: Local Artisan Bakery — 25.000 COP")).toBeNull();
     expect(ledgerRow("- Bloquear la tarjeta")).toBeNull();
-    expect(ledgerRow("- Falabella: 214.475,55 COP (pendiente)")).toBeNull();
+    expect(ledgerRow("- Falabella: 214.475,55 COP, que fue el 12 de septiembre")).toBeNull();
+    expect(ledgerRow("- Falabella: 214.475,55 COP y una devolución de 5.000 COP")).toBeNull();
     expect(ledgerRow("- 25.000 COP")).toBeNull();
   });
 });

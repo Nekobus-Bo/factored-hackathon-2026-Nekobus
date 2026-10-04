@@ -69,9 +69,15 @@ describe("text", () => {
     const html = render([{ type: "text", text }]);
     expect(html).toContain('<span class="chat-text">Estas son tus últimas transacciones:</span><ul class="pb-ledger">');
     expect(html).toContain(
-      '<li class="pb-ledger__row"><span class="pb-ledger__date">2 oct.</span><span class="pb-ledger__label" title="Local Artisan Bakery">Local Artisan Bakery</span><span class="pb-ledger__amount">25.000 COP</span></li>',
+      '<li class="pb-ledger__row"><span class="pb-ledger__date">2 oct.</span><span class="pb-ledger__label"><span class="pb-ledger__name" title="Local Artisan Bakery">Local Artisan Bakery</span></span><span class="pb-ledger__amount">25.000 COP</span></li>',
     );
     expect(html.match(/pb-ledger__row/g)).toHaveLength(2);
+  });
+
+  test("a status after the amount is a note next to the merchant", () => {
+    const html = render([{ type: "text", text: "- 21 sep: Uber Brasil — R$ 248,40 (liquidada)" }], "pt");
+    expect(html).toContain('Uber Brasil</span><span class="pb-ledger__note">liquidada</span>');
+    expect(html).toContain('<span class="pb-ledger__amount">R$ 248,40</span>');
   });
 
   test("an amount in a sentence stays on one line", () => {

@@ -90,8 +90,11 @@ export function AssistantText({ text }: { text: string }) {
             {segment.rows.map((row, rowIndex) => (
               <li key={rowIndex} className="pb-ledger__row">
                 {row.date !== null && <span className="pb-ledger__date">{row.date}</span>}
-                <span className="pb-ledger__label" title={row.label}>
-                  {row.label}
+                <span className="pb-ledger__label">
+                  <span className="pb-ledger__name" title={row.label}>
+                    {row.label}
+                  </span>
+                  {row.note !== null && <span className="pb-ledger__note">{row.note}</span>}
                 </span>
                 <span className="pb-ledger__amount">{row.amount}</span>
               </li>

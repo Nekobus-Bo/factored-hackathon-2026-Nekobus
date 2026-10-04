@@ -40,8 +40,10 @@
 .pb-ledger__row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 5px 0; }
 .pb-ledger__row + .pb-ledger__row { border-top: 1px solid var(--line); }
 .pb-ledger__date { font: 500 12px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; }
-.pb-ledger__label { grid-column: 2; overflow: hidden; font: 400 14px/20px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
+.pb-ledger__label { grid-column: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; font: 400 14px/20px var(--font-sans); }
 .pb-ledger__label:first-child { grid-column: 1 / 3; }
+.pb-ledger__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-ledger__note { flex: none; font: 400 12px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; }
 .pb-ledger__amount { grid-column: 3; font: 600 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 
 /* System lines: sentence case at 13px, with an optional receipt reference. */
