@@ -31,6 +31,8 @@ import {
   AgentMessageRequestSchema,
   AgentMessageResponseSchema,
   AgentTranscriptResponseSchema,
+  DetectiveRequestSchema,
+  DetectiveStateSchema,
   TakeoverResponseSchema,
 } from "./orchestrator-agent";
 import { ConversationParamsSchema } from "./orchestrator-chat";
@@ -222,5 +224,19 @@ export const backofficeBffRoutes = {
     successStatus: 200,
     query: MetricsQuerySchema,
     response: MetricsResponseSchema,
+  }),
+  /** Detective mode (ADR-0019), through the orchestrator agent API: 409 `detective_unavailable` where not offered. */
+  getDetective: defineRoute({
+    method: "GET",
+    pattern: "/api/detective",
+    successStatus: 200,
+    response: DetectiveStateSchema,
+  }),
+  setDetective: defineRoute({
+    method: "PUT",
+    pattern: "/api/detective",
+    successStatus: 200,
+    body: DetectiveRequestSchema,
+    response: DetectiveStateSchema,
   }),
 } as const;

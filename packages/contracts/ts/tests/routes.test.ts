@@ -42,6 +42,8 @@ describe("the route tables are the spec's closed lists", () => {
         "POST /v1/agent/conversations/:id/takeover",
         "POST /v1/agent/conversations/:id/release",
         "POST /v1/agent/conversations/:id/messages",
+        "GET /v1/agent/detective",
+        "PUT /v1/agent/detective",
       ].sort(),
     );
   });
@@ -96,6 +98,8 @@ describe("the route tables are the spec's closed lists", () => {
         "PUT /api/tool-policy",
         "POST /api/demo/reset",
         "GET /api/metrics",
+        "GET /api/detective",
+        "PUT /api/detective",
       ].sort(),
     );
   });

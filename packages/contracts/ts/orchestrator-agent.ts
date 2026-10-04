@@ -102,6 +102,15 @@ export type AgentMessage = z.infer<typeof AgentMessageSchema>;
 export const AgentMessageResponseSchema = z.object({ message: AgentMessageSchema });
 export type AgentMessageResponse = z.infer<typeof AgentMessageResponseSchema>;
 
+// --- Detective mode (ADR-0019) -------------------------------------------------------------------------------
+
+/** `available`: the environment offers it (DETECTIVE_MODE); `enabled`: turns carry their trace right now. */
+export const DetectiveStateSchema = z.object({ available: z.boolean(), enabled: z.boolean() });
+export type DetectiveState = z.infer<typeof DetectiveStateSchema>;
+
+export const DetectiveRequestSchema = z.strictObject({ enabled: z.boolean() });
+export type DetectiveRequest = z.infer<typeof DetectiveRequestSchema>;
+
 // --- Routes --------------------------------------------------------------------------------------------------
 
 /**
@@ -147,5 +156,19 @@ export const orchestratorAgentRoutes = {
     params: ConversationParamsSchema,
     body: AgentMessageRequestSchema,
     response: AgentMessageResponseSchema,
+  }),
+  /** Detective mode for every conversation (ADR-0019). The PUT is 409 `detective_unavailable` where it is not offered. */
+  getDetective: defineRoute({
+    method: "GET",
+    pattern: "/v1/agent/detective",
+    successStatus: 200,
+    response: DetectiveStateSchema,
+  }),
+  setDetective: defineRoute({
+    method: "PUT",
+    pattern: "/v1/agent/detective",
+    successStatus: 200,
+    body: DetectiveRequestSchema,
+    response: DetectiveStateSchema,
   }),
 } as const;
