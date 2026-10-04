@@ -10,6 +10,9 @@
 // `blocks` arrive raw and go through `parseBlocks` here: a type this build does not know, or a block that
 // fails its schema, is left out and the rest of the turn is shown. The strings of receipts and handoffs are
 // fixed per language and come from the dictionary; nothing the model says can make one appear.
+//
+// A text bubble shows money tidily (money-text.ts): a dash list of amounts as a ledger, every other amount kept
+// on one line. Presentation only: the figures are the model's words, exactly as written.
 
 import { parseBlocks, type HandoffBlock, type Lang, type RawBlock, type Receipt } from "@pattern-blue/contracts";
 import { Fragment, useState, type ReactNode } from "react";
@@ -17,6 +20,7 @@ import { dictionaries, format, type Dictionary } from "../../i18n";
 import { displayTarget, formatClock, formatClockSeconds, maskCardNumbers } from "../../machines/chat-model";
 import { Icon, type IconName } from "../ui/Icon";
 import { ResourceChip } from "../ui/StateChip";
+import { parseMoneyText, type InlinePart } from "./money-text";
 
 export interface BlocksProps {
   blocks: readonly RawBlock[];
@@ -69,6 +73,55 @@ export function MessageText({ text }: { text: string }) {
   return <span className="chat-text">{maskCardNumbers(text)}</span>;
 }
 
+/**
+ * Assistant text: what MessageText does, plus money set apart. A list of amounts is a ledger (date, label,
+ * amount in a column); any other amount stays on one line. Customer and agent text never goes through this.
+ */
+export function AssistantText({ text }: { text: string }) {
+  return (
+    <>
+      {parseMoneyText(maskCardNumbers(text)).map((segment, index) =>
+        segment.kind === "text" ? (
+          <span key={index} className="chat-text">
+            <InlineMoney parts={segment.parts} />
+          </span>
+        ) : (
+          <ul key={index} className="pb-ledger">
+            {segment.rows.map((row, rowIndex) => (
+              <li key={rowIndex} className="pb-ledger__row">
+                {row.date !== null && <span className="pb-ledger__date">{row.date}</span>}
+                <span className="pb-ledger__label">
+                  <span className="pb-ledger__name" title={row.label}>
+                    {row.label}
+                  </span>
+                  {row.note !== null && <span className="pb-ledger__note">{row.note}</span>}
+                </span>
+                <span className="pb-ledger__amount">{row.amount}</span>
+              </li>
+            ))}
+          </ul>
+        ),
+      )}
+    </>
+  );
+}
+
+function InlineMoney({ parts }: { parts: InlinePart[] }) {
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.kind === "amount" ? (
+          <span key={index} className="pb-amount">
+            {part.text}
+          </span>
+        ) : (
+          <Fragment key={index}>{part.text}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 /** The sender, for screen readers only: on screen the side and the face of the bubble say it. */
 export function Sender({ name }: { name: string }) {
   return <span className="pb-sr">{name}: </span>;
@@ -78,7 +131,7 @@ function TextBubble({ text, at, lang, turnLang, dict }: { text: string; at: stri
   return (
     <div className="pb-msg pb-msg--assistant" lang={turnLang === lang ? undefined : turnLang}>
       <Sender name={dict.chat.roles.assistant} />
-      <MessageText text={text} />
+      <AssistantText text={text} />
       <span className="pb-msg__time">{formatClock(at, turnLang)}</span>
     </div>
   );

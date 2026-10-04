@@ -32,6 +32,20 @@
 .pb-dock .pb-msg--customer + .pb-msg--customer { margin-top: -8px; }
 .pb-dock .pb-msg--agent .pb-msg__meta { font: 600 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
 
+/* Money in assistant text: an amount never breaks from its currency; a list of amounts is a ledger, the date,
+   the label (cut with an ellipsis) and the amount in columns that line up. The figures are the model's text. */
+.pb-amount { font: 600 0.9em/1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-dock .pb-msg:has(.pb-ledger) { align-self: stretch; }
+.pb-ledger { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; margin: 6px 0 2px; padding: 0; list-style: none; }
+.pb-ledger__row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 5px 0; }
+.pb-ledger__row + .pb-ledger__row { border-top: 1px solid var(--line); }
+.pb-ledger__date { font: 500 12px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; }
+.pb-ledger__label { grid-column: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; font: 400 14px/20px var(--font-sans); }
+.pb-ledger__label:first-child { grid-column: 1 / 3; }
+.pb-ledger__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-ledger__note { flex: none; font: 400 12px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; }
+.pb-ledger__amount { grid-column: 3; font: 600 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
 /* System lines: sentence case at 13px, with an optional receipt reference. */
 .pb-dock .pb-sys { font: 500 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
 .pb-sys__ref { font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
