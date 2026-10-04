@@ -3,3 +3,7 @@
 # Terraform or added by hand (the LLM key).
 region      = "us-east1"
 name_prefix = "pb"
+
+# Detective mode (ADR-0019): judges see each turn's masked timeline from a switch in the
+# customer chat; the back office turns it off and on at runtime.
+detective_mode = true

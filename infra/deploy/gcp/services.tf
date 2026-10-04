@@ -142,6 +142,7 @@ locals {
         ENCODER_TIMEOUT_SECONDS              = "2"
         DECISION_POINTS_MODES                = var.decision_points_modes
         MAX_TOOL_ROUNDS                      = "5"
+        DETECTIVE_MODE                       = tostring(var.detective_mode) # ADR-0019
         REDIS_EDGE_KEY_PREFIX                = "orch:conv:"
         REDIS_EDGE_RATE_LIMIT_KEY_PREFIX     = "orch:ratelimit:"
         REDIS_EDGE_SESSION_INDEX_KEY_PREFIX  = "orch:session:"

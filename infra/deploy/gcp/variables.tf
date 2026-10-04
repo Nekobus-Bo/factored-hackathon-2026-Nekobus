@@ -89,6 +89,12 @@ variable "backoffice_public" {
   default     = false
 }
 
+variable "detective_mode" {
+  description = "Offer detective mode (ADR-0019): each chat turn comes with its masked timeline, shown by a switch in the customer chat and turned off and on from the back office. Anyone using the chat then sees the system prompt and the tool outcomes."
+  type        = bool
+  default     = false
+}
+
 variable "judge_accounts" {
   description = "How many judge logins to generate (judge1 to judgeN at the demo agent's domain, random passwords in Secret Manager). 0 is none."
   type        = number

@@ -110,6 +110,10 @@ services:
       # Switch it on explicitly, with a secret of your own.
       AGENT_API_ENABLED: ${AGENT_API_ENABLED:-false}
       AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
+      # The base file offers detective mode (ADR-0019); a production deploy does not
+      # inherit that, it opts in. On, anyone using the chat sees each turn's masked
+      # timeline, the system prompt included.
+      DETECTIVE_MODE: ${DETECTIVE_MODE:-false}
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on: !override
       banking-core:
