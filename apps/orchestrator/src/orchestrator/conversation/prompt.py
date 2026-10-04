@@ -81,6 +81,24 @@ FALLBACK_MESSAGES: dict[Lang, str] = {
     ),
 }
 
+# The fixed reply when the model reached for a tool that needs an identified customer
+# before the customer gave a document: nothing was checked, so the reply asks for
+# one instead of relaying the refusal, which reads as a failed verification.
+IDENTITY_REQUEST_MESSAGES: dict[Lang, str] = {
+    "es": (
+        "Entiendo, vamos a proteger tu tarjeta. Por tu seguridad, primero necesito "
+        "verificar tu identidad. ¿Me indicas tu tipo y número de documento?"
+    ),
+    "pt": (
+        "Entendo, vamos proteger seu cartão. Para sua segurança, primeiro preciso "
+        "verificar sua identidade. Pode me informar o tipo e o número do seu documento?"
+    ),
+    "en": (
+        "Understood, let's protect your card. For your security, I first need to "
+        "verify your identity. Could you tell me your document type and number?"
+    ),
+}
+
 REPHRASE_MESSAGES: dict[Lang, str] = {
     "es": (
         "No pude procesar tu mensaje de forma segura. "

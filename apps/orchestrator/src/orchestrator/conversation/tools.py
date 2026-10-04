@@ -10,8 +10,10 @@ from contracts.tools import ALL_STATES, CODE_FLOOR, VERIFICATION_PATH
 # policy: banking-core still authorizes every call (ADR-0002, ADR-0016).
 FOLLOW_UP: dict[str, str] = {
     "customer.match": (
-        "When it matches and the customer's request needs a verified session, call "
-        "otp_send next, in the same turn."
+        "It needs the document number the customer wrote in this conversation (a "
+        "[DOC_n] placeholder); if they have not given one, do not call it: ask for "
+        "their document type and number first. When it matches and the customer's "
+        "request needs a verified session, call otp_send next, in the same turn."
     ),
     "otp.send": "Then ask the customer for the code and pass it to otp_verify.",
     "otp.verify": "Once VERIFIED, continue with what the customer asked for.",

@@ -210,7 +210,7 @@ Works the same in replay and live mode.
    ```
 
    Ask again: the balance comes back. No deployment, no restart, no code: the response is the new policy version, and the audit row `admin.tool_policy.updated` keeps the before and after. `GET /v1/admin/tool-policy` shows the policy in force and the code floor; asking for a state beyond it (for example `card.block` for `ANONYMOUS`) is refused with a 422, and the Guardrails screen shows that refusal when you click a cell beyond the floor. To run the demo again, "Reset demo" in Guardrails, or `POST /v1/admin/demo/reset-fixtures` with the same header (and `DEMO_RESET_ENABLED=true` under `APP_ENV=production`), puts the tool back to disabled, along with the demo cards.
-6. **Language.** Repeat step 1 in Portuguese. The customer page follows the browser's language (Spanish, Portuguese or English; Spanish when it is none of them) and has a language switch in its header.
+6. **Language.** Repeat step 1 in Portuguese. The customer page follows the browser's language (Spanish or Portuguese; Spanish when it is neither, English included) and has a language switch in its header.
 
 Full scripts with exact messages: `demo/scripts/`.
 

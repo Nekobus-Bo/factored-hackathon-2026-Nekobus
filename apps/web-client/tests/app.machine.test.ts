@@ -110,7 +110,8 @@ describe("language", () => {
     for (const [nav, lang] of [
       ["es-CO", "es"],
       ["pt-BR", "pt"],
-      ["en-US", "en"],
+      // English is not offered on the page.
+      ["en-US", "es"],
       ["fr-FR", "es"],
       [undefined, "es"],
     ] as const) {
@@ -128,8 +129,6 @@ describe("language", () => {
     expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "pt", locale: "pt-BR", detective: false });
     expect(attributes.get("lang")).toBe("pt");
     expect(store.size).toBe(0);
-    actor.send({ type: "LANG.SET", lang: "en" });
-    expect(actor.getSnapshot().context.lang).toBe("en");
   });
 });
 
@@ -140,11 +139,11 @@ describe("market", () => {
       ["es-mx", "es-MX"],
       ["es_AR", "es-AR"],
       ["pt-BR", "pt-BR"],
-      ["en-US", "en-US"],
+      ["en-US", "es-CO"],
       ["es", "es-CO"],
       ["es-ES", "es-CO"],
       ["pt-PT", "pt-BR"],
-      ["en-GB", "en-US"],
+      ["en-GB", "es-CO"],
       ["fr-FR", "es-CO"],
       [undefined, "es-CO"],
     ] as const) {

@@ -112,6 +112,9 @@ class TurnMetadata(BaseModel):
     locale: Locale | None = None
     # The turn was answered by the canned clarification, without the LLM (ADR-0014).
     canned_reply: bool = False
+    # The turn ended with the fixed identity request: the model reached for a tool
+    # that needs an identified customer before the customer gave a document.
+    identity_requested: bool = False
     encoder: EncoderSignal | None = None
     encoder_unavailable: bool = False
     # The encoder was configured but gave no PII spans this turn (unavailable,
