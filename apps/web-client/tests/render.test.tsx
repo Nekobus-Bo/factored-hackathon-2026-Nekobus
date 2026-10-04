@@ -552,7 +552,8 @@ describe("detective mode (ADR-0019)", () => {
     expect(html.match(/data-trace-turn=/g)).toHaveLength(2);
     expect(html).toMatch(/aria-checked="true" aria-label="Turno 3" data-trace-turn="3">3</);
     expect(html).toContain("<b>2.40 s</b><span>LLM 1.90 s</span><span>2530 tok</span><span>$0.00034</span>");
-    expect(html).toContain(`title="${t.conversationTokens}">Σ 2530 tok</span>`);
+    expect(html).toContain(`<table class="pb-trace__total" aria-label="${t.conversationTotal}">`);
+    expect(html).toContain(`rowSpan="2">${t.total}</th><td>2530 tok</td></tr><tr><td>$0.00034</td>`);
     expect(html.match(/data-trace-step=/g)).toHaveLength(2);
     expect(html).toContain('<code class="pb-trace-name">customer.match</code>');
     expect(html).toContain("INVALID_ARGUMENTS");

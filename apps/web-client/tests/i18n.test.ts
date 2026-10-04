@@ -68,6 +68,7 @@ describe("dictionaries", () => {
       "s2.ticker",
       "chat.inbox.demoTag",
       "nav.markets.es-AR",
+      "chat.detective.total",
       "chat.detective.kinds.encoder",
       "chat.detective.kinds.llm_call",
       "chat.detective.status.ok",

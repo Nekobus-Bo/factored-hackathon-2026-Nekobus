@@ -40,9 +40,15 @@ export function summarize(trace: TurnTrace): TraceSummary {
   return summary;
 }
 
-/** Tokens across every traced turn of the conversation. */
-export function conversationTokens(turns: readonly TracedTurn[]): number {
-  return turns.reduce((total, turn) => total + summarize(turn.trace).tokens, 0);
+/** Tokens and dollars across every traced turn of the conversation. */
+export function conversationTotal(turns: readonly TracedTurn[]): { tokens: number; costUsd: number } {
+  const total = { tokens: 0, costUsd: 0 };
+  for (const turn of turns) {
+    const s = summarize(turn.trace);
+    total.tokens += s.tokens;
+    total.costUsd += s.costUsd;
+  }
+  return total;
 }
 
 /** `29 ms`, `1.27 s`; a dash for a step that has no duration. */

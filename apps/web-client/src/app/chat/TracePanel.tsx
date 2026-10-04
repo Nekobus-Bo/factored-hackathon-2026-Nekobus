@@ -9,7 +9,7 @@ import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
 import { useId, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { format, type Dictionary } from "../../i18n";
 import { Icon } from "../ui/Icon";
-import { conversationTokens, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
+import { conversationTotal, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
 
 export type TraceView = "steps" | "timeline";
 export type DockPane = "chat" | "trace";
@@ -66,11 +66,6 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
               ))}
             </div>
           )}
-          {turns.length > 0 && (
-            <span className="pb-trace__total" title={t.conversationTokens}>
-              {`Σ ${conversationTokens(turns)} tok`}
-            </span>
-          )}
           <div className="pb-tabs pb-trace__views" role="radiogroup" aria-label={t.views}>
             {(["steps", "timeline"] as const).map((name) => (
               <button key={name} type="button" className="pb-tab" role="radio" aria-checked={view === name} data-trace-view={name} onClick={() => onView(name)}>
@@ -78,6 +73,7 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
               </button>
             ))}
           </div>
+          {turns.length > 0 && <ConversationTotal dict={dict} turns={turns} />}
         </div>
         {turn && <TurnSummary trace={turn.trace} />}
       </header>
@@ -94,6 +90,26 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
         )}
       </div>
     </aside>
+  );
+}
+
+/** The whole conversation so far: tokens and dollars, at the right of the bar. */
+function ConversationTotal({ dict, turns }: { dict: Dictionary; turns: readonly TracedTurn[] }) {
+  const total = conversationTotal(turns);
+  return (
+    <table className="pb-trace__total" aria-label={dict.chat.detective.conversationTotal}>
+      <tbody>
+        <tr>
+          <th scope="row" rowSpan={2}>
+            {dict.chat.detective.total}
+          </th>
+          <td>{`${total.tokens} tok`}</td>
+        </tr>
+        <tr>
+          <td>{formatUsd(total.costUsd)}</td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 
