@@ -291,3 +291,32 @@ describe("when an upstream misbehaves", () => {
     expect(body.db_password).toBeUndefined();
   });
 });
+
+describe("detective mode (ADR-0019)", () => {
+  test("GET reads the orchestrator's switch through the agent API", async () => {
+    const res = await send("/api/detective", "GET");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ available: true, enabled: true });
+    expect(harness.orchestrator.requests.at(-1)?.path).toBe("/v1/agent/detective");
+  });
+
+  test("PUT turns it off and on", async () => {
+    const off = await send("/api/detective", "PUT", { enabled: false });
+    expect(await off.json()).toEqual({ available: true, enabled: false });
+    expect((await (await send("/api/detective", "GET")).json()).enabled).toBe(false);
+    const on = await send("/api/detective", "PUT", { enabled: true });
+    expect(await on.json()).toEqual({ available: true, enabled: true });
+  });
+
+  test("where it is not offered, the agent API's 409 is passed on", async () => {
+    harness.orchestrator.on("PUT /v1/agent/detective", () => Response.json({ detail: "detective_unavailable" }, { status: 409 }));
+    const res = await send("/api/detective", "PUT", { enabled: true });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ detail: "detective_unavailable" });
+  });
+
+  test("the body is strict and the session is required", async () => {
+    expect((await send("/api/detective", "PUT", { enabled: true, all: true })).status).toBe(422);
+    expect((await harness.request("/api/detective", { method: "GET" })).status).toBe(401);
+  });
+});

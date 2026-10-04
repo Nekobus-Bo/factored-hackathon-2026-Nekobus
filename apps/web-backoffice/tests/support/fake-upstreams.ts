@@ -139,8 +139,15 @@ export function startFakeBankingCore(token = "test-admin-token"): FakeService {
 export function startFakeOrchestrator(token = "test-agent-token"): FakeService {
   /** Whether the conversation is taken over, and by whom: enough state for a takeover to be observable. */
   let holder: string | null = null;
+  /** Detective mode (ADR-0019): offered, and switched on until a PUT says otherwise. */
+  let detective = true;
 
   return startFake(token, {
+    "GET /v1/agent/detective": () => json({ available: true, enabled: detective }),
+    "PUT /v1/agent/detective": (request) => {
+      detective = (request.body as { enabled: boolean }).enabled;
+      return json({ available: true, enabled: detective });
+    },
     "GET /v1/agent/sessions/:session_ref/conversation": () => json({ conversation_id: CONVERSATION_ID }),
     "GET /v1/agent/conversations/:id": () =>
       json(

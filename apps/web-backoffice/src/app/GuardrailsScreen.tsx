@@ -2,6 +2,7 @@ import { useMachine } from "@xstate/react";
 import { guardrailsMachine } from "../machines/guardrails";
 import { describeChanges, floorOf, invalidThresholds, type Change, policyDirty, toolsDirty } from "../machines/policy-draft";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DetectiveControl } from "./DetectiveControl";
 import { useAppServices, useI18n } from "./context";
 import { money } from "./format";
 import { MatrixLegend, ModeGroup, RefusalBanner, ThresholdRow, ToolMatrix } from "./PolicyControl";
@@ -155,6 +156,8 @@ export function GuardrailsScreen() {
           </span>
         </div>
       </section>
+
+      <DetectiveControl />
 
       <section className="pb-card pb-policy" aria-labelledby="reset-title">
         <div className="pb-policy__sec pb-policy__foot">

@@ -331,6 +331,18 @@ export const en: Dictionary = {
     savedPolicy: "Saved. Policy v{policy}.",
     savedTools: "Saved. Tools v{tools}.",
     saveFailed: "Could not save. Your changes are still on screen.",
+    detective: {
+      title: "Detective mode",
+      body: "Every assistant reply in the customer chat comes with its trace: the encoder, the masking, the LLM and tool calls, with their timings and masked values only. On, the chat offers a switch to see it. It applies to every conversation at once.",
+      on: "On: the chat offers each reply's trace.",
+      off: "Off: the chat works as usual.",
+      turnOn: "Turn on",
+      turnOff: "Turn off",
+      saving: "Saving…",
+      unavailable: "Not available in this environment (DETECTIVE_MODE).",
+      failed: "Detective mode could not be changed.",
+      loadFailed: "Detective mode could not be read.",
+    },
     reset: {
       title: "Reset the demo",
       body: "Puts the demo cards back to their initial state, clears the attempt limits of the test customers and restores the tools to their seed. It does not delete the audit trail.",

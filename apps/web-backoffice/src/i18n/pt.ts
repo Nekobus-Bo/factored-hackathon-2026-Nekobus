@@ -331,6 +331,18 @@ export const pt: Dictionary = {
     savedPolicy: "Salvo. Política v{policy}.",
     savedTools: "Salvo. Ferramentas v{tools}.",
     saveFailed: "Não foi possível salvar. As alterações continuam na tela.",
+    detective: {
+      title: "Modo detetive",
+      body: "Cada resposta do assistente no chat do cliente traz o seu rastro: o encoder, o mascaramento, as chamadas ao LLM e às ferramentas, com os tempos e só valores mascarados. Ativo, o chat oferece um interruptor para vê-lo. Vale para todas as conversas ao mesmo tempo.",
+      on: "Ativo: o chat oferece o rastro de cada resposta.",
+      off: "Inativo: o chat funciona como sempre.",
+      turnOn: "Ativar",
+      turnOff: "Desativar",
+      saving: "Salvando…",
+      unavailable: "Não está disponível neste ambiente (DETECTIVE_MODE).",
+      failed: "Não foi possível mudar o modo detetive.",
+      loadFailed: "Não foi possível ler o modo detetive.",
+    },
     reset: {
       title: "Reiniciar a demo",
       body: "Devolve os cartões de demo ao estado inicial, apaga os limites de tentativas dos clientes de teste e restaura as ferramentas à sua semente. Não apaga a auditoria.",

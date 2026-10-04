@@ -121,6 +121,9 @@ export function createApi(fetchImpl: FetchLike = (input, init) => globalThis.fet
     resetDemo: () => request(routes.resetDemo),
 
     getMetrics: (hours: number) => request(routes.getMetrics, { query: { hours } }),
+
+    getDetective: () => request(routes.getDetective),
+    setDetective: (enabled: boolean) => request(routes.setDetective, { body: { enabled } }),
   };
 }
 

@@ -333,6 +333,18 @@ export const es = {
     savedPolicy: "Guardado. Política v{policy}.",
     savedTools: "Guardado. Herramientas v{tools}.",
     saveFailed: "No se pudo guardar. Los cambios siguen en pantalla.",
+    detective: {
+      title: "Modo detective",
+      body: "Cada respuesta del asistente en el chat del cliente trae su traza: el encoder, el enmascaramiento, las llamadas al LLM y a las herramientas, con sus tiempos y solo valores enmascarados. Activo, el chat ofrece un interruptor para verla. Vale para todas las conversaciones a la vez.",
+      on: "Activo: el chat ofrece la traza de cada respuesta.",
+      off: "Inactivo: el chat funciona como siempre.",
+      turnOn: "Activar",
+      turnOff: "Desactivar",
+      saving: "Guardando…",
+      unavailable: "No está disponible en este entorno (DETECTIVE_MODE).",
+      failed: "No se pudo cambiar el modo detective.",
+      loadFailed: "No se pudo leer el modo detective.",
+    },
     reset: {
       title: "Reiniciar la demo",
       body: "Devuelve las tarjetas de demo a su estado inicial, borra los límites de intentos de los clientes de prueba y restablece las herramientas a su semilla. No borra la auditoría.",

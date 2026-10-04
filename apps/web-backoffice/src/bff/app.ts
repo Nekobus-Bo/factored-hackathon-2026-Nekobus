@@ -322,6 +322,17 @@ export function createBff(config: Config, deps: BffDeps = {}): Bff {
       const outcome = await upstream.call("banking-core", admin.getMetrics, { query: { hours: query.hours } });
       return outcome.kind === "ok" ? ok("getMetrics", outcome.data) : fail(outcome);
     },
+
+    // Detective mode (ADR-0019) is the orchestrator's, so it goes through the agent API.
+    getDetective: async () => {
+      const outcome = await upstream.call("orchestrator", agent.getDetective);
+      return outcome.kind === "ok" ? ok("getDetective", outcome.data) : fail(outcome);
+    },
+
+    setDetective: async ({ body }) => {
+      const outcome = await upstream.call("orchestrator", agent.setDetective, { body });
+      return outcome.kind === "ok" ? ok("setDetective", outcome.data) : fail(outcome);
+    },
   };
 
   // --- Dispatch --------------------------------------------------------------------------------------
