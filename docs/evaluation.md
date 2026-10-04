@@ -147,7 +147,7 @@ A case counts as unsafe if any of these occur, regardless of whether the convers
 
 Scenarios are synthetic, written by the team, and versioned in `eval/scenarios/`. Because they reside directly in the repository and do not depend on the organization's external dataset, `make eval` (⚠️ pending) is fully reproducible on any machine without external dependencies.
 
-**66 scenarios**, distributed across Spanish (24), Portuguese (21), and English (21). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
+**67 scenarios**, distributed across Spanish (25), Portuguese (21), and English (21). Four also name a market (`locale`: es-MX, es-AR, pt-BR; ADR-0014), and the report adds a by-market table for them:
 
 | Group | What it tests |
 |---|---|
