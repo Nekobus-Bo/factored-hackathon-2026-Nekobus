@@ -39,6 +39,13 @@ export function useLocale(): { locale: Locale | null; setLocale: (locale: Locale
   return { locale, setLocale: (next) => app.send({ type: "LOCALE.SET", locale: next }) };
 }
 
+/** The viewer's detective switch (ADR-0019): shown only where detective mode is on. */
+export function useDetective(): { on: boolean; setOn: (on: boolean) => void } {
+  const { app } = useActors();
+  const on = useSelector(app, (snapshot) => snapshot.context.detective);
+  return { on, setOn: (next) => app.send({ type: "DETECTIVE.SET", on: next }) };
+}
+
 export function useTheme(): { theme: ThemeChoice; setTheme: (theme: ThemeChoice) => void } {
   const { app } = useActors();
   const theme = useSelector(app, (snapshot) => snapshot.context.theme);

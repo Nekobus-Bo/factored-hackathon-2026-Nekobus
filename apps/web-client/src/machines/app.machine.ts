@@ -11,6 +11,8 @@
 //          its language, and switching to another language moves to that language's default market. The page text does not change with it (one Spanish for every Spanish market); the
 //          chat sends it when it creates the conversation, so the encoder uses that market's thresholds.
 //          Not remembered, like `lang`.
+//   detective the viewer's switch for detective mode (ADR-0019): show each turn's trace. Remembered like
+//          the theme, off by default; the chat offers it only where the orchestrator says the mode is on.
 //
 // The effects (the attribute on `<html>`, the storage) go through the `env` the factory receives, so a
 // test runs the same machine with fakes.
@@ -23,17 +25,22 @@ import { DEFAULT_LOCALES, langOf, startLocale } from "../i18n";
 export type ThemeChoice = "system" | "light" | "dark";
 
 export const THEME_STORAGE_KEY = "pb-theme";
+/** The viewer's detective switch (ADR-0019): "on" or absent. A convenience, not a setting. */
+export const DETECTIVE_STORAGE_KEY = "pb-detective";
 
 export interface AppContext {
   theme: ThemeChoice;
   lang: Lang;
   locale: Locale | null;
+  /** The viewer wants each turn's trace shown, where detective mode is on. Remembered, off by default. */
+  detective: boolean;
 }
 
 export type AppEvent =
   | { type: "THEME.SET"; theme: ThemeChoice }
   | { type: "LANG.SET"; lang: Lang }
-  | { type: "LOCALE.SET"; locale: Locale };
+  | { type: "LOCALE.SET"; locale: Locale }
+  | { type: "DETECTIVE.SET"; on: boolean };
 
 export interface AppEnv {
   /** `localStorage`, or null when the browser has none. Any call may throw. */
@@ -68,6 +75,14 @@ export function readStoredTheme(storage: AppEnv["storage"]): ThemeChoice {
   }
 }
 
+export function readStoredDetective(storage: AppEnv["storage"]): boolean {
+  try {
+    return storage?.getItem(DETECTIVE_STORAGE_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
 export function createAppMachine(env: AppEnv) {
   const applyTheme = (theme: ThemeChoice) => {
     if (theme === "system") env.root?.removeAttribute(themeAttribute);
@@ -83,6 +98,15 @@ export function createAppMachine(env: AppEnv) {
     }
   };
 
+  const persistDetective = (on: boolean) => {
+    try {
+      if (on) env.storage?.setItem(DETECTIVE_STORAGE_KEY, "on");
+      else env.storage?.removeItem(DETECTIVE_STORAGE_KEY);
+    } catch {
+      // As for the theme: it holds for this visit.
+    }
+  };
+
   return createMachine({
     types: {} as { context: AppContext; events: AppEvent },
     id: "app",
@@ -90,6 +114,7 @@ export function createAppMachine(env: AppEnv) {
       theme: readStoredTheme(env.storage),
       lang: langOf(startLocale(env.navigatorLanguage)),
       locale: startLocale(env.navigatorLanguage),
+      detective: readStoredDetective(env.storage),
     }),
     initial: "ready",
     // What the page starts with reaches <html> once, so the attributes never depend on a component mounting.
@@ -118,6 +143,9 @@ export function createAppMachine(env: AppEnv) {
               }),
               ({ event }) => env.root?.setAttribute("lang", event.lang),
             ],
+          },
+          "DETECTIVE.SET": {
+            actions: [assign({ detective: ({ event }) => event.on }), ({ event }) => persistDetective(event.on)],
           },
           "LOCALE.SET": {
             actions: [

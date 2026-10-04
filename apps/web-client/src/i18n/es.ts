@@ -181,6 +181,11 @@ export const es = {
     retry: "Reintentar",
     takeoverStatus: "Un agente está atendiendo tu caso",
     codeExpired: "El código venció",
+    detective: {
+      toggle: "Modo detective",
+      show: "Ver lo que pasó por dentro",
+      hide: "Ocultar el detalle",
+    },
     chip: {
       anonymous: "Sin identificar",
       identified: "Identificado",

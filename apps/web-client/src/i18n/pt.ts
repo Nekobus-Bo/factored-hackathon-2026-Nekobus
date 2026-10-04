@@ -145,6 +145,11 @@ export const pt: Dictionary = {
     retry: "Tentar de novo",
     takeoverStatus: "Um agente está atendendo seu caso",
     codeExpired: "O código venceu",
+    detective: {
+      toggle: "Modo detetive",
+      show: "Ver o que aconteceu por dentro",
+      hide: "Ocultar o detalhe",
+    },
     chip: {
       anonymous: "Não identificado",
       identified: "Identificado",

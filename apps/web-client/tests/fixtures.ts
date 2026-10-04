@@ -1,6 +1,8 @@
 // Payloads shaped like the orchestrator's answers. The block fixtures satisfy the contracts' schemas
 // (tests/fixtures.test.ts parses them), so a drift in the contract breaks a test here first.
 
+import type { TurnTrace } from "@pattern-blue/contracts";
+
 export const CONVERSATION_ID = "conv_0123456789abcdef0123456789abcdef";
 export const CLIENT_MESSAGE_ID = "msg_0123456789abcdef";
 
@@ -103,3 +105,38 @@ export function inboxResponse(expiresAt: string, receivedAt = "2026-09-29T15:40:
     ],
   };
 }
+
+/** A detective-mode trace (ADR-0019): what a turn returns while the mode is on. */
+export const TRACE: TurnTrace = {
+  trace_version: "1",
+  turn_id: "turn_test0001",
+  prompt_version: "p1",
+  total_ms: 812.4,
+  tool_rounds: 0,
+  events: [
+    {
+      seq: 0,
+      kind: "masking",
+      label: "masking",
+      start_ms: 0.4,
+      duration_ms: 1.2,
+      status: "ok",
+      note: null,
+      encoder: null,
+      masking: {
+        masked_text: "perdí mi tarjeta, soy [DOC_1]",
+        placeholders: ["[DOC_1]"],
+        regex_only: false,
+        encoder_spans_added: 0,
+        otp_pending: false,
+        failed: false,
+      },
+      decisions: null,
+      llm_call: null,
+      tool_call: null,
+      blocks: null,
+    },
+  ],
+};
+
+export const SEND_RESPONSE_TRACED = { ...SEND_RESPONSE, trace: TRACE };

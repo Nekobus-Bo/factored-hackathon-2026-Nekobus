@@ -8,6 +8,7 @@ import {
   type MessageBlock,
   type RawBlock,
   type TranscriptMessage,
+  type TurnTrace,
 } from "@pattern-blue/contracts";
 
 // --- The transcript the customer sees ------------------------------------------------------------------
@@ -19,8 +20,11 @@ import {
 export type Entry =
   /** `text` is the display text: a code or a card number the customer typed is already masked. */
   | { id: string; kind: "customer"; text: string; at: string; lang: Lang; status: "sent" | "failed" }
-  /** One turn of the assistant: its blocks, raw as they came. The renderer runs `parseBlocks`. */
-  | { id: string; kind: "assistant"; blocks: RawBlock[]; at: string; lang: Lang }
+  /**
+   * One turn of the assistant: its blocks, raw as they came. The renderer runs `parseBlocks`. `trace` is
+   * the turn's timeline, there only while detective mode is on (ADR-0019).
+   */
+  | { id: string; kind: "assistant"; blocks: RawBlock[]; at: string; lang: Lang; trace?: TurnTrace }
   /** A message a person wrote after taking the conversation over. `key` deduplicates the polling. */
   | { id: string; kind: "agent"; text: string; at: string; key: string }
   /** A client-derived line between messages: the strings live in the dictionary, keyed by `code`. */

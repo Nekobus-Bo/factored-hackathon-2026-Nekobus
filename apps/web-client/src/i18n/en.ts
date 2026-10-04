@@ -145,6 +145,11 @@ export const en: Dictionary = {
     retry: "Try again",
     takeoverStatus: "An agent is handling your case",
     codeExpired: "The code has expired",
+    detective: {
+      toggle: "Detective mode",
+      show: "See what happened under the hood",
+      hide: "Hide the detail",
+    },
     chip: {
       anonymous: "Unidentified",
       identified: "Identified",

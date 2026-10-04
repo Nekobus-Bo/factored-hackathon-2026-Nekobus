@@ -1,4 +1,4 @@
-// A scripted browser for the machine tests: a fake `fetch` that answers the five BFF routes from queues
+// A scripted browser for the machine tests: a fake `fetch` that answers the six BFF routes from queues
 // (the last answer of a queue repeats), a clock the tests move by hand, and a chat actor wired to both.
 
 import { clientBffRoutes, type Locale } from "@pattern-blue/contracts";
@@ -25,6 +25,7 @@ export const START = Date.parse("2026-09-29T15:40:00Z");
 
 function classify(method: string, path: string): RouteKey {
   if (method === "POST" && path === "/api/conversations") return "createConversation";
+  if (method === "GET" && path === "/api/capabilities") return "getCapabilities";
   if (method === "POST" && /^\/api\/conversations\/[^/]+\/messages$/.test(path)) return "sendMessage";
   if (method === "GET" && /^\/api\/conversations\/[^/]+\/inbox$/.test(path)) return "getInbox";
   if (method === "POST" && /^\/api\/conversations\/[^/]+\/feedback$/.test(path)) return "sendFeedback";
@@ -117,6 +118,7 @@ export function createWorld(options: { visible?: boolean } = {}) {
             state !== "creating" &&
             state !== "sending" &&
             snapshot.matches({ followup: "idle" }) &&
+            !snapshot.matches({ capabilities: "loading" }) &&
             !snapshot.matches({ takeover: { on: { polling: "fetching" } } })
           );
         },

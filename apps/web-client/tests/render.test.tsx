@@ -26,6 +26,7 @@ import {
   SECRET_QUESTION,
   TEXT_BLOCK,
   UNKNOWN_BLOCK,
+  TRACE,
 } from "./fixtures";
 import { createWorld, json } from "./world";
 
@@ -495,5 +496,61 @@ describe("the landing", () => {
     const html = page("es-ES");
     expect(html.match(/aria-checked="true"[^>]*data-locale="es-CO"/g)).toHaveLength(1);
     expect(html).not.toMatch(/aria-checked="true"[^>]*data-locale="es-(AR|MX)"/);
+  });
+});
+
+describe("detective mode (ADR-0019)", () => {
+  afterEach(() => world?.stop());
+  let world: ReturnType<typeof createWorld> | undefined;
+
+  const traced: Entry[] = [
+    { id: "1", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:40:05Z", lang: "es", trace: TRACE } as Entry,
+    { id: "2", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:41:05Z", lang: "es" },
+  ];
+
+  test("the trace shows only with detective on, and only under a reply that has one", () => {
+    const off = renderToStaticMarkup(<Transcript entries={traced} lang="es" />);
+    expect(off).not.toContain("data-detective");
+    const on = renderToStaticMarkup(<Transcript entries={traced} lang="es" detective />);
+    expect(on.match(/data-detective/g)).toHaveLength(1);
+    expect(on).toContain(dictionaries.es.chat.detective.show);
+    expect(on).toContain('aria-expanded="false"');
+    expect(on).toContain("[DOC_1]");
+  });
+
+  const appWith = (stored: Record<string, string>) => {
+    const store = new Map(Object.entries(stored));
+    const env: AppEnv = {
+      storage: { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => void store.set(key, value), removeItem: (key) => void store.delete(key) },
+      root: null,
+      navigatorLanguage: "es-CO",
+    };
+    return createActor(createAppMachine(env)).start();
+  };
+
+  const dock = (stored: Record<string, string> = {}) =>
+    renderToStaticMarkup(
+      <ActorsProvider actors={{ app: appWith(stored), chat: world!.actor }}>
+        <ChatDock open onOpenChange={() => {}} />
+      </ActorsProvider>,
+    );
+
+  test("no switch in the header where detective mode is off", async () => {
+    world = createWorld();
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    expect(dock()).not.toContain("data-detective-toggle");
+  });
+
+  test("where it is on, the header has the switch, pressed when the viewer turned it on", async () => {
+    world = createWorld();
+    world.script("getCapabilities", json({ detective: true }));
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    const off = dock();
+    expect(off).toContain("data-detective-toggle");
+    expect(off).toContain('aria-pressed="false"');
+    expect(off).toContain(`aria-label="${dictionaries.es.chat.detective.toggle}"`);
+    expect(dock({ "pb-detective": "on" })).toContain('aria-pressed="true"');
   });
 });

@@ -1,4 +1,4 @@
-// The browser's side of the BFF: the five routes of `clientBffRoutes`, built from the same table the
+// The browser's side of the BFF: the six routes of `clientBffRoutes`, built from the same table the
 // server registers. Each call validates the answer with the route's schema and returns a result, never
 // throws: the machines branch on `kind`, and a network failure is the same as a 503.
 //
@@ -10,6 +10,7 @@
 import {
   clientBffRoutes,
   routePath,
+  type CapabilitiesResponse,
   type CreateConversationRequest,
   type CreateConversationResponse,
   type FeedbackResponse,
@@ -33,6 +34,8 @@ export interface ApiClient {
   getTranscript(conversationId: string): Promise<ApiResult<TranscriptResponse>>;
   getInbox(conversationId: string): Promise<ApiResult<InboxResponse>>;
   sendFeedback(conversationId: string, body: SendFeedbackRequest): Promise<ApiResult<FeedbackResponse>>;
+  /** Whether detective mode is on (ADR-0019): turns then carry their trace. */
+  getCapabilities(): Promise<ApiResult<CapabilitiesResponse>>;
 }
 
 export const DEFAULT_RETRY_AFTER_SECONDS = 60;
@@ -110,5 +113,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     getInbox: (id) => call(clientBffRoutes.getInbox, routePath(clientBffRoutes.getInbox, { id })),
     sendFeedback: (id, body) =>
       call(clientBffRoutes.sendFeedback, routePath(clientBffRoutes.sendFeedback, { id }), body),
+    getCapabilities: () => call(clientBffRoutes.getCapabilities, routePath(clientBffRoutes.getCapabilities)),
   };
 }

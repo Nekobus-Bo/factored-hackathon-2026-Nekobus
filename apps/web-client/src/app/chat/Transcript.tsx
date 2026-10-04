@@ -7,6 +7,7 @@ import { dictionaries, type Dictionary } from "../../i18n";
 import { formatClock, isHandoff, isOtpSendReceipt, lastEntryWith, type Entry } from "../../machines/chat-model";
 import { Icon } from "../ui/Icon";
 import { Blocks, MessageText, Sender } from "./Blocks";
+import { TraceFold } from "./TraceFold";
 
 /** The message the API did not accept just now, and what the line under it says and offers. */
 export interface PendingFailure {
@@ -27,9 +28,11 @@ export interface TranscriptProps {
   otpFoot?: ReactNode;
   /** Goes right after the newest handoff block: the feedback line. */
   afterHandoff?: ReactNode;
+  /** Detective mode is on and the viewer's switch too: each reply shows its trace (ADR-0019). */
+  detective?: boolean;
 }
 
-export function Transcript({ entries, lang, failure = null, onRetry, otpFoot, afterHandoff }: TranscriptProps) {
+export function Transcript({ entries, lang, failure = null, onRetry, otpFoot, afterHandoff, detective = false }: TranscriptProps) {
   const dict = dictionaries[lang];
   const otpEntryId = otpFoot ? lastEntryWith(entries, isOtpSendReceipt) : null;
   const handoffEntryId = afterHandoff ? lastEntryWith(entries, isHandoff) : null;
@@ -45,6 +48,7 @@ export function Transcript({ entries, lang, failure = null, onRetry, otpFoot, af
           onRetry={onRetry}
           otpFoot={entry.id === otpEntryId ? otpFoot : undefined}
           afterHandoff={entry.id === handoffEntryId ? afterHandoff : undefined}
+          detective={detective}
         />
       ))}
     </>
@@ -59,6 +63,7 @@ function EntryView({
   onRetry,
   otpFoot,
   afterHandoff,
+  detective,
 }: {
   entry: Entry;
   lang: Lang;
@@ -67,6 +72,7 @@ function EntryView({
   onRetry?: () => void;
   otpFoot?: ReactNode;
   afterHandoff?: ReactNode;
+  detective: boolean;
 }) {
   switch (entry.kind) {
     case "customer": {
@@ -87,7 +93,12 @@ function EntryView({
       );
     }
     case "assistant":
-      return <Blocks blocks={entry.blocks} turnLang={entry.lang} lang={lang} at={entry.at} otpFoot={otpFoot} afterHandoff={afterHandoff} />;
+      return (
+        <>
+          <Blocks blocks={entry.blocks} turnLang={entry.lang} lang={lang} at={entry.at} otpFoot={otpFoot} afterHandoff={afterHandoff} />
+          {detective && entry.trace && <TraceFold trace={entry.trace} dict={dict} />}
+        </>
+      );
     case "agent":
       return (
         <div className="pb-msg pb-msg--agent">

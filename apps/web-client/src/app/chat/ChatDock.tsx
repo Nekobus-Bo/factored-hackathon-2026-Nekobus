@@ -16,7 +16,7 @@ import {
   type PendingSend,
 } from "../../machines/chat.machine";
 import { isOtpSendReceipt, lastEntryWith } from "../../machines/chat-model";
-import { useActors, useI18n, useLocale } from "../actors";
+import { useActors, useDetective, useI18n, useLocale } from "../actors";
 import { useNow } from "../hooks";
 import { Icon } from "../ui/Icon";
 import { StateChip, type ChipStateName } from "../ui/StateChip";
@@ -51,10 +51,13 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const { chat } = useActors();
   const { lang, dict } = useI18n();
   const { locale } = useLocale();
+  const detective = useDetective();
   const snapshot = useSelector(chat, (value) => value);
   const state = conversationState(snapshot);
   const { entries, inbox, pending, retryUntil } = snapshot.context;
   const chip = selectChip(snapshot);
+  // Detective mode (ADR-0019): the switch exists only where the orchestrator says it is on.
+  const detectiveOffered = snapshot.context.detective;
 
   const launcherRef = useRef<HTMLButtonElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -70,12 +73,15 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
     return () => document.removeEventListener("visibilitychange", onChange);
   }, [chat]);
 
-  // Opening the panel moves focus to the composer.
+  // Opening the panel moves focus to the composer, and asks whether detective mode is on.
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (open && !wasOpen.current) inputRef.current?.focus();
+    if (open && !wasOpen.current) {
+      inputRef.current?.focus();
+      chat.send({ type: "CAPABILITIES.CHECK" });
+    }
     wasOpen.current = open;
-  }, [open]);
+  }, [open, chat]);
 
   // The sheet closes with the code it shows.
   useEffect(() => {
@@ -135,6 +141,18 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
               <StateChip state={chip} label={CHIP_LABEL[chip](dict)} />
             </span>
           )}
+          {detectiveOffered && (
+            <button
+              className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm"
+              type="button"
+              aria-label={dict.chat.detective.toggle}
+              aria-pressed={detective.on}
+              data-detective-toggle
+              onClick={() => detective.setOn(!detective.on)}
+            >
+              <Icon name="info" />
+            </button>
+          )}
           <button className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label={dict.chat.close} data-close-chat onClick={close}>
             <Icon name="x" />
           </button>
@@ -148,6 +166,7 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
             <Transcript
               entries={entries}
               lang={lang}
+              detective={detectiveOffered && detective.on}
               failure={failureOf(state, pending, dict)}
               onRetry={() => chat.send({ type: "RETRY" })}
               otpFoot={inboxProps && hasOtpReceipt ? <LiveOtpFoot {...inboxProps} /> : undefined}

@@ -10,7 +10,9 @@ import {
   INBOX_CODE,
   inboxResponse,
   SEND_RESPONSE,
+  SEND_RESPONSE_TRACED,
   TEXT_BLOCK,
+  TRACE,
   TRANSCRIPT,
   UNKNOWN_BLOCK,
 } from "./fixtures";
@@ -115,6 +117,27 @@ describe("forwarding", () => {
     const call = upstream.calls[0]!;
     expect(call.path).toBe(`/v1/conversations/${CONVERSATION_ID}/messages`);
     expect(JSON.parse(call.body)).toEqual(body);
+  });
+
+  test("a detective-mode trace goes through whole, nulls included (ADR-0019)", async () => {
+    upstream.respond(jsonReply(SEND_RESPONSE_TRACED));
+    const res = await post(`/api/conversations/${CONVERSATION_ID}/messages`, { text: "hola" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).trace).toEqual(TRACE);
+  });
+
+  test("a trace outside the contract is a body outside the contract: 503", async () => {
+    upstream.respond(jsonReply({ ...SEND_RESPONSE, trace: { ...TRACE, events: [{ kind: "masking" }] } }));
+    const res = await post(`/api/conversations/${CONVERSATION_ID}/messages`, { text: "hola" });
+    expect(res.status).toBe(503);
+  });
+
+  test("GET /api/capabilities forwards to /v1/capabilities", async () => {
+    upstream.respond(jsonReply({ detective: true }));
+    const res = await fetch(base + "/api/capabilities");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ detective: true });
+    expect(upstream.calls[0]!.path).toBe("/v1/capabilities");
   });
 
   test("blocks stay raw on the wire: a block type this build does not know goes through untouched", async () => {

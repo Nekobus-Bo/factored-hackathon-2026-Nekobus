@@ -1,7 +1,8 @@
-// The chat machine. One actor per page; it makes no request until the customer sends a first message
-// (a conversation is created lazily: creation is rate limited per address, so a page load must not spend it).
+// The chat machine. One actor per page; it makes no request until the customer opens the chat (to ask
+// whether detective mode is on) or sends a first message (a conversation is created lazily: creation is
+// rate limited per address, so a page load must not spend it).
 //
-// Four regions run side by side:
+// Five regions run side by side:
 //
 //   conversation  idle -> creating -> sending -> ready, and the ways out of a failure:
 //                   unavailable   503 and the like, and a network failure: "Reintentar" resends the same
@@ -13,6 +14,8 @@
 //                 the transcript every 2 s while the tab is visible, and the agent's messages join the log
 //   inbox         the OTP notice: shown while the simulated inbox holds a message that has not expired
 //                 and has not been used, hidden at expiry. The code is revealed only by CODE.REVEAL
+//   capabilities  whether detective mode is on (ADR-0019): asked when the chat opens (CAPABILITIES.CHECK)
+//                 and after every turn, since the back office can turn it off and on at any time
 //
 // While a takeover is active a send returns `blocks: []` by design; that is a normal answer, not an error.
 //
@@ -24,6 +27,7 @@
 // before it is stored.
 
 import type {
+  CapabilitiesResponse,
   CreateConversationRequest,
   InboxMessage,
   InboxResponse,
@@ -91,6 +95,8 @@ export interface ChatContext {
   /** `verified_at` of the last successful otp.verify: codes received before it are used. */
   verifiedAt: string | null;
   visible: boolean;
+  /** Detective mode is on: the view offers its switch and turns carry their trace (ADR-0019). */
+  detective: boolean;
 }
 
 export type ChatEvent =
@@ -102,6 +108,8 @@ export type ChatEvent =
   | { type: "HIDDEN" }
   /** The customer's answer to "did the assistant help?", after a handoff (ADR-0017). */
   | { type: "FEEDBACK.SEND"; helpful: boolean }
+  /** The chat opened: ask whether detective mode is on. */
+  | { type: "CAPABILITIES.CHECK" }
   // Internal: raised by the machine itself.
   | { type: "TURN_DONE" }
   | { type: "INBOX.FOUND"; message: InboxMessage }
@@ -148,6 +156,7 @@ export const chatMachine = setup({
     sendFeedback: fromPromise(({ input }: { input: { api: ApiClient; conversationId: string; helpful: boolean } }) =>
       input.api.sendFeedback(input.conversationId, { helpful: input.helpful }),
     ),
+    loadCapabilities: fromPromise(({ input }: { input: { api: ApiClient } }) => input.api.getCapabilities()),
   },
   guards: {
     canSend: ({ event }) =>
@@ -225,7 +234,7 @@ export const chatMachine = setup({
     applyTurn: enqueueActions(({ context, event, enqueue }) => {
       const output = (event as unknown as { output: ApiResult<SendMessageResponse> }).output;
       if (!output.ok) return;
-      const { blocks } = output.data;
+      const { blocks, trace } = output.data;
       const pending = context.pending;
       const entries = withStatus(context.entries, pending?.entryId, "sent");
       let nextEntry = context.nextEntry;
@@ -237,6 +246,7 @@ export const chatMachine = setup({
           blocks,
           at: new Date(context.deps.now()).toISOString(),
           lang: pending?.lang ?? "es",
+          ...(trace ? { trace } : {}),
         });
         nextEntry += 1;
       }
@@ -300,6 +310,11 @@ export const chatMachine = setup({
     })),
     reveal: assign(({ context }) => (context.inbox ? { inbox: { ...context.inbox, revealed: true } } : {})),
     concealCode: assign(({ context }) => (context.inbox ? { inbox: { ...context.inbox, revealed: false } } : {})),
+    /** Off when the answer is not ok: the switch is offered only when the orchestrator says so. */
+    applyCapabilities: assign(({ event }) => {
+      const output = (event as unknown as { output: ApiResult<CapabilitiesResponse> }).output;
+      return { detective: output.ok && output.data.detective };
+    }),
     setVisible: assign({ visible: true }),
     setHidden: assign({ visible: false }),
   },
@@ -316,6 +331,7 @@ export const chatMachine = setup({
     inbox: null,
     verifiedAt: null,
     visible: input.visible ?? true,
+    detective: false,
   }),
   type: "parallel",
   states: {
@@ -496,6 +512,27 @@ export const chatMachine = setup({
             "CODE.REVEAL": { actions: "reveal" },
             "CODE.HIDE": { actions: "concealCode" },
           },
+        },
+      },
+    },
+
+    // Detective mode (ADR-0019): asked when the chat opens and after every turn. A failure means off.
+    capabilities: {
+      initial: "unknown",
+      states: {
+        unknown: {
+          on: { "CAPABILITIES.CHECK": "loading" },
+        },
+        loading: {
+          invoke: {
+            src: "loadCapabilities",
+            input: ({ context }) => ({ api: context.deps.api }),
+            onDone: { target: "known", actions: "applyCapabilities" },
+            onError: { target: "known", actions: assign({ detective: false }) },
+          },
+        },
+        known: {
+          on: { "CAPABILITIES.CHECK": "loading", TURN_DONE: "loading" },
         },
       },
     },

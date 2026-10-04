@@ -10,7 +10,9 @@ import {
   OTP_SEND_RECEIPT,
   OTP_VERIFY_RECEIPT,
   SEND_RESPONSE,
+  SEND_RESPONSE_TRACED,
   TEXT_BLOCK,
+  TRACE,
   TRANSCRIPT,
   UNKNOWN_BLOCK,
 } from "./fixtures";
@@ -748,5 +750,54 @@ describe("the header chip comes only from what the blocks prove", () => {
     expect(world.state).toBe("ready");
     expect(selectChip(world.snapshot)).toBeNull();
     expect(world.snapshot.context.entries.map((e) => e.kind)).toEqual(["customer"]);
+  });
+});
+
+describe("detective mode (ADR-0019)", () => {
+  test("nothing is asked on page load; opening the chat asks once", async () => {
+    fresh();
+    await world.tick();
+    expect(world.callsTo("getCapabilities")).toHaveLength(0);
+    expect(world.snapshot.context.detective).toBe(false);
+
+    world.script("getCapabilities", json({ detective: true }));
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    expect(world.callsTo("getCapabilities")).toHaveLength(1);
+    expect(world.snapshot.context.detective).toBe(true);
+  });
+
+  test("a failed answer means off", async () => {
+    fresh();
+    world.script("getCapabilities", json({ detail: "unavailable" }, 503));
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    expect(world.snapshot.context.detective).toBe(false);
+  });
+
+  test("after every turn it asks again, so the back office's switch shows at the next message", async () => {
+    fresh();
+    world.script("getCapabilities", json({ detective: true }), json({ detective: false }));
+    world.actor.send({ type: "CAPABILITIES.CHECK" });
+    await world.settle();
+    expect(world.snapshot.context.detective).toBe(true);
+
+    world.send("hola");
+    await world.settle();
+    expect(world.callsTo("getCapabilities")).toHaveLength(2);
+    expect(world.snapshot.context.detective).toBe(false);
+  });
+
+  test("a turn's trace stays on its reply; a turn without one has none", async () => {
+    fresh();
+    world.script("sendMessage", json(SEND_RESPONSE_TRACED), json(SEND_RESPONSE));
+    world.send("perdí mi tarjeta");
+    await world.settle();
+    world.send("gracias");
+    await world.settle();
+    const replies = world.snapshot.context.entries.filter((entry) => entry.kind === "assistant");
+    expect(replies).toHaveLength(2);
+    expect(replies[0]!.kind === "assistant" && replies[0]!.trace).toEqual(TRACE);
+    expect(replies[1]!.kind === "assistant" && "trace" in replies[1]!).toBe(false);
   });
 });
