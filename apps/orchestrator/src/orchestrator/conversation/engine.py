@@ -56,6 +56,7 @@ from pydantic import ValidationError
 from orchestrator.config import Settings
 from orchestrator.conversation.blocks import (
     MAX_TEXT_LENGTH,
+    drop_repeated_lines,
     filter_model_blocks,
     withhold_internal_lines,
 )
@@ -482,7 +483,7 @@ class TurnEngine:
                 trace=trace,
             )
             round_outcomes = metadata.tool_outcomes[round_start:]
-            if _needs_a_document(round_outcomes, mapping, guard.state):
+            if _needs_a_document(round_outcomes, mapping, history, guard.state):
                 # Nothing was checked: ask for the document instead of letting the
                 # model relay the refusal, which reads as a failed verification.
                 topic = _identity_topic(
@@ -1063,7 +1064,9 @@ class TurnEngine:
             metadata.internal_lines_withheld += withheld
             if text:
                 texts.append(text)
-        if metadata.internal_lines_withheld:
+        # The same answer written twice in one completion reaches the customer once.
+        texts, repeated = drop_repeated_lines(texts)
+        if metadata.internal_lines_withheld or repeated:
             masked_reply = "\n\n".join(texts) or FALLBACK_MESSAGES[lang]
             texts = texts or [FALLBACK_MESSAGES[lang]]
         history.append({"role": "assistant", "content": masked_reply})
@@ -1103,6 +1106,9 @@ class TurnEngine:
                 isinstance(value, str)
                 and _is_placeholder(value, kind)
                 and value in mapping
+                # Tool results are masked into the same mapping: a number in a
+                # knowledge-base snippet must not pass for the customer's own.
+                and _customer_wrote(value, history)
             ):
                 return ToolResult(
                     tool=tool,
@@ -1307,16 +1313,22 @@ class TurnEngine:
 def _needs_a_document(
     outcomes: list[ToolOutcome],
     mapping: dict[str, str],
+    history: list[dict[str, Any]],
     state: VerificationState | None,
 ) -> bool:
     """True when a tool round only reached for identification before the customer
-    gave a document: banking-core last stated the session ANONYMOUS, there is no
-    `[DOC_n]` in the session mapping, and every call was refused for that, either
+    gave a document: banking-core last stated the session ANONYMOUS, no customer
+    message holds a `[DOC_n]` (one masked out of a tool result does not count),
+    and every call was refused for that, either
     customer.match by the engine (no document placeholder) or a tool by
     banking-core's state check. Nothing ran, so the session is where it was."""
     if state is not VerificationState.ANONYMOUS or not outcomes:
         return False
-    if any(_is_placeholder(placeholder, PiiType.DOC) for placeholder in mapping):
+    if any(
+        _is_placeholder(placeholder, PiiType.DOC)
+        and _customer_wrote(placeholder, history)
+        for placeholder in mapping
+    ):
         return False
     return all(
         (
@@ -1489,6 +1501,15 @@ def otp_challenge_pending(history: list[dict[str, Any]]) -> bool:
         elif result.get("tool") == "otp.verify":
             pending = data.get("state") == "OTP_PENDING"
     return pending
+
+
+def _customer_wrote(placeholder: str, history: list[dict[str, Any]]) -> bool:
+    """True if the placeholder is in one of the customer's own messages."""
+    return any(
+        message.get("role") == "user"
+        and placeholder in str(message.get("content") or "")
+        for message in history
+    )
 
 
 def _otp_code_is_stale(placeholder: str, history: list[dict[str, Any]]) -> bool:
