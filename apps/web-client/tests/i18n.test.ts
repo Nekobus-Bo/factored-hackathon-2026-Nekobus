@@ -68,8 +68,6 @@ describe("dictionaries", () => {
       "s2.ticker",
       "chat.inbox.demoTag",
       "nav.markets.es-AR",
-      "chat.detective.stats.total",
-      "chat.detective.stats.tokens",
       "chat.detective.kinds.encoder",
       "chat.detective.kinds.llm_call",
       "chat.detective.status.ok",
@@ -109,9 +107,9 @@ describe("dictionaries", () => {
       "chat.inbox.hide",
       "chat.detective.turns",
       "chat.detective.turn",
-      "chat.detective.detail.chars",
-      "chat.detective.detail.sent",
-      "chat.detective.detail.dropped",
+      "chat.detective.kinds.takeover",
+      "chat.detective.detail.result",
+      "chat.detective.detail.engine",
     ];
     const sameInEn = [...sameInBoth, "nav.markets.es-CO", "chat.feedback.no", "chat.detective.status.error"];
     for (const [lang, allowed] of [

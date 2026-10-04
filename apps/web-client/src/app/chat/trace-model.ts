@@ -4,44 +4,35 @@
 import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
 import type { Entry } from "../../machines/chat-model";
 
-/** A reply that came with its trace, numbered among the assistant's replies, with the bubble it answered. */
+/** A reply that came with its trace, numbered among the assistant's replies. */
 export interface TracedTurn {
   id: string;
   n: number;
-  /** The customer's bubble before it, as the log shows it (a code or a card number already masked). */
-  quote: string | null;
   trace: TurnTrace;
 }
 
 export function tracedTurns(entries: readonly Entry[]): TracedTurn[] {
   const turns: TracedTurn[] = [];
-  let quote: string | null = null;
   let n = 0;
   for (const entry of entries) {
-    if (entry.kind === "customer") quote = entry.text;
     if (entry.kind !== "assistant") continue;
     n += 1;
-    if (entry.trace) turns.push({ id: entry.id, n, quote, trace: entry.trace });
-    quote = null;
+    if (entry.trace) turns.push({ id: entry.id, n, trace: entry.trace });
   }
   return turns;
 }
 
+/** What a turn spent: time in the LLM, tokens, dollars. */
 export interface TraceSummary {
-  steps: number;
-  llm: number;
-  tools: number;
+  llmMs: number;
   tokens: number;
   costUsd: number;
-  llmMs: number;
 }
 
 export function summarize(trace: TurnTrace): TraceSummary {
-  const summary: TraceSummary = { steps: trace.events.length, llm: 0, tools: 0, tokens: 0, costUsd: 0, llmMs: 0 };
+  const summary: TraceSummary = { llmMs: 0, tokens: 0, costUsd: 0 };
   for (const event of trace.events) {
-    if (event.kind === "tool_call" || event.kind === "engine_handoff") summary.tools += 1;
     if (event.kind !== "llm_call") continue;
-    summary.llm += 1;
     summary.llmMs += event.duration_ms ?? 0;
     summary.tokens += event.llm_call?.total_tokens ?? 0;
     summary.costUsd += event.llm_call?.cost_usd ?? 0;
@@ -58,6 +49,11 @@ export function formatMs(ms: number | null): string {
 /** `$0.00036`: five decimals under a cent, four above. */
 export function formatUsd(usd: number): string {
   return `$${usd < 0.01 ? usd.toFixed(5) : usd.toFixed(4)}`;
+}
+
+/** The model without its provider: `openai/gpt-6-luna` is `gpt-6-luna`. */
+export function shortModel(model: string | null): string | null {
+  return model === null ? null : (model.split("/").pop() ?? model);
 }
 
 /** JSON indented for reading; anything that is not JSON as it came. */

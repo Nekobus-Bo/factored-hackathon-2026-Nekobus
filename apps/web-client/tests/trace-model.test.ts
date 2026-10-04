@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultStep, formatMs, formatUsd, prettyJson, splitPlaceholders, summarize, tracedTurns } from "../src/app/chat/trace-model";
+import { defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, tracedTurns } from "../src/app/chat/trace-model";
 import type { Entry } from "../src/machines/chat-model";
 import { TEXT_BLOCK, TRACE, TRACE_TOOL } from "./fixtures";
 
@@ -8,7 +8,7 @@ const customer = (id: string, text: string): Entry => ({ id, kind: "customer", t
 const assistant = (id: string, trace?: typeof TRACE): Entry => ({ id, kind: "assistant", blocks: [TEXT_BLOCK] as never, at: AT, lang: "es", trace });
 
 describe("tracedTurns", () => {
-  test("each traced reply, numbered among the replies, with the bubble it answered", () => {
+  test("each traced reply, numbered among the replies", () => {
     const turns = tracedTurns([
       customer("c1", "hola"),
       assistant("a1", TRACE),
@@ -17,21 +17,17 @@ describe("tracedTurns", () => {
       customer("c3", "Código: ••••••"),
       assistant("a3", TRACE_TOOL),
     ]);
-    expect(turns.map(({ id, n, quote }) => ({ id, n, quote }))).toEqual([
-      { id: "a1", n: 1, quote: "hola" },
-      { id: "a3", n: 3, quote: "Código: ••••••" },
+    expect(turns.map(({ id, n }) => ({ id, n }))).toEqual([
+      { id: "a1", n: 1 },
+      { id: "a3", n: 3 },
     ]);
-  });
-
-  test("a reply with no bubble before it has no quote", () => {
-    expect(tracedTurns([assistant("a1", TRACE), assistant("a2", TRACE)]).map((turn) => turn.quote)).toEqual([null, null]);
   });
 });
 
 describe("summarize", () => {
-  test("steps, LLM calls and their time, tools, tokens, cost", () => {
-    expect(summarize(TRACE_TOOL)).toEqual({ steps: 2, llm: 1, tools: 1, tokens: 2530, costUsd: 0.00034, llmMs: 1900 });
-    expect(summarize(TRACE)).toEqual({ steps: 1, llm: 0, tools: 0, tokens: 0, costUsd: 0, llmMs: 0 });
+  test("time in the LLM, tokens, cost", () => {
+    expect(summarize(TRACE_TOOL)).toEqual({ llmMs: 1900, tokens: 2530, costUsd: 0.00034 });
+    expect(summarize(TRACE)).toEqual({ llmMs: 0, tokens: 0, costUsd: 0 });
   });
 });
 
@@ -42,6 +38,10 @@ describe("formatting", () => {
 
   test("dollars: five decimals under a cent", () => {
     expect([formatUsd(0.00034), formatUsd(0.0213)]).toEqual(["$0.00034", "$0.0213"]);
+  });
+
+  test("the model without its provider", () => {
+    expect([shortModel("openai/gpt-6-luna"), shortModel("gpt-6-luna"), shortModel(null)]).toEqual(["gpt-6-luna", "gpt-6-luna", null]);
   });
 
   test("JSON indented, anything else as it came", () => {

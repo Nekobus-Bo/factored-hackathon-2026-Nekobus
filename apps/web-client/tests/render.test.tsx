@@ -508,10 +508,8 @@ describe("detective mode (ADR-0019)", () => {
 
   const t = dictionaries.es.chat.detective;
   const traced: Entry[] = [
-    { id: "c1", kind: "customer", text: "perdí mi tarjeta", at: "2026-09-29T15:40:00Z", lang: "es", status: "sent" },
     { id: "1", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:40:05Z", lang: "es", trace: TRACE } as Entry,
     { id: "2", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:41:05Z", lang: "es" },
-    { id: "c2", kind: "customer", text: "soy Carlos", at: "2026-09-29T15:42:00Z", lang: "es", status: "sent" },
     { id: "3", kind: "assistant", blocks: [TEXT_BLOCK], at: "2026-09-29T15:42:05Z", lang: "es", trace: TRACE_TOOL } as Entry,
   ];
   const panel = (props: Partial<TracePanelProps> = {}) =>
@@ -536,55 +534,63 @@ describe("detective mode (ADR-0019)", () => {
     expect(on.match(/data-detective/g)).toHaveLength(2);
     expect(on.match(/aria-current="true"/g)).toHaveLength(1);
     expect(on).toContain('aria-controls="dock-trace"');
-    expect(on).toContain("2.40 s");
     expect(on).toContain(t.open);
   });
 
-  test("the strip sums the turn up: steps, LLM calls, tools", () => {
+  test("the strip is the turn's time and its bar, nothing else", () => {
     const html = renderToStaticMarkup(<TraceStrip dict={dictionaries.es} trace={TRACE_TOOL} selected={false} />);
-    expect(html).toContain("2 pasos · 1 LLM · 1 herr.");
+    expect(html).toContain("<b>2.40 s</b>");
+    expect(html).toContain("pb-trace-spark");
     expect(html).not.toContain("aria-current");
+    expect(html.replace(/<[^>]+>/g, "").replace(t.open, "")).toBe("2.40 s");
   });
 
-  test("the panel follows the newest turn: its tab checked, the bubble it answered, a row per step, details folded", () => {
+  test("the panel follows the newest turn: numbered tabs, the turn's numbers, a row per step, details folded", () => {
     const html = panel();
     expect(html).toContain('id="dock-trace"');
-    expect(html).toContain(`aria-label="${t.panel}"`);
+    expect(html).toContain(`aria-label="${t.toggle}"`);
     expect(html.match(/data-trace-turn=/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-turn="3"/);
-    expect(html).toContain("Turno 3");
-    expect(html).toContain("soy Carlos");
+    expect(html).toMatch(/aria-checked="true" aria-label="Turno 3" data-trace-turn="3">3</);
+    expect(html).toContain("<b>2.40 s</b><span>LLM 1.90 s</span><span>2530 tok</span><span>$0.00034</span>");
     expect(html.match(/data-trace-step=/g)).toHaveLength(2);
+    expect(html).toContain('<code class="pb-trace-name">customer.match</code>');
     expect(html).toContain("INVALID_ARGUMENTS");
     expect(html).not.toContain("pb-trace-code");
     expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="steps"/);
   });
 
+  test("only a step that went wrong carries a status", () => {
+    const html = panel();
+    expect(html.match(/class="pb-chip"/g)).toHaveLength(1);
+    expect(html).toContain(`data-tone="danger">${t.status.error}<`);
+  });
+
   test("a picked turn shows instead of the newest", () => {
     const html = panel({ selectedId: "1" });
-    expect(html).toMatch(/aria-checked="true"[^>]*data-trace-turn="1"/);
-    expect(html).toContain("perdí mi tarjeta");
+    expect(html).toMatch(/aria-checked="true" aria-label="Turno 1" data-trace-turn="1"/);
     expect(html.match(/data-trace-step=/g)).toHaveLength(1);
   });
 
-  test("the timeline opens on the LLM call: the call it asked for, masked, and the prompt folded", () => {
+  test("the timeline opens on the LLM call: one line, the call it asked for, masked, the rest folded", () => {
     const html = panel({ view: "timeline" });
     expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="timeline"/);
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("pb-trace-wf__bar");
-    expect(html).toContain("openai/test-model · 2500 → 30 tok · $0.00034 · en vivo");
+    expect(html).toContain("test-model · 2500 → 30 tok · $0.00034<");
+    expect(html).not.toContain("openai/");
     expect(html).toContain('<mark class="pb-trace-ph">[DOC_1]</mark>');
-    expect(html).toContain(`<summary>${t.detail.prompt.replace("{n}", "2")}</summary>`);
+    expect(html).toContain("<summary>Prompt (2)</summary>");
+    expect(html).toContain(`<summary>${t.detail.tools.replace("{n}", "2")}</summary>`);
     expect(html).not.toContain("<details open");
   });
 
-  test("the masking step marks its placeholders", () => {
+  test("the masking step is the masked text, placeholders marked", () => {
     const html = panel({ selectedId: "1", view: "timeline" });
-    expect(html).toContain('<mark class="pb-trace-ph">[DOC_1]</mark>');
-    expect(html).toContain(`${t.detail.minted}: [DOC_1]`);
+    expect(html).toContain('<pre class="pb-trace-code">perdí mi tarjeta, soy <mark class="pb-trace-ph">[DOC_1]</mark></pre>');
+    expect(html).not.toContain("pb-trace-detail__line");
   });
 
-  test("with no traced turn yet the panel says what to do", () => {
+  test("with no traced turn yet the panel says so", () => {
     const html = panel({ turns: [] });
     expect(html).toContain(t.empty);
     expect(html).not.toContain("data-trace-turn");
@@ -624,6 +630,7 @@ describe("detective mode (ADR-0019)", () => {
     expect(off).toContain('aria-pressed="false"');
     expect(off).toContain(`aria-label="${dictionaries.es.chat.detective.toggle}"`);
     expect(off).toContain(`title="${dictionaries.es.chat.detective.toggle}"`);
+    expect(off).toContain("pb-btn--secondary pb-btn--icon pb-btn--sm pb-trace-toggle");
     expect(off).toContain("pb-ico--search");
     expect(off).not.toContain('id="dock-trace"');
     const on = dock({ "pb-detective": "on" });

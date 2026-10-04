@@ -170,7 +170,7 @@ export function ChatDock({ open, onOpenChange }: { open: boolean; onOpenChange: 
           )}
           {detectiveOffered && (
             <button
-              className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm"
+              className="pb-btn pb-btn--secondary pb-btn--icon pb-btn--sm pb-trace-toggle"
               type="button"
               aria-label={dict.chat.detective.toggle}
               title={dict.chat.detective.toggle}

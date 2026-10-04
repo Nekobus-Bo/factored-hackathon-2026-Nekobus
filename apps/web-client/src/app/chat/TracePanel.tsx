@@ -1,14 +1,15 @@
 // Detective mode's panel (ADR-0019): one turn as the system ran it, beside the chat, with its own scroll.
 // Two views of the same steps: a list where each step opens in place, and a timeline of bars on the turn's
 // clock with the picked step under it. Below 900px there is no room beside the chat, so the panel covers it
-// and "Volver al chat" goes back. Props only, no machine, so it renders on the server in the tests exactly
-// as it does in the page. Every value in a trace is masked as the LLM saw it.
+// and a button goes back. Numbers and the system's own names, few words. Props only, no machine, so it
+// renders on the server in the tests exactly as it does in the page. Every value in a trace is masked as
+// the LLM saw it.
 
 import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
 import { useId, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { format, type Dictionary } from "../../i18n";
 import { Icon } from "../ui/Icon";
-import { defaultStep, formatMs, formatUsd, prettyJson, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
+import { defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
 
 export type TraceView = "steps" | "timeline";
 export type DockPane = "chat" | "trace";
@@ -35,7 +36,7 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
     <aside
       className="pb-trace pb-dock__trace"
       id="dock-trace"
-      aria-label={t.panel}
+      aria-label={t.toggle}
       data-pane={pane}
       onKeyDown={(event) => {
         if (event.key === "Escape") onBack();
@@ -43,13 +44,28 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
     >
       <header className="pb-trace__head">
         <div className="pb-trace__bar">
-          <button ref={backRef} className="pb-btn pb-btn--ghost pb-btn--sm pb-trace__back" type="button" onClick={onBack}>
+          <button ref={backRef} className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm pb-trace__back" type="button" aria-label={t.back} title={t.back} onClick={onBack}>
             <Icon name="chat" />
-            {t.back}
           </button>
-          <h2 className="pb-trace__title">
-            <Icon name="search" /> {t.title}
-          </h2>
+          <Icon name="search" />
+          {turns.length > 0 && (
+            <div className="pb-trace__turns" role="radiogroup" aria-label={t.turns}>
+              {turns.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="pb-trace__turn"
+                  role="radio"
+                  aria-checked={item.id === turn?.id}
+                  aria-label={format(t.turn, { n: item.n })}
+                  data-trace-turn={item.id}
+                  onClick={() => onSelect(item.id)}
+                >
+                  {item.n}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="pb-tabs pb-trace__views" role="radiogroup" aria-label={t.views}>
             {(["steps", "timeline"] as const).map((name) => (
               <button key={name} type="button" className="pb-tab" role="radio" aria-checked={view === name} data-trace-view={name} onClick={() => onView(name)}>
@@ -58,33 +74,15 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
             ))}
           </div>
         </div>
-        {turns.length > 0 && (
-          <div className="pb-trace__turns" role="radiogroup" aria-label={t.turns}>
-            {turns.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="pb-trace__turn"
-                role="radio"
-                aria-checked={item.id === turn?.id}
-                data-trace-turn={item.id}
-                onClick={() => onSelect(item.id)}
-              >
-                <b>{format(t.turn, { n: item.n })}</b>
-                {formatMs(item.trace.total_ms)}
-              </button>
-            ))}
-          </div>
-        )}
-        {turn && <TurnSummary dict={dict} turn={turn} />}
+        {turn && <TurnSummary trace={turn.trace} />}
       </header>
       {/* A new turn or view starts at the top. */}
       <div className="pb-trace__body" key={`${turn?.id ?? "none"}:${view}`}>
         {turn ? (
           view === "steps" ? (
-            <StepList key={turn.id} dict={dict} trace={turn.trace} />
+            <StepList dict={dict} trace={turn.trace} />
           ) : (
-            <Timeline key={turn.id} dict={dict} trace={turn.trace} />
+            <Timeline dict={dict} trace={turn.trace} />
           )
         ) : (
           <p className="pb-trace__empty">{t.empty}</p>
@@ -94,50 +92,30 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
   );
 }
 
-/** Under each reply while detective mode is on: the turn in one line; it opens the turn in the panel. */
+/** Under each reply while detective mode is on: the turn's time and where it went; it opens the turn in the panel. */
 export function TraceStrip({ dict, trace, selected, onPick }: { dict: Dictionary; trace: TurnTrace; selected: boolean; onPick?: () => void }) {
-  const t = dict.chat.detective;
-  const s = summarize(trace);
   return (
     <button className="pb-trace-strip" type="button" aria-current={selected ? "true" : undefined} aria-controls="dock-trace" data-detective onClick={onPick}>
-      <span className="pb-trace-strip__line">
-        <Icon name="search" />
-        <b>{formatMs(trace.total_ms)}</b>
-        <span>{format(t.strip, { steps: s.steps, llm: s.llm, tools: s.tools })}</span>
-        <span className="pb-sr">{t.open}</span>
-      </span>
+      <Icon name="search" />
+      <b>{formatMs(trace.total_ms)}</b>
+      <span className="pb-sr">{dict.chat.detective.open}</span>
       <Spark trace={trace} />
     </button>
   );
 }
 
-function TurnSummary({ dict, turn }: { dict: Dictionary; turn: TracedTurn }) {
-  const t = dict.chat.detective.stats;
-  const s = summarize(turn.trace);
+/** `5.36 s · LLM 5.25 s · 12047 tok · $0.00016`, then where the time went. */
+function TurnSummary({ trace }: { trace: TurnTrace }) {
+  const s = summarize(trace);
   return (
     <>
-      {turn.quote && <p className="pb-trace__quote">{turn.quote}</p>}
       <p className="pb-trace__stats">
-        <span>
-          <b>{formatMs(turn.trace.total_ms)}</b> {t.total}
-        </span>
-        <span>
-          <b>{formatMs(s.llmMs)}</b> {t.llm}
-        </span>
-        <span>
-          <b>{s.steps}</b> {t.steps}
-        </span>
-        <span>
-          <b>{s.tools}</b> {t.tools}
-        </span>
-        <span>
-          <b>{s.tokens}</b> {t.tokens}
-        </span>
-        <span>
-          <b>{formatUsd(s.costUsd)}</b>
-        </span>
+        <b>{formatMs(trace.total_ms)}</b>
+        <span>LLM {formatMs(s.llmMs)}</span>
+        <span>{s.tokens} tok</span>
+        <span>{formatUsd(s.costUsd)}</span>
       </p>
-      <Spark trace={turn.trace} />
+      <Spark trace={trace} />
     </>
   );
 }
@@ -247,17 +225,11 @@ function Timeline({ dict, trace }: { dict: Dictionary; trace: TurnTrace }) {
   );
 }
 
-/** The kind, plus which one: `LLM #2`, `Herramienta card.block`. */
+/** `LLM #2`, a tool by its own name (`card.block`), any other step by its kind. */
 function StepName({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
-  const kind = dict.chat.detective.kinds[event.kind];
-  if (event.llm_call) return <span>{`${kind} #${event.llm_call.round}`}</span>;
-  const tool = event.kind === "tool_call" || event.kind === "engine_handoff";
-  return (
-    <span>
-      {kind}
-      {tool && <span className="pb-tag">{event.tool_call?.tool ?? event.label}</span>}
-    </span>
-  );
+  if (event.llm_call) return <span>{`LLM #${event.llm_call.round}`}</span>;
+  if (event.kind === "tool_call" || event.kind === "engine_handoff") return <code className="pb-trace-name">{event.tool_call?.tool ?? event.label}</code>;
+  return <span>{dict.chat.detective.kinds[event.kind]}</span>;
 }
 
 /** The one line under a step's name: what it decided, in the system's own words. */
@@ -269,7 +241,9 @@ function stepHint(event: TraceEvent): string {
   return event.note ?? "";
 }
 
+/** Only what went wrong: an ok step says nothing. */
 function StatusChip({ dict, status }: { dict: Dictionary; status: TraceEvent["status"] }) {
+  if (status === "ok") return null;
   return (
     <span className="pb-chip" data-tone={STATUS_TONE[status]}>
       {dict.chat.detective.status[status]}
@@ -323,10 +297,11 @@ function More({ summary, children }: { summary: string; children: ReactNode }) {
   );
 }
 
-/** What one step did, in as few lines as it takes; the long parts fold. */
+const line = (...parts: (string | null | false | undefined)[]) => parts.filter(Boolean).join(" · ");
+
+/** What one step did: a line at most, the masked values, the long parts folded. */
 function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
   const d = dict.chat.detective.detail;
-  const line = (...parts: (string | null | false | undefined)[]) => parts.filter(Boolean).join(" · ");
   const { encoder, masking, llm_call: llm, tool_call: tool, blocks, decisions } = event;
   return (
     <div className="pb-trace-detail">
@@ -348,7 +323,6 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
                 </div>
               </div>
             )}
-            <p className="pb-trace-detail__line">{line(encoder.model_id, encoder.server_latency_ms !== null && format(d.server, { time: formatMs(encoder.server_latency_ms) }))}</p>
             {(encoder.pii_spans.length > 0 || encoder.slots.length > 0) && <Tags items={[...encoder.pii_spans.map((span) => `${span.type} × ${span.count}`), ...encoder.slots]} />}
             {encoder.decision_points.length > 0 && (
               <table className="pb-trace-table">
@@ -370,33 +344,24 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
       {masking && (
         <>
           {masking.masked_text !== null && <Code text={masking.masked_text} />}
-          <p className="pb-trace-detail__line">
-            {masking.failed ? d.maskFailed : masking.placeholders.length > 0 ? `${d.minted}: ${masking.placeholders.join(" ")}` : d.noPii}
-            {masking.regex_only && ` · ${d.regexOnly}`}
-          </p>
+          {(masking.failed || masking.regex_only) && <p className="pb-trace-detail__line">{masking.failed ? d.maskFailed : d.regexOnly}</p>}
         </>
       )}
       {llm && (
         <>
           <p className="pb-trace-detail__line">
-            {line(
-              llm.model,
-              `${llm.prompt_tokens ?? "?"} → ${llm.completion_tokens ?? "?"} tok`,
-              llm.cost_usd !== null && formatUsd(llm.cost_usd),
-              llm.cached ? d.replay : d.live,
-            )}
+            {line(shortModel(llm.model), `${llm.prompt_tokens ?? "?"} → ${llm.completion_tokens ?? "?"} tok`, llm.cost_usd !== null && formatUsd(llm.cost_usd), llm.cached && "replay")}
           </p>
           {llm.response_content && <Code text={llm.response_content} />}
           {llm.response_tool_calls.map((call) => (
             <Code key={call.call_id} text={`${call.name}(${prettyJson(call.arguments)})`} />
           ))}
-          <More summary={format(d.prompt, { n: llm.messages.length })}>
-            {llm.messages_from > 0 && <p className="pb-trace-detail__line">{format(d.promptFrom, { n: llm.messages_from + 1 })}</p>}
+          <More summary={`Prompt (${llm.messages_from > 0 ? "+" : ""}${llm.messages.length})`}>
             {llm.messages.map((message, index) => (
               <div key={index} className="pb-trace-msg" data-role={message.role}>
                 <span className="pb-trace-msg__role">{message.role}</span>
                 {message.role === "system" && message.content ? (
-                  <More summary={format(d.chars, { n: message.content.length })}>
+                  <More summary={`${message.content.slice(0, 60)}…`}>
                     <Code text={message.content} />
                   </More>
                 ) : (
@@ -406,7 +371,7 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
               </div>
             ))}
           </More>
-          <More summary={format(d.offered, { n: llm.tools_offered.length })}>
+          <More summary={format(d.tools, { n: llm.tools_offered.length })}>
             <Tags items={llm.tools_offered} />
           </More>
         </>
@@ -414,16 +379,11 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
       {tool && (
         <>
           <p className="pb-trace-detail__line">
-            {line(
-              tool.executed ? d.executed : (tool.local_reason ?? d.notExecuted),
-              tool.reason_code,
-              tool.flow_state && `→ ${tool.flow_state}`,
-              tool.flow_next.length > 0 && `${d.next}: ${tool.flow_next.join(", ")}`,
-            )}
+            {line(tool.executed ? "banking-core" : d.engine, tool.reason_code, tool.flow_state && [tool.flow_state, ...tool.flow_next].join(" → "))}
           </p>
           {tool.arguments && <Code text={tool.arguments} json />}
           {tool.feedback && (
-            <More summary={d.feedback}>
+            <More summary={d.result}>
               <Code text={tool.feedback} json />
             </More>
           )}
@@ -431,12 +391,7 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
       )}
       {blocks && (
         <p className="pb-trace-detail__line">
-          {line(
-            `${d.sent}: ${blocks.kept.join(", ") || "—"}`,
-            blocks.dropped.length > 0 && `${d.dropped}: ${blocks.dropped.join(", ")}`,
-            blocks.internal_lines_withheld > 0 && format(d.withheld, { n: blocks.internal_lines_withheld }),
-            blocks.fallback && d.fallback,
-          )}
+          {line(blocks.kept.join(", ") || "—", ...blocks.dropped.map((type) => `−${type}`), blocks.fallback && d.fallback)}
         </p>
       )}
       {decisions &&
@@ -454,7 +409,7 @@ function StepDetail({ dict, event }: { dict: Dictionary; event: TraceEvent }) {
             </tbody>
           </table>
         ) : (
-          <p className="pb-trace-detail__line">{d.noDecisions}</p>
+          <p className="pb-trace-detail__line">—</p>
         ))}
     </div>
   );

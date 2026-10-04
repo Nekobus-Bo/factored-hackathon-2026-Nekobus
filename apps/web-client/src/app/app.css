@@ -8,9 +8,13 @@
    the title plus the longest chip plus the button, so the chip takes a row of its own under the title. */
 .pb-dock .pb-chat__title { white-space: nowrap; }
 .chat-head-chip { margin-left: auto; margin-right: var(--space-2); }
+/* The detective switch sits next to the close button, right after the chip when there is one. */
+.pb-chat__head .pb-trace-toggle { margin-left: auto; margin-right: var(--space-2); }
+.pb-chat__head .chat-head-chip + .pb-trace-toggle { margin-left: 0; }
 @media (max-width: 391px) {
   .pb-dock .pb-chat__head { flex-wrap: wrap; row-gap: var(--space-2); }
   .pb-dock .chat-head-chip { order: 1; flex: 0 0 100%; margin: 0; }
+  .pb-dock .chat-head-chip + .pb-trace-toggle { margin-left: auto; }
 }
 
 /* A hash link lands under the sticky bar. */
