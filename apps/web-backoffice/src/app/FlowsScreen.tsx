@@ -5,10 +5,33 @@
 
 import type { ToolPolicyResponse, VerificationState } from "@pattern-blue/contracts";
 import { useMachine } from "@xstate/react";
+import type { ReactNode } from "react";
 import type { MessageKey } from "../i18n";
 import { flowsMachine } from "../machines/flows";
 import { useAppServices, useI18n } from "./context";
-import { Alert, chipState, StateChip } from "./ui";
+import { Alert, chipState, Icon, StateChip } from "./ui";
+
+/**
+ * What the system sets in the data type inside a sentence: a tool (`customer.match`), a code (`SUSPECTED_FRAUD`) and a
+ * snake_case name (`confirm_gate`). The dictionaries stay plain strings; the screen wraps these tokens when it draws them.
+ */
+const IDENTIFIER = /\b[a-z]+(?:\.[a-z_]+)+\b|\b[A-Z]{2,}(?:_[A-Z]+)+\b|\b[a-z]+(?:_[a-z]+)+\b/g;
+
+export function Identifiers({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const match of text.matchAll(IDENTIFIER)) {
+    if (match.index > from) parts.push(text.slice(from, match.index));
+    parts.push(
+      <code key={match.index} className="pb-t-mono">
+        {match[0]}
+      </code>,
+    );
+    from = match.index + match[0].length;
+  }
+  if (from < text.length) parts.push(text.slice(from));
+  return <>{parts}</>;
+}
 
 export const STATES: readonly VerificationState[] = ["ANONYMOUS", "IDENTIFIED", "OTP_PENDING", "VERIFIED", "LOCKED", "HANDED_OFF"];
 
@@ -20,7 +43,18 @@ const PATH: readonly { state: VerificationState; tool?: string }[] = [
   { state: "VERIFIED" },
 ];
 
-type Tone = "success" | "handoff" | "fraud" | "neutral";
+/**
+ * What an outcome is, in a word and a glyph (never a colour alone). Handoff is routing, not danger: a
+ * handoff to Fraude is a handoff. Urgent is only for an outcome whose text itself says it is urgent.
+ */
+type OutcomeKind = "auto" | "handoff" | "urgent" | "info";
+
+const OUTCOME_CHIP: Record<OutcomeKind, { attr: { "data-state": string } | { "data-tone": string }; icon: string; word: MessageKey }> = {
+  auto: { attr: { "data-tone": "success" }, icon: "check", word: "flows.outcomeKind.auto" },
+  handoff: { attr: { "data-state": "handed-off" }, icon: "handoff", word: "flows.outcomeKind.handoff" },
+  urgent: { attr: { "data-tone": "danger" }, icon: "chev2", word: "flows.outcomeKind.urgent" },
+  info: { attr: { "data-tone": "neutral" }, icon: "info", word: "flows.outcomeKind.info" },
+};
 
 interface Step {
   title: MessageKey;
@@ -35,7 +69,7 @@ interface Flow {
   title: MessageKey;
   lede: MessageKey;
   steps: Step[];
-  outcomes: { text: MessageKey; tone: Tone }[];
+  outcomes: { text: MessageKey; kind: OutcomeKind }[];
   notes: { text: MessageKey; pending?: boolean }[];
   example?: ({ who: "customer" | "assistant" | "trace"; text: MessageKey } | { who: "trace"; raw: string })[];
 }
@@ -56,9 +90,9 @@ export const FLOWS: readonly Flow[] = [
       { title: "flows.step.block", tool: "card.block", state: "VERIFIED" },
     ],
     outcomes: [
-      { text: "flows.unrecognized.out.auto", tone: "success" },
-      { text: "flows.unrecognized.out.handoff", tone: "handoff" },
-      { text: "flows.unrecognized.out.person", tone: "neutral" },
+      { text: "flows.unrecognized.out.auto", kind: "auto" },
+      { text: "flows.unrecognized.out.handoff", kind: "handoff" },
+      { text: "flows.unrecognized.out.person", kind: "handoff" },
     ],
     notes: [{ text: "flows.unrecognized.remarks.identity" }, { text: "flows.unrecognized.remarks.confirm" }],
   },
@@ -74,9 +108,9 @@ export const FLOWS: readonly Flow[] = [
       { title: "flows.step.block", tool: "card.block · SUSPICIOUS_ACTIVITY", state: "VERIFIED" },
     ],
     outcomes: [
-      { text: "flows.fraud.out.auto", tone: "success" },
-      { text: "flows.fraud.out.handoff", tone: "fraud" },
-      { text: "flows.fraud.out.urgent", tone: "fraud" },
+      { text: "flows.fraud.out.auto", kind: "auto" },
+      { text: "flows.fraud.out.handoff", kind: "handoff" },
+      { text: "flows.fraud.out.urgent", kind: "urgent" },
     ],
     notes: [{ text: "flows.fraud.remarks.noCharge" }, { text: "flows.fraud.remarks.vishing", pending: true }],
     example: [
@@ -101,9 +135,9 @@ export const FLOWS: readonly Flow[] = [
       { title: "flows.step.block", tool: "card.block · LOST / STOLEN", state: "VERIFIED" },
     ],
     outcomes: [
-      { text: "flows.lost.out.auto", tone: "success" },
-      { text: "flows.lost.out.locked", tone: "handoff" },
-      { text: "flows.lost.out.thirdParty", tone: "neutral" },
+      { text: "flows.lost.out.auto", kind: "auto" },
+      { text: "flows.lost.out.locked", kind: "handoff" },
+      { text: "flows.lost.out.thirdParty", kind: "handoff" },
     ],
     notes: [{ text: "flows.lost.remarks.cards" }, { text: "flows.lost.remarks.noCharge" }],
   },
@@ -118,9 +152,9 @@ export const FLOWS: readonly Flow[] = [
       { title: "flows.step.answer", tool: "account.get_summary", state: "VERIFIED" },
     ],
     outcomes: [
-      { text: "flows.balance.out.enabled", tone: "success" },
-      { text: "flows.balance.out.disabled", tone: "neutral" },
-      { text: "flows.balance.out.payments", tone: "success" },
+      { text: "flows.balance.out.enabled", kind: "auto" },
+      { text: "flows.balance.out.disabled", kind: "info" },
+      { text: "flows.balance.out.payments", kind: "auto" },
     ],
     notes: [],
   },
@@ -173,10 +207,12 @@ export function FlowsScreen() {
       <div className="bo-bar">
         {heading}
         <span className="pb-t-small">
-          {t("flows.versions", { tools: tools.version, policy: policy.version })} · {t("flows.mode", { mode: policy.amount_mode })}
+          {t("flows.versions", { tools: tools.version, policy: policy.version })} · {t("flows.mode", { mode: t(policy.amount_mode === "flag" ? "guardrails.mode.flagLabel" : "guardrails.mode.blockLabel") })}
         </span>
       </div>
-      <p className="bo-help">{t("flows.lede")}</p>
+      <p className="bo-help">
+        <Identifiers text={t("flows.lede")} />
+      </p>
       <StateMachine />
       <ToolsByState tools={tools} />
       {FLOWS.map((flow) => (
@@ -193,17 +229,20 @@ export function StateMachine() {
       <h2 className="h2" id="fsm-title">
         {t("flows.fsm.title")}
       </h2>
-      <p>{t("flows.fsm.lede")}</p>
+      <p>
+        <Identifiers text={t("flows.fsm.lede")} />
+      </p>
       <ol className="bo-path">
         {PATH.map(({ state, tool }) => (
           <li key={state} className="bo-path__item">
-            <span className="bo-node bo-flowstate" data-state={chipState(state)}>
-              <StateChip state={state} />
+            <span className="pb-cut bo-node bo-flowstate" data-state={chipState(state)}>
+              <StateChip state={state} words />
               <span className="pb-t-small">{t(`flows.fsm.states.${state}` as MessageKey)}</span>
             </span>
             {tool && (
               <span className="bo-edge" aria-label={t("flows.fsm.then", { tool })}>
-                <span className="bo-raw">{tool}</span>
+                <span className="pb-t-mono">{tool}</span>
+                <Icon name="arrow" />
               </span>
             )}
           </li>
@@ -211,10 +250,16 @@ export function StateMachine() {
       </ol>
       <ul className="bo-exits">
         <li>
-          <StateChip state="LOCKED" /> <span>{t("flows.fsm.toLocked")}</span>
+          <StateChip state="LOCKED" words />{" "}
+          <span>
+            <Identifiers text={t("flows.fsm.toLocked")} />
+          </span>
         </li>
         <li>
-          <StateChip state="HANDED_OFF" /> <span>{t("flows.fsm.toHandedOff")}</span>
+          <StateChip state="HANDED_OFF" words />{" "}
+          <span>
+            <Identifiers text={t("flows.fsm.toHandedOff")} />
+          </span>
         </li>
       </ul>
     </section>
@@ -229,19 +274,22 @@ export function ToolsByState({ tools }: { tools: ToolPolicyResponse }) {
         <h2 className="h2" id="matrix-title">
           {t("flows.matrix.title")}
         </h2>
-        <a href="#/guardrails" className="pb-t-small">
+        <a href="#/guardrails" className="pb-action">
           {t("flows.matrix.edit")}
+          <Icon name="arrow" />
         </a>
       </div>
-      <p>{t("flows.matrix.lede")}</p>
-      <div className="bo-scroll">
-        <table className="bo-matrix">
+      <p>
+        <Identifiers text={t("flows.matrix.lede")} />
+      </p>
+      <div className="pb-mx bo-mx">
+        <table>
           <thead>
             <tr>
               <th scope="col">{t("flows.matrix.tool")}</th>
               {STATES.map((state) => (
                 <th key={state} scope="col">
-                  {state}
+                  <StateChip state={state} words />
                 </th>
               ))}
             </tr>
@@ -252,15 +300,26 @@ export function ToolsByState({ tools }: { tools: ToolPolicyResponse }) {
               const disabled = enabled.length === 0;
               return (
                 <tr key={tool} data-disabled={disabled ? "true" : undefined}>
-                  <th scope="row" className="bo-raw">
-                    {tool}
-                    {disabled && <span className="pb-t-small"> · {t("flows.matrix.disabled")}</span>}
+                  <th scope="row">
+                    <span className="pb-mx__tool">
+                      <b className="pb-t-mono">{tool}</b>
+                      {disabled && <span className="pb-t-small">{t("flows.matrix.disabled")}</span>}
+                    </span>
                   </th>
                   {STATES.map((state) => {
                     const on = enabled.includes(state);
+                    const label = t(on ? "flows.matrix.allowed" : "flows.matrix.notAllowed", { tool, state: t(`enums.state.${state}`) });
                     return (
-                      <td key={state} className="bo-flowstate" data-on={on ? "true" : "false"} data-state={chipState(state)}>
-                        <span aria-label={t(on ? "flows.matrix.allowed" : "flows.matrix.notAllowed", { state })}>{on ? "●" : "—"}</span>
+                      <td key={state}>
+                        {on ? (
+                          <span className="pb-mx__cell" role="img" aria-checked="true" aria-label={label}>
+                            <Icon name="check" />
+                          </span>
+                        ) : (
+                          <span className="pb-mx__off" role="img" aria-label={label}>
+                            ·
+                          </span>
+                        )}
                       </td>
                     );
                   })}
@@ -285,45 +344,80 @@ export function FlowCard({ flow, balanceEnabled }: { flow: Flow; balanceEnabled:
         </h2>
         {flow.id === "balance" && <span className="pb-t-small">{t(balanceEnabled ? "flows.balance.today.enabled" : "flows.balance.today.disabled")}</span>}
       </div>
-      <p>{t(flow.lede)}</p>
-      <ol className="bo-steps">
+      <p>
+        <Identifiers text={t(flow.lede)} />
+      </p>
+      <ol className="pb-flow pb-flow--col" role="list">
         {flow.steps.map((step, index) => (
-          <li key={index} className="bo-step bo-flowstate" data-state={step.state ? chipState(step.state) : undefined}>
-            <b>
-              {index + 1} · {t(step.title)}
-            </b>
-            {step.quote && <span className="pb-t-small">{t(step.quote)}</span>}
-            {step.tool && <span className="bo-raw pb-t-small">{step.tool}</span>}
+          <li key={index} className="pb-flow__item">
+            <p className="pb-flow__title">{t(step.title)}</p>
+            {step.quote && <p className="pb-t-small">{t(step.quote)}</p>}
+            {step.tool && <p className="pb-t-mono">{step.tool}</p>}
+            {step.state && step.state !== flow.steps[index - 1]?.state && (
+              <span className="pb-flow__state">
+                <StateChip state={step.state} words />
+              </span>
+            )}
           </li>
         ))}
       </ol>
-      <h3>{t("flows.outcomes")}</h3>
+      <h3 className="pb-t-h3">{t("flows.outcomes")}</h3>
       <ul className="bo-outcomes">
-        {flow.outcomes.map((outcome) => (
-          <li key={outcome.text} className="bo-outcome" data-tone={outcome.tone}>
-            {t(outcome.text)}
-          </li>
-        ))}
-      </ul>
-      {flow.notes.length > 0 && (
-        <ul className="bo-flow-notes">
-          {flow.notes.map((note) => (
-            <li key={note.text} data-pending={note.pending ? "true" : undefined}>
-              {t(note.text)}
+        {flow.outcomes.map((outcome) => {
+          const { attr, icon, word } = OUTCOME_CHIP[outcome.kind];
+          return (
+            <li key={outcome.text} className="bo-outcome">
+              <span className="pb-chip" {...attr}>
+                <Icon name={icon} />
+                {t(word)}
+              </span>
+              <span>
+                <Identifiers text={t(outcome.text)} />
+              </span>
             </li>
-          ))}
-        </ul>
+          );
+        })}
+      </ul>
+      {flow.notes.some((note) => !note.pending) && (
+        <div className="bo-notes">
+          <p className="pb-t-label">{t("flows.notes")}</p>
+          <ul className="bo-notelist">
+            {flow.notes
+              .filter((note) => !note.pending)
+              .map((note) => (
+                <li key={note.text}>
+                  <Icon name="info" />
+                  <span className="pb-t-small">
+                    <Identifiers text={t(note.text)} />
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
       )}
+      {flow.notes
+        .filter((note) => note.pending)
+        .map((note) => (
+          <Alert key={note.text} tone="caution" eyebrow={t("flows.notePending")}>
+            <Identifiers text={t(note.text)} />
+          </Alert>
+        ))}
       {flow.example && (
         <div className="bo-example">
-          <h3>{t("flows.example")}</h3>
+          <h3 className="pb-t-h3">{t("flows.example")}</h3>
           <ol className="bo-example__log">
-            {flow.example.map((line, index) => (
-              <li key={index} data-who={line.who}>
-                {line.who !== "trace" && <span className="pb-t-small">{t(line.who === "customer" ? "flows.customer" : "flows.assistant")}</span>}
-                <span>{"raw" in line ? line.raw : t(line.text)}</span>
-              </li>
-            ))}
+            {flow.example.map((line, index) =>
+              line.who === "trace" ? (
+                <li key={index} className="bo-example__trace pb-t-mono">
+                  {"raw" in line ? line.raw : t(line.text)}
+                </li>
+              ) : (
+                <li key={index} className={`pb-msg pb-msg--${line.who}`}>
+                  <span className="pb-msg__meta">{t(line.who === "customer" ? "flows.customer" : "flows.assistant")}</span>
+                  {t(line.text)}
+                </li>
+              ),
+            )}
           </ol>
         </div>
       )}

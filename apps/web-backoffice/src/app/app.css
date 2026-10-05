@@ -8,8 +8,26 @@
 .bo-screen { display: grid; gap: var(--space-4); align-content: start; }
 .bo-screen h1, .bo-screen h2, .bo-dialog h2 { margin: 0; }
 .bo-section-tag { margin-right: auto; }
-/* On the narrowest phones the brand in capitals and the section tag do not fit the bar: the tag goes (the brand's accessible name still says it). */
-@media (max-width: 340px) { .bo-section-tag { display: none; } }
+/* The header. Wide: the wordmark and the section tag, the sections, then at the right end the language (with its label), the theme and the agent's menu. Folded (the fold is local.css's): the sections go into the "Menú" panel and the bar keeps the wordmark, the language (its label hidden, the group keeps its name through it), the theme, the agent and the button. On a phone (`COMPACT_BAR` in Shell.tsx has the same width) the theme and the agent go into the panel too. */
+.bo-bartools { display: flex; align-items: center; gap: var(--space-4); }
+/* From 1141px the bar holds everything on one row: the wordmark, the tag, four sections (with a count), the language with its label, the theme and the agent need about 1100px with the room of a bar's `space-6` between them; with `space-4` there are 40px to spare, for a longer count or a wider face. */
+@media (min-width: 1141px) { .pb-nav__bar { gap: var(--space-4); } }
+@media (max-width: 1140px) {
+  .bo-lang .pb-navtool__label { display: none; }
+  .bo-bartools { gap: var(--space-2); }
+}
+/* The tag needs about 560px beside the wordmark, the language and the button; below 600px it goes (the wordmark's accessible name still says it). */
+@media (max-width: 599px) {
+  .bo-section-tag { display: none; }
+}
+/* The narrowest phones: the bar holds the wordmark, the language and the button. Smaller targets (32px, the back office's minimum), less room between them, the wordmark a little smaller, and the button keeps only its icon. */
+@media (max-width: 480px) {
+  .pb-nav__bar { gap: var(--space-2); }
+  .pb-nav__brand { font-size: clamp(20px, 6.6vw, 30px); }
+  .bo-lang .pb-lang__btn { min-width: 32px; min-height: 32px; padding: 0 var(--space-2); }
+  .pb-nav__menu { min-width: 32px; min-height: 32px; }
+  .bo-menu-word { display: none; }
+}
 .bo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .bo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
 .bo-toolbar .pb-tabs { border-bottom: 0; }
@@ -58,7 +76,7 @@
 .bo-dist { display: grid; gap: var(--space-2); }
 .bo-dist h3 { margin: 0; }
 
-/* Flows: the state machine, the tool matrix and the flows, drawn with lists and the state tokens */
+/* Flows: the state machine, the tool matrix and the flows, drawn with lists and the system's own parts (pb-cut, pb-chip, pb-flow, pb-alert, pb-msg, pb-mx) */
 .bo-flowstate { --tone: var(--line-strong); --tone-bg: var(--surface-200); }
 .bo-flowstate[data-state="anonymous"] { --tone: var(--state-anonymous); --tone-bg: var(--state-anonymous-bg); }
 .bo-flowstate[data-state="identified"] { --tone: var(--state-identified); --tone-bg: var(--state-identified-bg); }
@@ -68,31 +86,35 @@
 .bo-flowstate[data-state="handed-off"] { --tone: var(--state-handed-off); --tone-bg: var(--state-handed-off-bg); }
 .bo-path { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .bo-path__item { display: flex; align-items: center; gap: var(--space-2); }
-.bo-node { display: grid; gap: 4px; padding: var(--space-3); border: var(--stroke-strong) solid var(--tone); background: var(--tone-bg); }
-.bo-edge { display: grid; justify-items: center; gap: 2px; padding: 0 var(--space-2); color: var(--ink-muted); font-size: 12px; }
-.bo-edge::after { content: "→"; font-size: 20px; line-height: 1; color: var(--line-strong); }
+.bo-node { --edge: var(--tone); --face: var(--tone-bg); --bw: var(--stroke-strong); display: grid; gap: 4px; padding: var(--space-3); }
+.bo-edge { display: grid; justify-items: center; gap: 2px; padding: 0 var(--space-2); color: var(--ink-muted); }
+.bo-edge .pb-ico { color: var(--line-strong); }
+/* The path is a row of four nodes with the tool that leaves each: about 1020px of content, so it fits from a 1090px window (measured in es, pt and en, with the state words in the chips). Narrower, it is a column: each node as wide as the column, the same for the four, and under it the edge as a small row, the glyph turned to point down and then the tool, under the node's chip. The column stops at 32rem so the nodes do not stretch across a tablet. */
+@media (max-width: 1119px) {
+  .bo-path { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; max-width: 32rem; }
+  .bo-path__item { flex-direction: column; align-items: stretch; gap: 0; }
+  .bo-edge { grid-auto-flow: column; justify-content: start; justify-items: start; align-items: center; gap: var(--space-2); padding: var(--space-2) calc(var(--space-3) + var(--stroke-strong)); }
+  .bo-edge .pb-ico { order: -1; transform: rotate(90deg); }
+}
 .bo-exits { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .bo-exits li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
-.bo-scroll { overflow-x: auto; }
-.bo-matrix { width: 100%; border-collapse: collapse; font-size: 14px; }
-.bo-matrix th, .bo-matrix td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); text-align: center; }
-.bo-matrix thead th { font: 600 12px/16px var(--font-mono); color: var(--ink-muted); }
-.bo-matrix tbody th { text-align: left; font-weight: 500; white-space: nowrap; }
-.bo-matrix td[data-on="true"] { color: var(--tone); font-size: 18px; }
-.bo-matrix td[data-on="false"] { color: var(--line-strong); }
-.bo-matrix tr[data-disabled] th { color: var(--ink-muted); }
-.bo-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.bo-step { display: grid; align-content: start; gap: 4px; padding: var(--space-3); border: 1px solid var(--tone); background: var(--tone-bg); overflow-wrap: anywhere; }
+/* The row header is a th for assistive technology, and `.pb-mx th:first-child` (the system's label style for the header row) would set it in capitals: this beats it (one more class) so a tool shows as written, in the data type. */
+.bo-mx tbody th:first-child { padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); border-top: 1px solid var(--line); border-bottom: 0; background: none; text-align: left; vertical-align: middle; font: inherit; letter-spacing: normal; text-transform: none; color: var(--ink); }
+.bo-mx .pb-mx__tool { min-width: 0; }
+.bo-mx .pb-mx__tool b { font-family: var(--font-mono); font-weight: 500; }
+.bo-mx tbody tr:hover th { background: var(--surface-200); }
+.bo-mx tr[data-disabled] .pb-mx__tool b { color: var(--ink-muted); }
+.bo-mx .pb-mx__cell { cursor: default; }
 .bo-section h3 { margin: var(--space-2) 0 0; }
-.bo-outcomes, .bo-flow-notes { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.bo-outcome { padding: var(--space-2) var(--space-3); border-left: 3px solid var(--line-strong); background: var(--surface-200); }
-.bo-outcome[data-tone="success"] { border-left-color: var(--state-verified); }
-.bo-outcome[data-tone="handoff"] { border-left-color: var(--state-handed-off); }
-.bo-outcome[data-tone="fraud"] { border-left-color: var(--state-locked); }
-.bo-flow-notes li { padding: var(--space-2) var(--space-3); border: 1px dashed var(--line-strong); color: var(--ink-muted); font-size: 14px; }
-.bo-flow-notes li[data-pending] { border-color: var(--warning); }
+.bo-outcomes { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.bo-outcome { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: var(--space-3); align-items: start; padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.bo-outcome .pb-chip { justify-self: start; }
+@media (max-width: 480px) { .bo-outcome { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); } }
+.bo-notes { display: grid; gap: var(--space-2); }
+.bo-notelist { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.bo-notelist li { display: flex; align-items: flex-start; gap: var(--space-2); }
+.bo-notelist .pb-ico { margin-top: 2px; color: var(--info); }
+.bo-notelist .pb-t-small { color: var(--ink); }
 .bo-example { display: grid; gap: var(--space-2); }
-.bo-example__log { display: flex; flex-direction: column; gap: var(--space-2); max-width: 720px; margin: 0; padding: 0; list-style: none; font-size: 15px; }
-.bo-example__log li { display: grid; gap: 2px; max-width: 80%; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); background: var(--surface-200); }
-.bo-example__log li[data-who="customer"] { align-self: flex-end; border-color: var(--state-handed-off); background: var(--state-handed-off-bg); }
-.bo-example__log li[data-who="trace"] { align-self: center; max-width: none; border: 0; background: none; font: 500 12px/16px var(--font-mono); color: var(--ink-muted); }
+.bo-example__log { display: flex; flex-direction: column; gap: var(--space-2); max-width: 720px; margin: 0; padding: 0; list-style: none; }
+.bo-example__trace { align-self: center; max-width: 100%; text-align: center; color: var(--ink-muted); overflow-wrap: anywhere; }

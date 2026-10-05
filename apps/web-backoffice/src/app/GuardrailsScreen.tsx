@@ -1,4 +1,5 @@
 import { useMachine } from "@xstate/react";
+import type { VerificationState } from "@pattern-blue/contracts";
 import { guardrailsMachine } from "../machines/guardrails";
 import { describeChanges, floorOf, invalidThresholds, type Change, policyDirty, toolsDirty } from "../machines/policy-draft";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -220,6 +221,6 @@ function ChangeLine({ change }: { change: Change }) {
       </>
     );
   }
-  const states = (list: readonly string[]) => (list.length === 0 ? t("common.none") : list.join(", "));
+  const states = (list: readonly VerificationState[]) => (list.length === 0 ? t("common.none") : list.map((state) => t(`enums.state.${state}`)).join(", "));
   return <>{t("guardrails.confirmSave.tool", { tool: change.tool, from: states(change.from), to: states(change.to) })}</>;
 }

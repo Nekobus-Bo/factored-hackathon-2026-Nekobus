@@ -6,13 +6,14 @@ import type { Api } from "../src/api/client";
 import { Composer, composerKeyAction, ComposerLocked, TranscriptLog } from "../src/app/Conversation";
 import { AppServicesProvider, I18nProvider, type AppActor } from "../src/app/context";
 import { useDecisions, type DecisionsProps } from "../src/app/Decisions";
-import { FLOWS, FlowCard, StateMachine, ToolsByState } from "../src/app/FlowsScreen";
+import { FLOWS, FlowCard, Identifiers, STATES, StateMachine, ToolsByState } from "../src/app/FlowsScreen";
 import { HandoffCard } from "../src/app/HandoffCard";
 import { CaseMeta } from "../src/app/HandoffScreen";
 import { GlanceNumbers, HandoffTables, NotHelpfulList, ToolCallsTable, ToReviewList } from "../src/app/MetricsScreen";
 import { MatrixLegend, ModeGroup, RefusalBanner, ThresholdRow, ToolMatrix } from "../src/app/PolicyControl";
 import { QueueRow, QueueTable } from "../src/app/QueueRow";
 import { Alert, CaseRef } from "../src/app/ui";
+import { dictionaries } from "../src/i18n";
 import { floorOf } from "../src/machines/policy-draft";
 import { AGENT_EMAIL, closedDetail, handoffDetail, handoffItems, metrics, toolPolicy, transcript } from "./support/fixtures";
 
@@ -174,7 +175,7 @@ describe("the case header line", () => {
     expect(mine).toContain('data-me="">Tuyo desde 09:55');
     expect(mine).toContain("esperó");
     expect(mine).toContain('class="pb-caseref pb-caseref--lg"');
-    expect(mine).toContain('<button type="button" class="pb-linkbtn">Copiar</button>');
+    expect(mine).toContain('<button type="button" class="pb-btn pb-btn--ghost pb-btn--sm">Copiar</button>');
     const waiting = html(<CaseMeta detail={handoffDetail({}, NOW)} me={AGENT_EMAIL} now={NOW} />);
     expect(waiting).toContain("En cola, 1.º");
     expect(waiting).toContain("espera 07:42");
@@ -420,8 +421,8 @@ describe("the tools by state matrix", () => {
   test("a refused widening is a caution banner with the hazard stripe, and names the floor", () => {
     const markup = html(<RefusalBanner refusal={{ source: "local", tool: "card.block", state: "IDENTIFIED", floor: ["VERIFIED"] }} onDismiss={noop} />);
     expect(markup).toContain("pb-hazard");
-    expect(markup).toContain("card.block no puede habilitarse en IDENTIFIED.");
-    expect(markup).toContain("solo en VERIFIED");
+    expect(markup).toContain("card.block no puede habilitarse en Identificado.");
+    expect(markup).toContain("solo en Verificado");
   });
 });
 
@@ -561,17 +562,34 @@ describe("the flows screen", () => {
     const tools = toolPolicy();
     const markup = html(<ToolsByState tools={tools} />);
     expect(count(markup, "<tr")).toBe(Object.keys(tools.code_floor).length + 1);
-    expect(markup).toContain("account.get_summary<span");
-    expect(markup).toContain("desactivada");
-    expect(markup).toContain('aria-label="Permitida en VERIFIED"');
-    expect(markup).toContain('aria-label="No permitida en ANONYMOUS"');
+    expect(markup).toContain('<b class="pb-t-mono">account.get_summary</b><span class="pb-t-small">desactivada</span>');
+    expect(markup).toContain('aria-label="card.block: permitida en Verificado"');
+    expect(markup).toContain('aria-label="card.block: no permitida en Sin identificar"');
     expect(markup).toContain('href="#/guardrails"');
+  });
+
+  test("the matrix is the Guardrails matrix, read only: the system's classes, a filled cell for allowed, no colour per state", () => {
+    const tools = toolPolicy();
+    const markup = html(<ToolsByState tools={tools} />);
+    expect(markup).toContain('class="pb-mx bo-mx"');
+    expect(count(markup, 'class="pb-mx__tool"')).toBe(Object.keys(tools.code_floor).length);
+    const allowed = Object.values(tools.tools).reduce((total, states) => total + states.length, 0);
+    expect(count(markup, 'class="pb-mx__cell"')).toBe(allowed);
+    expect(count(markup, 'class="pb-mx__off"')).toBe(Object.keys(tools.code_floor).length * STATES.length - allowed);
+    expect(count(markup, 'aria-checked="true"')).toBe(allowed);
+    // every cell has its name, and it is not a button
+    expect(count(markup, 'role="img"')).toBe(Object.keys(tools.code_floor).length * STATES.length);
+    expect(markup).not.toContain("<button");
+    // the headers are the system's chips with the state in words, the raw state in the tooltip
+    expect(markup).toContain('<th scope="col"><span class="pb-chip" data-state="otp-pending" title="OTP_PENDING">');
+    expect(markup).not.toContain("bo-flowstate");
+    expect(markup).not.toContain("bo-scroll");
   });
 
   test("every flow has its steps in order, its outcomes and, for fraud, the example conversation", () => {
     for (const flow of FLOWS) {
       const markup = html(<FlowCard flow={flow} balanceEnabled={false} />);
-      expect(count(markup, 'class="bo-step bo-flowstate"')).toBe(flow.steps.length);
+      expect(count(markup, 'class="pb-flow__item"')).toBe(flow.steps.length);
       expect(count(markup, 'class="bo-outcome"')).toBe(flow.outcomes.length);
       expect(markup.includes('class="bo-example"')).toBe(flow.example !== undefined);
     }
@@ -581,5 +599,225 @@ describe("the flows screen", () => {
     const balance = (enabled: boolean) => html(<FlowCard flow={FLOWS.find((flow) => flow.id === "balance")!} balanceEnabled={enabled} />, "en");
     expect(balance(false)).toContain("Today: account.get_summary disabled");
     expect(balance(true)).toContain("Today: account.get_summary enabled");
+  });
+
+  const cards = (lang: Lang = "es") => FLOWS.map((flow) => ({ flow, markup: html(<FlowCard flow={flow} balanceEnabled={false} />, lang) }));
+
+  test("tool names are in the data type everywhere and nothing is left of the unstyled `bo-raw`", () => {
+    const tools = toolPolicy();
+    const markup = [html(<StateMachine />), html(<ToolsByState tools={tools} />), ...cards().map((card) => card.markup)].join("\n");
+    expect(markup).not.toContain("bo-raw");
+    for (const tool of ["customer.match", "otp.send", "otp.verify"]) expect(html(<StateMachine />)).toContain(`<span class="pb-t-mono">${tool}</span>`);
+    for (const tool of Object.keys(tools.code_floor)) expect(html(<ToolsByState tools={tools} />)).toContain(`<b class="pb-t-mono">${tool}</b>`);
+    for (const { flow, markup: card } of cards()) {
+      for (const step of flow.steps) if (step.tool) expect(card).toContain(`<p class="pb-t-mono">${step.tool}</p>`);
+    }
+  });
+
+  test("the edge between two states draws the arrow glyph, not the text character", () => {
+    const markup = html(<StateMachine />);
+    expect(count(markup, '<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i>')).toBe(3);
+    expect(markup).not.toContain("→");
+    expect(count(markup, "pb-cut bo-node")).toBe(4);
+  });
+
+  test("the steps are the system's numbered list: no digits in the markup, a chip only where the state changes", () => {
+    for (const { flow, markup } of cards()) {
+      const list = /<ol class="pb-flow pb-flow--col" role="list">(.*?)<\/ol>/s.exec(markup)?.[1] ?? "";
+      expect(list, flow.id).not.toBe("");
+      expect(count(list, "<li")).toBe(flow.steps.length);
+      expect(visible(list), flow.id).not.toMatch(/\d/);
+      const items = list.split("<li ").slice(1);
+      flow.steps.forEach((step, index) => {
+        const changed = step.state !== undefined && step.state !== flow.steps[index - 1]?.state;
+        expect(items[index]!.includes("pb-flow__state"), `${flow.id} step ${index}`).toBe(changed);
+        if (changed) expect(items[index]).toContain(`data-state="${step.state!.toLowerCase().replace(/_/g, "-")}"`);
+      });
+    }
+    // the unrecognized flow: identify, verify and find the charge change the state; block keeps VERIFIED
+    expect(count(cards()[0]!.markup, "pb-flow__state")).toBe(3);
+  });
+
+  test("each outcome carries a chip with a word and a glyph; handing off to Fraude is not danger", () => {
+    const kinds = FLOWS.flatMap((flow) => flow.outcomes.map((outcome) => `${outcome.text}=${outcome.kind}`));
+    expect(kinds).toEqual([
+      "flows.unrecognized.out.auto=auto",
+      "flows.unrecognized.out.handoff=handoff",
+      "flows.unrecognized.out.person=handoff",
+      "flows.fraud.out.auto=auto",
+      "flows.fraud.out.handoff=handoff",
+      "flows.fraud.out.urgent=urgent",
+      "flows.lost.out.auto=auto",
+      "flows.lost.out.locked=handoff",
+      "flows.lost.out.thirdParty=handoff",
+      "flows.balance.out.enabled=auto",
+      "flows.balance.out.disabled=info",
+      "flows.balance.out.payments=auto",
+    ]);
+    for (const { flow, markup } of cards()) {
+      const rows = markup.split('<li class="bo-outcome">').slice(1);
+      expect(rows.length).toBe(flow.outcomes.length);
+      for (const row of rows) expect(row).toMatch(/^<span class="pb-chip" data-(state|tone)="[a-z-]+"><i class="pb-ico pb-ico--[a-z0-9-]+" aria-hidden="true"><\/i>(Automático|Handoff|Urgente|Informativo)<\/span>/);
+    }
+    const fraud = cards()[1]!.markup;
+    expect(count(fraud, 'data-tone="danger"')).toBe(1);
+    expect(fraud).toContain('data-state="handed-off"');
+  });
+
+  test("the outcome words follow the language", () => {
+    expect(visible(cards("en")[1]!.markup)).toContain("Urgent");
+    expect(visible(cards("pt")[3]!.markup)).toContain("Informativo");
+    expect(visible(cards("en")[0]!.markup)).toContain("Automatic");
+  });
+
+  test("the notes are a compact list under one label; only the pending one is an alert, in caution and never striped", () => {
+    for (const { flow, markup } of cards()) {
+      const normal = flow.notes.filter((note) => !note.pending).length;
+      const pending = flow.notes.length - normal;
+      expect(count(markup, 'class="pb-alert"'), flow.id).toBe(pending);
+      expect(count(markup, 'data-tone="caution"'), flow.id).toBe(pending);
+      expect(markup).not.toContain("pb-alert--stripe");
+      expect(markup).not.toContain("pb-hazard");
+      expect(count(markup, '<p class="pb-t-label">Notas</p>'), flow.id).toBe(normal > 0 ? 1 : 0);
+      expect(count(markup, '<ul class="bo-notelist">'), flow.id).toBe(normal > 0 ? 1 : 0);
+      expect(count(markup, '<li><i class="pb-ico pb-ico--info" aria-hidden="true"></i><span class="pb-t-small">'), flow.id).toBe(normal);
+      expect(markup).not.toContain("pb-alert__eyebrow\">Nota<");
+    }
+    // one alert on the whole page: the vishing gap
+    expect(cards().reduce((total, card) => total + count(card.markup, 'class="pb-alert"'), 0)).toBe(1);
+    expect(cards()[1]!.markup).toContain('<span class="pb-alert__eyebrow">Sin cubrir</span>');
+    expect(visible(cards("en")[1]!.markup)).toContain("Notes");
+  });
+
+  test("the example conversation reuses the chat's messages and keeps the trace line as plain mono", () => {
+    const markup = cards()[1]!.markup;
+    expect(count(markup, 'class="pb-msg pb-msg--customer"')).toBe(2);
+    expect(count(markup, 'class="pb-msg pb-msg--assistant"')).toBe(3);
+    expect(count(markup, 'class="bo-example__trace pb-t-mono"')).toBe(2);
+    expect(markup).toContain('<span class="pb-msg__meta">Cliente</span>');
+    expect(markup).toContain('<h3 class="pb-t-h3">Ejemplo</h3>');
+    expect(markup).toContain('<h3 class="pb-t-h3">Salidas</h3>');
+  });
+
+  test("the matrix's row header beats the system's label style, so a tool shows as written, in mono", async () => {
+    const css = await Bun.file(new URL("../src/app/app.css", import.meta.url)).text();
+    const rule = /^\.bo-mx tbody th:first-child \{([^}]*)\}/m.exec(css)?.[1] ?? "";
+    expect(rule).toContain("text-transform: none;");
+    expect(rule).toContain("letter-spacing: normal;");
+    expect(rule).toContain("font: inherit;");
+    expect(css).toMatch(/^\.bo-mx \.pb-mx__tool b \{[^}]*font-family: var\(--font-mono\);/m);
+    expect(css).toMatch(/^\.bo-mx \.pb-mx__tool \{ min-width: 0; \}/m);
+    // the rule it has to beat: `.pb-mx th:first-child` (class, element, pseudo-class); ours has one more element
+    const local = await Bun.file(new URL("../../../packages/design-tokens/local.css", import.meta.url)).text();
+    expect(local).toMatch(/^\.pb-mx th:first-child, \.pb-mx th:last-child \{[^}]*text-transform: uppercase;/m);
+    // the row header stays a th with scope=row
+    expect(html(<ToolsByState tools={toolPolicy()} />)).toContain('<th scope="row"><span class="pb-mx__tool">');
+  });
+
+  test("every state chip of the screen carries the word, with the raw state in its tooltip", () => {
+    const machine = html(<StateMachine />);
+    const words = { ANONYMOUS: "Sin identificar", IDENTIFIED: "Identificado", OTP_PENDING: "Código pendiente", VERIFIED: "Verificado", LOCKED: "Bloqueado", HANDED_OFF: "Con agente" };
+    for (const [state, word] of Object.entries(words)) expect(machine).toContain(`title="${state}"><i class="pb-ico`);
+    expect([...machine.matchAll(/<span class="pb-chip" data-state="[a-z-]+" title="([A-Z_]+)">(?:<i[^>]*><\/i>)([^<]*)<\/span>/g)].map((match) => [match[1], match[2]])).toEqual([
+      ["ANONYMOUS", words.ANONYMOUS],
+      ["IDENTIFIED", words.IDENTIFIED],
+      ["OTP_PENDING", words.OTP_PENDING],
+      ["VERIFIED", words.VERIFIED],
+      ["LOCKED", words.LOCKED],
+      ["HANDED_OFF", words.HANDED_OFF],
+    ]);
+    // no chip shows an enum
+    for (const markup of [machine, html(<ToolsByState tools={toolPolicy()} />), ...cards().map((card) => card.markup)]) {
+      expect(markup).not.toMatch(/<\/i>(ANONYMOUS|IDENTIFIED|OTP_PENDING|VERIFIED|LOCKED|HANDED_OFF)<\/span>/);
+    }
+    // and the prose of the screen uses the same words: no raw state in the three languages
+    for (const lang of ["es", "pt", "en"] as const) {
+      // the machine's trace lines of the example are log output: they keep the raw state
+      const screen = [html(<StateMachine />, lang), html(<ToolsByState tools={toolPolicy()} />, lang), ...cards(lang).map((card) => card.markup)].join(" ").replace(/<li class="bo-example__trace[^>]*>.*?<\/li>/g, "");
+      expect(visible(screen), lang).not.toMatch(/\b(ANONYMOUS|IDENTIFIED|OTP_PENDING|VERIFIED|LOCKED|HANDED_OFF)\b/);
+    }
+  });
+
+  test("a node's description says something the chip's word does not", () => {
+    for (const lang of ["es", "pt", "en"] as const) {
+      const states = dictionaries[lang].flows.fsm.states;
+      const chips = dictionaries[lang].enums.state;
+      for (const state of Object.keys(states) as (keyof typeof states)[]) expect(states[state].toLowerCase(), `${lang} ${state}`).not.toBe(chips[state].toLowerCase());
+    }
+  });
+
+  test("the identifiers helper puts a tool, a code and a snake_case name in the data type and leaves the words alone", () => {
+    const text = "handoff.create desde cualquier estado: SUSPECTED_FRAUD, CUSTOMER_REQUEST, confirm_gate y account.get_summary; banking-core decide, 24 h.";
+    const markup = renderToStaticMarkup(<Identifiers text={text} />);
+    expect([...markup.matchAll(/<code class="pb-t-mono">([^<]*)<\/code>/g)].map((match) => match[1])).toEqual(["handoff.create", "SUSPECTED_FRAUD", "CUSTOMER_REQUEST", "confirm_gate", "account.get_summary"]);
+    expect(markup.replace(/<[^>]*>/g, "")).toBe(text);
+    expect(renderToStaticMarkup(<Identifiers text="Una disputa sin identificar espera un intento." />)).toBe("Una disputa sin identificar espera un intento.");
+    // the dictionaries are not touched: the helper only wraps when it draws
+    expect(dictionaries.es.flows.fsm.toHandedOff).not.toContain("<code");
+  });
+
+  test("the prose of the screen shows the identifiers of the dictionaries in the data type", () => {
+    expect(html(<StateMachine />)).toContain('<code class="pb-t-mono">handoff.create</code> desde cualquier estado');
+    const fraud = html(<FlowCard flow={FLOWS.find((flow) => flow.id === "fraud")!} balanceEnabled={false} />);
+    expect(fraud).toContain('<code class="pb-t-mono">SUSPECTED_FRAUD</code>');
+    const lost = html(<FlowCard flow={FLOWS.find((flow) => flow.id === "lost")!} balanceEnabled={false} />);
+    expect(lost).toContain('<code class="pb-t-mono">CUSTOMER_LOCKED</code>');
+    // what the helper finds in every text of the screen is an identifier: nothing else gets the mono type
+    const found = new Set<string>();
+    for (const lang of ["es", "pt", "en"] as const) {
+      const values = (node: unknown): string[] => (typeof node === "string" ? [node] : Object.values(node as object).flatMap(values));
+      const leaves = values(dictionaries[lang].flows).join(" ");
+      for (const match of renderToStaticMarkup(<Identifiers text={leaves} />).matchAll(/<code class="pb-t-mono">([^<]*)<\/code>/g)) found.add(match[1]!);
+    }
+    expect([...found].sort()).toEqual(["CUSTOMER_LOCKED", "CUSTOMER_REQUEST", "SUSPECTED_FRAUD", "SUSPICIOUS_ACTIVITY", "account.get_summary", "card.block", "confirm_gate", "customer.match", "handoff.create", "kb.search", "transaction.list_recent"].sort());
+  });
+
+  test("the path of states is a row from 1120px, where it fits, and a column below: the same node width, the edge as a small row under its node", async () => {
+    const css = await Bun.file(new URL("../src/app/app.css", import.meta.url)).text();
+    const block = /@media \(max-width: 1119px\) \{([^@]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(block).toContain(".bo-path { flex-direction: column; flex-wrap: nowrap; align-items: stretch;");
+    expect(block).toContain(".bo-path__item { flex-direction: column; align-items: stretch;");
+    expect(block).toContain(".bo-edge { grid-auto-flow: column; justify-content: start;");
+    expect(block).toContain(".bo-edge .pb-ico { order: -1; transform: rotate(90deg); }");
+    // nothing in the narrow range keeps the row direction, and the desktop rules do not set a direction of their own
+    expect(block).not.toContain("flex-direction: row");
+    const desktop = css.replace(block, "");
+    expect(desktop).toMatch(/^\.bo-path__item \{ display: flex; align-items: center; gap: var\(--space-2\); \}/m);
+    expect(desktop).not.toMatch(/\.bo-path__item[^{]*\{[^}]*flex-direction/);
+    // the markup keeps the list and the edge's name for assistive technology, and the last node has no edge
+    const machine = html(<StateMachine />);
+    expect(machine).toContain('<ol class="bo-path">');
+    expect(count(machine, 'class="bo-edge"')).toBe(3);
+    expect(count(machine, 'aria-label="luego ')).toBe(3);
+  });
+
+  test("Volver a la cola, Cambiar en Guardrails, Copiar and Actualizar are the system's controls, and no link stands alone in the system's `pb-link` look", async () => {
+    const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
+    const handoff = await read("../src/app/HandoffScreen.tsx");
+    expect(handoff).toContain('<a className="pb-btn pb-btn--ghost pb-btn--sm bo-back" href="#/">');
+    expect(handoff).toContain('<i className="pb-ico pb-ico--arrow pb-ico--flip" aria-hidden="true" />');
+    expect(handoff).toContain('className="pb-btn pb-btn--ghost pb-btn--sm" onClick={copy}');
+    const metrics = await read("../src/app/MetricsScreen.tsx");
+    expect(metrics).toContain('<button type="button" className="pb-btn pb-btn--ghost pb-btn--sm" disabled={loading} onClick={() => send({ type: "REFRESH" })}>\n              <Icon name="retry" />');
+    expect(html(<ToolsByState tools={toolPolicy()} />)).toContain('<a href="#/guardrails" class="pb-action">Cambiar en Guardrails<i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></a>');
+    // no `pb-link` or `pb-linkbtn` left in the screens, and the stylesheet does not define a link-like button
+    const dir = new URL("../src/app/", import.meta.url).pathname;
+    for (const file of new Bun.Glob("*.tsx").scanSync(dir)) expect(await read(`../src/app/${file}`), file).not.toMatch(/pb-link\b|pb-linkbtn/);
+    const local = await read("../../../packages/design-tokens/local.css");
+    expect(local).not.toContain("pb-linkbtn");
+    expect(local).toMatch(/^\.pb-ico--flip \{ transform: scaleX\(-1\); \}/m);
+  });
+
+  test("the flows block of app.css has no loose font size and no class the system already has", async () => {
+    const css = await Bun.file(new URL("../src/app/app.css", import.meta.url)).text();
+    const block = css.slice(css.indexOf("/* Flows:"));
+    expect(block.length).toBeGreaterThan(500);
+    expect(block).not.toMatch(/font(-size)?:[^;}]*\d(\.\d+)?(px|rem|em)\b/);
+    expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    const system = await Bun.file(new URL("../../../packages/design-tokens/src/components.css", import.meta.url)).text();
+    const mine = new Set([...block.matchAll(/\.((?:bo|pb)-[a-z0-9_-]+)/g)].map((match) => match[1]!).filter((name) => name.startsWith("bo-")));
+    for (const name of mine) expect(system.includes(`.${name}`), name).toBe(false);
+    // the removed rules do not come back
+    for (const gone of ["bo-raw", "bo-steps", "bo-step ", "bo-matrix", "bo-scroll", "bo-flow-notes", "::after { content"]) expect(block, gone).not.toContain(gone);
   });
 });
