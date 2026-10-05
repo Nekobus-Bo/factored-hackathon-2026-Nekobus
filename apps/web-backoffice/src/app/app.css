@@ -8,6 +8,8 @@
 .bo-screen { display: grid; gap: var(--space-4); align-content: start; }
 .bo-screen h1, .bo-screen h2, .bo-dialog h2 { margin: 0; }
 .bo-section-tag { margin-right: auto; }
+/* On the narrowest phones the brand in capitals and the section tag do not fit the bar: the tag goes (the brand's accessible name still says it). */
+@media (max-width: 340px) { .bo-section-tag { display: none; } }
 .bo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .bo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
 .bo-toolbar .pb-tabs { border-bottom: 0; }

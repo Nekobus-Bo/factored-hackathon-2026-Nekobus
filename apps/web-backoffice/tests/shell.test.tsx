@@ -1,4 +1,4 @@
-// The back office's header tools, on the markup: the theme as two radios under a visible label, and the agent's
+// The back office's header tools, on the markup: the theme as two radios with no visible label, and the agent's
 // menu as a button of the system with a panel in labelled sections.
 
 import { describe, expect, test } from "bun:test";
@@ -63,7 +63,7 @@ describe("the agent's menu", () => {
 
   test("the panel has labelled sections: Sesión with the e-mail in the data type, Idioma with ES, PT and EN, then a rule and Salir as a secondary button", () => {
     const panel = html.slice(html.indexOf('<div class="pb-cut pb-menu__panel"'));
-    expect(panel).toMatch(/<span class="pb-t-label" id="[^"]+">Sesión<\/span><p class="pb-menu__email pb-t-mono">/);
+    expect(panel).toMatch(/<span class="pb-t-label">Sesión<\/span><p class="pb-menu__email pb-t-mono">/);
     expect(panel).toContain(`>${AGENT_EMAIL}</p>`);
     expect(panel).toMatch(/<span class="pb-t-label" id="([^"]+)">Idioma<\/span><div class="pb-lang pb-lang--fill" role="radiogroup" aria-labelledby="\1">/);
     expect([...panel.matchAll(/data-lang="(\w+)"/g)].map((match) => match[1])).toEqual(["es", "pt", "en"]);

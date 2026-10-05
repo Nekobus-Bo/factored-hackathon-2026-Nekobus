@@ -101,8 +101,7 @@ export function LanguageRadios({ labelId }: { labelId: string }) {
 
 /**
  * The theme: a sun and a moon as radios, named "Claro" and "Oscuro"; the one checked is the theme in force (the
- * system's until one is pinned). It has no visible label: the group is named "Tema" for assistive technology, and the
- * rule between groups stays.
+ * system's until one is pinned). It has no visible label: the group is named "Tema" for assistive technology.
  */
 export function ThemeTool() {
   const { t } = useI18n();
@@ -141,7 +140,6 @@ export function AgentMenu({ agent }: { agent: string }) {
   const { actor } = useAppServices();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const sessionId = useId();
   const languageId = useId();
 
   useEffect(() => {
@@ -170,18 +168,16 @@ export function AgentMenu({ agent }: { agent: string }) {
         <Icon name="chev1" />
       </button>
       <div className="pb-cut pb-menu__panel" id="bo-agent-menu" hidden={!open}>
-        <section className="pb-menu__section" aria-labelledby={sessionId}>
-          <span className="pb-t-label" id={sessionId}>
-            {t("nav.session")}
-          </span>
+        <div className="pb-menu__section">
+          <span className="pb-t-label">{t("nav.session")}</span>
           <p className="pb-menu__email pb-t-mono">{agent}</p>
-        </section>
-        <section className="pb-menu__section" aria-labelledby={languageId}>
+        </div>
+        <div className="pb-menu__section">
           <span className="pb-t-label" id={languageId}>
             {t("nav.language")}
           </span>
           <LanguageRadios labelId={languageId} />
-        </section>
+        </div>
         <hr />
         <button type="button" className="pb-btn pb-btn--secondary pb-btn--sm" onClick={() => actor.send({ type: "LOGOUT" })}>
           {t("nav.logout")}
