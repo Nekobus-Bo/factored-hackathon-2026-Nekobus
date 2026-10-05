@@ -126,11 +126,11 @@
 .pb-code-entry__cells { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 40px)); justify-content: start; gap: 6px; width: fit-content; max-width: 100%; }
 .pb-code-entry__cell { width: auto; letter-spacing: 0; }
 /* The box to type in shows the focus, and only while the field has it: there is no ring around the group. */
-.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"] { --edge: var(--focus); --bw: 2px; }
+.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"] { --edge: var(--focus); --bw: 2px; outline: 2px solid transparent; }
 .pb-code-entry__cells[data-disabled] .pb-code-entry__cell { --edge: var(--line); color: var(--ink-muted); }
-.pb-code-entry__input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; color: transparent; caret-color: transparent; font: inherit; cursor: text; }
+.pb-code-entry__input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: 2px solid transparent; background: transparent; color: transparent; caret-color: transparent; font: inherit; cursor: text; }
 .pb-code-entry__input:disabled { cursor: progress; }
-.pb-code-entry__cancel { margin-bottom: 4px; }
+.pb-code-entry__field + .pb-code-entry__cancel { margin-bottom: 4px; }
 .pb-code-entry__note { flex: 1 1 100%; margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink); }
 .pb-code-entry__error { flex: 1 0 100%; align-self: stretch; justify-content: flex-start; margin: 0; }
 
@@ -645,8 +645,10 @@
    focus is as visible as before, only inside the shape. The code field's boxes do the same (above). A checkbox keeps the
    system's ring, and only for the keyboard (`:focus-visible`), instead of the browser's own. Buttons, links, tabs and the
    rest keep the ring they have: it shows only for the keyboard. */
-.pb-field:focus-within { outline: 0; --edge: var(--focus); --bw: 2px; }
-.pb-field[data-invalid]:focus-within { --edge: var(--crimson); }
+.pb-field:focus-within { outline: 2px solid transparent; --edge: var(--focus); --bw: 2px; }
+/* The outline is transparent, not none: in forced-colours mode the chamfered edge is not drawn, and a transparent outline is. */
+/* An invalid field keeps its red edge, which would hide the focus: it gets the system's ring back. */
+.pb-field[data-invalid]:focus-within { --edge: var(--crimson); outline: 2px solid var(--focus); outline-offset: 3px; }
 .pb-check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 /* ---------- Header tools: a label and its options, in both apps ---------- */
@@ -671,8 +673,11 @@
 @media (max-width: 1140px) {
   .pb-nav__tools { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-2); }
   .pb-nav__tools > .pb-navtool, .pb-nav__tools > .pb-menu { margin-left: 0; }
-  .pb-nav__tools > .pb-navtool { justify-content: space-between; }
-  .pb-nav__tools > .pb-menu .pb-menu__btn { width: 100%; justify-content: space-between; }
+  /* The options go to the right, whether the group has a label to their left or none (the theme). The agent's button
+     fills the row with its content at the start and the chevron at the end. */
+  .pb-nav__tools > .pb-navtool > .pb-lang { margin-left: auto; }
+  .pb-nav__tools > .pb-menu .pb-menu__btn { width: 100%; justify-content: flex-start; }
+  .pb-nav__tools > .pb-menu .pb-menu__btn .pb-ico--chev1 { margin-left: auto; }
 }
 /* The system's fold (the rules of its own `max-width: 800px` block) from 801px up to 1140px. */
 @media (min-width: 801px) and (max-width: 1140px) {
