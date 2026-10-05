@@ -311,6 +311,32 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     expect(css.replace(block, "")).not.toMatch(/\.pb-flow__item \{ display: flex/);
   });
 
+  test("the back office's flows: `pb-flow--col` is a new modifier (the system has no `pb-flow--*`), and it keeps the phone layout at every width without touching the landing's four columns", () => {
+    expect(componentsCss).not.toMatch(/\.pb-flow--/);
+    const css = stripComments(localCss);
+    const defined = [...css.matchAll(/\.pb-flow--[a-z0-9_-]+/g)].map((match) => match[0]);
+    expect(new Set(defined)).toEqual(new Set([".pb-flow--col"]));
+    // every rule of the modifier hangs from it, so the landing's `pb-flow` is the system's
+    for (const match of css.matchAll(/([^{}@;]+)\{/g)) {
+      const selector = match[1]!.trim();
+      if (selector.includes(".pb-flow--col")) expect(selector).toMatch(/^\.pb-flow--col(?![-\w])/);
+    }
+    expect(declarationsOf(".pb-flow--col")).toBe("grid-template-columns: minmax(0, 1fr); gap: 0;");
+    // the item beats the system's 960px row with a higher specificity, not with a media query of its own
+    expect(declarationsOf(".pb-flow--col > .pb-flow__item")).toContain("grid-template-columns: 72px minmax(0, 1fr);");
+    expect(declarationsOf(".pb-flow--col > .pb-flow__item::after")).toContain("width: 1px; height: auto;");
+    expect(css.slice(css.indexOf(".pb-flow--col {"))).not.toContain("@media");
+  });
+
+  test("a back arrow is the system's `arrow` turned (`pb-ico--flip`, a name the system does not have); the link-like button `pb-linkbtn` is gone", () => {
+    expect(componentsCss).not.toContain("pb-ico--flip");
+    expect(declarationsOf(".pb-ico--flip")).toBe("transform: scaleX(-1);");
+    expect(componentsCss).toContain(".pb-ico--arrow {");
+    // Copiar and Actualizar are ghost buttons now: nothing dresses a button as a link
+    expect(localCss).not.toContain("pb-linkbtn");
+    expect(componentsCss).not.toContain("pb-linkbtn");
+  });
+
   test("the wordmark: capitals in the bar and the footer, \"Pattern\" in the ink and \"Blue\" in the brand blue, the type they already use", () => {
     expect(declarationsOf(".pb-nav__brand, .pb-footer__wordmark")).toBe("text-transform: uppercase;");
     expect(declarationsOf(".pb-wordmark__ink")).toBe("color: var(--ink);");

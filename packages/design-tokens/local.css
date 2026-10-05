@@ -277,10 +277,6 @@
 .pb-caseref > span + span { margin-left: 0.4em; }
 .pb-caseref > span:first-child { opacity: 0.75; }
 .pb-caseref--lg { font-size: 15px; line-height: 22px; color: var(--ink); }
-/* A link-styled button, for an action inside a line of text (Copiar). */
-.pb-linkbtn { margin: 0; padding: 0 2px; border: 0; background: none; color: var(--link); cursor: pointer; font: 500 13px/20px var(--font-sans); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
-.pb-linkbtn:hover { text-decoration-color: currentColor; }
-.pb-linkbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 /* ---------- Navigation: a count on a section, the agent's menu ---------- */
 .pb-nav__count { display: inline-grid; place-items: center; min-width: 22px; height: 20px; margin-left: 8px; padding: 0 6px; background: var(--violet); color: var(--on-violet); font: 700 12px/16px var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
@@ -708,3 +704,22 @@
   .pb-flow__state { margin-top: auto; padding-top: 4px; align-self: flex-start; }
 }
 
+
+/* ---------- HowItWorks as a vertical list: the flows of the back office ---------- */
+/* `pb-flow` goes to four columns from 960px, which suits the landing's four steps. The back office lists three to five
+   steps of a flow, each with a tool, and reads them down: `pb-flow--col` keeps the phone layout of the system (the numeral
+   at the left, the hairline running down) at every width. The numerals stay the system's CSS counter in stencil and violet.
+   The step's title takes the type of an `h3` in this case: a title card's serif, at the size of the card's own `h2` above,
+   would flatten the hierarchy of the screen. */
+.pb-flow--col { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.pb-flow--col > .pb-flow__item { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: var(--space-4); row-gap: 6px; align-content: start; padding-bottom: var(--space-6); }
+.pb-flow--col > .pb-flow__item:last-child { padding-bottom: 0; }
+.pb-flow--col > .pb-flow__item::before { grid-row: 1 / span 4; margin-bottom: 0; font-size: 48px; line-height: 48px; }
+.pb-flow--col > .pb-flow__item::after { left: 30px; right: auto; top: 60px; bottom: 12px; width: 1px; height: auto; }
+.pb-flow--col .pb-flow__title { font: 600 18px/26px var(--font-sans); }
+.pb-flow--col .pb-flow__state { margin-top: 4px; padding-top: 0; align-self: auto; }
+.pb-flow--col > .pb-flow__item > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- A back arrow: the system's `arrow` glyph, turned ---------- */
+/* The icon set has no arrow that points left. "Volver a la cola" is a ghost button with the `arrow` glyph flipped. */
+.pb-ico--flip { transform: scaleX(-1); }
