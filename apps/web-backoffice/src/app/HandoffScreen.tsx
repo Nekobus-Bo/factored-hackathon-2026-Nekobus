@@ -34,7 +34,7 @@ export function CopyRef({ value }: { value: string }) {
     }
   };
   return (
-    <button type="button" className="pb-linkbtn" onClick={copy}>
+    <button type="button" className="pb-btn pb-btn--ghost pb-btn--sm" onClick={copy}>
       {label === "copied" ? t("common.copied") : label === "shown" ? value : t("common.copy")}
     </button>
   );
@@ -80,7 +80,8 @@ export function HandoffScreen({ handoffRef }: { handoffRef: string }) {
   const { context } = snapshot;
 
   const back = (
-    <a className="pb-link bo-back" href="#/">
+    <a className="pb-btn pb-btn--ghost pb-btn--sm bo-back" href="#/">
+      <i className="pb-ico pb-ico--arrow pb-ico--flip" aria-hidden="true" />
       {t("handoff.back")}
     </a>
   );

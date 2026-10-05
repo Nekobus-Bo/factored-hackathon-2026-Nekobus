@@ -148,7 +148,24 @@ describe("local.css: detective mode (ADR-0019): a tab of the demo panel, and in 
 });
 
 /** Base classes that local.css restyles on purpose, over the system's own rule of the same name. */
-const CLASHES_THAT_OVERRIDE_THE_SYSTEM: string[] = ["pb-chat__composer", "pb-dock__panel"];
+const CLASHES_THAT_OVERRIDE_THE_SYSTEM: string[] = [
+  // the chat's panel and composer
+  "pb-chat__composer",
+  "pb-dock__panel",
+  // "Si pierdes tu tarjeta": each step a column, the chip at its foot
+  "pb-flow__item",
+  "pb-flow__state",
+  // the wordmark in capitals
+  "pb-footer__wordmark",
+  "pb-nav__brand",
+  // the bar's fold, up to 1140px (the system's rules of its own 800px fold, repeated from 801px)
+  "pb-nav__bar",
+  "pb-nav__collapse",
+  "pb-nav__link",
+  "pb-nav__links",
+  "pb-nav__menu",
+  "pb-nav__tools",
+];
 
 describe("local.css: the demo panel, shared by the guide and detective mode (ScriptChoice, ADR-0019)", () => {
   /** The declarations of the first rule whose selector is exactly `selector`, comments removed. */
@@ -241,16 +258,19 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
 
   test("fields show the focus in their edge, not in a ring: no outline on a focused field, the edge turns to the focus colour, 2px; the code box and the checkbox follow", () => {
     // the artifact's ring on a focused field is taken away (and its copy is left as it is)
-    expect(declarationsOf(".pb-field:focus-within")).toBe("outline: 0; --edge: var(--focus); --bw: 2px;");
+    // transparent, not none: in forced-colours mode the chamfered edge is not drawn and a transparent outline is
+    expect(declarationsOf(".pb-field:focus-within")).toBe("outline: 2px solid transparent; --edge: var(--focus); --bw: 2px;");
     expect(componentsCss).toMatch(/\.pb-field:focus-within \{ outline:/);
-    expect(declarationsOf('.pb-field[data-invalid]:focus-within')).toBe("--edge: var(--crimson);");
+    // an invalid field keeps its red edge, which would hide the focus: it gets the system's ring back
+    expect(declarationsOf('.pb-field[data-invalid]:focus-within')).toBe("--edge: var(--crimson); outline: 2px solid var(--focus); outline-offset: 3px;");
     // no other rule of local.css puts an outline on something that merely has the focus inside it
-    expect(stripComments(localCss)).not.toMatch(/:focus-within[^{]*\{[^}]*outline: 2px/);
+    const withRing = [...stripComments(localCss).matchAll(/([^{}]*:focus-within[^{}]*)\{[^}]*outline: 2px solid var\(--focus\)/g)].map((match) => match[1]!.trim());
+    expect(withRing).toEqual(['.pb-field[data-invalid]:focus-within']);
     // it loads after the artifact, so it wins over the hover edge of the same weight
     expect(localCss.indexOf(".pb-field:focus-within {")).toBeGreaterThan(-1);
     // the code field: no ring around the group, the box to type in shows the focus, and only while the field has it
     expect(declarationsOf(".pb-code-entry__cells:focus-within")).toBeUndefined();
-    expect(declarationsOf('.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"]')).toBe("--edge: var(--focus); --bw: 2px;");
+    expect(declarationsOf('.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"]')).toBe("--edge: var(--focus); --bw: 2px; outline: 2px solid transparent;");
     expect(declarationsOf('.pb-code-entry__cell[data-active="true"]')).toBeUndefined();
     // the checkbox of the escalate dialog: the system's ring, for the keyboard only
     expect(declarationsOf(".pb-check input:focus-visible")).toBe("outline: 2px solid var(--focus); outline-offset: 3px;");
@@ -264,10 +284,20 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     expect(componentsCss).not.toMatch(/\.pb-navtool/);
     // and, more widely, a base class that local.css defines at the start of a line and the system defines too is a deliberate override of
     // the system's own rule, listed here: a new clash with another purpose has to be looked at before it is added
-    const baseClasses = (css: string) => new Set([...stripComments(css).matchAll(/^\.(pb-[a-z0-9_-]+) \{/gm)].map((match) => match[1]!));
+    // every rule counts, also inside an @media and in a list of selectors: a selector that is exactly one class
+    const baseClasses = (css: string) => {
+      const found = new Set<string>();
+      for (const match of stripComments(css).matchAll(/([^{}@;]+)\{/g)) {
+        for (const selector of match[1]!.split(",")) {
+          const single = /^\s*\.(pb-[a-z0-9_-]+)\s*$/.exec(selector);
+          if (single) found.add(single[1]!);
+        }
+      }
+      return found;
+    };
     const system = baseClasses(componentsCss);
     const clashes = [...baseClasses(localCss)].filter((name) => system.has(name)).sort();
-    expect(clashes).toEqual(CLASHES_THAT_OVERRIDE_THE_SYSTEM);
+    expect(clashes).toEqual([...CLASHES_THAT_OVERRIDE_THE_SYSTEM].sort());
   });
 
   test("the four steps of 'Si pierdes tu tarjeta': from the system's 960px row on, each step is a column of the row's height and its state chip sits at its foot, so the chips are on one line", () => {
@@ -279,6 +309,32 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     expect(componentsCss).toMatch(/@media \(min-width: 960px\) \{\s*\.pb-flow \{ grid-template-columns: repeat\(4,/);
     // and nothing outside that media query restyles the item's layout
     expect(css.replace(block, "")).not.toMatch(/\.pb-flow__item \{ display: flex/);
+  });
+
+  test("the back office's flows: `pb-flow--col` is a new modifier (the system has no `pb-flow--*`), and it keeps the phone layout at every width without touching the landing's four columns", () => {
+    expect(componentsCss).not.toMatch(/\.pb-flow--/);
+    const css = stripComments(localCss);
+    const defined = [...css.matchAll(/\.pb-flow--[a-z0-9_-]+/g)].map((match) => match[0]);
+    expect(new Set(defined)).toEqual(new Set([".pb-flow--col"]));
+    // every rule of the modifier hangs from it, so the landing's `pb-flow` is the system's
+    for (const match of css.matchAll(/([^{}@;]+)\{/g)) {
+      const selector = match[1]!.trim();
+      if (selector.includes(".pb-flow--col")) expect(selector).toMatch(/^\.pb-flow--col(?![-\w])/);
+    }
+    expect(declarationsOf(".pb-flow--col")).toBe("grid-template-columns: minmax(0, 1fr); gap: 0;");
+    // the item beats the system's 960px row with a higher specificity, not with a media query of its own
+    expect(declarationsOf(".pb-flow--col > .pb-flow__item")).toContain("grid-template-columns: 72px minmax(0, 1fr);");
+    expect(declarationsOf(".pb-flow--col > .pb-flow__item::after")).toContain("width: 1px; height: auto;");
+    expect(css.slice(css.indexOf(".pb-flow--col {"))).not.toContain("@media");
+  });
+
+  test("a back arrow is the system's `arrow` turned (`pb-ico--flip`, a name the system does not have); the link-like button `pb-linkbtn` is gone", () => {
+    expect(componentsCss).not.toContain("pb-ico--flip");
+    expect(declarationsOf(".pb-ico--flip")).toBe("transform: scaleX(-1);");
+    expect(componentsCss).toContain(".pb-ico--arrow {");
+    // Copiar and Actualizar are ghost buttons now: nothing dresses a button as a link
+    expect(localCss).not.toContain("pb-linkbtn");
+    expect(componentsCss).not.toContain("pb-linkbtn");
   });
 
   test("the wordmark: capitals in the bar and the footer, \"Pattern\" in the ink and \"Blue\" in the brand blue, the type they already use", () => {
@@ -302,7 +358,11 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     // the folded menu stacks the groups with their labels
     const css = stripComments(localCss);
     expect(css).toMatch(/@media \(max-width: 1140px\) \{\s*\.pb-nav__tools \{ flex-direction: column;/);
-    expect(css).toContain(".pb-nav__tools > .pb-navtool { justify-content: space-between;");
+    // the options go right whether the group has a label or not (the theme has none); the agent's button keeps its content at the start
+    expect(css).toContain(".pb-nav__tools > .pb-navtool > .pb-lang { margin-left: auto; }");
+    expect(css).not.toContain(".pb-nav__tools > .pb-navtool { justify-content: space-between;");
+    expect(css).toContain(".pb-nav__tools > .pb-menu .pb-menu__btn { width: 100%; justify-content: flex-start; }");
+    expect(css).toContain(".pb-nav__tools > .pb-menu .pb-menu__btn .pb-ico--chev1 { margin-left: auto; }");
   });
 
   test("the header tools have no lines at all; the label and the options differ by type, the one checked is a filled block", () => {
@@ -332,12 +392,16 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
       expect(block, rule).toContain(rule);
     }
     expect(block).toContain(".pb-nav__collapse { display: none; position: absolute;");
-    // a rough width of the unfolded bar (wordmark, the four links, the language and currency groups with their labels,
-    // the theme group with none, gaps and padding) stays under the fold, with a margin for the real width of the type
-    // (no borders: a group is its options and 2px between them; groups are told apart by 16px of margin on top of the 16px gap)
-    const unfolded = 140 + 385 + (57 + 4 + 88) + (38 + 4 + 132) + 88 + 4 + 2 * 16 + 2 * 16 + 2 * 24 + 32;
-    expect(unfolded).toBe(1084);
-    expect(unfolded * 1.05).toBeLessThanOrEqual(1140);
+    // MEASURED, not computed: the code review measured the unfolded bar in a browser, in Spanish (the widest, with the
+    // country group): the wordmark 206px, the four links 343px, the whole bar 1081px. The fold is read from the CSS
+    // above and must leave a margin over the measure for another font or a longer language.
+    const measured = { wordmark: 206, links: 343, total: 1081 };
+    const fold = Number(/@media \(min-width: 801px\) and \(max-width: (\d+)px\)/.exec(css)?.[1]);
+    expect(fold).toBe(1140);
+    expect(measured.total).toBeLessThan(fold);
+    expect(measured.total * 1.05).toBeLessThanOrEqual(fold);
+    // the pieces add up to less than the whole: what is left is the three groups and the gaps
+    expect(measured.wordmark + measured.links).toBeLessThan(measured.total);
   });
 
   test("the action under a reply is a pb-action: only its placement and its time are written here, and the leading icon does not step on hover", () => {

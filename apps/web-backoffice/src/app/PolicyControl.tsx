@@ -264,10 +264,10 @@ export function RefusalBanner({ refusal, onDismiss }: { refusal: Refusal; onDism
         tone="caution"
         stripe
         eyebrow={t("guardrails.tools.refusalEyebrow")}
-        hint={t("guardrails.tools.refusalHint", { floor: refusal.floor.join(", ") })}
+        hint={t("guardrails.tools.refusalHint", { floor: refusal.floor.map((state) => t(`enums.state.${state}`)).join(", ") })}
         action={dismiss}
       >
-        {t("guardrails.tools.refusalText", { tool: refusal.tool, state: refusal.state })}
+        {t("guardrails.tools.refusalText", { tool: refusal.tool, state: t(`enums.state.${refusal.state}`) })}
       </Alert>
     );
   }

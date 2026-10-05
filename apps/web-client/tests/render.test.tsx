@@ -539,7 +539,7 @@ describe("the landing", () => {
     expect([...html.matchAll(/data-lang="(\w+)"/g)].map((match) => match[1])).toEqual(["es", "pt"]);
     expect(html).toMatch(/aria-checked="true"[^>]*data-lang="pt"/);
     // the theme: a sun and a moon, named, the one in force checked (the system's, until one is pinned); no square toggle
-    // the theme has no visible label: its group names itself, inside its own tool (the rule between groups stays)
+    // the theme has no visible label: its group names itself, inside its own tool (groups are told apart by room)
     const themeGroup = /<div class="pb-navtool"><div class="pb-lang pb-lang--fill" role="radiogroup" aria-label="Tema">(.*?)<\/div><\/div>/.exec(html);
     expect(themeGroup).not.toBeNull();
     expect(html).not.toMatch(/pb-navtool__label"[^>]*>Tema</);

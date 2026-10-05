@@ -104,6 +104,7 @@ export function ChatDock({
   const detectiveOffered = snapshot.context.detective;
 
   const launcherRef = useRef<HTMLButtonElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +139,16 @@ export function ChatDock({
     else if (codeMode.kind === "expired") codeRequestRef.current?.focus();
     else inputRef.current?.focus();
   };
+
+  /**
+   * The same, but only if the customer's focus is free: nowhere (what had it went away), or in the chat. A customer in
+   * the side panel or on the page keeps it. Run after the screen has caught up with what was just sent.
+   */
+  const focusComposerIfFree = () =>
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || sectionRef.current?.contains(active)) focusComposer();
+    }, 0);
 
   // Opening the chat moves focus to the composer (or, when it reopens on the detective view in place of the chat,
   // where the composer is hidden, to the header button), and asks whether detective mode is on.
@@ -243,7 +254,7 @@ export function ChatDock({
   /** The guide's clicks send. The chat stays in sight beside the panel, so only the composer takes the focus back. */
   const leaveForChat = () => {
     setInboxOpen(false);
-    focusComposer();
+    focusComposerIfFree();
   };
   /** A script was chosen: a new conversation in the script's market, and the page follows it. */
   const pickScript = (id: DemoScriptId) => {
@@ -286,6 +297,7 @@ export function ChatDock({
   return (
     <div className="pb-dock">
       <section
+        ref={sectionRef}
         className="pb-chat pb-dock__panel"
         id="dock-panel"
         aria-label={inPlace ? dict.chat.detective.toggle : dict.chat.panel}

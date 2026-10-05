@@ -379,7 +379,8 @@ export function MetricsScreen() {
           </div>
           <span className="pb-t-small" role="status">
             {data ? `${t("metrics.updated", { time: clockText(data.generated_at) })} · ` : null}
-            <button type="button" className="pb-linkbtn" disabled={loading} onClick={() => send({ type: "REFRESH" })}>
+            <button type="button" className="pb-btn pb-btn--ghost pb-btn--sm" disabled={loading} onClick={() => send({ type: "REFRESH" })}>
+              <Icon name="retry" />
               {t("common.refresh")}
             </button>
           </span>

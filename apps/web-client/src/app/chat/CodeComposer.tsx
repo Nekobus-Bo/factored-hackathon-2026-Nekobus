@@ -61,7 +61,10 @@ export function CodeComposer({ dict, mode, sendDisabled, onSend, onCancel, onReq
 
   // The field takes the focus when the mode starts and again when a turn ends (a failed code leaves it empty, ready for the next).
   useEffect(() => {
-    if (mode.kind === "entry" && !sendDisabled) own.current?.focus();
+    if (mode.kind !== "entry" || sendDisabled) return;
+    // Not from the side panel or the page: only when the focus is nowhere or already in the chat.
+    const active = document.activeElement;
+    if (!active || active === document.body || formRef.current?.closest(".pb-chat")?.contains(active)) own.current?.focus();
   }, [mode.kind, sendDisabled]);
 
   // What was typed belongs to the code that was asked for: when the field gives way (the code expired, or it ended),
