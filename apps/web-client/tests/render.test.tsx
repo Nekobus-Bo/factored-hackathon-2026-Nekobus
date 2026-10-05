@@ -12,7 +12,7 @@ import { FeedbackLine } from "../src/app/chat/Feedback";
 import { TraceOpen, TracePanel, type TracePanelProps } from "../src/app/chat/TracePanel";
 import { replyCount, tracedTurns } from "../src/app/chat/trace-model";
 import { Transcript } from "../src/app/chat/Transcript";
-import { Landing } from "../src/app/landing/Landing";
+import { Landing, pageCovered } from "../src/app/landing/Landing";
 import { dictionaries } from "../src/i18n";
 import { createAppMachine, type AppEnv } from "../src/machines/app.machine";
 import type { Entry } from "../src/machines/chat-model";
@@ -493,6 +493,12 @@ describe("the landing", () => {
     expect(html).toContain("pb-cardvis__brand");
   });
 
+  test("the hero's button is in the markup and the dock takes the request: with the chat open on entering the markup is the same (the focus is an effect, a manual check)", () => {
+    const html = page("es");
+    expect(html.match(/data-open-chat/g)).toHaveLength(1);
+    expect(html).toMatch(/<section[^>]*id="dock-panel"(?![^>]*hidden)[^>]*>/);
+  });
+
   test("the hero and the launcher open the chat, the navigation bar does not", () => {
     // the hero's button and the launcher; the navigation bar has none
     const html = page("es");
@@ -513,7 +519,49 @@ describe("the landing", () => {
     expect(html).toContain("pb-faq__indicator");
   });
 
-  test("no chat request is made by rendering it: the conversation is lazy", () => {
+  const pageWith = (wide: boolean) => {
+    const env: AppEnv = { storage: null, root: null, navigatorLanguage: "es" };
+    const world = createWorld();
+    const html = renderToStaticMarkup(
+      <ActorsProvider actors={{ app: createActor(createAppMachine(env)).start(), chat: world.actor }}>
+        <Landing wide={wide} />
+      </ActorsProvider>,
+    );
+    world.stop();
+    return html;
+  };
+
+  test("the page under the full-screen chat is inert: the bar, the main and the footer, and not the dock, only when the chat is open and there is no room", () => {
+    const covered = pageWith(false);
+    expect(covered.match(/ inert=""/g)).toHaveLength(3);
+    expect(covered).toMatch(/<header class="pb-nav"[^>]* inert="">/);
+    expect(covered).toMatch(/<main inert="">/);
+    expect(covered).toMatch(/<footer class="pb-footer" inert="">/);
+    expect(covered.slice(covered.indexOf('class="pb-dock"'))).not.toContain("inert");
+    // with room the chat floats beside the page and the page stays in reach
+    expect(pageWith(true)).not.toContain("inert");
+    // the rule itself, with the chat closed
+    expect(pageCovered(true, false)).toBe(true);
+    expect(pageCovered(false, false)).toBe(false);
+    expect(pageCovered(true, true)).toBe(false);
+    expect(pageCovered(false, true)).toBe(false);
+  });
+
+  test("the chat is open on entering: its panel is not hidden, the launcher says it is expanded, and the demo panel is closed and unseen", () => {
+    const html = page("es");
+    const section = /<section[^>]*id="dock-panel"[^>]*>/.exec(html)![0];
+    expect(section).not.toContain("hidden");
+    const launcher = /<button[^>]*id="dock-launcher"[^>]*>/.exec(html)![0];
+    expect(launcher).toContain('aria-expanded="true"');
+    // the demo panel stays closed (its button still calls for attention: no `data-seen`), and the composer is in sight
+    expect(/<aside[^>]*pb-dock__side[^>]*>/.exec(html)![0]).toContain(' hidden=""');
+    expect(html).toContain('aria-pressed="false" aria-controls="side-panel" data-demo-toggle');
+    expect(html).not.toContain("data-seen");
+    expect(html).toMatch(/<form class="pb-chat__composer">/);
+    expect(html).not.toContain("data-script=");
+  });
+
+  test("rendering the landing makes no chat request (a server render runs no effects: what the page asks on load, the capabilities, is the dock's effect and is not covered here; no conversation is created before a message is the machine's rule, tested in chat.machine.test)", () => {
     const env: AppEnv = { storage: null, root: null, navigatorLanguage: "es" };
     const world = createWorld();
     renderToStaticMarkup(
@@ -816,19 +864,27 @@ describe("detective mode (ADR-0019)", () => {
     expect(html.match(/data-trace-open/g)).toHaveLength(2);
   });
 
-  test("case 2, narrow: with no room for the panel the view takes the chat's place: its title, the way back, the log and the composer kept but hidden", async () => {
+  test("case 2, narrow: with no room the panel takes the chat's place: the title, the way back, the tabs, the log and the composer kept but hidden", async () => {
     await chatWith(true);
     const html = dock({ startInDetective: true, wide: false });
-    expect(html).toContain(`<section class="pb-chat pb-dock__panel" id="dock-panel" aria-label="${t.toggle}"`);
-    expect(html).toContain(`<i class="pb-ico pb-ico--detective" aria-hidden="true"></i> ${t.toggle}</span>`);
-    // the same button, now the way back to the chat: icon only, filled, pressed
+    const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
+    expect(html).toContain(`<section class="pb-chat pb-dock__panel" id="dock-panel" aria-label="${dictionaries.es.chat.demo.menu}"`);
+    expect(html).toContain(`<i class="pb-ico pb-ico--menu" aria-hidden="true"></i> ${dictionaries.es.chat.demo.menu}</span>`);
+    // the same button, now the way back to the chat: icon only, filled
     expect(html).toContain("pb-btn pb-btn--primary pb-btn--sm pb-demo-toggle pb-btn--icon");
     expect(html).toContain(`aria-label="${t.back}" title="${t.back}"`);
     expect(html).toContain('<i class="pb-ico pb-ico--chat" aria-hidden="true"></i></button>');
-    // a way back is not a toggle, and the panel it would control is hidden: no pressed state, no aria-controls
+    // a way back is not a toggle, and what it would control is inside the chat's panel: no pressed state, no aria-controls
     const back = /<button[^>]*pb-demo-toggle[^>]*>/.exec(html)![0];
     expect(back).not.toContain("aria-pressed");
     expect(back).not.toContain("aria-controls");
+    // the panel itself is inside the chat's panel, with its two tabs, on the detective one; it is not the aside beside the chat
+    expect(html.match(/<aside/g)).toHaveLength(1);
+    expect(section).toContain('<aside class="pb-side pb-side--inplace" id="side-panel"');
+    expect(html).not.toContain("pb-dock__side");
+    expect(section).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-side-tab="detective"/);
+    expect(section).toMatch(/data-side-tab="script"/);
+    expect(section).not.toContain("Solo demo");
     expect(html).toContain("pb-trace pb-trace--inpanel");
     expect(html).toContain("Turno 3 de 3");
     // still mounted, out of sight: the scroll and the draft survive
@@ -838,11 +894,40 @@ describe("detective mode (ADR-0019)", () => {
     expect(html).toContain("<textarea");
     // the replies' controls are in the hidden log, intact
     expect(html.match(/data-trace-open/g)).toHaveLength(2);
-    // the chat's state chip is not shown over the view
+    // the chat's state chip is not shown over the panel
     expect(html).not.toContain("chat-head-chip");
-    // the panel beside the chat is closed and empty: the trace is not drawn twice
-    expect(sideTag(html)).toMatch(/ hidden=""/);
+    // the trace is in one place only
     expect(html.match(/pb-trace--inpanel/g)).toHaveLength(1);
+  });
+
+  test("with no room the panel opens on the tab last used, with its two tabs: the guide's shows 'Solo demo' and the six scripts, the detective's does not", async () => {
+    await chatWith(true);
+    const onGuide = dock({ startWithGuide: true, wide: false });
+    const section = onGuide.slice(onGuide.indexOf("<section"), onGuide.indexOf("</section>"));
+    expect(section).toContain('role="tablist"');
+    expect(section).toMatch(/aria-selected="true"[^>]*data-side-tab="script"/);
+    expect(section).toMatch(/aria-selected="false"[^>]*data-side-tab="detective"/);
+    expect(section).toContain("Solo demo");
+    expect(section).toContain("Elige un guion");
+    // (the log, hidden, still has the replies' actions: the panel is the aside)
+    expect(onGuide.slice(onGuide.indexOf("<aside"), onGuide.indexOf("</aside>"))).not.toContain("pb-trace");
+    expect(onGuide).toMatch(/<form class="pb-chat__composer" hidden="">/);
+    const onDetective = dock({ startInDetective: true, wide: false });
+    expect(onDetective).toMatch(/aria-selected="true"[^>]*data-side-tab="detective"/);
+    expect(onDetective).not.toContain("Elige un guion");
+  });
+
+  test("markup order: the one text area is drawn once in either place, and in place of the chat the panel comes before it (the composer's place in the tree is what keeps it from remounting; a remount itself needs a DOM and is a manual check)", async () => {
+    await chatWith(true);
+    const wide = dock({ startWithGuide: true, wide: true });
+    const narrow = dock({ startWithGuide: true, wide: false });
+    for (const html of [wide, narrow]) expect(html.match(/<textarea/g)).toHaveLength(1);
+    expect(narrow.indexOf("<aside")).toBeLessThan(narrow.indexOf("<textarea"));
+  });
+
+  test("the log is a tab stop (a scrollable region the keyboard scrolls; the dock also focuses it by script after a pick or a send)", async () => {
+    await chatWith(true);
+    expect(dock()).toMatch(/<div class="pb-chat__log" role="log"[^>]* tabindex="0"/);
   });
 
   test("case 3: with the panel closed, or open on a tab, the log and the composer are in sight", async () => {
@@ -870,7 +955,7 @@ describe("detective mode (ADR-0019)", () => {
     expect(panel).toMatch(/role="tabpanel" aria-labelledby="side-tab-script"/);
   });
 
-  test("case 6: where the environment does not offer the mode there is no button, no tab and no control, traces or not", async () => {
+  test("case 6: where the environment does not offer the mode there is no tab and no control, traces or not, and the button opens the guide alone", async () => {
     for (const offered of [false, "error"] as const) {
       await chatWith(offered);
       expect(world!.snapshot.context.entries.filter((entry) => entry.kind === "assistant" && entry.trace)).toHaveLength(2);
@@ -883,18 +968,24 @@ describe("detective mode (ADR-0019)", () => {
       // the panel is the guide alone
       expect(side(html)).toContain("Elige un guion");
       expect(side(html)).toContain("Solo demo");
-      // with no room for the panel and no detective to show, there is nothing for the button to open: no button
+      // with no room the button is there too: the guide alone opens in place of the chat, with no tabs and its tag
       const narrow = dock({ wide: false });
-      expect(narrow).not.toContain("data-demo-toggle");
+      expect(narrow).toContain("data-demo-toggle");
       expect(narrow).toContain("data-close-chat");
+      const opened = dock({ startWithGuide: true, wide: false });
+      expect(opened).not.toContain("data-side-tab");
+      expect(opened).not.toContain('role="tablist"');
+      expect(opened).toContain("Guion de demo");
+      expect(opened).toContain("Solo demo");
+      expect(opened).toContain(`aria-label="${t.back}"`);
       world!.stop();
     }
   });
 
-  test("with no room for the panel the same button exists for the detective view only: it opens it in place of the chat", async () => {
+  test("with no room the same button exists always: it opens the panel in place of the chat and, until then, controls nothing", async () => {
     await chatWith(true);
     const html = dock({ wide: false });
-    // with no room the panel is hidden: the button is a toggle for the view in place of the chat and controls nothing
+    // with no room the aside beside the chat is hidden: the button toggles the panel in place of the chat
     const toggle = /<button[^>]*pb-demo-toggle[^>]*>/.exec(html)![0];
     expect(toggle).toContain('aria-pressed="false" data-demo-toggle');
     expect(toggle).not.toContain("aria-controls");
@@ -903,17 +994,21 @@ describe("detective mode (ADR-0019)", () => {
     expect(html).toMatch(/<div class="pb-chat__body">/);
   });
 
-  test("case 7: the back office turned the mode off while the detective tab was open: beside the chat the panel is on the guide; with no room the chat is back, with its composer", async () => {
+  test("case 7: the back office turned the mode off while the detective tab was open: the panel is on the guide, beside the chat and in place of it, and the chat is not back", async () => {
     await chatWith(false);
     const wide = dock({ startInDetective: true, wide: true });
     expect(wide).not.toContain("pb-trace--inpanel");
     expect(side(wide)).toContain("Elige un guion");
     expect(wide).not.toContain("data-side-tab");
     const narrow = dock({ startInDetective: true, wide: false });
+    const section = narrow.slice(narrow.indexOf("<section"), narrow.indexOf("</section>"));
     expect(narrow).not.toContain("pb-trace--inpanel");
-    expect(narrow).toMatch(/<div class="pb-chat__body">/);
-    expect(narrow).toMatch(/<form class="pb-chat__composer">/);
-    expect(narrow).toContain(`aria-label="${dictionaries.es.chat.panel}"`);
+    expect(section).toContain("Elige un guion");
+    expect(section).toContain("Solo demo");
+    expect(narrow).not.toContain("data-side-tab");
+    expect(narrow).toMatch(/<div class="pb-chat__body" hidden="">/);
+    expect(narrow).toMatch(/<form class="pb-chat__composer" hidden="">/);
+    expect(narrow).toContain(`aria-label="${dictionaries.es.chat.demo.menu}"`);
   });
 
   test("case 8: a 'pb-detective=on' left by an earlier version does nothing: the visit opens with the panel closed", async () => {

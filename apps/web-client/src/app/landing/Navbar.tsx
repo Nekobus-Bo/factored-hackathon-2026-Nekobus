@@ -4,7 +4,8 @@ import { Icon } from "../ui/Icon";
 import { LangSwitch, MarketSwitch, ThemeSwitch } from "./Switches";
 import { Wordmark } from "./Wordmark";
 
-export function Navbar() {
+/** `inert`: the chat covers the screen (no room for the demo panel beside it), so the bar is out of reach of Tab and of screen readers. */
+export function Navbar({ inert = false }: { inert?: boolean }) {
   const { dict } = useI18n();
   const [open, setOpen] = useState(false);
   const t = dict.nav;
@@ -15,7 +16,7 @@ export function Navbar() {
     { href: "#ayuda", label: t.help },
   ];
   return (
-    <header className="pb-nav" data-open={open ? "true" : "false"}>
+    <header className="pb-nav" data-open={open ? "true" : "false"} inert={inert}>
       <div className="pb-nav__bar">
         <a className="pb-nav__brand" href="#top" aria-label={t.brandLabel}>
           <Wordmark />

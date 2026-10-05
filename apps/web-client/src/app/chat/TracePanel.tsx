@@ -1,8 +1,8 @@
-// Detective mode's view (ADR-0019): one turn as the system ran it, a tab of the demo panel beside the chat (or, on a
-// window too narrow for that panel, in the chat panel's place). Two views of the
+// Detective mode's view (ADR-0019): one turn as the system ran it, a tab of the demo panel, beside the chat or, with no
+// room for it, in the chat panel's place. Two views of the
 // same steps: a list where each step opens in place, and a timeline of bars on the turn's clock with the picked
 // step under it. A stepper moves between the turns that came with a trace. Numbers and the system's own names,
-// few words. The header (title, the button back to the chat) belongs to the dock. Props only, no machine, so it
+// few words. The header (title, the button back to the chat) and the panel's tabs belong to the dock. Props only, no machine, so it
 // renders on the server in the tests exactly as it does in the page. Every value in a trace is masked as the
 // LLM saw it.
 
@@ -90,7 +90,7 @@ export function TracePanel({ dict, turns, total, selectedId, view, onSelect, onV
 
 /**
  * Under each reply that came with a trace, while the environment offers the mode: an action of the system with the
- * icon, "Ver detective" and the turn's time. It opens that turn (beside the chat, or in place of it on a narrow window).
+ * icon, "Ver detective" and the turn's time. It opens that turn (beside the chat, or in place of it when there is no room).
  */
 export function TraceOpen({ dict, trace, onOpen }: { dict: Dictionary; trace: TurnTrace; onOpen?: () => void }) {
   const time = formatMs(trace.total_ms);

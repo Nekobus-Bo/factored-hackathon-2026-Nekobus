@@ -1,20 +1,25 @@
-// The dock: the launcher and the panel, pinned bottom-right (full screen on a phone). The panel is not modal
-// (the page stays usable); opening it focuses the composer, and Escape or the close button closes it and
-// returns focus to the launcher. The simulated inbox opens as a sheet over the messages; Escape closes the
+// The dock: the launcher and the panel, pinned bottom-right (the whole screen when there is no room for the demo
+// panel beside it: under 920px wide or 500px tall). The chat is open when the page loads, without taking the focus (the
+// hero's button, with it open, asks for the composer through `focusRequest`); the
+// panel is not modal (the page stays usable); opening it with a click focuses the composer, and Escape or the close
+// button closes it and returns focus to the launcher. The simulated inbox opens as a sheet over the messages; Escape closes the
 // sheet first. After a handoff the log asks whether the assistant helped.
 //
-// The demo panel: where there is room (920px and more) one panel sits at the left of the chat, as tall as it, with
-// two tabs, the demo guide and, where the environment offers detective mode, the trace view (ADR-0019). The header
-// has one button, "Menú demo", that opens and closes it on the tab last used; the control under a reply opens the panel on that turn. The chat and its composer stay
-// in sight and usable. Below 920px there is no room: the guide is not offered, and the detective view takes the
-// place of the log and the composer inside the chat's panel, which stay mounted, hidden, so the scroll and the
-// draft survive. Whether the panel is open, its tab and its turn are local to this component (see
-// `detective-view.ts`) and start closed on every visit. Choosing a script opens a new conversation in the
-// script's market; the page follows. This file connects the chat machine to the views; the views take props.
+// The demo panel: where there is room (920px wide and 500px tall or more) one panel sits at the left of the chat, as
+// tall as it, with two tabs, the demo guide and, where the environment offers detective mode, the trace view
+// (ADR-0019). The header has one button, "Menú demo", that always exists and opens and closes it on the tab last used;
+// the control under a reply opens the panel on that turn. Beside the chat the chat and its composer stay in sight and
+// usable. With no room the chat takes the screen and the same panel, with both tabs, is drawn in place of the log and
+// the composer inside the chat's panel, which stay mounted, hidden, so the scroll and the draft survive; Escape or
+// "Volver al chat" returns, and so do picking, sending or copying a line of the guide. Where the panel is, is derived
+// from the room, so a resize keeps what was open. Whether it is open, its tab and its turn are local to this
+// component (see `detective-view.ts`) and start closed on every visit. Choosing a script opens a new conversation in
+// the script's market; the page follows. This file connects the chat machine to the views; the views take props.
 
 import type { DemoScriptId } from "@pattern-blue/contracts";
 import { useSelector } from "@xstate/react";
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   conversationState,
   selectAwaitingRetry,
@@ -24,6 +29,7 @@ import {
   selectFeedback,
   selectScript,
   selectSendDisabled,
+  selectWaiting,
   selectTyping,
   type ConversationState,
   type PendingSend,
@@ -36,11 +42,12 @@ import { StateChip, type ChipStateName } from "../ui/StateChip";
 import { MessageText, Sender } from "./Blocks";
 import { requestNewCode } from "./code-actions";
 import { CodeComposer } from "./CodeComposer";
-import { Composer } from "./Composer";
-import { effectiveTab, initialSidePanel, placement, selectedTurnId, shown, sidePanelReducer } from "./detective-view";
+import { Composer, type ComposerHandle } from "./Composer";
+import { effectiveTab, focusAfterGuide, focusesOnRequest, initialSidePanel, placement, selectedTurnId, shown, sidePanelReducer, type FocusTarget, type GuideUse } from "./detective-view";
 import { FeedbackLine } from "./Feedback";
-import { sendGuideLine, startGuideScript } from "./guide-actions";
+import { sendGuideLine, sendTyped, startGuideScript } from "./guide-actions";
 import { GuidePanel } from "./GuidePanel";
+import { NextBand } from "./NextLine";
 import { GoneStrip, OtpFoot, OtpNoticeStrip, OtpSheet, RateLimitedStrip, type OtpFootProps, type OtpSheetProps } from "./Notices";
 import { SIDE_PANEL_ID, SidePanel } from "./SidePanel";
 import { TracePanel, type TraceView } from "./TracePanel";
@@ -77,6 +84,7 @@ export function ChatDock({
   startInDetective = false,
   startWithGuide = false,
   wide,
+  focusRequest = 0,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -86,6 +94,8 @@ export function ChatDock({
   startWithGuide?: boolean;
   /** Whether there is room for the panel beside the chat. Only the tests set it: the page asks the window. */
   wide?: boolean;
+  /** Raised by the page (the hero's button) to ask for the composer: with the chat already open it is focused, with it closed the opening does that. */
+  focusRequest?: number;
 }) {
   const actors = useActors();
   const { chat } = actors;
@@ -107,6 +117,7 @@ export function ChatDock({
   const sectionRef = useRef<HTMLElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const codeRequestRef = useRef<HTMLButtonElement>(null);
   const guideTitleRef = useRef<HTMLParagraphElement>(null);
@@ -114,14 +125,16 @@ export function ChatDock({
   const revealRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const logScroll = useRef<{ top: number; atBottom: boolean } | null>(null);
+  /** Where the focus goes when the panel in place of the chat closes; see `focusAfterGuide`. Null: the visitor closed it (Escape, the way back), and the composer takes it. */
+  const focusAfter = useRef<FocusTarget | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [view, dispatchView] = useReducer(sidePanelReducer, startInDetective ? "detective" : startWithGuide ? "script" : null, initialSidePanel);
   const [traceView, setTraceView] = useState<TraceView>("steps");
   // The detective tab exists only where the environment offers the mode: when the back office turns it off, the panel
-  // is on the guide, or (with no room for a panel) the chat is back.
+  // is on the guide, beside the chat or in place of it.
   const tab = effectiveTab(view, detectiveOffered);
-  const { beside, inPlace } = placement(view, detectiveOffered, room);
-  const panelShown = shown(view, detectiveOffered, room);
+  const { beside, inPlace } = placement(view, room);
+  const panelShown = shown(view);
   const turns = useMemo(() => tracedTurns(entries), [entries]);
   const replies = useMemo(() => replyCount(entries), [entries]);
   const traceSelectedId = selectedTurnId(view, turns);
@@ -150,24 +163,49 @@ export function ChatDock({
       if (!active || active === document.body || sectionRef.current?.contains(active)) focusComposer();
     }, 0);
 
-  // Opening the chat moves focus to the composer (or, when it reopens on the detective view in place of the chat,
-  // where the composer is hidden, to the header button), and asks whether detective mode is on.
+  // Opening the chat moves focus to the composer (or, when it reopens on the demo panel in place of the chat, where the
+  // composer is hidden, to the header button), and asks whether detective mode is on. A chat that is open at the first
+  // render was opened by the page, not by the visitor: it asks but takes no focus (on a phone the keyboard would open
+  // over the page, and the visitor has not chosen to write yet).
   const wasOpen = useRef(false);
+  const openedByPage = useRef(open);
   useEffect(() => {
     if (open && !wasOpen.current) {
-      if (inPlace) menuRef.current?.focus();
-      else focusComposer();
+      if (!openedByPage.current) {
+        if (inPlace) menuRef.current?.focus();
+        else focusComposer();
+      }
       chat.send({ type: "CAPABILITIES.CHECK" });
     }
     wasOpen.current = open;
+    openedByPage.current = false;
   }, [open, chat]);
+
+  // The page asked for the composer (the hero's button) with the chat already open: the same routine as everywhere else, so
+  // the code field takes it when it is the visible composer. A closed chat is opened by the click and focuses itself above.
+  const lastRequest = useRef(focusRequest);
+  const openAtRequest = useRef(open);
+  useEffect(() => {
+    if (focusesOnRequest(lastRequest.current, focusRequest, openAtRequest.current, open)) focusComposer();
+    lastRequest.current = focusRequest;
+    openAtRequest.current = open;
+  }, [open, focusRequest]);
+
+  // Closed: focus goes back to the launcher, in the commit that closes it (a layout effect: an effect would leave a frame on the
+  // body). With no room the launcher is hidden while the chat is open, and a hidden element takes no focus: by now the panel
+  // has its `hidden` and the launcher is shown.
+  const wasOpenLayout = useRef(open);
+  useLayoutEffect(() => {
+    if (!open && wasOpenLayout.current) launcherRef.current?.focus();
+    wasOpenLayout.current = open;
+  }, [open]);
 
   // A new turn: the panel follows it again.
   useEffect(() => {
     dispatchView({ type: "newTurn" });
   }, [turns.length]);
 
-  // The mode turned off while the view was open: the chat is back, and it is back for good (a later "on" does not reopen the view).
+  // The mode turned off while the panel was on the Detective tab: it goes to the guide, and stays there for good (a later "on" does not bring the tab back).
   useEffect(() => {
     dispatchView({ type: "offered", offered: detectiveOffered });
   }, [detectiveOffered]);
@@ -176,35 +214,38 @@ export function ChatDock({
   // guide, and the focus goes to the guide's title instead of falling to the page.
   const wasOffered = useRef(detectiveOffered);
   useEffect(() => {
-    if (wasOffered.current && !detectiveOffered && beside) {
+    if (wasOffered.current && !detectiveOffered && panelShown) {
       const active = document.activeElement;
       if (!active || active === document.body) guideTitleRef.current?.focus();
     }
     wasOffered.current = detectiveOffered;
   }, [detectiveOffered]);
 
-  // The window turned too narrow for the panel beside the chat: a panel open on the guide would be open with nothing in
-  // sight, so it closes (the detective tab goes on, in place of the chat). After the effect above, so a mode turned off
-  // at the same time is already on the guide.
-  useEffect(() => {
-    dispatchView({ type: "room", room });
-  }, [room, detectiveOffered]);
-
-  // The detective view in place of the chat (a narrow window) moves focus: to the header button on the way in (the
-  // reply's control is gone), to the composer on the way back, where the log is put at the scroll it had (or at the
-  // bottom, if it was there and has grown).
-  const wasDetective = useRef(inPlace);
+  // The panel in place of the chat (no room for it beside) moves the focus, in one place: on the way in, when the focus
+  // was lost with the control that had it (the reply's action is in the hidden log, the panel beside the chat is gone),
+  // to the header button; on the way out, where `focusAfterGuide` or the visitor's Escape says (a pick or a send: the
+  // log; the way back: the composer), with the log put at the scroll it had (or at the bottom, if it was there and has
+  // grown). A resize that leaves the panel open and goes beside the chat only keeps the focus from being lost.
+  const wasInPlace = useRef(inPlace);
   useLayoutEffect(() => {
-    if (inPlace === wasDetective.current) return;
-    wasDetective.current = inPlace;
+    if (inPlace === wasInPlace.current) return;
+    wasInPlace.current = inPlace;
+    // Lost: nowhere, or in what the commit just hid (a browser reports a hidden element as focused until its next frame).
+    const active = document.activeElement;
+    const lost = !active || active === document.body || active.closest("[hidden]") !== null;
     if (inPlace) {
-      menuRef.current?.focus();
+      focusAfter.current = null;
+      if (lost) menuRef.current?.focus();
       return;
     }
     const log = logRef.current;
     const saved = logScroll.current;
     if (log && saved) log.scrollTop = saved.atBottom ? log.scrollHeight : saved.top;
-    focusComposer();
+    const target = focusAfter.current;
+    focusAfter.current = null;
+    if (target === "log") log?.focus();
+    else if (target === "composer" || !view.open) focusComposer();
+    else if (lost) menuRef.current?.focus();
   }, [inPlace]);
 
   // The sheet closes with the code it shows.
@@ -224,10 +265,14 @@ export function ChatDock({
     if (log) log.scrollTop = log.scrollHeight;
   }, [entries.length, typing, state, inbox, open]);
 
-  /** Remembers where the log was, for the way back from the view that takes its place. */
+  /** Remembers where the log was, for the way back from the panel that takes its place. */
   const saveLogScroll = () => {
     const log = logRef.current;
     if (log) logScroll.current = { top: log.scrollTop, atBottom: log.scrollHeight - log.clientHeight - log.scrollTop < AT_BOTTOM_PX };
+  };
+  /** The log keeps its place as it moves, for a window that narrows with the panel open: a hidden element reports no scroll. */
+  const trackLogScroll = () => {
+    if (!inPlace) saveLogScroll();
   };
   /** Opening the detective tab asks again, so the back office turning the mode off takes the customer out of it without waiting for a turn. */
   const askCapabilities = () => chat.send({ type: "CAPABILITIES.CHECK" });
@@ -239,40 +284,63 @@ export function ChatDock({
     askCapabilities();
   };
   /**
-   * The header button: opens the panel on the tab last used (the guide the first time) and closes it when it is
-   * open. With no room for the panel the button exists only for the detective view, which it opens in place of the chat.
+   * The header button: opens the panel on the tab last used (the guide the first time) and closes it when it is open,
+   * beside the chat or, with no room, in place of it (there it is the way back to the chat).
    */
   const toggleMenu = () => {
-    const next = room ? tab : "detective";
-    if (!panelShown && next === "detective") {
-      saveLogScroll();
-      askCapabilities();
+    if (!view.open) {
+      if (!room) saveLogScroll();
+      if (tab === "detective") askCapabilities();
     }
-    dispatchView({ type: "toggle", tab: room ? undefined : "detective" });
+    dispatchView({ type: "toggle" });
   };
 
-  /** The guide's clicks send. The chat stays in sight beside the panel, so only the composer takes the focus back. */
-  const leaveForChat = () => {
+  /**
+   * The guide (or the band over the composer) was used. Beside the chat the panel stays and the chat is in sight; in place
+   * of it the panel closes and the focus goes where `focusAfterGuide` says (the log for a pick or a send, so the phone's
+   * keyboard does not cover the reply). Nothing is deferred in place: the focus is given by the layout effect that
+   * follows the closing commit. With no panel open (the band) there is nothing to close and the focus is given at once.
+   */
+  const afterGuide = (use: GuideUse) => {
     setInboxOpen(false);
-    focusComposerIfFree();
+    const target = focusAfterGuide(use, room);
+    if (room) {
+      if (target === "composer-if-free") focusComposerIfFree();
+      return;
+    }
+    // The band over the composer (no panel open): nothing to close, and the focus goes where the target says.
+    if (!view.open) {
+      if (target === "log") logRef.current?.focus();
+      return;
+    }
+    focusAfter.current = target;
+    dispatchView({ type: "guideUsed" });
   };
   /** A script was chosen: a new conversation in the script's market, and the page follows it. */
   const pickScript = (id: DemoScriptId) => {
     startGuideScript(actors, id);
-    leaveForChat();
+    afterGuide("pick");
   };
   /** The script's next line, as written. */
   const sendScriptLine = (text: string) => {
     const script = snapshot.context.script;
     if (!script) return;
     sendGuideLine(actors, script, text);
-    leaveForChat();
+    afterGuide("send");
+  };
+  /**
+   * "Copiar al chat": the line replaces the draft in the composer, which takes the focus with the caret at the end, and
+   * nothing is sent. In place of the chat the panel closes in the same commit, flushed inside the click: the composer is
+   * shown when it is focused, and iOS only opens the keyboard for a focus given in the gesture.
+   */
+  const copyScriptLine = (text: string) => {
+    flushSync(() => {
+      afterGuide("copy");
+      composerRef.current?.fill(text);
+    });
   };
 
-  const close = () => {
-    onOpenChange(false);
-    launcherRef.current?.focus();
-  };
+  const close = () => onOpenChange(false);
   /** Closed by the customer (the button, Escape, the scrim): focus goes back to the action that opened it. */
   const closeSheet = () => {
     setInboxOpen(false);
@@ -294,19 +362,64 @@ export function ChatDock({
     ? { dict, notice: inbox, open: inboxOpen, onToggle: () => setInboxOpen((value) => !value), openerRef, onWrite: writeCode }
     : null;
 
+  /** Escape inside the panel in place of the chat, or its way back: the chat is back and the composer has the focus (the layout effect above). */
+  const backToChat = () => dispatchView({ type: "close" });
+
+  /** The demo panel, drawn in one place at a time: inside the chat's panel (no room) or beside it. */
+  const demoPanel = (inside: boolean) => (
+    <SidePanel
+      dict={dict}
+      hidden={inside ? false : !open || !beside}
+      inPlace={inside}
+      tab={tab}
+      detectiveOffered={detectiveOffered}
+      onTab={(name) => {
+        if (name === "detective" && tab !== "detective") askCapabilities();
+        dispatchView({ type: "tab", tab: name });
+      }}
+      onClose={
+        inside
+          ? backToChat
+          : () => {
+              dispatchView({ type: "close" });
+              menuRef.current?.focus();
+            }
+      }
+    >
+      {!inside && (!open || !beside) ? null : tab === "detective" ? (
+        <TracePanel dict={dict} turns={turns} total={replies} selectedId={traceSelectedId} view={traceView} onSelect={(turnId) => dispatchView({ type: "select", turnId })} onView={setTraceView} />
+      ) : (
+        <GuidePanel
+          dict={dict}
+          script={selectScript(snapshot)}
+          disabled={selectSendDisabled(snapshot)}
+          chooseDisabled={!selectCanStartScript(snapshot)}
+          awaitingRetry={selectAwaitingRetry(snapshot)}
+          waiting={selectWaiting(snapshot)}
+          codeFieldShown={codeShown}
+          titleRef={guideTitleRef}
+          onPick={pickScript}
+          onSend={sendScriptLine}
+          onCopy={copyScriptLine}
+          onReset={() => chat.send({ type: "SCRIPT.RESET" })}
+        />
+      )}
+    </SidePanel>
+  );
+
   return (
     <div className="pb-dock">
       <section
         ref={sectionRef}
         className="pb-chat pb-dock__panel"
         id="dock-panel"
-        aria-label={inPlace ? dict.chat.detective.toggle : dict.chat.panel}
+        aria-label={inPlace ? dict.chat.demo.menu : dict.chat.panel}
         hidden={!open}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
           if (inPlace) {
             event.stopPropagation();
-            dispatchView({ type: "close" });
+            backToChat();
           } else if (inboxOpen) {
             event.stopPropagation();
             closeSheet();
@@ -317,40 +430,37 @@ export function ChatDock({
       >
         <header className="pb-chat__head">
           <span className="pb-chat__title">
-            <Icon name={inPlace ? "detective" : "hex"} /> {inPlace ? dict.chat.detective.toggle : dict.chat.title}
+            <Icon name={inPlace ? "menu" : "hex"} /> {inPlace ? dict.chat.demo.menu : dict.chat.title}
           </span>
           {chip && !inPlace && (
             <span className="chat-head-chip">
               <StateChip state={chip} label={CHIP_LABEL[chip](dict)} />
             </span>
           )}
-          {(room || detectiveOffered) && (
-            <button
-              ref={menuRef}
-              className={`pb-btn ${panelShown ? "pb-btn--primary" : "pb-btn--secondary"} pb-btn--sm pb-demo-toggle${inPlace ? " pb-btn--icon" : ""}`}
-              type="button"
-              aria-label={inPlace ? dict.chat.detective.back : dict.chat.demo.menu}
-              title={inPlace ? dict.chat.detective.back : dict.chat.demo.menu}
-              // In place of the chat the button is "Volver al chat": no pressed state, and nothing it controls (the panel is hidden then).
-              aria-pressed={inPlace ? undefined : panelShown}
-              aria-controls={room ? SIDE_PANEL_ID : undefined}
-              data-demo-toggle
-              data-seen={view.seen ? "true" : undefined}
-              onClick={toggleMenu}
-            >
-              <Icon name={inPlace ? "chat" : "menu"} />
-              {!inPlace && <span className="pb-demo-toggle__text">{dict.chat.demo.menu}</span>}
-            </button>
-          )}
+          <button
+            ref={menuRef}
+            className={`pb-btn ${panelShown ? "pb-btn--primary" : "pb-btn--secondary"} pb-btn--sm pb-demo-toggle${inPlace ? " pb-btn--icon" : ""}`}
+            type="button"
+            aria-label={inPlace ? dict.chat.detective.back : dict.chat.demo.menu}
+            title={inPlace ? dict.chat.detective.back : dict.chat.demo.menu}
+            // In place of the chat the button is "Volver al chat": no pressed state, and nothing it controls (the panel is inside the chat's panel then).
+            aria-pressed={inPlace ? undefined : panelShown}
+            aria-controls={room ? SIDE_PANEL_ID : undefined}
+            data-demo-toggle
+            data-seen={view.seen ? "true" : undefined}
+            onClick={toggleMenu}
+          >
+            <Icon name={inPlace ? "chat" : "menu"} />
+            {!inPlace && <span className="pb-demo-toggle__text">{dict.chat.demo.menu}</span>}
+          </button>
           <button className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label={dict.chat.close} data-close-chat onClick={close}>
             <Icon name="x" />
           </button>
         </header>
-        {inPlace && (
-          <TracePanel dict={dict} turns={turns} total={replies} selectedId={traceSelectedId} view={traceView} onSelect={(turnId) => dispatchView({ type: "select", turnId })} onView={setTraceView} />
-        )}
+        {/* The demo panel in place of the chat: a conditional sibling before the body, so the log and the composer keep their place in the tree (no remount, the draft survives). */}
+        {inPlace && demoPanel(true)}
         <div className="pb-chat__body" hidden={inPlace}>
-          <div ref={logRef} className="pb-chat__log" role="log" aria-live="polite" aria-label={dict.chat.log}>
+          <div ref={logRef} className="pb-chat__log" role="log" aria-live="polite" aria-label={dict.chat.log} tabIndex={0} onScroll={trackLogScroll}>
             <div className="pb-msg pb-msg--assistant">
               <Sender name={dict.chat.roles.assistant} />
               <MessageText text={dict.chat.greeting} />
@@ -397,6 +507,18 @@ export function ChatDock({
             </>
           )}
         </div>
+        {/* The suggested next line, over the composer and outside the log: only where the panel is not showing (beside the chat the guide already offers it) and the code field is not the composer. */}
+        {open && !panelShown && !codeShown && (
+          <NextBand
+            dict={dict}
+            script={selectScript(snapshot)}
+            disabled={selectSendDisabled(snapshot)}
+            awaitingRetry={selectAwaitingRetry(snapshot)}
+            waiting={selectWaiting(snapshot)}
+            onSend={sendScriptLine}
+            onCopy={copyScriptLine}
+          />
+        )}
         {(codeMode.kind === "entry" || codeMode.kind === "expired") && (
           <CodeComposer
             // A new code is a new challenge: a new field, empty (and the digits of the old one never complete it).
@@ -421,44 +543,17 @@ export function ChatDock({
         <Composer
           dict={dict}
           inputRef={inputRef}
+          handleRef={composerRef}
           hidden={inPlace || codeShown}
           sendDisabled={selectSendDisabled(snapshot)}
+          waiting={selectWaiting(snapshot)}
           onSend={(text) => {
             setInboxOpen(false);
-            chat.send({ type: "SEND", text, lang, locale });
+            sendTyped(actors, snapshot.context.script, text, { lang, locale });
           }}
         />
       </section>
-      <SidePanel
-        dict={dict}
-        hidden={!open || !beside}
-        tab={tab}
-        detectiveOffered={detectiveOffered}
-        onTab={(name) => {
-          if (name === "detective" && tab !== "detective") askCapabilities();
-          dispatchView({ type: "tab", tab: name });
-        }}
-        onClose={() => {
-          dispatchView({ type: "close" });
-          menuRef.current?.focus();
-        }}
-      >
-        {!open || !beside ? null : tab === "detective" ? (
-          <TracePanel dict={dict} turns={turns} total={replies} selectedId={traceSelectedId} view={traceView} onSelect={(turnId) => dispatchView({ type: "select", turnId })} onView={setTraceView} />
-        ) : (
-          <GuidePanel
-            dict={dict}
-            script={selectScript(snapshot)}
-            disabled={selectSendDisabled(snapshot)}
-            chooseDisabled={!selectCanStartScript(snapshot)}
-            awaitingRetry={selectAwaitingRetry(snapshot)}
-            titleRef={guideTitleRef}
-            onPick={pickScript}
-            onSend={sendScriptLine}
-            onReset={() => chat.send({ type: "SCRIPT.RESET" })}
-          />
-        )}
-      </SidePanel>
+      {!inPlace && demoPanel(false)}
       <button
         ref={launcherRef}
         className="pb-launcher pb-launcher--label pb-dock__launcher"

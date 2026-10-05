@@ -23,9 +23,9 @@ export interface CodeComposerProps {
   onCancel: () => void;
   /** "Pedir otro código". */
   onRequestNew: () => void;
-  /** Out of sight but mounted (the detective view in place of the chat). */
+  /** Out of sight but mounted (the demo panel in place of the chat). */
   hidden?: boolean;
-  /** The code input, for the dock to give it the focus (reopening the chat, coming back from the detective view). */
+  /** The code input, for the dock to give it the focus (reopening the chat, coming back from the demo panel). */
   inputRef?: Ref<HTMLInputElement>;
   /** "Pedir otro código", for the same. */
   requestRef?: Ref<HTMLButtonElement>;

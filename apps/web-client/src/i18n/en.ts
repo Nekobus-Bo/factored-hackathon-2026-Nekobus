@@ -146,7 +146,6 @@ export const en: Dictionary = {
     takeoverStatus: "An agent is handling your case",
     codeExpired: "The code has expired",
     detective: {
-      toggle: "Detective mode",
       tab: "Detective",
       view: "View detective",
       back: "Back to the chat",
@@ -191,9 +190,9 @@ export const en: Dictionary = {
       demoTag: "Demo only",
       chooseTitle: "Choose a script",
       chooseHint: "Its first message is sent. The chat switches to the script's market, with its language and currency.",
-      runningHint: "Each message is sent as written. If you write something else, the script stops.",
+      runningHint: "Send the message as written, or copy it to the chat to edit it. If you send something different, the script stops.",
       completeHint: "Every message of the script has been sent.",
-      stoppedHint: "Another message was sent and the script stopped. This chat offers no more messages from the script.",
+      stoppedHint: "You left the script: this guide no longer suggests the following steps.",
       market: "Market",
       sent: "Sent",
       now: "Now",
@@ -202,6 +201,9 @@ export const en: Dictionary = {
       codeDone: "Code verified",
       codeHint: "The code is real. Use {open} and {reveal}, then type it in the chat.",
       change: "Change script",
+      send: "Send this message",
+      copy: "Copy to chat",
+      next: "Next script message",
       scripts: {
         stolenCard: { label: "Stolen card, informal Portuguese" },
         chargeBelowThreshold: {

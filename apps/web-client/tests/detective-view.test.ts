@@ -1,9 +1,11 @@
 // The demo panel's state as a pure function: open or not, its tab and the turn picked, and where it sits (beside the
-// chat, or in place of it on a narrow window). The transitions the dock cannot show without a DOM.
+// chat, or in place of it when there is no room). The transitions the dock cannot show without a DOM.
 
 import { describe, expect, test } from "bun:test";
 import {
   effectiveTab,
+  focusAfterGuide,
+  focusesOnRequest,
   initialSidePanel,
   placement,
   selectedTurnId,
@@ -24,7 +26,7 @@ const turns: TracedTurn[] = [
 describe("the header button has been seen once the panel has been open", () => {
   test("a visit starts unseen; the first opening, by whatever way, makes it seen for good", () => {
     expect(initialSidePanel().seen).toBe(false);
-    for (const action of [{ type: "toggle" }, { type: "toggle", tab: "detective" }, { type: "open", turnId: "e2" }] as const) {
+    for (const action of [{ type: "toggle" }, { type: "open", turnId: "e2" }] as const) {
       const opened = run(initialSidePanel(), action);
       expect(opened.seen, action.type).toBe(true);
       // closing it, switching tabs, reopening: seen stays
@@ -35,10 +37,10 @@ describe("the header button has been seen once the panel has been open", () => {
 
   test("nothing that leaves the panel closed makes it seen", () => {
     const closed = initialSidePanel();
-    for (const action of [{ type: "close" }, { type: "tab", tab: "detective" }, { type: "select", turnId: "e2" }, { type: "newTurn" }, { type: "offered", offered: false }, { type: "room", room: false }] as const) {
+    for (const action of [{ type: "close" }, { type: "tab", tab: "detective" }, { type: "select", turnId: "e2" }, { type: "newTurn" }, { type: "offered", offered: false }, { type: "guideUsed" }] as const) {
       expect(run(closed, action).seen, action.type).toBe(false);
     }
-    // opened on the detective tab from the start (tests) and then the window narrows: still a visit in which it was open
+    // opened from the start (tests) and then used with no room: still a visit in which it was open
     expect(initialSidePanel("script").seen).toBe(true);
   });
 });
@@ -55,10 +57,14 @@ describe("the one button", () => {
     expect(backOnGuide).toMatchObject({ open: true, tab: "script" });
   });
 
-  test("with no room it names the detective tab: it opens that one, whatever the last tab was, and closes it", () => {
-    const opened = run(initialSidePanel(), { type: "toggle", tab: "detective" });
-    expect(opened).toMatchObject({ open: true, tab: "detective" });
-    expect(run(opened, { type: "toggle", tab: "detective" }).open).toBe(false);
+  test("it opens the panel on the tab last used at any width, so it takes no tab of its own: with no room both tabs show", () => {
+    // the same transitions whatever the room: there is no room in the state, the place is derived
+    const onDetective = run(initialSidePanel(), { type: "toggle" }, { type: "tab", tab: "detective" }, { type: "toggle" }, { type: "toggle" });
+    expect(onDetective).toMatchObject({ open: true, tab: "detective" });
+    for (const room of [true, false]) {
+      expect(placement(onDetective, room)).toEqual(room ? { beside: true, inPlace: false } : { beside: false, inPlace: true });
+      expect(placement(run(onDetective, { type: "tab", tab: "script" }), room)).toEqual(room ? { beside: true, inPlace: false } : { beside: false, inPlace: true });
+    }
   });
 });
 
@@ -76,7 +82,7 @@ describe("opening and closing the panel", () => {
 
   test("opened from closed, the detective tab follows the newest turn; the one picked before is forgotten", () => {
     const picked = run(initialSidePanel(), { type: "open", turnId: "e2" });
-    const reopened = run(picked, { type: "close" }, { type: "toggle", tab: "detective" });
+    const reopened = run(picked, { type: "close" }, { type: "toggle" });
     expect(reopened.picked).toBeNull();
     expect(selectedTurnId(reopened, turns)).toBe("e6");
   });
@@ -111,16 +117,15 @@ describe("the tabs", () => {
     expect(run(onTurn, { type: "tab", tab: "detective" })).toBe(onTurn);
   });
 
-  test("naming the detective tab (the button with no room for the panel) while the panel is open keeps the turn", () => {
+  test("an open panel keeps the turn picked whichever way the tabs go, and the button only opens and closes", () => {
     const onTurn = run(initialSidePanel(), { type: "open", turnId: "e2" });
-    // with no room the button names the detective tab: closed and opened again from closed it follows the newest turn,
-    // while an open panel keeps the one picked
-    const viaButton = run(onTurn, { type: "tab", tab: "script" }, { type: "toggle", tab: "detective" });
-    expect(viaButton.picked).toBe("e2");
+    expect(run(onTurn, { type: "tab", tab: "script" }, { type: "tab", tab: "detective" }).picked).toBe("e2");
+    // closed and opened again from closed it follows the newest turn
+    expect(run(onTurn, { type: "toggle" }, { type: "toggle" }).picked).toBeNull();
   });
 
   test("the stepper picks a turn; a new turn puts the tab back on the newest", () => {
-    const open = run(initialSidePanel(), { type: "toggle", tab: "detective" }, { type: "select", turnId: "e2" });
+    const open = run(initialSidePanel("detective"), { type: "select", turnId: "e2" });
     expect(selectedTurnId(open, turns)).toBe("e2");
     expect(selectedTurnId(run(open, { type: "newTurn" }), turns)).toBe("e6");
     expect(run(initialSidePanel(), { type: "newTurn" })).toEqual(initialSidePanel());
@@ -146,60 +151,75 @@ describe("the mode turned off", () => {
   });
 });
 
-describe("the window turned narrow", () => {
-  test("a panel open on the guide closes: there is no room for it and nothing would show", () => {
-    const guide = run(initialSidePanel(), { type: "toggle" });
-    expect(run(guide, { type: "room", room: false })).toEqual({ open: false, tab: "script", picked: null, seen: true });
-    // and it stays closed when the window widens again
-    expect(run(guide, { type: "room", room: false }, { type: "room", room: true }).open).toBe(false);
-  });
-
-  test("the detective tab goes on (it shows in place of the chat); wide again, or a closed panel, change nothing", () => {
-    const detective = run(initialSidePanel(), { type: "open", turnId: "e2" });
-    expect(run(detective, { type: "room", room: false })).toBe(detective);
-    expect(run(detective, { type: "room", room: true })).toBe(detective);
+describe("the guide was used (a script picked, a line sent or copied)", () => {
+  test("in place of the chat the panel closes, to show the chat (beside the chat the dock does not dispatch it: nothing closes there)", () => {
+    const open = run(initialSidePanel(), { type: "toggle" });
+    expect(run(open, { type: "guideUsed" })).toEqual({ open: false, tab: "script", picked: null, seen: true });
+    // a closed panel stays as it is
     const closed = initialSidePanel();
-    expect(run(closed, { type: "room", room: false })).toBe(closed);
+    expect(run(closed, { type: "guideUsed" })).toBe(closed);
   });
 
-  test("the mode turned off at the same time: the detective tab goes to the guide, and then closes", () => {
+  test("it keeps the tab and the turn: the panel opens again where it was", () => {
+    const detective = run(initialSidePanel(), { type: "open", turnId: "e2" }, { type: "tab", tab: "script" });
+    const used = run(detective, { type: "guideUsed" });
+    expect(used).toMatchObject({ open: false, tab: "script", picked: "e2" });
+    expect(run(used, { type: "tab", tab: "detective" })).toMatchObject({ tab: "detective", picked: "e2" });
+  });
+
+  test("where the focus goes: a copy to the composer; a pick or a send to the composer if it is free beside the chat, to the log in place of it", () => {
+    expect(focusAfterGuide("copy", true)).toBe("composer");
+    expect(focusAfterGuide("copy", false)).toBe("composer");
+    for (const use of ["pick", "send"] as const) {
+      expect(focusAfterGuide(use, true)).toBe("composer-if-free");
+      expect(focusAfterGuide(use, false)).toBe("log");
+    }
+  });
+});
+
+describe("the hero's button asking for the composer", () => {
+  test("only when the counter moved and the chat was already open and is: an opening click is the opening's own focus, not given twice", () => {
+    expect(focusesOnRequest(0, 1, true, true)).toBe(true);
+    expect(focusesOnRequest(1, 2, true, true)).toBe(true);
+    // the chat was closed and the same click opened it: the open effect focuses, this does not
+    expect(focusesOnRequest(0, 1, false, true)).toBe(false);
+    // nothing asked (a render for another reason), or the chat is closed
+    expect(focusesOnRequest(1, 1, true, true)).toBe(false);
+    expect(focusesOnRequest(1, 2, true, false)).toBe(false);
+    expect(focusesOnRequest(1, 2, false, false)).toBe(false);
+  });
+});
+
+describe("the mode turned off in either place", () => {
+  test("the mode turned off at the same time: the detective tab goes to the guide and the panel stays open, in either place", () => {
     const detective = run(initialSidePanel(), { type: "open", turnId: "e2" });
-    const after = run(detective, { type: "offered", offered: false }, { type: "room", room: false });
-    expect(after.open).toBe(false);
+    const after = run(detective, { type: "offered", offered: false });
+    expect(after).toMatchObject({ open: true, tab: "script" });
+    for (const room of [true, false]) expect(placement(after, room)).toEqual(room ? { beside: true, inPlace: false } : { beside: false, inPlace: true });
   });
 });
 
 describe("where the panel is", () => {
   test("closed, it is nowhere", () => {
-    expect(placement(initialSidePanel(), true, true)).toEqual({ beside: false, inPlace: false });
-    expect(placement(initialSidePanel(), true, false)).toEqual({ beside: false, inPlace: false });
+    expect(placement(initialSidePanel(), true)).toEqual({ beside: false, inPlace: false });
+    expect(placement(initialSidePanel(), false)).toEqual({ beside: false, inPlace: false });
   });
 
   test("with room it is beside the chat on either tab; the chat is never replaced", () => {
     for (const tab of ["script", "detective"] as const) {
-      expect(placement(initialSidePanel(tab), true, true)).toEqual({ beside: true, inPlace: false });
+      expect(placement(initialSidePanel(tab), true)).toEqual({ beside: true, inPlace: false });
     }
-    expect(placement(initialSidePanel("script"), false, true)).toEqual({ beside: true, inPlace: false });
   });
 
-  test("with no room only the detective tab shows, in place of the chat; the script shows nothing", () => {
-    expect(placement(initialSidePanel("detective"), true, false)).toEqual({ beside: false, inPlace: true });
-    expect(placement(initialSidePanel("script"), true, false)).toEqual({ beside: false, inPlace: false });
+  test("with no room it is in place of the chat on either tab", () => {
+    for (const tab of ["script", "detective"] as const) {
+      expect(placement(initialSidePanel(tab), false)).toEqual({ beside: false, inPlace: true });
+    }
   });
 
-  test("with no room and the mode off, the chat is back", () => {
-    expect(placement(initialSidePanel("detective"), false, false)).toEqual({ beside: false, inPlace: false });
-  });
-
-  test("the one header button is pressed while the panel shows, in either place, and not otherwise", () => {
-    expect(shown(initialSidePanel(), true, true)).toBe(false);
-    expect(shown(initialSidePanel("script"), true, true)).toBe(true);
-    expect(shown(initialSidePanel("detective"), true, true)).toBe(true);
-    // with no room only the detective tab shows
-    expect(shown(initialSidePanel("detective"), true, false)).toBe(true);
-    expect(shown(initialSidePanel("script"), true, false)).toBe(false);
-    // the mode off: the detective tab reads as the script, which shows beside the chat and nowhere else
-    expect(shown(initialSidePanel("detective"), false, true)).toBe(true);
-    expect(shown(initialSidePanel("detective"), false, false)).toBe(false);
+  test("the one header button is pressed while the panel is open, in either place, on either tab, and not otherwise", () => {
+    expect(shown(initialSidePanel())).toBe(false);
+    expect(shown(initialSidePanel("script"))).toBe(true);
+    expect(shown(initialSidePanel("detective"))).toBe(true);
   });
 });

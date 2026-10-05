@@ -2,12 +2,12 @@ import { Wordmark } from "./Wordmark";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
 
-/** The wordmark, the demo note and the small print. The links and the switches live in the sticky navbar. */
-export function Footer() {
+/** The wordmark, the demo note and the small print. The links and the switches live in the sticky navbar. `inert` as in the navbar. */
+export function Footer({ inert = false }: { inert?: boolean }) {
   const { dict } = useI18n();
   const t = dict.footer;
   return (
-    <footer className="pb-footer">
+    <footer className="pb-footer" inert={inert}>
       <div className="pb-footer__inner pb-footer__inner--compact">
         <div className="pb-footer__top">
           <span className="pb-footer__wordmark">

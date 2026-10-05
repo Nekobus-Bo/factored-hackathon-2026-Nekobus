@@ -1,7 +1,9 @@
 // The demo guide (ScriptChoice): the content of the script tab of the demo panel at the left of the chat (the panel
 // itself, with its tabs and the "Solo demo" tag, is `SidePanel`). It offers the team's six scripts and, once one
 // is chosen, its next message. Props only, no machine, so it renders on the server in the tests exactly as it
-// does in the page. Nothing here is inside the conversation: the click on an option is what sends.
+// does in the page. Nothing here is a message of the conversation (the panel is beside the chat or in its place, and
+// its notices are its own): the click on an option is what sends. The next line's card and copy button are
+// `NextLine`, shared with the band over the composer (`NextBand`).
 //
 // The scripts' own lines come from `@pattern-blue/contracts` and are shown as written, in the script's language:
 // they are the test and are never translated. Everything else (labels, notes, hints) is the dictionary's.
@@ -10,6 +12,7 @@ import { currentStep, DEMO_SCRIPTS, getScript, type DemoScript, type DemoScriptI
 import { useRef, type ReactNode, type Ref } from "react";
 import { format, type Dictionary } from "../../i18n";
 import { Icon } from "../ui/Icon";
+import { NextLine } from "./NextLine";
 
 export interface GuidePanelProps {
   dict: Dictionary;
@@ -24,10 +27,16 @@ export interface GuidePanelProps {
   chooseDisabled?: boolean;
   /** A message waits for its retry: the next line is off until it went, the six scripts are not. */
   awaitingRetry?: boolean;
+  /** The assistant is answering or a rate limit runs: the next line's send button shows the waiting clock. */
+  waiting?: boolean;
   /** A script was chosen. */
   onPick: (id: DemoScriptId) => void;
+  /** The code field is the composer in sight: a line cannot be copied into it. */
+  codeFieldShown?: boolean;
   /** The next line of the running script was chosen. */
   onSend: (text: string) => void;
+  /** "Copiar al chat": the next line goes to the composer to be edited, not sent. */
+  onCopy: (text: string) => void;
   /** "Cambiar de guion". */
   onReset: () => void;
   /** The title of the panel, for the dock to give it the focus when what had it goes away. */
@@ -84,7 +93,7 @@ function MarketTag({ dict, locale }: { dict: Dictionary; locale: string }) {
   );
 }
 
-export function GuidePanel({ dict, script, disabled, chooseDisabled = disabled, awaitingRetry = false, onPick, onSend, onReset, titleRef: outerTitleRef }: GuidePanelProps) {
+export function GuidePanel({ dict, script, disabled, chooseDisabled = disabled, awaitingRetry = false, waiting = false, codeFieldShown = false, onPick, onSend, onCopy, onReset, titleRef: outerTitleRef }: GuidePanelProps) {
   const t = dict.chat.guide;
   const titleRef = useRef<HTMLParagraphElement | null>(null);
   const definition = script ? getScript(script.scriptId) : null;
@@ -141,24 +150,17 @@ export function GuidePanel({ dict, script, disabled, chooseDisabled = disabled, 
                           </p>
                         )
                       ) : state === "current" ? (
-                        <button
-                          className="pb-cut pb-say__opt"
-                          type="button"
-                          data-say={step.text}
-                          disabled={disabled || awaitingRetry}
-                          onClick={() => onSend(step.text)}
-                        >
-                          <span className="pb-say__body">
-                            <span className="pb-say__text" lang={definition.locale}>
-                              {step.text}
-                            </span>
-                          </span>
-                          <span className="pb-say__side">
-                            <span className="pb-say__go">
-                              <Icon name="send" />
-                            </span>
-                          </span>
-                        </button>
+                        <NextLine
+                          dict={dict}
+                          text={step.text}
+                          locale={definition.locale}
+                          disabled={disabled}
+                          awaitingRetry={awaitingRetry}
+                          waiting={waiting}
+                          codeFieldShown={codeFieldShown}
+                          onSend={onSend}
+                          onCopy={onCopy}
+                        />
                       ) : state === "done" ? (
                         <p className="pb-guide__sent" lang={definition.locale}>
                           {step.text}

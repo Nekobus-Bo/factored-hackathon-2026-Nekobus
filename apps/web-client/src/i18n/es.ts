@@ -182,7 +182,6 @@ export const es = {
     takeoverStatus: "Un agente está atendiendo tu caso",
     codeExpired: "El código venció",
     detective: {
-      toggle: "Modo detective",
       tab: "Detective",
       view: "Ver detective",
       back: "Volver al chat",
@@ -230,9 +229,9 @@ export const es = {
       demoTag: "Solo demo",
       chooseTitle: "Elige un guion",
       chooseHint: "Se envía su primer mensaje. El chat cambia al mercado del guion, con su idioma y su moneda.",
-      runningHint: "Cada mensaje se envía tal como está. Si escribes otra cosa, el guion se detiene.",
+      runningHint: "Envía el mensaje tal como está, o cópialo al chat para editarlo. Si envías algo distinto, el guion se detiene.",
       completeHint: "Ya se enviaron todos los mensajes del guion.",
-      stoppedHint: "Se envió otro mensaje y el guion se detuvo. Este chat ya no ofrece más mensajes del guion.",
+      stoppedHint: "Saliste del guion: esta guía ya no sugiere los pasos siguientes.",
       market: "Mercado",
       sent: "Enviado",
       now: "Ahora",
@@ -241,6 +240,9 @@ export const es = {
       codeDone: "Código verificado",
       codeHint: "El código es real. Usa {open} y {reveal}, y escríbelo en el chat.",
       change: "Cambiar de guion",
+      send: "Enviar este mensaje",
+      copy: "Copiar al chat",
+      next: "Siguiente mensaje del guion",
       scripts: {
         stolenCard: { label: "Tarjeta robada, portugués informal" },
         chargeBelowThreshold: {
