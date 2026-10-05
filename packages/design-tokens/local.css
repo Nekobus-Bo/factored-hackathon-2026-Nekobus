@@ -5,16 +5,25 @@
    changes they imply are listed in README.md, "Local changes not yet in the artifact".
    Chat rules are scoped to .pb-dock, the customer chat: the back office keeps the artifact's look. */
 
-/* ---------- ChatBubble: a bigger panel (520px), full screen on phones ---------- */
+/* ---------- ChatBubble: a bigger panel (520px), the whole screen when there is no room for the demo panel beside it ---------- */
 .pb-dock__panel { bottom: 84px; width: min(520px, calc(100% - 32px)); }
 .pb-dock .pb-chat { max-width: none; height: min(680px, calc(100dvh - 148px)); }
 .pb-chat__body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* Detective mode takes the panel's place and the log and the composer stay mounted, hidden: their `display` would win over the attribute. */
+/* The demo panel takes the chat's place (no room for it beside) and the log and the composer stay mounted, hidden: their `display` would win over the attribute. */
 .pb-chat__body[hidden], .pb-chat__composer[hidden] { display: none; }
 .pb-dock .pb-chat__log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
-@media (max-width: 480px) {
+/* The log is a scrollable region and a tab stop (the keyboard scrolls it), and the dock focuses it after a pick or a send in place of the chat: it shows the system's ring, inside its edge (outside it the panel's clip would cut it). */
+.pb-chat__log:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+/* No room: under 920px wide or under 500px tall (a phone, upright or on its side, or a small window). It is the complement of
+   SIDE_PANEL_QUERY in apps/web-client/src/app/hooks.ts, `(min-width: 920px) and (min-height: 500px)`: change them together, or
+   there is a size where the script thinks the panel fits and the stylesheet hides it. The bounds are 919.98px and 499.98px, not
+   919px and 499px, so a fractional size (919.5px, a zoomed or scaled window) falls on one side or the other (only a size between
+   919.98px and 920px would match neither, which no device reports); range syntax (`width < 920px`) would do it exactly, but older
+   iOS drops the whole query. The page has no `viewport-fit=cover`, so the safe-area insets are probably 0 today; they are here
+   for when it has. */
+@media (max-width: 919.98px), (max-height: 499.98px) {
   .pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }
-  .pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+  .pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
   /* The panel covers the screen: the header's close button closes it, and the launcher would cover the composer. */
   .pb-dock__panel:not([hidden]) ~ .pb-dock__launcher { display: none; }
 }
@@ -153,10 +162,10 @@
    at 30 degrees, the third edge of the honeycomb, 5 long. */
 .pb-ico--detective { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M6 3.5 9.46 5.5v4L6 11.5 2.54 9.5v-4z'/%3E%3Cpath d='M9.46 9.5l4.33 2.5'/%3E%3C/svg%3E"); }
 
-/* The view is the detective tab of the demo panel beside the chat (see the demo panel section below) and, on a window
-   too narrow for that panel (under 920px), takes the place of the log and the composer inside the chat's panel. In
-   both the frame is the host's: the view has no border, shadow or ground of its own. The head stays, the body scrolls
-   on its own. */
+/* The view is the detective tab of the demo panel, which sits beside the chat or, with no room (under 920px wide or
+   under 500px tall), takes the place of the log and the composer inside the chat's panel (see the demo panel section
+   below). In both the frame is the host's: the view has no border, shadow or ground of its own. The head stays, the
+   body scrolls on its own. */
 .pb-trace { display: grid; grid-template-rows: auto minmax(0, 1fr); color: var(--ink); }
 .pb-trace--inpanel { flex: 1; min-height: 0; }
 .pb-trace__head { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
@@ -558,16 +567,18 @@
 /* ---------- The demo panel (ScriptChoice, approved 2026-10-04; shared with detective mode, ADR-0019) ---------- */
 /* One panel at the left of the chat, as tall as it, opened from one button in the chat header ("Menú demo"), closed by default. It
    has two tabs: the demo guide and, where the environment offers it, the detective view (`pb-trace`). The chat and its
-   composer stay in sight beside it. Nothing of it is inside the conversation. Below 920px there is no room beside the
-   chat (the panel is 340px wide at 920px and the chat 520px, with the gaps): the panel and the guide are not offered,
-   and the header button opens the detective view in the chat's place instead (see the detective section). The options inside the
-   guide are the `pb-say` ones above. */
+   composer stay in sight beside it. None of it is a message of the conversation. With no room beside the chat (under 920px
+   wide, where the panel is 340px and the chat 520px with the gaps, or under 500px tall) the aside is hidden, the chat
+   takes the screen (see the top of this file) and the same panel is drawn inside the chat's panel, in place of the log
+   and the composer (`pb-side--inplace`). The options inside the guide are the `pb-say` ones above. */
 .pb-side { --c-tl: var(--cut-lg); --c-br: var(--cut-lg); --edge: var(--line-strong); --face: var(--surface-100); display: flex; flex-direction: column; min-width: 0; color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
 /* Its display would win over the attribute: the panel is hidden while it is closed or the chat is. */
 .pb-side[hidden] { display: none; }
 /* 340px at a 920px window, 520px from 1100px; its left edge never goes under 12px from the window's. */
 .pb-dock__side { position: absolute; bottom: 84px; right: calc(48px + min(520px, 100% - 32px)); width: min(520px, calc(100% - 580px)); height: min(680px, calc(100dvh - 148px)); }
-@media (max-width: 919px) { .pb-dock__side { display: none; } }
+@media (max-width: 919.98px), (max-height: 499.98px) { .pb-dock__side { display: none; } }
+/* With no room the same panel is drawn inside the chat's panel, under its header, in place of the log and the composer: the chat's frame is its frame (no card, no shadow, no position of its own). */
+.pb-side--inplace { flex: 1; min-height: 0; filter: none; }
 .pb-side__head { display: flex; align-items: stretch; justify-content: space-between; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--line); }
 .pb-side__head > .pb-chat__title { align-self: center; padding-left: var(--space-2); }
 .pb-side__head > .pb-tag { align-self: center; }
@@ -603,6 +614,30 @@
 .pb-guide__card { margin: 0; padding: 10px 12px; border: 1px solid var(--line-strong); color: var(--ink); font: 400 14px/20px var(--font-sans); overflow-wrap: anywhere; }
 .pb-guide__card b { font-weight: 600; }
 .pb-guide__step[data-state="current"] .pb-guide__card { border-color: var(--violet); }
+/* The next line: its card (the line, not a button) and, beside it, two icon buttons of the same kind (send, then copy; 44px each).
+   The card may shrink to nothing and its words wrap anywhere, so the row never overflows its column; the buttons keep their size
+   and, when the card would be under 200px (the 340px panel has a 264px column), wrap together under the card, send first. */
+.pb-guide__line { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.pb-guide__line > .pb-say__card { flex: 1 1 200px; min-width: 0; }
+.pb-guide__actions { display: flex; gap: var(--space-2); flex: none; }
+.pb-guide__send, .pb-guide__copy { flex: none; }
+.pb-guide__send .pb-ico, .pb-guide__copy .pb-ico { vertical-align: 0; }
+/* The card: the outlined twin of the customer's bubble (the sender's cut, a violet edge, never filled), as a block of text. */
+.pb-say__card { --c-tl: 0px; --c-br: 0px; --c-tr: var(--cut-md); --c-bl: var(--cut-md); --edge: var(--violet); --face: var(--surface-100); display: flex; align-items: center; min-height: 44px; margin: 0; padding: 10px 14px; color: var(--ink); font: 400 15px/22px var(--font-sans); overflow-wrap: anywhere; }
+.pb-say__card--compact { padding: 6px 12px; font: 400 14px/20px var(--font-sans); }
+/* The copy glyph, drawn like `pb-ico--detective` on the 16px grid (1.5 stroke, square caps, mitered joins): the front square with
+   its top-left corner cut at 45 degrees (the system's chamfer), and the one behind it as an L going up and left from that corner. */
+.pb-ico--copy { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M8.5 5.5H14V14H5.5V8.5z'/%3E%3Cpath d='M2 10V2h8'/%3E%3C/svg%3E"); }
+/* ---------- The suggested next line over the composer (outside the log; `NextBand`) ---------- */
+/* The `pb-say` band of the system's family, as small as it can be: the label and one row, no head, no hint. The card is the same
+   outlined twin of the customer's bubble (never filled); only its padding is less, and its line is clamped to three lines (the full
+   text is in `title`). The row never wraps: the card takes what the two 44px buttons leave (and may shrink, with its words breaking
+   anywhere), so even on a 320px phone nothing goes past the screen's edge. Not part of the log, so it is not announced. */
+.pb-say--next { flex: none; min-width: 0; max-width: 100%; padding: var(--space-2) var(--space-3); }
+.pb-say--next .pb-guide__line { align-items: center; flex-wrap: nowrap; }
+.pb-say--next .pb-say__title { margin: 0 0 var(--space-1); font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-say--next .pb-guide__line > .pb-say__card { flex: 1 1 0; min-width: 0; }
+.pb-say--next .pb-say__text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .pb-guide__foot { padding: 0 var(--space-4) var(--space-2); border-top: 1px solid var(--line); }
 /* In the guide an option takes the panel's width; the market sits over the send glyph. */
 .pb-guide__body .pb-say__list { margin: 0; }
@@ -617,7 +652,7 @@
    steps (1.6s) and the timing `ease-step`. No glow, no shadow, no gradient. Each runs only while it can be used:
    - the header's "Menú demo" button until the panel has been open once in the visit (`data-seen`), and never while it is
      open (`aria-pressed`);
-   - the option of the guide's current step while it is enabled.
+   - the send button of the guide's current step while it is enabled (the line's card is text now, the two actions sit beside it).
    Both stop, showing the hover face, under the pointer or the keyboard focus, and neither runs with reduced motion. */
 @keyframes pb-nudge {
   0%, 49.99% { --face: var(--surface-100); }
@@ -626,13 +661,33 @@
 .pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
 .pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):hover,
 .pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):focus-visible { animation: none; --face: var(--violet-soft); }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):hover,
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):focus-visible,
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):active { animation: none; }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):focus-visible { --face: var(--violet-soft); }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):hover,
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):focus-visible,
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):active { animation: none; }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):focus-visible { --face: var(--violet-soft); }
 @media (prefers-reduced-motion: reduce) {
-  .pb-demo-toggle, .pb-guide__step[data-state="current"] .pb-say__opt { animation: none; }
+  .pb-demo-toggle, .pb-guide__step[data-state="current"] .pb-guide__send { animation: none; }
+}
+
+/* ---------- The waiting clock: a send button that is off because the assistant is answering (a third loop, see README) ---------- */
+/* While a message is in flight or a rate limit runs, the send buttons (the composer's and the next line's) swap the arrow for the
+   system's clock (`pb-ico--clock`) and mark themselves `data-waiting`. The clock holds, turns half a turn about its centre in four
+   system steps (`--motion-step` each, `--ease-step`), holds again and turns on to the full turn, so each half turn flips it, like an
+   hourglass. A cycle of two half turns is twenty system steps (3.2s: 0.96s of rest, 0.64s of turn, twice). It exists only while the
+   state does (the attribute leaves with the request) and not under reduced motion, where the clock is a still glyph. */
+@keyframes pb-hourglass {
+  0%, 30% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(180deg); }
+  100% { transform: rotate(360deg); }
+}
+[data-waiting] > .pb-ico--clock { animation: pb-hourglass calc(var(--motion-step) * 20) var(--ease-step) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  [data-waiting] > .pb-ico--clock { animation: none; }
+}
+/* The glyph is a mask over `currentColor`: in forced colours it keeps the button's text colour instead of the system's background. */
+@media (forced-colors: active) {
+  [data-waiting] > .pb-ico--clock { forced-color-adjust: none; }
 }
 
 /* ---------- Focus on the fields: in the edge, not in a ring around them (this changes a rule of the system, see README) ---------- */

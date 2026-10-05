@@ -81,10 +81,36 @@ describe("local.css: detective mode (ADR-0019): a tab of the demo panel, and in 
       .find(([sel]) => sel?.trim() === selector)?.[1]
       ?.trim();
 
-  test("case 13: the panel is 520px wide, or the window minus 32px, and a phone gets the whole screen", () => {
+  test("case 13: the panel is 520px wide, or the window minus 32px, and with no room for the demo panel (under 920px wide or 500px tall) it gets the whole screen", () => {
     expect(declarationsOf(".pb-dock__panel")).toBe("bottom: 84px; width: min(520px, calc(100% - 32px));");
     expect(localCss).not.toContain("420px");
-    expect(localCss).toMatch(/@media \(max-width: 480px\) \{\s*\.pb-dock__panel \{ position: fixed; inset: 0;/);
+    expect(localCss).toMatch(/@media \(max-width: 919\.98px\), \(max-height: 499\.98px\) \{\s*\.pb-dock__panel \{ position: fixed; inset: 0;/);
+  });
+
+  /** The body of the `@media` block that holds the dock's full-screen rules. */
+  const fullScreenBlock = () => /@media \(max-width: 919\.98px\), \(max-height: 499\.98px\) \{([^@]*?)\n\}/.exec(stripComments(localCss))?.[1] ?? "";
+
+  test("full screen under the combined query: fixed over the screen, the chat's chamfers off, and no 480px rule is left for the dock", () => {
+    const block = fullScreenBlock();
+    expect(block).toContain(".pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }");
+    expect(block).toContain(".pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%;");
+    // the old cut is gone for the dock (a phone is just one case of "no room")
+    expect(stripComments(localCss)).not.toMatch(/max-width: 480px/);
+    expect(localCss).not.toContain("full screen on phones");
+  });
+
+  test("the safe area is kept on the four sides (the page has no viewport-fit=cover, so they are 0 today)", () => {
+    const chat = /\.pb-dock \.pb-chat \{[^}]*\}/.exec(fullScreenBlock())?.[0] ?? "";
+    for (const side of ["top", "right", "bottom", "left"]) expect(chat, side).toContain(`env(safe-area-inset-${side}, 0px)`);
+    expect(chat.match(/env\(/g)).toHaveLength(4);
+    expect(chat).toContain("padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);");
+  });
+
+  test("the launcher is hidden only while the panel is open, in the sibling form (a bare .pb-dock__launcher rule would collide with the system's)", () => {
+    expect(fullScreenBlock()).toContain(".pb-dock__panel:not([hidden]) ~ .pb-dock__launcher { display: none; }");
+    // nowhere else is the launcher hidden, and no rule of local.css is the bare launcher class
+    expect([...stripComments(localCss).matchAll(/([^{}@;]*pb-dock__launcher[^{}]*)\{/g)].map((match) => match[1]!.trim())).toEqual([".pb-dock__panel:not([hidden]) ~ .pb-dock__launcher"]);
+    expect(stripComments(localCss)).not.toMatch(/(^|\})\s*\.pb-dock__launcher\s*\{/);
   });
 
   test("nothing of the earlier detective panel, its strip, its own pane switch or the old magnifier is left: the panel beside the chat is the shared demo panel", () => {
@@ -176,8 +202,8 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
       .find(([sel]) => sel?.trim() === selector)?.[1]
       ?.trim();
 
-  test("case 16: below 920px the panel is not offered, with CSS alone (the header button stays for the detective view in place of the chat)", () => {
-    expect(stripComments(localCss)).toMatch(/@media \(max-width: 919px\) \{\s*\.pb-dock__side \{ display: none; \}\s*\}/);
+  test("case 16: with no room (under 920px wide or 500px tall) the aside is hidden, with CSS alone, under the same query as the full-screen chat (the demo panel takes the chat's place instead)", () => {
+    expect(stripComments(localCss)).toMatch(/@media \(max-width: 919\.98px\), \(max-height: 499\.98px\) \{\s*\.pb-dock__side \{ display: none; \}\s*\}/);
     expect(localCss).not.toContain("pb-guide-toggle");
     expect(localCss).not.toContain("pb-trace-toggle");
   });
@@ -226,7 +252,7 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     expect(declarationsOf('.pb-guide__step[data-state="current"] .pb-guide__label')).toBe("color: var(--violet);");
   });
 
-  test("two calls for attention in a loop: the header button until first use, the current step's option while enabled; both in steps, neither with reduced motion", () => {
+  test("two calls for attention in a loop: the header button until first use, the current step's send button while enabled; both in steps, neither with reduced motion", () => {
     const css = stripComments(localCss);
     const keyframes = /@keyframes pb-nudge \{([^@]*?)\n\}/.exec(css)?.[1] ?? "";
     // rest and hover face, nothing else: no glow, no shadow, no gradient
@@ -237,14 +263,110 @@ describe("local.css: the demo panel, shared by the guide and detective mode (Scr
     expect(css).toContain('.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }');
     // paused under the pointer or the focus, showing the hover face
     expect(css).toMatch(/\.pb-demo-toggle:not\(\[data-seen\]\):not\(\[aria-pressed="true"\]\):hover,\s*\.pb-demo-toggle:not\(\[data-seen\]\):not\(\[aria-pressed="true"\]\):focus-visible \{ animation: none; --face: var\(--violet-soft\); \}/);
-    // the option: only the current step's, only while enabled, paused under the pointer, the focus and the press
-    expect(css).toContain('.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }');
-    expect(css).toMatch(/\.pb-say__opt:not\(:disabled\):hover,[^{]*:focus-visible,[^{]*:active \{ animation: none; \}/);
+    // the send button of the current step (the card is text now): only the current step's, only while enabled, paused under the pointer, the focus and the press
+    expect(css).toContain('.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }');
+    expect(css).toMatch(/\.pb-guide__send:not\(:disabled\):hover,[^{]*:focus-visible,[^{]*:active \{ animation: none; \}/);
     // nothing else animates with it: the list of six and the "Sigue" cards have no such rule
     expect([...css.matchAll(/animation: pb-nudge/g)]).toHaveLength(2);
     expect(css).not.toMatch(/\.pb-guide__card[^{]*\{[^}]*animation/);
     // reduced motion turns both off
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.pb-demo-toggle, \.pb-guide__step\[data-state="current"\] \.pb-say__opt \{ animation: none; \}\s*\}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.pb-demo-toggle, \.pb-guide__step\[data-state="current"\] \.pb-guide__send \{ animation: none; \}\s*\}/);
+  });
+
+  test("the band over the composer: two new names (the system has neither), the card text only and never filled, the label in the label style, no animation of its own", () => {
+    for (const name of ["pb-say--next", "pb-say__card", "pb-say__card--compact"]) {
+      expect(componentsCss, name).not.toContain(name);
+      expect(localCss, name).toContain(`.${name} {`);
+    }
+    expect(declarationsOf(".pb-say--next")).toBe("flex: none; min-width: 0; max-width: 100%; padding: var(--space-2) var(--space-3);");
+    expect(declarationsOf(".pb-say--next .pb-say__title")).toContain("font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase;");
+    expect(declarationsOf(".pb-say__card--compact")).toBe("padding: 6px 12px; font: 400 14px/20px var(--font-sans);");
+    expect(declarationsOf(".pb-say--next .pb-say__text")).toContain("-webkit-line-clamp: 3;");
+    // the card is the outlined twin of the bubble (the sender's cut, a violet edge, the surface as its face) and is not a control
+    const card = declarationsOf(".pb-say__card") ?? "";
+    expect(card).toContain("--c-tr: var(--cut-md); --c-bl: var(--cut-md); --edge: var(--violet); --face: var(--surface-100);");
+    expect(card).not.toMatch(/cursor|background/);
+    expect(localCss).not.toContain(".pb-say__card:hover");
+    expect(stripComments(localCss)).not.toMatch(/\.pb-say--next[^{]*\{[^}]*animation/);
+  });
+
+  test("the row of the next line cannot overflow its column, at 320px or anywhere: the card shrinks (min-width 0, words break anywhere), the 44px copy button keeps its size, and the band never wraps", () => {
+    expect(declarationsOf(".pb-guide__line")).toContain("min-width: 0; max-width: 100%;");
+    expect(declarationsOf(".pb-guide__line > .pb-say__card")).toContain("min-width: 0;");
+    expect(declarationsOf(".pb-say--next .pb-guide__line > .pb-say__card")).toBe("flex: 1 1 0; min-width: 0;");
+    expect(declarationsOf(".pb-say--next .pb-guide__line")).toBe("align-items: center; flex-wrap: nowrap;");
+    // the two buttons keep their size and travel together (send first) when the row wraps
+    expect(declarationsOf(".pb-guide__actions")).toBe("display: flex; gap: var(--space-2); flex: none;");
+    expect(declarationsOf(".pb-guide__send, .pb-guide__copy")).toBe("flex: none;");
+    expect(declarationsOf(".pb-say__text")).toContain("overflow-wrap: anywhere;");
+    // what the row has to hold at the narrowest phone (320px): the band's padding (12px twice), the two 44px buttons and the gaps leave the card room
+    expect(320 - 2 * 12 - (2 * 44 + 8) - 8).toBeGreaterThan(150);
+    // and the button is the system's icon button: 44px, not a text button
+    expect(componentsCss).toContain(".pb-btn--icon { padding: 0; min-width: 44px; }");
+  });
+
+  test("the copy glyph: a new icon (the system's set has none), drawn on the 16px grid like the detective one: 1.5 stroke, square caps, mitered joins, no fill, a mask on currentColor", () => {
+    expect(componentsCss).not.toContain("pb-ico--copy");
+    const rule = /\.pb-ico--copy \{[^}]*\}/.exec(stripComments(localCss))?.[0] ?? "";
+    expect(rule).toContain("viewBox='0 0 16 16'");
+    expect(rule).toContain("fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'");
+    // the front square with its top-left corner cut at 45 degrees, and the one behind it as an L
+    expect(rule).toContain("M8.5 5.5H14V14H5.5V8.5z");
+    expect(rule).toContain("M2 10V2h8");
+    // it takes the colour from the base `.pb-ico` mask, which uses `--ico` and `currentColor`
+    expect(rule).toMatch(/^\.pb-ico--copy \{ --ico: url\(/);
+    expect(componentsCss).toMatch(/\.pb-ico \{ --ico: none;[^}]*background: currentColor;[^}]*mask: var\(--ico\)/);
+  });
+
+  test("the waiting clock: a loop of its own, stepped, only on [data-waiting], off under reduced motion, readable in forced colours; its names are new", () => {
+    const css = stripComments(localCss);
+    // a name the system does not have, for the keyframes and for the attribute's rule
+    expect(componentsCss).not.toContain("pb-hourglass");
+    expect(componentsCss).not.toContain("data-waiting");
+    const keyframes = /@keyframes pb-hourglass \{([^@]*?)\n\}/.exec(css)?.[1] ?? "";
+    // holds, turns half a turn, holds, turns on to the full turn: each half turn flips the clock
+    expect(keyframes).toContain("0%, 30% { transform: rotate(0deg); }");
+    expect(keyframes).toContain("50%, 80% { transform: rotate(180deg); }");
+    expect(keyframes).toContain("100% { transform: rotate(360deg); }");
+    expect(keyframes).not.toMatch(/ease|cubic|linear/);
+    // the turn is four system steps: 20% of twenty steps, with the system's stepped timing, built from its tokens
+    expect(css).toContain("[data-waiting] > .pb-ico--clock { animation: pb-hourglass calc(var(--motion-step) * 20) var(--ease-step) infinite; }");
+    expect(0.2 * 20).toBe(4);
+    expect(tokensCss).toContain("--ease-step: steps(4, end);");
+    // it applies under `[data-waiting]` and nowhere else, and it is not one of the two `pb-nudge` loops
+    expect([...css.matchAll(/animation: pb-hourglass/g)]).toHaveLength(1);
+    expect([...css.matchAll(/animation: pb-nudge/g)]).toHaveLength(2);
+    // reduced motion leaves the clock still, and forced colours keep its currentColor
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\[data-waiting\] > \.pb-ico--clock \{ animation: none; \}\s*\}/);
+    expect(css).toMatch(/@media \(forced-colors: active\) \{\s*\[data-waiting\] > \.pb-ico--clock \{ forced-color-adjust: none; \}\s*\}/);
+    // the glyph is the system's own, not a new one
+    expect(componentsCss).toContain(".pb-ico--clock {");
+    expect(css).not.toMatch(/^\.pb-ico--clock \{/m);
+  });
+
+  test("the log shows the system's ring when the keyboard has it: a solid 2px focus outline, only on :focus-visible (it is a tab stop)", () => {
+    expect(declarationsOf(".pb-chat__log:focus-visible")).toBe("outline: 2px solid var(--focus); outline-offset: -4px;");
+    expect(stripComments(localCss)).not.toMatch(/\.pb-chat__log:focus \{/);
+  });
+
+  test("the panel in place of the chat: a new modifier (the system has none), without the card's shadow, position or hiding, and filling what is under the chat's header", () => {
+    expect(componentsCss).not.toContain("pb-side--inplace");
+    expect(declarationsOf(".pb-side--inplace")).toBe("flex: 1; min-height: 0; filter: none;");
+    // it hangs from nothing that the full-screen query hides: only `pb-dock__side` (the panel beside the chat) is hidden there
+    expect(stripComments(localCss)).not.toMatch(/\.pb-side--inplace[^{]*\{[^}]*display: none/);
+  });
+
+  test("the two buttons of the guide's next line: their classes are new (the system has none), the row wraps in the narrow panel with the buttons together under the card, and they add no animation of their own", () => {
+    for (const name of ["pb-guide__line", "pb-guide__actions"]) {
+      expect(componentsCss, name).not.toContain(name);
+      expect(localCss, name).toContain(`.${name} {`);
+    }
+    for (const name of ["pb-guide__send", "pb-guide__copy"]) expect(componentsCss, name).not.toContain(name);
+    expect(declarationsOf(".pb-guide__line")).toContain("display: flex; flex-wrap: wrap;");
+    // the card takes what is left and never less than 200px, so the 340px panel (a 264px column) puts the two buttons (96px) under it
+    expect(declarationsOf(".pb-guide__line > .pb-say__card")).toBe("flex: 1 1 200px; min-width: 0;");
+    expect(200 + 8 + 96).toBeGreaterThan(264);
+    expect(stripComments(localCss)).not.toMatch(/\.pb-guide__(copy|line|actions)[^{]*\{[^}]*animation/);
   });
 
   test("the code field: the boxes fit their own width, so the input over them covers exactly the six boxes", () => {
