@@ -6,10 +6,11 @@
 
 /* Chat header: the title, then the state chip, the demo menu button and the close button. The chip pushes the group
    to the right; with no chip, the menu button does. The text button is a 44px target (it is the one thing the jury has
-   to find). The chat panel is the container: where it is narrower than its 520px design width (a phone, or a window
-   under 552px) the title, the button and the close button need the whole row, so the chip takes a row of its own under
-   them, and the header can wrap. A container query, not a viewport one: the panel is `window - 32px` up to 520px and
-   the whole window up to 480px, so the width that matters is the panel's: 519px or less. On a very narrow phone the
+   to find). The chat panel is the container: where it is narrower than its 520px design width (a phone upright, a window
+   under 520px) the title, the button and the close button need the whole row, so the chip takes a row of its own under
+   them, and the header can wrap. A container query, not a viewport one: the panel is 520px beside the demo panel and
+   the whole window when there is no room for that (under 920px wide or 500px tall), so what matters is the panel's own
+   width: 519px or less. On a very narrow phone the
    button keeps its icon alone (it has its `aria-label`). */
 .pb-dock .pb-chat { container: pb-chat / inline-size; }
 .pb-dock .pb-chat__title { white-space: nowrap; }

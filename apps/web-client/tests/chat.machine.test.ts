@@ -8,6 +8,7 @@ import {
   selectFeedback,
   selectScript,
   selectSendDisabled,
+  selectWaiting,
   selectTyping,
 } from "../src/machines/chat.machine";
 import {
@@ -131,9 +132,57 @@ describe("a conversation is created lazily", () => {
     world.send("hola");
     expect(selectTyping(world.snapshot)).toBe(true);
     expect(selectSendDisabled(world.snapshot)).toBe(true);
+    // in flight: the send buttons show the waiting clock
+    expect(selectWaiting(world.snapshot)).toBe(true);
     await world.settle();
     expect(selectTyping(world.snapshot)).toBe(false);
     expect(selectSendDisabled(world.snapshot)).toBe(false);
+    expect(selectWaiting(world.snapshot)).toBe(false);
+  });
+
+  test("waiting is only a message in flight (creating, sending) or a rate limit; not idle, gone or a message awaiting its retry", async () => {
+    fresh();
+    // idle: nothing to wait for
+    expect(world.state).toBe("idle");
+    expect(selectWaiting(world.snapshot)).toBe(false);
+    // creating: the first message opens the conversation
+    world.send("uno");
+    expect(world.state).toBe("creating");
+    expect(selectWaiting(world.snapshot)).toBe(true);
+    await world.until(() => world.state === "sending");
+    expect(selectWaiting(world.snapshot)).toBe(true);
+    await world.settle();
+    expect(selectWaiting(world.snapshot)).toBe(false);
+    // rate limited: off, and waiting
+    world.script("sendMessage", json({ detail: "slow" }, 429, { "Retry-After": "60" }), json(SEND_RESPONSE));
+    world.send("dos");
+    await world.settle();
+    expect(world.state).toBe("rateLimited");
+    expect(selectSendDisabled(world.snapshot)).toBe(true);
+    expect(selectWaiting(world.snapshot)).toBe(true);
+    // the wait over: a message waiting for its retry is off for the guide but is not waiting
+    world.advance(60_000);
+    await world.tick();
+    expect(world.state).toBe("retryable");
+    expect(selectAwaitingRetry(world.snapshot)).toBe(true);
+    expect(selectWaiting(world.snapshot)).toBe(false);
+    // an unavailable assistant (503): awaiting its retry, not waiting
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    world.script("sendMessage", json({ detail: "replay_miss" }, 503), json(SEND_RESPONSE));
+    world.send("tres");
+    await world.settle();
+    expect(world.state).toBe("unavailable");
+    expect(selectWaiting(world.snapshot)).toBe(false);
+    // gone: off, and not waiting
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    world.script("sendMessage", json({ detail: "Conversation not found" }, 404));
+    world.send("cuatro");
+    await world.settle();
+    expect(world.state).toBe("gone");
+    expect(selectSendDisabled(world.snapshot)).toBe(true);
+    expect(selectWaiting(world.snapshot)).toBe(false);
   });
 });
 

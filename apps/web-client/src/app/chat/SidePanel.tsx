@@ -1,7 +1,8 @@
-// The demo panel at the left of the chat: one panel with two tabs, the demo guide and detective mode (the
-// detective tab exists only where the environment offers the mode; with no tab to choose, the panel is the guide
-// alone). Props only, so it renders on the server in the tests. The chat and its composer stay in sight and usable
-// beside it. Below 920px the stylesheet hides it: there the detective view takes the chat's place instead.
+// The demo panel: one panel with two tabs, the demo guide and detective mode (the detective tab exists only where
+// the environment offers the mode; with no tab to choose, the panel is the guide alone). Props only, so it renders on
+// the server in the tests. Where there is room it sits at the left of the chat, which stays in sight and usable
+// beside it. With no room (under 920px wide or 500px tall: the stylesheet hides that one) the same panel is drawn
+// inside the chat's panel, in place of the log and the composer (`inPlace`). Never both: the ids are fixed.
 
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import type { Dictionary } from "../../i18n";
@@ -15,6 +16,8 @@ export interface SidePanelProps {
   dict: Dictionary;
   /** Not shown: closed, or the chat is. */
   hidden: boolean;
+  /** Drawn inside the chat's panel, in place of the log and the composer, instead of beside the chat. */
+  inPlace?: boolean;
   /** The tab that shows. */
   tab: SideTab;
   /** The environment offers detective mode: there are two tabs. */
@@ -26,7 +29,7 @@ export interface SidePanelProps {
   children: ReactNode;
 }
 
-export function SidePanel({ dict, hidden, tab, detectiveOffered, onTab, onClose, children }: SidePanelProps) {
+export function SidePanel({ dict, hidden, inPlace = false, tab, detectiveOffered, onTab, onClose, children }: SidePanelProps) {
   const tabs = useRef<Partial<Record<SideTab, HTMLButtonElement | null>>>({});
   const order: readonly SideTab[] = ["script", "detective"];
 
@@ -47,7 +50,7 @@ export function SidePanel({ dict, hidden, tab, detectiveOffered, onTab, onClose,
 
   return (
     <aside
-      className="pb-cut pb-side pb-dock__side"
+      className={inPlace ? "pb-side pb-side--inplace" : "pb-cut pb-side pb-dock__side"}
       id={SIDE_PANEL_ID}
       {...(detectiveOffered ? { "aria-label": dict.chat.side.label } : { "aria-labelledby": "side-title" })}
       hidden={hidden}

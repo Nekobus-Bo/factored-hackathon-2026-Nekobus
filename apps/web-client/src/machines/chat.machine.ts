@@ -728,6 +728,16 @@ export function selectSendDisabled(snapshot: ChatSnapshot): boolean {
   return state === "creating" || state === "sending" || state === "rateLimited" || state === "gone";
 }
 
+/**
+ * The send button is off because the customer is waiting for something: a message is in flight, or a 429 is running its
+ * course. Not for the other ways it is off (an empty draft, a conversation that is gone, a message waiting for its retry):
+ * the buttons show the waiting clock only here.
+ */
+export function selectWaiting(snapshot: ChatSnapshot): boolean {
+  const state = conversationState(snapshot);
+  return state === "creating" || state === "sending" || state === "rateLimited";
+}
+
 /** Where the customer stands in a demo script, or null (the guide offers the six). */
 export function selectScript(snapshot: ChatSnapshot): ScriptState | null {
   return snapshot.context.script;

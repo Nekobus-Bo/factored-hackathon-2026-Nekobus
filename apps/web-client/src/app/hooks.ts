@@ -28,8 +28,13 @@ export function useSystemDark(): boolean {
   );
 }
 
-/** The window is wide enough for the demo panel beside the chat (the same width as the stylesheet's cut). */
-export const SIDE_PANEL_QUERY = "(min-width: 920px)";
+/**
+ * There is room for the demo panel beside the chat: 920px wide and 500px tall. The complement of the stylesheet's "no room"
+ * query in `local.css`, `(max-width: 919.98px), (max-height: 499.98px)` (decimals so a fractional size is on one side or the
+ * other, without range syntax, which older iOS drops), where the chat takes the whole screen and the panel replaces it:
+ * change them together.
+ */
+export const SIDE_PANEL_QUERY = "(min-width: 920px) and (min-height: 500px)";
 
 /** Whether there is room for the demo panel beside the chat. True on the server and where the browser cannot say. */
 export function useSidePanelRoom(): boolean {

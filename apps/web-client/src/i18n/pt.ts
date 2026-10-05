@@ -146,7 +146,6 @@ export const pt: Dictionary = {
     takeoverStatus: "Um agente está atendendo seu caso",
     codeExpired: "O código venceu",
     detective: {
-      toggle: "Modo detetive",
       tab: "Detetive",
       view: "Ver detetive",
       back: "Voltar ao chat",
@@ -191,9 +190,9 @@ export const pt: Dictionary = {
       demoTag: "Só demo",
       chooseTitle: "Escolha um roteiro",
       chooseHint: "A primeira mensagem é enviada. O chat muda para o mercado do roteiro, com seu idioma e sua moeda.",
-      runningHint: "Cada mensagem é enviada como está. Se você escrever outra coisa, o roteiro para.",
+      runningHint: "Envie a mensagem como está, ou copie-a para o chat para editá-la. Se você enviar algo diferente, o roteiro para.",
       completeHint: "Todas as mensagens do roteiro foram enviadas.",
-      stoppedHint: "Outra mensagem foi enviada e o roteiro parou. Este chat não oferece mais mensagens do roteiro.",
+      stoppedHint: "Você saiu do roteiro: este guia não sugere mais os passos seguintes.",
       market: "Mercado",
       sent: "Enviada",
       now: "Agora",
@@ -202,6 +201,9 @@ export const pt: Dictionary = {
       codeDone: "Código confirmado",
       codeHint: "O código é real. Use {open} e {reveal}, e digite-o no chat.",
       change: "Trocar de roteiro",
+      send: "Enviar esta mensagem",
+      copy: "Copiar para o chat",
+      next: "Próxima mensagem do roteiro",
       scripts: {
         stolenCard: { label: "Cartão roubado, português informal" },
         chargeBelowThreshold: {
