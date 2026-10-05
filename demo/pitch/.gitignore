@@ -1,0 +1,5 @@
+node_modules/
+shots/
+*.mp4
+*.wav
+film.local.html
