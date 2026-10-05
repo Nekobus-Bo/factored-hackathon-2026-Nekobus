@@ -31,7 +31,7 @@ export type IconName =
   | "db"
   | "infinity"
   | "hex"
-  | "search";
+  | "detective";
 
 export function Icon({ name, label, large = false }: { name: IconName; label?: string; large?: boolean }) {
   const className = `pb-ico pb-ico--${name}${large ? " pb-ico--lg" : ""}`;

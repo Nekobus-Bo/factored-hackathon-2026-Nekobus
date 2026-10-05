@@ -52,10 +52,12 @@ export interface OtpFootProps {
   open: boolean;
   onToggle: () => void;
   openerRef?: Ref<HTMLButtonElement>;
+  /** The customer cancelled the code field and the code is still live: "Escribir el código" goes back to it. */
+  onWrite?: () => void;
 }
 
 /** Inside the `otp.send` receipt while the code is live: the time left and the action that opens the inbox. */
-export function OtpFoot({ dict, notice, now, open, onToggle, openerRef }: OtpFootProps) {
+export function OtpFoot({ dict, notice, now, open, onToggle, openerRef, onWrite }: OtpFootProps) {
   const t = dict.chat.inbox;
   return (
     <div className="pb-proof__foot">
@@ -63,12 +65,13 @@ export function OtpFoot({ dict, notice, now, open, onToggle, openerRef }: OtpFoo
         {t.expiresIn} <b role="timer">{countdownOf(notice, now).text}</b>
       </span>
       <InboxAction dict={dict} open={open} onToggle={onToggle} openerRef={openerRef} />
+      <WriteAction dict={dict} onWrite={onWrite} />
     </div>
   );
 }
 
 /** The same, on its own, when the log holds no `otp.send` receipt to carry it. */
-export function OtpNoticeStrip({ dict, notice, now, open, onToggle, openerRef }: OtpFootProps) {
+export function OtpNoticeStrip({ dict, notice, now, open, onToggle, openerRef, onWrite }: OtpFootProps) {
   const t = dict.chat.inbox;
   return (
     <div className="pb-cut pb-strip" data-tone="info">
@@ -78,7 +81,19 @@ export function OtpNoticeStrip({ dict, notice, now, open, onToggle, openerRef }:
         <b role="timer">{countdownOf(notice, now).text}</b>
       </span>
       <InboxAction dict={dict} open={open} onToggle={onToggle} openerRef={openerRef} />
+      <WriteAction dict={dict} onWrite={onWrite} />
     </div>
+  );
+}
+
+/** Back to the code field after "Cancelar", while the code is live. */
+function WriteAction({ dict, onWrite }: { dict: Dictionary; onWrite?: () => void }) {
+  if (!onWrite) return null;
+  return (
+    <button className="pb-action" type="button" data-code-write onClick={onWrite}>
+      {dict.chat.code.write}
+      <Icon name="arrow" />
+    </button>
   );
 }
 

@@ -9,10 +9,12 @@ export interface ComposerProps {
   sendDisabled: boolean;
   onSend: (text: string) => void;
   inputRef?: Ref<HTMLTextAreaElement>;
+  /** Out of sight but still mounted, so the draft survives (detective mode takes the panel's place). */
+  hidden?: boolean;
 }
 
 /** A text area that grows to four lines (the CSS caps it). Enter sends; Shift+Enter starts a new line. */
-export function Composer({ dict, sendDisabled, onSend, inputRef }: ComposerProps) {
+export function Composer({ dict, sendDisabled, onSend, inputRef, hidden = false }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const empty = draft.trim() === "";
 
@@ -35,7 +37,7 @@ export function Composer({ dict, sendDisabled, onSend, inputRef }: ComposerProps
   };
 
   return (
-    <form className="pb-chat__composer" onSubmit={submit}>
+    <form className="pb-chat__composer" hidden={hidden} onSubmit={submit}>
       <label className="pb-field">
         <span className="pb-sr">{dict.chat.composerLabel}</span>
         <textarea

@@ -102,6 +102,103 @@ export function verifiedAtOf(rawBlocks: readonly RawBlock[]): string | null {
   return verifiedAt;
 }
 
+// --- The code mode of the composer -----------------------------------------------------------------------
+
+/** The one-time code has this many digits (`otp_send.py` in banking-core). */
+export const CODE_LENGTH = 6;
+
+/** What the code field keeps of what was typed or pasted: only digits, at most `CODE_LENGTH` ("588 820" is "588820"). */
+export function sanitizeCode(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, CODE_LENGTH);
+}
+
+/**
+ * What the code field does with a change of its value (`raw` is what the input holds now: typed, pasted or both).
+ * Only digits stay, six at most. The sixth digit sends the code, once, and the field empties, so a code that
+ * failed starts again from nothing and the same six digits are never sent twice. While a turn is in flight
+ * (`disabled`) the digits are kept and nothing is sent.
+ */
+export function codeFieldChange(raw: string, disabled: boolean): { digits: string; send: string | null } {
+  const kept = sanitizeCode(raw);
+  if (kept.length < CODE_LENGTH || disabled) return { digits: kept, send: null };
+  return { digits: "", send: kept };
+}
+
+/**
+ * The id of the entry that holds the newest `otp.send` receipt: it names the challenge. A new code is a new
+ * receipt and so a new id, which is how "cancelled" belongs to one challenge only.
+ */
+export const challengeKey = (entries: readonly Entry[]): string | null => lastEntryWith(entries, isOtpSendReceipt);
+
+/**
+ * What the composer is for a challenge:
+ *  - `off`        the normal composer: no challenge, or it was verified, or the session is locked, handed to an
+ *                 agent or gone;
+ *  - `entry`      the code field (`failed`: the last turn proved the code was not accepted, and only then);
+ *  - `expired`    the code ran out: "Pedir otro código";
+ *  - `dismissed`  the customer cancelled this challenge: the normal composer, and while the code is still live
+ *                 (`resumable`) the notice offers to go back to the field.
+ */
+export type CodeMode =
+  | { kind: "off" }
+  | { kind: "entry"; failed: boolean }
+  | { kind: "expired" }
+  | { kind: "dismissed"; resumable: boolean };
+
+export interface CodeModeInput {
+  entries: readonly Entry[];
+  /** The live notice (what the inbox region holds): a code received after the last verification, not yet expired. */
+  inbox: { message: { expires_at: string } } | null;
+  takeoverActive: boolean;
+  /** The challenge the customer cancelled (`challengeKey`), or null. */
+  dismissed: string | null;
+  /** The conversation expired (404). */
+  gone: boolean;
+  /** Epoch milliseconds. */
+  now: number;
+}
+
+/**
+ * Pure: whether the composer is the code field, and in which state. The rule of the notice (an unexpired inbox
+ * message received after the last verification) says a challenge is live; the receipts say it is still open
+ * (sent, not verified) and whether the session ended it (locked, handed off).
+ */
+export function codeModeOf({ entries, inbox, takeoverActive, dismissed, gone, now }: CodeModeInput): CodeMode {
+  if (gone) return { kind: "off" };
+  const chip = deriveChip(entries, takeoverActive);
+  if (chip === "locked" || chip === "handed-off") return { kind: "off" };
+  // A handoff wins for good: a code sent after it (the chip would read "pending" again) does not bring the field back.
+  if (lastEntryWith(entries, isHandoff) !== null) return { kind: "off" };
+  const key = challengeKey(entries);
+  if (key === null || !isOtpPending(entries)) return { kind: "off" };
+  const live = inbox !== null && Date.parse(inbox.message.expires_at) > now;
+  // Expired: the clock says so, or the log already says so after this challenge's receipt.
+  const keyAt = entries.findIndex((entry) => entry.id === key);
+  const expired = !live && (inbox !== null || entries.slice(keyAt + 1).some((entry) => entry.kind === "system" && entry.code === "codeExpired"));
+  if (!live && !expired) return { kind: "off" };
+  if (dismissed === key) return { kind: "dismissed", resumable: live };
+  if (!live) return { kind: "expired" };
+  return { kind: "entry", failed: lastTurnRejectedCode(entries) };
+}
+
+/** The newest entry is an assistant turn with an `otp.verify` receipt that did not end verified (or locked: that ends the mode). */
+function lastTurnRejectedCode(entries: readonly Entry[]): boolean {
+  const last = entries[entries.length - 1];
+  if (last?.kind !== "assistant") return false;
+  return parseBlocks(last.blocks).blocks.some(
+    (block) => block.type === "receipt" && block.receipt.action === "otp.verify" && block.receipt.state_after !== "VERIFIED" && block.receipt.state_after !== "LOCKED",
+  );
+}
+
+/** The language of the conversation: that of the customer's last message, else `fallback` (the page's). */
+export function conversationLang(entries: readonly Entry[], fallback: Lang): Lang {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.kind === "customer") return entry.lang;
+  }
+  return fallback;
+}
+
 // --- What the customer typed -----------------------------------------------------------------------------
 
 export const CODE_MASK = "••••••";

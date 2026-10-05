@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { POLL_INTERVAL_MS, selectChip, selectFeedback, selectSendDisabled, selectTyping } from "../src/machines/chat.machine";
+import { getScript, type DemoScriptId } from "@pattern-blue/contracts";
+import {
+  POLL_INTERVAL_MS,
+  selectAwaitingRetry,
+  selectCanStartScript,
+  selectChip,
+  selectFeedback,
+  selectScript,
+  selectSendDisabled,
+  selectTyping,
+} from "../src/machines/chat.machine";
 import {
   CARD_BLOCK_RECEIPT,
   CONVERSATION_ID,
@@ -799,5 +809,330 @@ describe("detective mode (ADR-0019)", () => {
     expect(replies).toHaveLength(2);
     expect(replies[0]!.kind === "assistant" && replies[0]!.trace).toEqual(TRACE);
     expect(replies[1]!.kind === "assistant" && "trace" in replies[1]!).toBe(false);
+  });
+});
+
+describe("the demo guide (ScriptChoice)", () => {
+  const STOLEN_CARD_FIRST = "oi, roubaram meu cartão agora há pouco no ônibus, bloqueia pra mim pfv";
+  const start = (scriptId: DemoScriptId) => world.actor.send({ type: "SCRIPT.START", scriptId });
+  const step = () => selectScript(world.snapshot);
+  const line = (scriptId: DemoScriptId, index: number) => {
+    const found = getScript(scriptId).steps[index];
+    if (found?.kind !== "message") throw new Error(`step ${index} of ${scriptId} is not a message`);
+    return found.text;
+  };
+  const sentTexts = () => world.callsTo("sendMessage").map((call) => (call.body as { text: string }).text);
+
+  test("case 4: a script opens a conversation in ITS market and language, and its first line goes as written", async () => {
+    fresh();
+    start("stolenCard");
+    expect(world.state).toBe("creating");
+    await world.settle();
+    expect(world.callsTo("createConversation").map((call) => call.body)).toEqual([{ lang: "pt", locale: "pt-BR" }]);
+    expect(world.callsTo("sendMessage")[0]!.body).toEqual({ text: STOLEN_CARD_FIRST, lang: "pt", client_message_id: "msg_test00000001" });
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+    expect(world.snapshot.context.entries[0]).toMatchObject({ kind: "customer", text: STOLEN_CARD_FIRST, lang: "pt" });
+  });
+
+  test("case 5: a Mexican script creates the conversation in es-MX, whatever the page showed", async () => {
+    fresh();
+    start("ambiguousSlang");
+    await world.settle();
+    expect(world.callsTo("createConversation").map((call) => call.body)).toEqual([{ lang: "es", locale: "es-MX" }]);
+  });
+
+  test("case 6: choosing a script mid-conversation opens a new one: the log, the takeover, the inbox, the chip and the feedback start clean", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK, OTP_SEND_RECEIPT, HANDOFF_BLOCK), turn(TEXT_BLOCK));
+    world.script("getInbox", json(inboxResponse("2026-09-29T15:45:02Z")));
+    world.script("getTranscript", takeoverTranscript(["Hola, soy del equipo de Disputas.", "2026-09-29T15:50:05Z"]));
+    world.script("createConversation", json({ conversation_id: CONVERSATION_ID, language: "es" }, 201), json({ conversation_id: "conv_ffffffffffffffffffffffffffffffff", language: "pt" }, 201));
+    world.send("quiero hablar con una persona");
+    await world.settle();
+    world.actor.send({ type: "FEEDBACK.SEND", helpful: true });
+    await world.until((snapshot) => selectFeedback(snapshot) === "sent");
+    expect(world.snapshot.context.takeover.active).toBe(true);
+    expect(world.snapshot.context.inbox).not.toBeNull();
+    expect(selectChip(world.snapshot)).toBe("handed-off");
+
+    // the new conversation reads plain answers: nothing of the old one may come back through them
+    world.script("getTranscript", json(TRANSCRIPT));
+    world.script("getInbox", json({ messages: [] }));
+    const oldReads = () => world.callsTo("getTranscript").filter((call) => call.path.endsWith(CONVERSATION_ID)).length;
+    const readsBefore = oldReads();
+    start("mixedLanguages");
+    await world.settle();
+    const { entries, takeover, inbox, verifiedAt, conversationId } = world.snapshot.context;
+    expect(conversationId).toBe("conv_ffffffffffffffffffffffffffffffff");
+    expect(entries.map((entry) => entry.kind)).toEqual(["customer", "assistant"]);
+    expect(entries[0]).toMatchObject({ text: line("mixedLanguages", 0) });
+    expect(takeover).toEqual({ active: false, since: null });
+    expect(inbox).toBeNull();
+    expect(verifiedAt).toBeNull();
+    expect(selectFeedback(world.snapshot)).toBe("asking");
+    expect(selectChip(world.snapshot)).toBeNull();
+    expect(world.callsTo("createConversation")).toHaveLength(2);
+    expect(world.callsTo("createConversation")[1]!.body).toEqual({ lang: "pt", locale: "pt-BR" });
+    expect(world.callsTo("sendFeedback")).toHaveLength(1);
+    // the old conversation is not read any more, and nothing is polled for the new one
+    world.advance(POLL_INTERVAL_MS * 3);
+    await world.tick();
+    expect(oldReads()).toBe(readsBefore);
+    expect(world.callsTo("getTranscript").filter((call) => call.path.endsWith("ffffffffffffffffffffffffffffffff"))).toHaveLength(1);
+    expect(world.snapshot.context.takeover.active).toBe(false);
+  });
+
+  test("case 6: a script chosen while another runs replaces it", async () => {
+    fresh();
+    start("chargeBelowThreshold");
+    await world.settle();
+    world.send(line("chargeBelowThreshold", 1), "es", "es-CO");
+    await world.settle();
+    expect(step()).toMatchObject({ scriptId: "chargeBelowThreshold", step: 2 });
+    start("stolenCard");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+    expect(world.snapshot.context.entries.filter((entry) => entry.kind === "customer")).toHaveLength(1);
+  });
+
+  test("case 8: the next line, by the guide or typed by hand, goes and advances once", async () => {
+    fresh();
+    start("chargeAboveThreshold");
+    await world.settle();
+    // the guide's click and the same line typed with spaces around it (the chat sends it trimmed) are the same send
+    world.send(`  ${line("chargeAboveThreshold", 1)}  `, "es", "es-CO");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "chargeAboveThreshold", step: 2, status: "running" });
+    expect(sentTexts()).toEqual([line("chargeAboveThreshold", 0), line("chargeAboveThreshold", 1)]);
+  });
+
+  test("case 9: any other text stops the script for that conversation, and sending still works", async () => {
+    fresh();
+    start("stolenCard");
+    await world.settle();
+    world.send("na verdade, quero outra coisa", "pt");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "stopped" });
+    world.send(line("stolenCard", 1), "pt");
+    await world.settle();
+    expect(step()).toMatchObject({ status: "stopped", step: 1 });
+    expect(world.state).toBe("ready");
+    expect(world.callsTo("sendMessage")).toHaveLength(3);
+  });
+
+  test("cases 10 to 12: at the code step a code keeps the script there, the verification passes it, and a text that is not a code stops it", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK), turn(TEXT_BLOCK, OTP_SEND_RECEIPT), turn(TEXT_BLOCK), turn(TEXT_BLOCK, OTP_VERIFY_RECEIPT), turn(TEXT_BLOCK));
+    start("chargeBelowThreshold");
+    await world.settle();
+    world.send(line("chargeBelowThreshold", 1), "es", "es-CO");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "chargeBelowThreshold", step: 2, status: "running" });
+
+    // a wrong code is a code: the script waits, the chat does not prove anything
+    world.send("000000");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "chargeBelowThreshold", step: 2, status: "running" });
+    // the right one: the receipt passes the step and the script offers the line that follows
+    world.send(INBOX_CODE);
+    await world.settle();
+    expect(world.snapshot.context.verifiedAt).toBe(OTP_VERIFY_RECEIPT.receipt.verified_at);
+    expect(step()).toEqual({ scriptId: "chargeBelowThreshold", step: 3, status: "running" });
+    world.send(line("chargeBelowThreshold", 3), "es", "es-CO");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "chargeBelowThreshold", step: 4, status: "complete" });
+    expect(JSON.stringify(step())).not.toContain(INBOX_CODE);
+  });
+
+  test("case 11: script 1 ends at the code step: verified, it is complete", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK), turn(TEXT_BLOCK, OTP_SEND_RECEIPT), turn(TEXT_BLOCK, OTP_VERIFY_RECEIPT));
+    start("stolenCard");
+    await world.settle();
+    world.send(line("stolenCard", 1), "pt");
+    await world.settle();
+    expect(step()).toMatchObject({ step: 2, status: "running" });
+    world.send(INBOX_CODE, "pt");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 3, status: "complete" });
+  });
+
+  test("case 12: a text that is not a code at the code step stops the script", async () => {
+    fresh();
+    start("stolenCard");
+    await world.settle();
+    world.send(line("stolenCard", 1), "pt");
+    await world.settle();
+    world.send("não recebi nada", "pt");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 2, status: "stopped" });
+  });
+
+  test("case 13: scripts 4, 5 and 6 are complete with their one line", async () => {
+    for (const id of ["fakeAdmin", "ambiguousSlang", "mixedLanguages"] as const) {
+      fresh();
+      start(id);
+      await world.settle();
+      expect(sentTexts(), id).toEqual([line(id, 0)]);
+      expect(step(), id).toEqual({ scriptId: id, step: 1, status: "complete" });
+    }
+  });
+
+  test("case 14: while a message is in flight or a rate limit runs a script cannot be started; an expired conversation does not stop one", async () => {
+    fresh();
+    start("stolenCard");
+    expect(selectSendDisabled(world.snapshot)).toBe(true);
+    start("fakeAdmin");
+    await world.settle();
+    expect(world.callsTo("createConversation")).toHaveLength(1);
+    expect(step()?.scriptId).toBe("stolenCard");
+
+    fresh();
+    world.script("createConversation", json({ detail: "Too many conversations" }, 429, { "Retry-After": "120" }), json({ conversation_id: CONVERSATION_ID, language: "es" }, 201));
+    start("fakeAdmin");
+    await world.settle();
+    expect(world.state).toBe("rateLimited");
+    start("stolenCard");
+    await world.tick();
+    expect(world.state).toBe("rateLimited");
+    expect(world.callsTo("createConversation")).toHaveLength(1);
+    expect(step()?.scriptId).toBe("fakeAdmin");
+
+    fresh();
+    world.send("uno");
+    await world.settle();
+    world.script("sendMessage", json({ detail: "Conversation not found" }, 404));
+    world.send("dos");
+    await world.settle();
+    expect(world.state).toBe("gone");
+    expect(selectCanStartScript(world.snapshot)).toBe(true);
+    // choosing a script opens a new conversation by itself: no "Empezar de nuevo" first, so one creation and not two
+    world.script("sendMessage", json(SEND_RESPONSE));
+    world.script("createConversation", json({ conversation_id: "conv_ffffffffffffffffffffffffffffffff", language: "pt" }, 201));
+    start("stolenCard");
+    await world.settle();
+    expect(world.state).toBe("ready");
+    expect(world.callsTo("createConversation")).toHaveLength(2);
+    expect(world.snapshot.context.conversationId).toBe("conv_ffffffffffffffffffffffffffffffff");
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+    expect(world.snapshot.context.entries.filter((entry) => entry.kind === "customer")).toHaveLength(1);
+  });
+
+  test("the chat's own request for another code, at the code step, leaves the script there; anywhere else, or any other text, it is a message like any other", async () => {
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK), turn(TEXT_BLOCK, OTP_SEND_RECEIPT));
+    start("stolenCard");
+    await world.settle();
+    // not at the code step yet: the request is off-script, flag or not
+    world.actor.send({ type: "SEND", text: "Me envie um novo código.", lang: "pt", codeRequest: true });
+    await world.settle();
+    expect(step()).toMatchObject({ scriptId: "stolenCard", status: "stopped" });
+
+    fresh();
+    world.script("sendMessage", turn(TEXT_BLOCK), turn(TEXT_BLOCK, OTP_SEND_RECEIPT));
+    start("stolenCard");
+    await world.settle();
+    world.send(line("stolenCard", 1), "pt");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 2, status: "running" });
+    // at the code step: the request keeps it, any number of times
+    for (let i = 0; i < 2; i += 1) {
+      world.actor.send({ type: "SEND", text: "Me envie um novo código.", lang: "pt", codeRequest: true });
+      await world.settle();
+      expect(step()).toEqual({ scriptId: "stolenCard", step: 2, status: "running" });
+    }
+    // the same words typed by hand are free text: they stop it
+    world.send("Me envie um novo código.", "pt");
+    await world.settle();
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 2, status: "stopped" });
+  });
+
+  test("case 15: the first line fails with a 503: the retry resends the same message and the script does not advance twice", async () => {
+    fresh();
+    world.script("sendMessage", json({ detail: "replay_miss" }, 503), json(SEND_RESPONSE));
+    start("stolenCard");
+    await world.settle();
+    expect(world.state).toBe("unavailable");
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+    // a message waits for its retry: the guide's next line is off, the six scripts are not
+    expect(selectAwaitingRetry(world.snapshot)).toBe(true);
+    expect(selectSendDisabled(world.snapshot)).toBe(false);
+
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    expect(world.state).toBe("ready");
+    expect(selectAwaitingRetry(world.snapshot)).toBe(false);
+    const sends = world.callsTo("sendMessage");
+    expect(sends).toHaveLength(2);
+    expect(sends[1]!.body).toEqual(sends[0]!.body);
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+
+    world.send(line("stolenCard", 1), "pt");
+    await world.settle();
+    expect(step()).toMatchObject({ step: 2, status: "running" });
+  });
+
+  test("case 15: the creation fails with a 503: the retry creates it again with the script's market", async () => {
+    fresh();
+    world.script("createConversation", json({ detail: "unavailable" }, 503), json({ conversation_id: CONVERSATION_ID, language: "pt" }, 201));
+    start("stolenCard");
+    await world.settle();
+    expect(world.state).toBe("unavailable");
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    expect(world.callsTo("createConversation").map((call) => call.body)).toEqual([
+      { lang: "pt", locale: "pt-BR" },
+      { lang: "pt", locale: "pt-BR" },
+    ]);
+    expect(step()).toEqual({ scriptId: "stolenCard", step: 1, status: "running" });
+  });
+
+  test("a script can be chosen while a failed message waits: it replaces that conversation", async () => {
+    fresh();
+    world.script("sendMessage", json({ detail: "replay_miss" }, 503), json(SEND_RESPONSE));
+    world.send("hola");
+    await world.settle();
+    expect(world.state).toBe("unavailable");
+    start("fakeAdmin");
+    await world.settle();
+    expect(world.state).toBe("ready");
+    expect(world.snapshot.context.entries.filter((entry) => entry.kind === "customer")).toHaveLength(1);
+  });
+
+  test("case 17: 'Cambiar de guion' forgets the script and touches nothing else", async () => {
+    fresh();
+    start("stolenCard");
+    await world.settle();
+    const before = world.snapshot.context.entries;
+    world.actor.send({ type: "SCRIPT.RESET" });
+    expect(step()).toBeNull();
+    expect(world.snapshot.context.entries).toBe(before);
+    expect(world.state).toBe("ready");
+    // with no script, what the customer types is not followed
+    world.send("hola", "pt");
+    await world.settle();
+    expect(step()).toBeNull();
+  });
+
+  test("a script is not followed in a chat that never chose one", async () => {
+    fresh();
+    world.send(line("stolenCard", 0), "pt");
+    await world.settle();
+    expect(step()).toBeNull();
+  });
+
+  test("starting over after the conversation expired stops the script: the new conversation does not hold its earlier lines", async () => {
+    fresh();
+    start("chargeBelowThreshold");
+    await world.settle();
+    world.send(line("chargeBelowThreshold", 1), "es", "es-CO");
+    await world.settle();
+    world.script("sendMessage", json({ detail: "Conversation not found" }, 404), json(SEND_RESPONSE));
+    world.send(INBOX_CODE);
+    await world.settle();
+    expect(world.state).toBe("gone");
+    world.actor.send({ type: "RETRY" });
+    await world.settle();
+    expect(step()).toMatchObject({ scriptId: "chargeBelowThreshold", status: "stopped" });
   });
 });

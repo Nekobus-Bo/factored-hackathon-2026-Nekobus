@@ -17,6 +17,11 @@
 //   capabilities  whether detective mode is on (ADR-0019): asked when the chat opens (CAPABILITIES.CHECK)
 //                 and after every turn, since the back office can turn it off and on at any time
 //
+// The demo guide (ScriptChoice): `context.script` is where the customer stands in one of the team's scripts.
+// It moves in `startSend` (the one place a send is detected: the raw text exists only there) and when a turn
+// brings the verification receipt. SCRIPT.START opens a NEW conversation with the script's first line, in the
+// script's own market: it resets the log, the takeover, the inbox and the feedback along with it.
+//
 // While a takeover is active a send returns `blocks: []` by design; that is a normal answer, not an error.
 //
 // The customer's market (`locale`, ADR-0014) is sent only when the conversation is created: the chat API
@@ -36,11 +41,22 @@ import type {
   SendMessageResponse,
   TranscriptResponse,
 } from "@pattern-blue/contracts";
-import { parseBlocks } from "@pattern-blue/contracts";
+import {
+  currentStep,
+  getScript,
+  nextClientState,
+  parseBlocks,
+  scriptVerified,
+  startScript,
+  type DemoScriptId,
+  type ScriptState,
+} from "@pattern-blue/contracts";
 import { assign, enqueueActions, fromPromise, not, setup, type SnapshotFrom } from "xstate";
 import type { ApiClient, ApiResult } from "../api/client";
 import { dictionaries, langOf } from "../i18n";
 import {
+  challengeKey,
+  codeModeOf,
   deriveChip,
   isHandoff,
   isOtpPending,
@@ -51,6 +67,7 @@ import {
   verifiedAtOf,
   agentKey,
   type ChipState,
+  type CodeMode,
   type Entry,
 } from "./chat-model";
 
@@ -97,10 +114,18 @@ export interface ChatContext {
   visible: boolean;
   /** Detective mode is on: the view offers its switch and turns carry their trace (ADR-0019). */
   detective: boolean;
+  /** Where the customer stands in a demo script, or null when none was chosen (or the guide was reset). */
+  script: ScriptState | null;
+  /** The code challenge the customer cancelled (`challengeKey`), or null: the composer is the normal one for it. */
+  codeDismissed: string | null;
 }
 
 export type ChatEvent =
-  | { type: "SEND"; text: string; lang: Lang; locale?: Locale | null }
+  /**
+   * `codeRequest`: the message is the chat's own "Pedir otro código". At the code step of a demo script it leaves the
+   * script where it is (the customer did what the chat offered); anywhere else it is a message like any other.
+   */
+  | { type: "SEND"; text: string; lang: Lang; locale?: Locale | null; codeRequest?: boolean }
   | { type: "RETRY" }
   | { type: "CODE.REVEAL" }
   | { type: "CODE.HIDE" }
@@ -110,8 +135,17 @@ export type ChatEvent =
   | { type: "FEEDBACK.SEND"; helpful: boolean }
   /** The chat opened: ask whether detective mode is on. */
   | { type: "CAPABILITIES.CHECK" }
+  /** A script was chosen: a new conversation, opened with the script's first line in the script's market. */
+  | { type: "SCRIPT.START"; scriptId: DemoScriptId }
+  /** "Cambiar de guion": the guide forgets the script. The conversation goes on as it was. */
+  | { type: "SCRIPT.RESET" }
+  /** "Cancelar" in the code field: this challenge no longer takes over the composer. Sends nothing. */
+  | { type: "CODE.DISMISS" }
+  /** "Escribir el código": back to the field for the challenge that was cancelled. */
+  | { type: "CODE.RESUME" }
   // Internal: raised by the machine itself.
   | { type: "TURN_DONE" }
+  | { type: "SCRIPT.STARTED" }
   | { type: "INBOX.FOUND"; message: InboxMessage }
   | { type: "INBOX.NONE" };
 
@@ -127,6 +161,11 @@ const sameMessage = (a: InboxMessage, b: InboxMessage) =>
 /** The body of a new conversation. A market of another language is left out: the orchestrator would answer 422. */
 export function createConversationBody(lang: Lang, locale: Locale | null): CreateConversationRequest {
   return locale && langOf(locale) === lang ? { lang, locale } : { lang };
+}
+
+/** The script after a send. The chat's own request for another code, made at the code step, does not move it. */
+function nextScriptState(script: ScriptState, text: string, codeRequest: boolean): ScriptState {
+  return codeRequest && currentStep(script)?.kind === "code" ? script : nextClientState(script, text);
 }
 
 function withStatus(entries: Entry[], entryId: string | undefined, status: "sent" | "failed"): Entry[] {
@@ -202,8 +241,47 @@ export const chatMachine = setup({
         nextEntry: context.nextEntry + 1,
         pending: { clientMessageId: context.deps.newId(), text, lang: event.lang, locale: event.locale ?? null, entryId },
         retryUntil: null,
+        // A retry does not come through here (it resends `pending`), so a message counts once.
+        script: context.script ? nextScriptState(context.script, text, event.codeRequest === true) : null,
       };
     }),
+    /**
+     * A script was chosen: a new conversation whose first message is the script's first line, sent in the
+     * script's own language and market (not the page's: the page switches in the same click, after this).
+     * Everything of the old conversation goes, the feedback and the inbox regions included (SCRIPT.STARTED).
+     */
+    beginScript: enqueueActions(({ context, event, enqueue }) => {
+      if (event.type !== "SCRIPT.START") return;
+      const script = getScript(event.scriptId);
+      const first = script.steps[0];
+      if (first?.kind !== "message") return;
+      const text = first.text;
+      const entryId = `e${context.nextEntry}`;
+      const entry: Entry = {
+        id: entryId,
+        kind: "customer",
+        text: maskTypedSecrets(text, { otpPending: false, knownCodes: [], codePrefix: dictionaries[script.lang].chat.codePrefix }),
+        at: new Date(context.deps.now()).toISOString(),
+        lang: script.lang,
+        status: "sent",
+      };
+      enqueue.assign({
+        conversationId: null,
+        entries: [entry],
+        nextEntry: context.nextEntry + 1,
+        pending: { clientMessageId: context.deps.newId(), text, lang: script.lang, locale: script.locale, entryId },
+        retryUntil: null,
+        takeover: { active: false, since: null },
+        inbox: null,
+        verifiedAt: null,
+        codeDismissed: null,
+        script: nextClientState(startScript(script.id), text),
+      });
+      enqueue.raise({ type: "SCRIPT.STARTED" });
+    }),
+    resetScript: assign({ script: null }),
+    dismissCode: assign(({ context }) => ({ codeDismissed: challengeKey(context.entries) })),
+    resumeCode: assign({ codeDismissed: null }),
     /** A retry resends the same message under the same client_message_id. */
     startRetry: assign(({ context }) => ({
       entries: withStatus(context.entries, context.pending?.entryId, "sent"),
@@ -219,6 +297,9 @@ export const chatMachine = setup({
       inbox: null,
       verifiedAt: null,
       retryUntil: null,
+      codeDismissed: null,
+      // The new conversation holds only the message that was not sent: the lines sent before are not in it.
+      script: context.script && context.script.status === "running" ? { ...context.script, status: "stopped" as const } : context.script,
     })),
     markFailed: assign(({ context }) => ({ entries: withStatus(context.entries, context.pending?.entryId, "failed") })),
     setRetryUntil: assign(({ context, event }) => {
@@ -251,7 +332,9 @@ export const chatMachine = setup({
         nextEntry += 1;
       }
       const verifiedAt = verifiedAtOf(blocks) ?? context.verifiedAt;
-      enqueue.assign({ entries, nextEntry, pending: null, verifiedAt });
+      // The verification the chat proved passes the script's code step (only when it goes from none to some).
+      const script = context.script && verifiedAt !== null && context.verifiedAt === null ? scriptVerified(context.script) : context.script;
+      enqueue.assign({ entries, nextEntry, pending: null, verifiedAt, script });
       if (verifiedAt !== context.verifiedAt) enqueue.raise({ type: "INBOX.NONE" });
       enqueue.raise({ type: "TURN_DONE" });
     }),
@@ -332,14 +415,25 @@ export const chatMachine = setup({
     verifiedAt: null,
     visible: input.visible ?? true,
     detective: false,
+    script: null,
+    codeDismissed: null,
   }),
   type: "parallel",
+  // The guide forgets its script at any time: it changes nothing else.
+  on: {
+    "SCRIPT.RESET": { actions: "resetScript" },
+    "CODE.DISMISS": { actions: "dismissCode" },
+    "CODE.RESUME": { actions: "resumeCode" },
+  },
   states: {
     conversation: {
       initial: "idle",
       states: {
         idle: {
-          on: { SEND: { guard: "canSend", target: "creating", actions: "startSend" } },
+          on: {
+            SEND: { guard: "canSend", target: "creating", actions: "startSend" },
+            "SCRIPT.START": { target: "creating", actions: "beginScript" },
+          },
         },
         creating: {
           invoke: {
@@ -383,7 +477,10 @@ export const chatMachine = setup({
           },
         },
         ready: {
-          on: { SEND: { guard: "canSend", target: "sending", actions: "startSend" } },
+          on: {
+            SEND: { guard: "canSend", target: "sending", actions: "startSend" },
+            "SCRIPT.START": { target: "creating", actions: "beginScript" },
+          },
         },
         unavailable: {
           on: {
@@ -395,6 +492,7 @@ export const chatMachine = setup({
               { guard: "canSendHere", target: "sending", actions: "startSend" },
               { guard: "canSend", target: "creating", actions: "startSend" },
             ],
+            "SCRIPT.START": { target: "creating", actions: "beginScript" },
           },
         },
         rateLimited: {
@@ -410,16 +508,20 @@ export const chatMachine = setup({
               { guard: "canSendHere", target: "sending", actions: "startSend" },
               { guard: "canSend", target: "creating", actions: "startSend" },
             ],
+            "SCRIPT.START": { target: "creating", actions: "beginScript" },
           },
         },
         gone: {
-          on: { RETRY: { target: "creating", actions: "startOver" } },
+          // Choosing a script opens a new conversation by itself: no need to "start over" first (which would spend one more creation).
+          on: { RETRY: { target: "creating", actions: "startOver" }, "SCRIPT.START": { target: "creating", actions: "beginScript" } },
         },
       },
     },
 
     followup: {
       initial: "idle",
+      // A new conversation: whatever was being read belongs to the old one.
+      on: { "SCRIPT.STARTED": ".idle" },
       states: {
         idle: {
           on: { TURN_DONE: { guard: "takeoverInactive", target: "loading" } },
@@ -500,6 +602,7 @@ export const chatMachine = setup({
 
     inbox: {
       initial: "hidden",
+      on: { "SCRIPT.STARTED": ".hidden" },
       states: {
         hidden: {
           on: { "INBOX.FOUND": { target: "shown", actions: "showInbox" } },
@@ -541,6 +644,8 @@ export const chatMachine = setup({
     // decides whether there is a handoff to rate. A failed answer can be sent again.
     feedback: {
       initial: "asking",
+      // A new conversation has nothing to rate yet (the region does not reset on its own: it only reads its events).
+      on: { "SCRIPT.STARTED": ".asking" },
       states: {
         asking: {
           on: { "FEEDBACK.SEND": { guard: "hasConversation", target: "sending" } },
@@ -621,4 +726,40 @@ export function selectTyping(snapshot: ChatSnapshot): boolean {
 export function selectSendDisabled(snapshot: ChatSnapshot): boolean {
   const state = conversationState(snapshot);
   return state === "creating" || state === "sending" || state === "rateLimited" || state === "gone";
+}
+
+/** Where the customer stands in a demo script, or null (the guide offers the six). */
+export function selectScript(snapshot: ChatSnapshot): ScriptState | null {
+  return snapshot.context.script;
+}
+
+/**
+ * The guide's next line is off while a message waits for its retry: it was counted when it first went, and a
+ * different message now would leave the script ahead of what the conversation holds.
+ */
+export function selectAwaitingRetry(snapshot: ChatSnapshot): boolean {
+  const state = conversationState(snapshot);
+  return state === "unavailable" || state === "retryable";
+}
+
+/** What the composer is for the code challenge, if there is one: the field, "el código venció", the normal composer. */
+export function selectCodeMode(snapshot: ChatSnapshot): CodeMode {
+  const { entries, inbox, takeover, codeDismissed, deps } = snapshot.context;
+  return codeModeOf({
+    entries,
+    inbox,
+    takeoverActive: takeover.active,
+    dismissed: codeDismissed,
+    gone: conversationState(snapshot) === "gone",
+    now: deps.now(),
+  });
+}
+
+/**
+ * A script can be chosen: it opens a new conversation, so it works from every state that can open one (also an
+ * expired conversation) and not while a message is in flight or a rate limit runs.
+ */
+export function selectCanStartScript(snapshot: ChatSnapshot): boolean {
+  const state = conversationState(snapshot);
+  return state !== "creating" && state !== "sending" && state !== "rateLimited";
 }

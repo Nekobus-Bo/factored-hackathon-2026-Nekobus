@@ -9,8 +9,8 @@ import { Blocks } from "../src/app/chat/Blocks";
 import { ChatDock } from "../src/app/chat/ChatDock";
 import { OtpFoot, OtpSheet } from "../src/app/chat/Notices";
 import { FeedbackLine } from "../src/app/chat/Feedback";
-import { TracePanel, TraceStrip, type TracePanelProps } from "../src/app/chat/TracePanel";
-import { tracedTurns } from "../src/app/chat/trace-model";
+import { TraceOpen, TracePanel, type TracePanelProps } from "../src/app/chat/TracePanel";
+import { replyCount, tracedTurns } from "../src/app/chat/trace-model";
 import { Transcript } from "../src/app/chat/Transcript";
 import { Landing } from "../src/app/landing/Landing";
 import { dictionaries } from "../src/i18n";
@@ -26,6 +26,7 @@ import {
   SECRET_ACTION,
   SECRET_FACT,
   SECRET_QUESTION,
+  SEND_RESPONSE,
   TEXT_BLOCK,
   UNKNOWN_BLOCK,
   TRACE,
@@ -478,8 +479,28 @@ describe("the landing", () => {
     expect(html).not.toContain("base de datos");
   });
 
-  test("the navbar and the hero open the chat", () => {
-    expect(page("es").match(/data-open-chat/g)).toHaveLength(2);
+  test("the brand in the bar and the footer is two parts, with the text unchanged: \"Pattern\" in the ink, \"Blue\" in the brand blue", () => {
+    const html = page("es");
+    const nav = html.slice(html.indexOf('class="pb-nav__brand"'), html.indexOf("</a>", html.indexOf('class="pb-nav__brand"')));
+    expect(nav).toContain('<span class="pb-wordmark__ink">Pattern</span> <span class="pb-wordmark__blue">Blue</span>');
+    expect(nav.replace(/<[^>]+>/g, "")).toContain("Pattern Blue");
+    // the accessible name does not change, and the text is not typed in capitals (the stylesheet does that)
+    expect(html).toContain('class="pb-nav__brand" href="#top" aria-label="Pattern Blue, inicio"');
+    expect(html).not.toContain("PATTERN BLUE");
+    const footer = html.slice(html.indexOf('class="pb-footer__wordmark"'), html.indexOf("</span></span>", html.indexOf('class="pb-footer__wordmark"')) + "</span>".length);
+    expect(footer).toContain('<span class="pb-wordmark__ink">Pattern</span> <span class="pb-wordmark__blue">Blue</span>');
+    // the drawn card of the hero keeps its own text
+    expect(html).toContain("pb-cardvis__brand");
+  });
+
+  test("the hero and the launcher open the chat, the navigation bar does not", () => {
+    // the hero's button and the launcher; the navigation bar has none
+    const html = page("es");
+    expect(html.match(/data-open-chat/g)).toHaveLength(1);
+    expect(html).toContain('class="pb-launcher pb-launcher--label pb-dock__launcher"');
+    const nav = html.slice(html.indexOf('class="pb-nav"'), html.indexOf("</header>"));
+    expect(nav).not.toContain("data-open-chat");
+    expect(nav).not.toContain("Abrir chat");
   });
 
   test("the FAQ is the design system's accordion: five items, the first open, no div inside a trigger", () => {
@@ -504,19 +525,52 @@ describe("the landing", () => {
     world.stop();
   });
 
-  test("the language switch is a radio group of ES and PT, and the theme one button whose label says what it does", () => {
+  /** The header tools of the page: [label, the radio group it names]. */
+  const tools = (html: string) =>
+    [...html.matchAll(/<div class="pb-navtool"><span class="pb-navtool__label" id="([^"]+)">([^<]*)<\/span><div class="pb-lang pb-lang--fill" role="radiogroup" aria-labelledby="\1">(.*?)<\/div><\/div>/g)].map((match) => ({
+      label: match[2]!,
+      group: match[3]!,
+    }));
+
+  test("each header tool is a group with a visible label and radios: language (ES, PT), and the theme as two radios", () => {
     const html = page("pt-BR");
-    expect(html.match(/role="radiogroup"/g)).toHaveLength(1);
+    expect(tools(html).map((tool) => tool.label)).toEqual(["Idioma"]);
+    expect(html.match(/role="radiogroup"/g)).toHaveLength(2);
     expect([...html.matchAll(/data-lang="(\w+)"/g)].map((match) => match[1])).toEqual(["es", "pt"]);
     expect(html).toMatch(/aria-checked="true"[^>]*data-lang="pt"/);
-    expect(html.match(/pb-theme--single/g)).toHaveLength(1);
-    expect(html).toMatch(/aria-label="Mudar para o tema (escuro|claro)"/);
+    // the theme: a sun and a moon, named, the one in force checked (the system's, until one is pinned); no square toggle
+    // the theme has no visible label: its group names itself, inside its own tool (the rule between groups stays)
+    const themeGroup = /<div class="pb-navtool"><div class="pb-lang pb-lang--fill" role="radiogroup" aria-label="Tema">(.*?)<\/div><\/div>/.exec(html);
+    expect(themeGroup).not.toBeNull();
+    expect(html).not.toMatch(/pb-navtool__label"[^>]*>Tema</);
+    const theme = themeGroup![1]!;
+    expect(theme).toContain('aria-label="Claro" title="Claro" data-theme-set="light"');
+    expect(theme).toContain('aria-label="Escuro" title="Escuro" data-theme-set="dark"');
+    expect(theme).toContain("pb-ico--sun");
+    expect(theme).toContain("pb-ico--moon");
+    expect(theme.match(/aria-checked="true"/g)).toHaveLength(1);
+    expect(theme.match(/role="radio"/g)).toHaveLength(2);
+    expect(html).not.toContain("pb-theme");
+    expect(html).not.toMatch(/Mudar para o tema|Cambiar a tema/);
   });
 
-  test("Spanish adds the market switch to the navbar, with the browser's market checked", () => {
+  test("the theme names are in each language; the language and market labels are visible text, not only an aria-label", () => {
+    expect(tools(page("es-CO")).map((tool) => tool.label)).toEqual(["Idioma", "País"]);
+    expect(page("es-CO")).toContain('role="radiogroup" aria-label="Tema"');
+    expect(page("es-CO")).toContain('aria-label="Oscuro"');
+    for (const [lang, light, dark, theme] of [["es", "Claro", "Oscuro", "Tema"], ["pt", "Claro", "Escuro", "Tema"], ["en", "Light", "Dark", "Theme"]] as const) {
+      const nav = dictionaries[lang].nav;
+      expect([nav.themeLight, nav.themeDark, nav.themeLabel]).toEqual([light, dark, theme]);
+    }
+    expect([dictionaries.es.nav.marketLabel, dictionaries.pt.nav.marketLabel, dictionaries.en.nav.marketLabel]).toEqual(["País", "País", "Country"]);
+  });
+
+  test("Spanish adds the market tool, labelled País, between language and theme, with the browser's market checked", () => {
     const html = page("es-MX");
-    expect(html.match(/role="radiogroup"/g)).toHaveLength(2);
-    expect(html.match(/aria-label="País"/g)).toHaveLength(1);
+    expect(tools(html).map((tool) => tool.label)).toEqual(["Idioma", "País"]);
+    expect(html.match(/role="radiogroup"/g)).toHaveLength(3);
+    // the options are the country codes, each named by its country
+    expect(tools(html)[1]!.group).toMatch(/>MX<.*>AR<.*>CO</);
     for (const [locale, name] of [["es-MX", "México"], ["es-AR", "Argentina"], ["es-CO", "Colombia"]] as const) {
       expect(html).toMatch(new RegExp(`data-locale="${locale}" aria-label="${name}"`));
     }
@@ -546,43 +600,79 @@ describe("detective mode (ADR-0019)", () => {
       <TracePanel
         dict={dictionaries.es}
         turns={tracedTurns(traced)}
+        total={replyCount(traced)}
         selectedId={null}
         view="steps"
-        pane="chat"
         onSelect={() => {}}
         onView={() => {}}
-        onBack={() => {}}
         {...props}
       />,
     );
 
-  test("a strip only with detective on, under each reply that has a trace; the panel's turn is marked", () => {
-    const off = renderToStaticMarkup(<Transcript entries={traced} lang="es" />);
-    expect(off).not.toContain("data-detective");
-    const on = renderToStaticMarkup(<Transcript entries={traced} lang="es" detective traceSelectedId="3" />);
-    expect(on.match(/data-detective/g)).toHaveLength(2);
-    expect(on.match(/aria-current="true"/g)).toHaveLength(1);
-    expect(on).toContain('aria-controls="dock-trace"');
-    expect(on).toContain(t.open);
+  test("case 1: a control under each reply that has a trace, the icon and the time; none under the one without; no bar in the log", () => {
+    const html = renderToStaticMarkup(<Transcript entries={traced} lang="es" detective />);
+    expect(html.match(/data-trace-open/g)).toHaveLength(2);
+    expect(html).toContain(
+      `<button class="pb-action pb-trace-open" type="button" aria-label="Ver detective, 812 ms" data-trace-open="true"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i><span>Ver detective <span class="pb-trace-open__time">· 812 ms</span></span><i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></button>`,
+    );
+    expect(html).toContain('aria-label="Ver detective, 2.40 s"');
+    expect(html.match(/class="pb-msg pb-msg--assistant"/g)).toHaveLength(3);
+    // the reply of 15:41 came without a trace: the next thing after it is the next reply
+    expect(html).toContain('15:41</span></div><div class="pb-msg pb-msg--assistant">');
+    expect(html).not.toContain("pb-trace-spark");
+    expect(html).not.toContain("pb-trace-strip");
+    expect(renderToStaticMarkup(<Transcript entries={traced} lang="es" />)).not.toContain("data-trace-open");
   });
 
-  test("the strip is the turn's time and its bar, nothing else", () => {
-    const html = renderToStaticMarkup(<TraceStrip dict={dictionaries.es} trace={TRACE_TOOL} selected={false} />);
-    expect(html).toContain("<b>2.40 s</b>");
-    expect(html).toContain("pb-trace-spark");
+  test("the control says what it is: an action of the system with the icon, 'Ver detective', the time and an arrow; its name carries the time", () => {
+    const html = renderToStaticMarkup(<TraceOpen dict={dictionaries.es} trace={TRACE_TOOL} />);
+    expect(html).toMatch(/^<button class="pb-action pb-trace-open"/);
+    expect(html.replace(/<[^>]+>/g, "")).toBe("Ver detective · 2.40 s");
+    expect(html.indexOf("pb-ico--detective")).toBeLessThan(html.indexOf("<span>Ver detective"));
+    // it does not say the whole chat is in detective mode: that is the name of the mode, kept for the title and the tab
+    expect(html).not.toContain("Modo detective");
+    expect(html.indexOf("pb-ico--arrow")).toBeGreaterThan(html.indexOf("2.40 s"));
+    expect(html).toContain(`aria-label="${t.open.replace("{time}", "2.40 s")}"`);
+    // label in name: the accessible name starts with the visible words
+    expect(t.open.startsWith(t.view)).toBe(true);
+    expect(dictionaries.pt.chat.detective.open.startsWith(dictionaries.pt.chat.detective.view)).toBe(true);
+    expect(dictionaries.en.chat.detective.open.startsWith(dictionaries.en.chat.detective.view)).toBe(true);
     expect(html).not.toContain("aria-current");
-    expect(html.replace(/<[^>]+>/g, "").replace(t.open, "")).toBe("2.40 s");
+    // in each language the words are the dictionary's
+    expect(renderToStaticMarkup(<TraceOpen dict={dictionaries.pt} trace={TRACE_TOOL} />).replace(/<[^>]+>/g, "")).toBe("Ver detetive · 2.40 s");
+    expect(renderToStaticMarkup(<TraceOpen dict={dictionaries.en} trace={TRACE_TOOL} />).replace(/<[^>]+>/g, "")).toBe("View detective · 2.40 s");
   });
 
-  test("the panel follows the newest turn: numbered tabs, the turn's numbers, a row per step, details folded", () => {
+  test("case 4: the stepper reads 'Turno n de total' among every reply, and its ends are disabled", () => {
+    const first = panel({ selectedId: "1" });
+    expect(first).toContain("<b aria-live=\"polite\">Turno 1 de 3</b>");
+    // aria-disabled, not disabled: a disabled button drops the focus to the body and Escape stops answering
+    expect(first).toMatch(/aria-label="Turno anterior" aria-disabled="true"/);
+    expect(first).not.toMatch(/aria-label="Turno siguiente" aria-disabled/);
+    expect(first).not.toMatch(/data-trace-(prev|next)[^>]*disabled=""/);
+    const last = panel();
+    expect(last).toContain("Turno 3 de 3");
+    expect(last).toMatch(/aria-label="Turno siguiente" aria-disabled="true"/);
+    expect(last).not.toMatch(/aria-label="Turno anterior" aria-disabled/);
+    // one stepper, not a row of numbered squares
+    expect(last).not.toContain("data-trace-turn");
+    expect(last.match(/pb-trace__stepper/g)).toHaveLength(1);
+  });
+
+  test("case 9: the totals are two lines of label and data, in USD, and there is no table", () => {
     const html = panel();
-    expect(html).toContain('id="dock-trace"');
-    expect(html).toContain(`aria-label="${t.toggle}"`);
-    expect(html.match(/data-trace-turn=/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-checked="true" aria-label="Turno 3" data-trace-turn="3">3</);
-    expect(html).toContain("<b>2.40 s</b><span>LLM 1.90 s</span><span>2530 tok</span><span>$0.00034</span>");
-    expect(html).toContain(`<table class="pb-trace__total" aria-label="${t.conversationTotal}">`);
-    expect(html).toContain(`rowSpan="2">${t.total}</th><td>2530 tok</td></tr><tr><td>$0.00034</td>`);
+    expect(html).toContain(
+      '<dl class="pb-trace__totals"><dt>Turno</dt><dd><span>2.40 s</span><span>LLM 1.90 s</span><span>2530 tok</span><span>USD 0.00034</span></dd><dt>Conversación</dt><dd><span>2530 tok</span><span>USD 0.00034</span></dd></dl>',
+    );
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("$0.");
+  });
+
+  test("the panel follows the newest turn: a row per step, details folded, one view selected", () => {
+    const html = panel();
+    expect(html).toContain('<div class="pb-trace pb-trace--inpanel">');
+    expect(html).not.toContain("<aside");
+    expect(html).not.toContain("dock-trace");
     expect(html.match(/data-trace-step=/g)).toHaveLength(2);
     expect(html).toContain('<code class="pb-trace-name">customer.match</code>');
     expect(html).toContain("INVALID_ARGUMENTS");
@@ -590,15 +680,29 @@ describe("detective mode (ADR-0019)", () => {
     expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="steps"/);
   });
 
-  test("only a step that went wrong carries a status", () => {
+  test("case 10: a step's marker is a hexagon dot with its kind, and only a step that went wrong carries a status", () => {
     const html = panel();
+    expect(html).toContain('<span class="pb-trace-dot" data-kind="llm_call"></span>');
+    expect(html).toContain('<span class="pb-trace-dot" data-kind="tool_call"></span>');
     expect(html.match(/class="pb-chip"/g)).toHaveLength(1);
     expect(html).toContain(`data-tone="danger">${t.status.error}<`);
   });
 
+  test("case 10: a step that was skipped has no chip either: the engine closes every turn with a skipped decisions step", () => {
+    const skipped = { ...TRACE_TOOL.events[1]!, seq: 2, kind: "decisions" as const, label: "decisions", status: "skipped" as const, tool_call: null, note: "no decision points ran" };
+    const withSkipped = [{ ...tracedTurns(traced)[1]!, trace: { ...TRACE_TOOL, events: [...TRACE_TOOL.events, skipped] } }];
+    const html = panel({ turns: withSkipped });
+    expect(html.match(/data-trace-step=/g)).toHaveLength(3);
+    expect(html.match(/class="pb-chip"/g)).toHaveLength(1);
+    expect(html).not.toContain(`>${t.status.skipped}<`);
+    expect(html).toContain("no decision points ran");
+    const timeline = panel({ turns: withSkipped, view: "timeline", selectedId: null });
+    expect(timeline).not.toContain(`>${t.status.skipped}<`);
+  });
+
   test("a picked turn shows instead of the newest", () => {
     const html = panel({ selectedId: "1" });
-    expect(html).toMatch(/aria-checked="true" aria-label="Turno 1" data-trace-turn="1"/);
+    expect(html).toContain("Turno 1 de 3");
     expect(html.match(/data-trace-step=/g)).toHaveLength(1);
   });
 
@@ -607,7 +711,7 @@ describe("detective mode (ADR-0019)", () => {
     expect(html).toMatch(/aria-checked="true"[^>]*data-trace-view="timeline"/);
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("pb-trace-wf__bar");
-    expect(html).toContain("test-model · 2500 → 30 tok · $0.00034<");
+    expect(html).toContain("test-model · 2500 → 30 tok · USD 0.00034<");
     expect(html).not.toContain("openai/");
     expect(html).toContain('<mark class="pb-trace-ph">[DOC_1]</mark>');
     expect(html).toContain("<summary>Prompt (2)</summary>");
@@ -615,19 +719,19 @@ describe("detective mode (ADR-0019)", () => {
     expect(html).not.toContain("<details open");
   });
 
-  test("the masking step is the masked text, placeholders marked", () => {
+  test("case 14: the masking step is the masked text, placeholders marked", () => {
     const html = panel({ selectedId: "1", view: "timeline" });
     expect(html).toContain('<pre class="pb-trace-code">perdí mi tarjeta, soy <mark class="pb-trace-ph">[DOC_1]</mark></pre>');
     expect(html).not.toContain("pb-trace-detail__line");
   });
 
-  test("with no traced turn yet the panel says so", () => {
-    const html = panel({ turns: [] });
+  test("case 12: with no traced turn yet the view says so, and has no stepper to move", () => {
+    const html = panel({ turns: [], total: 2 });
     expect(html).toContain(t.empty);
-    expect(html).not.toContain("data-trace-turn");
+    expect(html).not.toContain("pb-trace__stepper");
   });
 
-  const appWith = (stored: Record<string, string>) => {
+  const appWith = (stored: Record<string, string> = {}) => {
     const store = new Map(Object.entries(stored));
     const env: AppEnv = {
       storage: { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => void store.set(key, value), removeItem: (key) => void store.delete(key) },
@@ -637,49 +741,198 @@ describe("detective mode (ADR-0019)", () => {
     return createActor(createAppMachine(env)).start();
   };
 
-  const dock = (stored: Record<string, string> = {}) =>
+  /** A chat with three replies, the first and the last with a trace, in an environment that offers the mode or not. */
+  async function chatWith(offered: boolean | "error") {
+    const w = createWorld();
+    world = w;
+    w.script("getCapabilities", offered === "error" ? json({ detail: "boom" }, 500) : json({ detective: offered }));
+    w.script("sendMessage", json({ ...SEND_RESPONSE, trace: TRACE }), json(SEND_RESPONSE), json({ ...SEND_RESPONSE, trace: TRACE_TOOL }));
+    for (const text of ["uno", "dos", "tres"]) {
+      w.send(text);
+      await w.settle();
+    }
+    w.actor.send({ type: "CAPABILITIES.CHECK" });
+    await w.settle();
+    return w;
+  }
+
+  const dock = (props: { stored?: Record<string, string>; startInDetective?: boolean; startWithGuide?: boolean; wide?: boolean } = {}) =>
     renderToStaticMarkup(
-      <ActorsProvider actors={{ app: appWith(stored), chat: world!.actor }}>
-        <ChatDock open onOpenChange={() => {}} />
+      <ActorsProvider actors={{ app: appWith(props.stored), chat: world!.actor }}>
+        <ChatDock open onOpenChange={() => {}} startInDetective={props.startInDetective} startWithGuide={props.startWithGuide} wide={props.wide} />
       </ActorsProvider>,
     );
+  /** The demo panel's markup, or "" when the dock has none open. */
+  const side = (html: string) => html.slice(html.indexOf('<aside class="pb-cut pb-side'), html.indexOf("</aside>"));
+  /** Its opening tag: where `hidden` says whether it shows (the trace's own folded details carry `hidden` too). */
+  const sideTag = (html: string) => /<aside[^>]*>/.exec(html)?.[0] ?? "";
 
-  test("no switch in the header where detective mode is off", async () => {
-    world = createWorld();
-    world.actor.send({ type: "CAPABILITIES.CHECK" });
-    await world.settle();
-    expect(dock()).not.toContain("data-detective-toggle");
+  test("case 1: the mode is offered: the header has the hexagonal magnifier, one explicit action under each traced reply", async () => {
+    await chatWith(true);
+    const html = dock();
+    // one header button with text, the demo menu, for the whole panel: not a button for the detective
+    expect(html.match(/data-demo-toggle/g)).toHaveLength(1);
+    expect(html).toContain("pb-btn pb-btn--secondary pb-btn--sm pb-demo-toggle");
+    expect(html).toContain('aria-pressed="false" aria-controls="side-panel" data-demo-toggle');
+    expect(html).toContain('<i class="pb-ico pb-ico--menu" aria-hidden="true"></i><span class="pb-demo-toggle__text">Menú demo</span>');
+    expect(html).not.toContain("data-detective-toggle");
+    expect(html).not.toContain("pb-trace-toggle");
+    // not seen yet: the button calls for attention (the stylesheet does it, from the missing attribute)
+    expect(html).not.toContain("data-seen");
+    expect(html).not.toContain("pb-ico--search");
+    expect(html.match(/data-trace-open/g)).toHaveLength(2);
+    expect(html.match(/class="pb-action pb-trace-open"/g)).toHaveLength(2);
+    expect(html).not.toContain("pb-trace--inpanel");
+    // the panel beside the chat is the demo panel, closed
+    expect(html).not.toContain("pb-dock__trace");
+    expect(html.match(/<aside/g)).toHaveLength(1);
+    expect(html).toContain('<aside class="pb-cut pb-side pb-dock__side"');
+    expect(sideTag(html)).toMatch(/ hidden=""/);
   });
 
-  test("where it is on, the header has the switch, pressed when the viewer turned it on", async () => {
-    world = createWorld();
-    world.script("getCapabilities", json({ detective: true }));
-    world.actor.send({ type: "CAPABILITIES.CHECK" });
-    await world.settle();
-    const off = dock();
-    expect(off).toContain("data-detective-toggle");
-    expect(off).toContain('aria-pressed="false"');
-    expect(off).toContain(`aria-label="${dictionaries.es.chat.detective.toggle}"`);
-    expect(off).toContain(`title="${dictionaries.es.chat.detective.toggle}"`);
-    expect(off).toContain("pb-btn--secondary pb-btn--icon pb-btn--sm pb-trace-toggle");
-    expect(off).toContain("pb-ico--search");
-    expect(off).not.toContain('id="dock-trace"');
-    const on = dock({ "pb-detective": "on" });
-    expect(on).toContain('aria-pressed="true"');
-    expect(on).toContain('id="dock-trace"');
-    expect(on).toContain(dictionaries.es.chat.detective.empty);
+  test("case 2, wide: the detective tab of the panel beside the chat: the chat, its log and its composer stay in sight", async () => {
+    await chatWith(true);
+    const html = dock({ startInDetective: true, wide: true });
+    const panel = side(html);
+    expect(sideTag(html)).not.toMatch(/ hidden=""/);
+    expect(panel).toContain("pb-trace pb-trace--inpanel");
+    expect(panel).toContain("Turno 3 de 3");
+    expect(panel).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-side-tab="detective"/);
+    expect(panel).toMatch(/data-side-tab="script"/);
+    // not "Solo demo": that tag is the guide's
+    expect(panel).not.toContain("Solo demo");
+    // the chat is the chat: its title, its chip, its body and its composer, none hidden
+    expect(html).toContain(`<section class="pb-chat pb-dock__panel" id="dock-panel" aria-label="${dictionaries.es.chat.panel}"`);
+    expect(html).toMatch(/<div class="pb-chat__body">/);
+    expect(html).toMatch(/<form class="pb-chat__composer">/);
+    // the header button reads "pressed", is filled, and still says "Menú demo" (it is not a way back)
+    expect(html).toContain("pb-btn pb-btn--primary pb-btn--sm pb-demo-toggle");
+    expect(html).toContain('aria-label="Menú demo" title="Menú demo" aria-pressed="true"');
+    // the panel is open: it has been seen, and the button stops for good
+    expect(html).toContain('data-demo-toggle="true" data-seen="true"');
+    expect(html).not.toContain(`aria-label="${t.back}"`);
+    // the trace is in one place only
+    expect(html.match(/pb-trace--inpanel/g)).toHaveLength(1);
+    expect(html.match(/data-trace-open/g)).toHaveLength(2);
+  });
+
+  test("case 2, narrow: with no room for the panel the view takes the chat's place: its title, the way back, the log and the composer kept but hidden", async () => {
+    await chatWith(true);
+    const html = dock({ startInDetective: true, wide: false });
+    expect(html).toContain(`<section class="pb-chat pb-dock__panel" id="dock-panel" aria-label="${t.toggle}"`);
+    expect(html).toContain(`<i class="pb-ico pb-ico--detective" aria-hidden="true"></i> ${t.toggle}</span>`);
+    // the same button, now the way back to the chat: icon only, filled, pressed
+    expect(html).toContain("pb-btn pb-btn--primary pb-btn--sm pb-demo-toggle pb-btn--icon");
+    expect(html).toContain(`aria-label="${t.back}" title="${t.back}"`);
+    expect(html).toContain('<i class="pb-ico pb-ico--chat" aria-hidden="true"></i></button>');
+    // a way back is not a toggle, and the panel it would control is hidden: no pressed state, no aria-controls
+    const back = /<button[^>]*pb-demo-toggle[^>]*>/.exec(html)![0];
+    expect(back).not.toContain("aria-pressed");
+    expect(back).not.toContain("aria-controls");
+    expect(html).toContain("pb-trace pb-trace--inpanel");
+    expect(html).toContain("Turno 3 de 3");
+    // still mounted, out of sight: the scroll and the draft survive
+    expect(html).toMatch(/<div class="pb-chat__body" hidden="">/);
+    expect(html).toMatch(/<form class="pb-chat__composer" hidden="">/);
+    expect(html).toContain('role="log"');
+    expect(html).toContain("<textarea");
+    // the replies' controls are in the hidden log, intact
+    expect(html.match(/data-trace-open/g)).toHaveLength(2);
+    // the chat's state chip is not shown over the view
+    expect(html).not.toContain("chat-head-chip");
+    // the panel beside the chat is closed and empty: the trace is not drawn twice
+    expect(sideTag(html)).toMatch(/ hidden=""/);
+    expect(html.match(/pb-trace--inpanel/g)).toHaveLength(1);
+  });
+
+  test("case 3: with the panel closed, or open on a tab, the log and the composer are in sight", async () => {
+    await chatWith(true);
+    for (const html of [dock(), dock({ startInDetective: true }), dock({ startWithGuide: true })]) {
+      expect(html).toMatch(/<div class="pb-chat__body">/);
+      expect(html).toMatch(/<form class="pb-chat__composer">/);
+    }
+  });
+
+  test("the panel has the two tabs, the guide first; the script tab shows the guide with its 'Solo demo' tag and no trace", async () => {
+    await chatWith(true);
+    const panel = side(dock({ startWithGuide: true, wide: true }));
+    expect(panel).toContain('role="tablist"');
+    expect(panel).toMatch(/aria-selected="true"[^>]*data-side-tab="script"/);
+    expect(panel).toMatch(/aria-selected="false"[^>]*data-side-tab="detective"/);
+    expect(panel.indexOf('data-side-tab="script"')).toBeLessThan(panel.indexOf('data-side-tab="detective"'));
+    expect(panel).toContain(">Guion</button>");
+    expect(panel).toContain(">Detective</button>");
+    expect(panel).toContain("Solo demo");
+    expect(panel).toContain("Elige un guion");
+    expect(panel).not.toContain("pb-trace");
+    // the tab that shows is the one that can be reached by the keyboard, and the panel is named by it
+    expect(panel).toMatch(/aria-selected="true" aria-controls="side-panel-content" tabindex="0"/);
+    expect(panel).toMatch(/role="tabpanel" aria-labelledby="side-tab-script"/);
+  });
+
+  test("case 6: where the environment does not offer the mode there is no button, no tab and no control, traces or not", async () => {
+    for (const offered of [false, "error"] as const) {
+      await chatWith(offered);
+      expect(world!.snapshot.context.entries.filter((entry) => entry.kind === "assistant" && entry.trace)).toHaveLength(2);
+      const html = dock({ startWithGuide: true, wide: true });
+      // the demo menu is still there (the guide is in it); only the detective is gone
+      expect(html).toContain("data-demo-toggle");
+      expect(html).not.toContain("data-trace-open");
+      expect(html).not.toContain("data-side-tab");
+      expect(html).not.toContain('role="tablist"');
+      // the panel is the guide alone
+      expect(side(html)).toContain("Elige un guion");
+      expect(side(html)).toContain("Solo demo");
+      // with no room for the panel and no detective to show, there is nothing for the button to open: no button
+      const narrow = dock({ wide: false });
+      expect(narrow).not.toContain("data-demo-toggle");
+      expect(narrow).toContain("data-close-chat");
+      world!.stop();
+    }
+  });
+
+  test("with no room for the panel the same button exists for the detective view only: it opens it in place of the chat", async () => {
+    await chatWith(true);
+    const html = dock({ wide: false });
+    // with no room the panel is hidden: the button is a toggle for the view in place of the chat and controls nothing
+    const toggle = /<button[^>]*pb-demo-toggle[^>]*>/.exec(html)![0];
+    expect(toggle).toContain('aria-pressed="false" data-demo-toggle');
+    expect(toggle).not.toContain("aria-controls");
+    expect(html).toContain('<span class="pb-demo-toggle__text">Menú demo</span>');
+    expect(html).not.toContain("pb-btn--icon pb-btn--sm pb-demo-toggle");
+    expect(html).toMatch(/<div class="pb-chat__body">/);
+  });
+
+  test("case 7: the back office turned the mode off while the detective tab was open: beside the chat the panel is on the guide; with no room the chat is back, with its composer", async () => {
+    await chatWith(false);
+    const wide = dock({ startInDetective: true, wide: true });
+    expect(wide).not.toContain("pb-trace--inpanel");
+    expect(side(wide)).toContain("Elige un guion");
+    expect(wide).not.toContain("data-side-tab");
+    const narrow = dock({ startInDetective: true, wide: false });
+    expect(narrow).not.toContain("pb-trace--inpanel");
+    expect(narrow).toMatch(/<div class="pb-chat__body">/);
+    expect(narrow).toMatch(/<form class="pb-chat__composer">/);
+    expect(narrow).toContain(`aria-label="${dictionaries.es.chat.panel}"`);
+  });
+
+  test("case 8: a 'pb-detective=on' left by an earlier version does nothing: the visit opens with the panel closed", async () => {
+    await chatWith(true);
+    const html = dock({ stored: { "pb-detective": "on" } });
+    expect(html).not.toContain("pb-trace--inpanel");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toMatch(/<form class="pb-chat__composer">/);
   });
 
   test("the panel stays out of a closed dock", async () => {
-    world = createWorld();
-    world.script("getCapabilities", json({ detective: true }));
-    world.actor.send({ type: "CAPABILITIES.CHECK" });
-    await world.settle();
+    await chatWith(true);
     const html = renderToStaticMarkup(
-      <ActorsProvider actors={{ app: appWith({ "pb-detective": "on" }), chat: world.actor }}>
-        <ChatDock open={false} onOpenChange={() => {}} />
+      <ActorsProvider actors={{ app: appWith(), chat: world!.actor }}>
+        <ChatDock open={false} onOpenChange={() => {}} startInDetective />
       </ActorsProvider>,
     );
-    expect(html).not.toContain('id="dock-trace"');
+    expect(html).toMatch(/<section class="pb-chat pb-dock__panel" id="dock-panel"[^>]*hidden="">/);
+    expect(sideTag(html)).toMatch(/ hidden=""/);
+    expect(html).not.toContain("pb-trace--inpanel");
   });
 });

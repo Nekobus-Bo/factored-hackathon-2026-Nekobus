@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { conversationTotal, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, tracedTurns } from "../src/app/chat/trace-model";
+import { conversationTotal, defaultStep, formatMs, formatUsd, prettyJson, replyCount, shortModel, splitPlaceholders, summarize, tracedTurns, turnNeighbours } from "../src/app/chat/trace-model";
 import type { Entry } from "../src/machines/chat-model";
 import { TEXT_BLOCK, TRACE, TRACE_TOOL } from "./fixtures";
 
@@ -21,6 +21,32 @@ describe("tracedTurns", () => {
       { id: "a1", n: 1 },
       { id: "a3", n: 3 },
     ]);
+  });
+});
+
+describe("replyCount and turnNeighbours", () => {
+  const entries = [customer("c1", "hola"), assistant("a1", TRACE), assistant("a2"), assistant("a3", TRACE_TOOL), assistant("a4"), assistant("a5", TRACE)];
+
+  test("the total counts every reply, traced or not", () => {
+    expect(replyCount(entries)).toBe(5);
+    expect(replyCount([customer("c1", "hola")])).toBe(0);
+  });
+
+  test("case 5: the stepper skips the replies that came without a trace, in both directions", () => {
+    const turns = tracedTurns(entries);
+    expect(turns.map((turn) => turn.n)).toEqual([1, 3, 5]);
+    const mid = turnNeighbours(turns, "a3");
+    expect([mid.prev?.n, mid.next?.n]).toEqual([1, 5]);
+  });
+
+  test("case 4: the first has no previous, the last no next, an unknown id none at all", () => {
+    const turns = tracedTurns(entries);
+    expect(turnNeighbours(turns, "a1").prev).toBeNull();
+    expect(turnNeighbours(turns, "a1").next?.id).toBe("a3");
+    expect(turnNeighbours(turns, "a5").next).toBeNull();
+    expect(turnNeighbours(turns, "a5").prev?.id).toBe("a3");
+    expect(turnNeighbours(turns, "zzz")).toEqual({ prev: null, next: null });
+    expect(turnNeighbours([], null)).toEqual({ prev: null, next: null });
   });
 });
 
@@ -46,8 +72,8 @@ describe("formatting", () => {
     expect([formatMs(0.4), formatMs(29.4), formatMs(999), formatMs(1270), formatMs(null)]).toEqual(["0 ms", "29 ms", "999 ms", "1.27 s", "—"]);
   });
 
-  test("dollars: five decimals under a cent", () => {
-    expect([formatUsd(0.00034), formatUsd(0.0213)]).toEqual(["$0.00034", "$0.0213"]);
+  test("case 9: dollars with the currency code first, five decimals under a cent", () => {
+    expect([formatUsd(0.00034), formatUsd(0.0213)]).toEqual(["USD 0.00034", "USD 0.0213"]);
   });
 
   test("the model without its provider", () => {

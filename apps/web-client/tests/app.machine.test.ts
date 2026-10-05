@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createActor } from "xstate";
-import { createAppMachine, DETECTIVE_STORAGE_KEY, readStoredTheme, THEME_STORAGE_KEY, type AppEnv } from "../src/machines/app.machine";
+import { createAppMachine, readStoredTheme, THEME_STORAGE_KEY, type AppEnv } from "../src/machines/app.machine";
 
 function fakeEnv(overrides: Partial<AppEnv> & { stored?: Record<string, string> } = {}) {
   const store = new Map<string, string>(Object.entries(overrides.stored ?? {}));
@@ -126,7 +126,7 @@ describe("language", () => {
     const { env, attributes, store } = fakeEnv();
     const actor = start(env);
     actor.send({ type: "LANG.SET", lang: "pt" });
-    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "pt", locale: "pt-BR", detective: false });
+    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "pt", locale: "pt-BR" });
     expect(attributes.get("lang")).toBe("pt");
     expect(store.size).toBe(0);
   });
@@ -156,7 +156,7 @@ describe("market", () => {
     const { env, attributes } = fakeEnv({ navigatorLanguage: "en-US" });
     const actor = start(env);
     actor.send({ type: "LOCALE.SET", locale: "es-MX" });
-    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "es", locale: "es-MX", detective: false });
+    expect(actor.getSnapshot().context).toEqual({ theme: "system", lang: "es", locale: "es-MX" });
     expect(attributes.get("lang")).toBe("es");
     actor.send({ type: "LOCALE.SET", locale: "es-AR" });
     expect(actor.getSnapshot().context.locale).toBe("es-AR");
@@ -175,31 +175,15 @@ describe("market", () => {
   });
 });
 
-describe("detective switch (ADR-0019)", () => {
-  test("off by default; DETECTIVE.SET turns it on and off and remembers it", () => {
-    const { env, store } = fakeEnv();
+describe("detective mode (ADR-0019)", () => {
+  // Which view the chat panel shows is local to the dock and starts on the chat on every visit.
+  test("case 8: the page no longer keeps a detective choice: a 'pb-detective=on' of the earlier version is neither read nor touched", () => {
+    const { env, store } = fakeEnv({ stored: { "pb-detective": "on" } });
     const actor = start(env);
-    expect(actor.getSnapshot().context.detective).toBe(false);
-    actor.send({ type: "DETECTIVE.SET", on: true });
-    expect(actor.getSnapshot().context.detective).toBe(true);
-    expect(store.get(DETECTIVE_STORAGE_KEY)).toBe("on");
-    actor.send({ type: "DETECTIVE.SET", on: false });
-    expect(actor.getSnapshot().context.detective).toBe(false);
-    expect(store.has(DETECTIVE_STORAGE_KEY)).toBe(false);
-  });
-
-  test("a remembered choice is read back, and anything but \"on\" is off", () => {
-    expect(start(fakeEnv({ stored: { [DETECTIVE_STORAGE_KEY]: "on" } }).env).getSnapshot().context.detective).toBe(true);
-    expect(start(fakeEnv({ stored: { [DETECTIVE_STORAGE_KEY]: "yes" } }).env).getSnapshot().context.detective).toBe(false);
-  });
-
-  test("a storage that throws: off, and the switch still works for the visit", () => {
-    const boom = () => {
-      throw new Error("SecurityError");
-    };
-    const actor = start(fakeEnv({ storage: { getItem: boom, setItem: boom, removeItem: boom } }).env);
-    expect(actor.getSnapshot().context.detective).toBe(false);
-    actor.send({ type: "DETECTIVE.SET", on: true });
-    expect(actor.getSnapshot().context.detective).toBe(true);
+    expect(Object.keys(actor.getSnapshot().context).sort()).toEqual(["lang", "locale", "theme"]);
+    actor.send({ type: "THEME.SET", theme: "dark" });
+    actor.send({ type: "LANG.SET", lang: "pt" });
+    expect(store.get("pb-detective")).toBe("on");
+    expect([...store.keys()].sort()).toEqual(["pb-detective", "pb-theme"]);
   });
 });

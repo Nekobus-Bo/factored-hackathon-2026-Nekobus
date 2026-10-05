@@ -1,4 +1,4 @@
-// What detective mode's panel reads from the log (ADR-0019): the turns that came with a trace, and the few
+// What detective mode's view reads from the log (ADR-0019): the turns that came with a trace, and the few
 // numbers each one is summed up by. Pure functions, no React.
 
 import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
@@ -20,6 +20,18 @@ export function tracedTurns(entries: readonly Entry[]): TracedTurn[] {
     if (entry.trace) turns.push({ id: entry.id, n, trace: entry.trace });
   }
   return turns;
+}
+
+/** How many replies the assistant has given: the "de total" of "Turno n de total", traced or not. */
+export function replyCount(entries: readonly Entry[]): number {
+  return entries.filter((entry) => entry.kind === "assistant").length;
+}
+
+/** The traced turns on either side of one: the stepper skips every reply that came without a trace. */
+export function turnNeighbours(turns: readonly TracedTurn[], id: string | null): { prev: TracedTurn | null; next: TracedTurn | null } {
+  const index = turns.findIndex((turn) => turn.id === id);
+  if (index === -1) return { prev: null, next: null };
+  return { prev: turns[index - 1] ?? null, next: turns[index + 1] ?? null };
 }
 
 /** What a turn spent: time in the LLM, tokens, dollars. */
@@ -57,9 +69,9 @@ export function formatMs(ms: number | null): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`;
 }
 
-/** `$0.00036`: five decimals under a cent, four above. */
+/** `USD 0.00036`: the currency code first, five decimals under a cent, four above. */
 export function formatUsd(usd: number): string {
-  return `$${usd < 0.01 ? usd.toFixed(5) : usd.toFixed(4)}`;
+  return `USD ${usd < 0.01 ? usd.toFixed(5) : usd.toFixed(4)}`;
 }
 
 /** The model without its provider: `openai/gpt-6-luna` is `gpt-6-luna`. */

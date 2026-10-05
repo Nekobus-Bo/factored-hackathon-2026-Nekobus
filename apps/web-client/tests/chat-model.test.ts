@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { InboxMessage } from "@pattern-blue/contracts";
 import {
   agentKey,
+  challengeKey,
+  CODE_LENGTH,
   CODE_MASK,
+  codeFieldChange,
+  codeModeOf,
+  conversationLang,
   deriveChip,
   displayTarget,
   formatClock,
@@ -16,6 +21,7 @@ import {
   maskTypedSecrets,
   newAgentMessages,
   pickInboxMessage,
+  sanitizeCode,
   verifiedAtOf,
   type Entry,
 } from "../src/machines/chat-model";
@@ -261,5 +267,109 @@ describe("lastEntryWith", () => {
   test("a block that fails its schema does not count", () => {
     const broken = [{ id: "x", kind: "assistant", blocks: [{ type: "receipt", receipt: { action: "otp.send" } }], at: "2026-09-29T15:40:00Z", lang: "es" }];
     expect(lastEntryWith(broken as never, isOtpSendReceipt)).toBeNull();
+  });
+});
+
+describe("the composer's code mode", () => {
+  const AT = "2026-09-29T15:40:00Z";
+  const NOW = Date.parse("2026-09-29T15:41:00Z");
+  const assistant = (id: string, ...blocks: unknown[]) => ({ id, kind: "assistant", blocks, at: AT, lang: "es" }) as Entry;
+  const customer = (id: string, text: string, lang: "es" | "pt" | "en" = "es") => ({ id, kind: "customer", text, at: AT, lang, status: "sent" }) as Entry;
+  const expiredLine = (id: string) => ({ id, kind: "system", code: "codeExpired", at: AT }) as Entry;
+  const rejected = (after: string) => ({ type: "receipt", receipt: { ...OTP_VERIFY_RECEIPT.receipt, state_after: after } });
+  const live = { message: { expires_at: "2026-09-29T15:45:02Z" } };
+  const past = { message: { expires_at: "2026-09-29T15:40:30Z" } };
+  const base = { inbox: live, takeoverActive: false, dismissed: null, gone: false, now: NOW };
+  const sent = [customer("e1", "hola"), assistant("e2", TEXT_BLOCK, OTP_SEND_RECEIPT)];
+
+  test("pending: a code was sent, it is live and nobody has verified it: the field", () => {
+    expect(codeModeOf({ ...base, entries: sent })).toEqual({ kind: "entry", failed: false });
+  });
+
+  test("no challenge, or a code that was sent and verified, is the normal composer", () => {
+    expect(codeModeOf({ ...base, inbox: null, entries: [customer("e1", "hola"), assistant("e2", TEXT_BLOCK)] })).toEqual({ kind: "off" });
+    // verified: the receipt ends it even if the inbox still holds the used code
+    expect(codeModeOf({ ...base, entries: [...sent, customer("e3", "x"), assistant("e4", OTP_VERIFY_RECEIPT)] })).toEqual({ kind: "off" });
+    // a live notice with no receipt of a send in the log proves no challenge
+    expect(codeModeOf({ ...base, entries: [customer("e1", "hola"), assistant("e2", TEXT_BLOCK)] })).toEqual({ kind: "off" });
+  });
+
+  test("a failed attempt stays in the field, and the error shows only while the newest entry proves it", () => {
+    const failed = [...sent, customer("e3", "Código: ••••••"), assistant("e4", TEXT_BLOCK, rejected("OTP_PENDING"))];
+    expect(codeModeOf({ ...base, entries: failed })).toEqual({ kind: "entry", failed: true });
+    // the next attempt is in flight (the newest entry is the customer's): no line
+    expect(codeModeOf({ ...base, entries: [...failed, customer("e5", "Código: ••••••")] })).toEqual({ kind: "entry", failed: false });
+    // a turn that says it in words but proves nothing shows no line
+    expect(codeModeOf({ ...base, entries: [...sent, customer("e3", "x"), assistant("e4", TEXT_BLOCK)] })).toEqual({ kind: "entry", failed: false });
+  });
+
+  test("locked ends the mode, and so do a handoff, an agent and an expired conversation", () => {
+    expect(codeModeOf({ ...base, entries: [...sent, customer("e3", "x"), assistant("e4", rejected("LOCKED"))] })).toEqual({ kind: "off" });
+    expect(codeModeOf({ ...base, entries: [...sent, customer("e3", "x"), assistant("e4", HANDOFF_BLOCK)] })).toEqual({ kind: "off" });
+    expect(codeModeOf({ ...base, entries: sent, takeoverActive: true })).toEqual({ kind: "off" });
+    expect(codeModeOf({ ...base, entries: sent, gone: true })).toEqual({ kind: "off" });
+  });
+
+  test("expired: the clock says so, or the log says so after this challenge's receipt; with neither it is the normal composer", () => {
+    expect(codeModeOf({ ...base, inbox: past, entries: sent })).toEqual({ kind: "expired" });
+    expect(codeModeOf({ ...base, inbox: null, entries: [...sent, expiredLine("e3")] })).toEqual({ kind: "expired" });
+    // an expiry line from an earlier challenge does not count for the new one
+    expect(codeModeOf({ ...base, inbox: null, entries: [assistant("e1", OTP_SEND_RECEIPT), expiredLine("e2"), assistant("e3", OTP_SEND_RECEIPT)] })).toEqual({ kind: "off" });
+    expect(codeModeOf({ ...base, inbox: null, entries: sent })).toEqual({ kind: "off" });
+  });
+
+  test("a new code after the old one expired is the field again", () => {
+    const entries = [...sent, expiredLine("e3"), customer("e4", "Envíame un código nuevo."), assistant("e5", TEXT_BLOCK, OTP_SEND_RECEIPT)];
+    expect(codeModeOf({ ...base, entries })).toEqual({ kind: "entry", failed: false });
+  });
+
+  test("cancelled: the normal composer for that challenge, resumable while its code is live; a new challenge is the field again", () => {
+    const key = challengeKey(sent);
+    expect(key).toBe("e2");
+    expect(codeModeOf({ ...base, entries: sent, dismissed: key })).toEqual({ kind: "dismissed", resumable: true });
+    expect(codeModeOf({ ...base, entries: sent, dismissed: key, inbox: past })).toEqual({ kind: "dismissed", resumable: false });
+    const again = [...sent, customer("e3", "otro"), assistant("e4", OTP_SEND_RECEIPT)];
+    expect(challengeKey(again)).toBe("e4");
+    expect(codeModeOf({ ...base, entries: again, dismissed: key })).toEqual({ kind: "entry", failed: false });
+  });
+
+  test("a code sent after a handoff does not bring the field back: the handoff wins", () => {
+    const entries = [...sent, customer("e3", "x"), assistant("e4", HANDOFF_BLOCK), customer("e5", "otro"), assistant("e6", OTP_SEND_RECEIPT)];
+    expect(codeModeOf({ ...base, entries })).toEqual({ kind: "off" });
+  });
+
+  test("the field's decision: five digits wait, the sixth sends once and empties the field, an off field sends nothing", () => {
+    expect(codeFieldChange("", false)).toEqual({ digits: "", send: null });
+    expect(codeFieldChange("58882", false)).toEqual({ digits: "58882", send: null });
+    expect(codeFieldChange("588820", false)).toEqual({ digits: "", send: "588820" });
+    // pasted: spaces and a dash go, the rest is the code
+    expect(codeFieldChange("588 820", false)).toEqual({ digits: "", send: "588820" });
+    expect(codeFieldChange("588-820", false)).toEqual({ digits: "", send: "588820" });
+    // more than six: the first six
+    expect(codeFieldChange("58882012", false)).toEqual({ digits: "", send: "588820" });
+    // letters do not count
+    expect(codeFieldChange("5a8b", false)).toEqual({ digits: "58", send: null });
+    // while the turn is in flight nothing is sent and the digits wait
+    expect(codeFieldChange("588820", true)).toEqual({ digits: "588820", send: null });
+    // once: after the send the field is empty, so the next change starts from nothing
+    const first = codeFieldChange("588820", false);
+    expect(codeFieldChange(first.digits + "1", false)).toEqual({ digits: "1", send: null });
+  });
+
+  test("the digits kept: only digits, six at most; pasting '588 820' or '588-820' keeps the code", () => {
+    expect(sanitizeCode("588820")).toBe("588820");
+    expect(sanitizeCode("588 820")).toBe("588820");
+    expect(sanitizeCode("588-820")).toBe("588820");
+    expect(sanitizeCode("12ab3")).toBe("123");
+    expect(sanitizeCode("12345678")).toBe("123456");
+    expect(sanitizeCode("")).toBe("");
+    expect(sanitizeCode("abc")).toBe("");
+    expect(CODE_LENGTH).toBe(6);
+  });
+
+  test("the language of the conversation is that of the customer's last message, else the page's", () => {
+    expect(conversationLang([customer("e1", "oi", "pt"), assistant("e2", TEXT_BLOCK)], "es")).toBe("pt");
+    expect(conversationLang([customer("e1", "hola", "es"), customer("e2", "oi", "pt")], "en")).toBe("pt");
+    expect(conversationLang([], "en")).toBe("en");
   });
 });

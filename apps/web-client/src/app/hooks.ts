@@ -27,3 +27,20 @@ export function useSystemDark(): boolean {
     () => false,
   );
 }
+
+/** The window is wide enough for the demo panel beside the chat (the same width as the stylesheet's cut). */
+export const SIDE_PANEL_QUERY = "(min-width: 920px)";
+
+/** Whether there is room for the demo panel beside the chat. True on the server and where the browser cannot say. */
+export function useSidePanelRoom(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window === "undefined" || !window.matchMedia) return () => {};
+      const query = window.matchMedia(SIDE_PANEL_QUERY);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(SIDE_PANEL_QUERY).matches : true),
+    () => true,
+  );
+}

@@ -4,17 +4,27 @@
 /* Message text keeps the line breaks the assistant or an agent wrote. */
 .chat-text { white-space: pre-wrap; }
 
-/* Chat header: the title, then the state chip next to the close button. On a phone the panel is narrower than
-   the title plus the longest chip plus the button, so the chip takes a row of its own under the title. */
+/* Chat header: the title, then the state chip, the demo menu button and the close button. The chip pushes the group
+   to the right; with no chip, the menu button does. The text button is a 44px target (it is the one thing the jury has
+   to find). The chat panel is the container: where it is narrower than its 520px design width (a phone, or a window
+   under 552px) the title, the button and the close button need the whole row, so the chip takes a row of its own under
+   them, and the header can wrap. A container query, not a viewport one: the panel is `window - 32px` up to 520px and
+   the whole window up to 480px, so the width that matters is the panel's: 519px or less. On a very narrow phone the
+   button keeps its icon alone (it has its `aria-label`). */
+.pb-dock .pb-chat { container: pb-chat / inline-size; }
 .pb-dock .pb-chat__title { white-space: nowrap; }
-.chat-head-chip { margin-left: auto; margin-right: var(--space-2); }
-/* The detective switch sits next to the close button, right after the chip when there is one. */
-.pb-chat__head .pb-trace-toggle { margin-left: auto; margin-right: var(--space-2); }
-.pb-chat__head .chat-head-chip + .pb-trace-toggle { margin-left: 0; }
-@media (max-width: 391px) {
+.chat-head-chip { min-width: 0; margin-left: auto; margin-right: var(--space-2); overflow: hidden; }
+.pb-chat__head .pb-demo-toggle { flex: none; margin-left: auto; margin-right: var(--space-2); white-space: nowrap; }
+.pb-chat__head .pb-demo-toggle:not(.pb-btn--icon) { min-height: 44px; }
+.pb-chat__head .chat-head-chip ~ .pb-demo-toggle { margin-left: 0; }
+@container pb-chat (max-width: 519px) {
   .pb-dock .pb-chat__head { flex-wrap: wrap; row-gap: var(--space-2); }
   .pb-dock .chat-head-chip { order: 1; flex: 0 0 100%; margin: 0; }
-  .pb-dock .chat-head-chip + .pb-trace-toggle { margin-left: auto; }
+  .pb-dock .chat-head-chip ~ .pb-demo-toggle { margin-left: auto; }
+}
+@media (max-width: 340px) {
+  .pb-demo-toggle:not(.pb-btn--icon) { width: 44px; padding: 0; justify-content: center; }
+  .pb-demo-toggle__text { display: none; }
 }
 
 /* A hash link lands under the sticky bar. */
