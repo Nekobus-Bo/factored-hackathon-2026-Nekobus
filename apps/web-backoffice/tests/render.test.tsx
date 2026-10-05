@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { HandoffDetail, Lang } from "@pattern-blue/contracts";
+import { DRAFT_AGENT_LINE, suggestAgentLine, type AgentSuggestion, type HandoffDetail, type Lang } from "@pattern-blue/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import type { Api } from "../src/api/client";
-import { Composer, ComposerLocked, TranscriptLog } from "../src/app/Conversation";
+import { Composer, composerKeyAction, ComposerLocked, TranscriptLog } from "../src/app/Conversation";
 import { AppServicesProvider, I18nProvider, type AppActor } from "../src/app/context";
 import { useDecisions, type DecisionsProps } from "../src/app/Decisions";
 import { FLOWS, FlowCard, StateMachine, ToolsByState } from "../src/app/FlowsScreen";
@@ -303,6 +303,79 @@ describe("the composer", () => {
     expect(markup).toContain('data-status="failed"');
     expect(markup).toContain("Hola");
     expect(markup).toContain("Reintenta y se reenvía el mismo mensaje.");
+  });
+
+  describe("the suggested reply", () => {
+    const suggestion: AgentSuggestion = { scriptId: "chargeAboveThreshold", line: DRAFT_AGENT_LINE };
+    const band = (markup: string) => markup.slice(markup.indexOf('<div class="pb-say"'), markup.indexOf("<form"));
+
+    test("a band over the form carries the label of the script, the line, the demo tag and the hint", () => {
+      const markup = html(<Composer {...props} suggestion={suggestion} />);
+      expect(markup.indexOf('class="pb-say"')).toBeGreaterThan(-1);
+      expect(markup.indexOf('class="pb-say"')).toBeLessThan(markup.indexOf("<form"));
+      const text = visible(band(markup));
+      expect(text).toContain("Respuesta sugerida");
+      expect(text).toContain("Solo demo");
+      expect(text).toContain("Cargo no reconocido, sobre el umbral");
+      expect(text).toContain("Hola, soy del equipo de Disputas y ya tengo tu caso.");
+      expect(text).toContain("No se envía sola y queda registrada con tu correo.");
+      expect(text).toContain("Usar");
+    });
+
+    test("using it can only fill the composer: the option is a plain button outside the form, so it cannot submit", () => {
+      const markup = html(<Composer {...props} suggestion={suggestion} />);
+      expect(band(markup)).toContain('<button type="button" class="pb-cut pb-say__opt"');
+      expect(markup.slice(markup.indexOf("<form"))).not.toContain("pb-say");
+      // The draft starts empty, so nothing can be sent before "Usar" or typing.
+      expect(markup.slice(markup.indexOf("<form"))).toContain('disabled=""');
+    });
+
+    test("it is named as a group by its title, and the line says its language", () => {
+      const markup = html(<Composer {...props} suggestion={suggestion} />);
+      const id = /aria-labelledby="([^"]+)"/.exec(band(markup))?.[1];
+      expect(id).toBeDefined();
+      expect(band(markup)).toContain(`id="${id}"`);
+      expect(band(markup)).toContain('lang="es"');
+    });
+
+    test("with no suggestion there is no band", () => {
+      expect(html(<Composer {...props} />)).not.toContain("pb-say");
+      expect(html(<Composer {...props} suggestion={null} />)).not.toContain("pb-say");
+    });
+
+    test("while a message is sending, or after one failed to send, the option cannot be used", () => {
+      expect(band(html(<Composer {...props} suggestion={suggestion} />))).not.toContain("disabled");
+      expect(band(html(<Composer {...props} sending suggestion={suggestion} />))).toContain("disabled");
+      const failed = html(<Composer {...props} failed outbox={{ text: "Hola", client_message_id: "abcd1234" }} error="unavailable" suggestion={suggestion} />);
+      expect(band(failed)).toContain("disabled");
+    });
+
+    test("it speaks the language of the interface, and the line stays as written", () => {
+      for (const [lang, title, label, hint] of [
+        ["pt", "Resposta sugerida", "Cobrança não reconhecida, acima do limite", "Não é enviada sozinha"],
+        ["en", "Suggested reply", "Unrecognized charge, above the threshold", "never sent on its own"],
+      ] as const) {
+        const text = visible(band(html(<Composer {...props} suggestion={suggestion} />, lang)));
+        expect(text, lang).toContain(title);
+        expect(text, lang).toContain(label);
+        expect(text, lang).toContain(hint);
+        expect(text, lang).toContain(DRAFT_AGENT_LINE);
+      }
+    });
+
+    test("Enter sends once: a repeat of the held key (after \"Usar\" moved the focus here) is swallowed, and composing or Shift+Enter are left alone", () => {
+      const key = { key: "Enter", shiftKey: false, isComposing: false, repeat: false };
+      expect(composerKeyAction(key)).toBe("send");
+      expect(composerKeyAction({ ...key, repeat: true })).toBe("swallow");
+      expect(composerKeyAction({ ...key, shiftKey: true })).toBe("ignore");
+      expect(composerKeyAction({ ...key, isComposing: true })).toBe("ignore");
+      expect(composerKeyAction({ ...key, key: "a" })).toBe("ignore");
+      expect(composerKeyAction({ ...key, key: "a", repeat: true })).toBe("ignore");
+    });
+
+    test("the screen derives it from the transcript the page already holds: the fixture's conversation opens no script", () => {
+      expect(suggestAgentLine(transcript().messages)).toBeNull();
+    });
   });
 });
 

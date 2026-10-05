@@ -25,7 +25,7 @@ never exposes a banking session ID or the placeholder map.
 
 **Detective mode** ([ADR-0019](adr/0019-detective-mode.md)). Where an environment
 sets `DETECTIVE_MODE` (the local compose; Cloud Run through `detective_mode`), each
-chat turn returns its timeline, shown by a switch in the chat. It holds masked
+chat turn returns its timeline, shown in a panel beside the chat (in place of the conversation on a narrow window), from a header button. It holds masked
 values only, the same ones sent to the provider: never the placeholder map's
 values, rehydrated tool arguments, raw tool results or slot values. It does show
 the system prompt and the policy outcomes to whoever uses the chat; the back

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DEMO_SCRIPTS,
   DepartmentSchema,
   HandoffOutcomeSchema,
   HandoffPrioritySchema,
@@ -113,6 +114,14 @@ describe("dictionaries", () => {
       // The text is stored masked but shown as written: the note must not claim it is masked.
       expect(note, lang).not.toMatch(/mask|mascar|enmascar/i);
     }
+  });
+
+  test.each(LANGUAGES)("%s names every demo script that has an agent line, and only those", (lang) => {
+    const labels = dictionaries[lang].handoff.say.scripts as Record<string, string>;
+    const withAgentLine = DEMO_SCRIPTS.filter((script) => script.agentLine !== undefined).map((script) => script.id);
+    expect(withAgentLine.length).toBeGreaterThan(0);
+    expect(Object.keys(labels).sort(), lang).toEqual([...withAgentLine].sort());
+    for (const id of withAgentLine) expect(labels[id]?.trim().length, `${lang}: ${id}`).toBeGreaterThan(0);
   });
 
   test("the screens show no raw enum in running text: a word stands for it", () => {

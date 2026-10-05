@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { suggestAgentLine } from "@pattern-blue/contracts";
 import { createActor, waitFor } from "xstate";
 import { createApi } from "../src/api/client";
-import { canClaim, handoffMachine, heldByAnother, heldByMe } from "../src/machines/handoff";
+import { canClaim, handoffMachine, heldByAnother, heldByMe, selectSuggestion } from "../src/machines/handoff";
 import { AGENT_EMAIL, CONVERSATION_ID, agentMessageResponse, backofficeDetail, claimedDetail, takeoverResponse, transcript } from "./support/fixtures";
 import { fakeFetch, json, until } from "./support/fake-fetch";
 
@@ -339,5 +340,58 @@ describe("replying", () => {
     expect(setup.actor.getSnapshot().context.sendError).toBe("noActiveTakeover");
     expect(heldByMe(setup.actor.getSnapshot().context)).toBe(false);
     setup.actor.stop();
+  });
+});
+
+describe("the suggested reply (demo only)", () => {
+  /** What the customer sent in script 3, as the masker leaves it, in the transcript of a case that is mine. */
+  const scriptThree = (holder: string | null) => {
+    const base = transcript({ takeover: holder ? { active: true, since: new Date().toISOString(), agent_ref: holder } : { active: false, since: null, agent_ref: null } });
+    const at = base.messages[0]!.created_at;
+    return {
+      ...base,
+      messages: [
+        { role: "user" as const, content: "me muestras mis ultimas 6 transacciones", blocks: [], created_at: at },
+        { role: "user" as const, content: "Mi cédula es [DOC_1]", blocks: [], created_at: at },
+        { role: "user" as const, content: "Mi código es [OTP_1]", blocks: [], created_at: at },
+        { role: "user" as const, content: "no reconozco la transaccion de Global Electronics Megastore", blocks: [], created_at: at },
+      ],
+    };
+  };
+
+  test("a case of mine that follows script 3 gets the draft; a read in flight or a read that failed takes it away", async () => {
+    const { actor, network, world } = start();
+    let failing = false;
+    network.on("GET /api/conversations/:id", () => (failing ? json({ detail: "unavailable" }, 503) : json(scriptThree(world.holder))));
+    await ready(actor);
+    actor.send({ type: "CLAIM" });
+    await live(actor);
+    await waitFor(actor, (snapshot) => snapshot.matches({ transcript: { ready: { live: "waiting" } } }));
+    expect(selectSuggestion(actor.getSnapshot())?.scriptId).toBe("chargeAboveThreshold");
+
+    // Right after a send, and the re-read fails: the transcript may lack the agent's message, so nothing is suggested
+    // (Usar plus send would say the same thing twice).
+    failing = true;
+    actor.send({ type: "SEND", text: "Hola, soy del equipo de Disputas." });
+    await waitFor(actor, (snapshot) => snapshot.context.transcriptError !== null && snapshot.matches({ composer: "idle" }) && !snapshot.matches({ transcript: { ready: { live: "fetching" } } }));
+    const failed = actor.getSnapshot();
+    expect(failed.context.transcriptError).toBe("unavailable");
+    // what the transcript holds still matches: it is the error that keeps the band away
+    expect(failed.context.messages).toHaveLength(4);
+    expect(suggestAgentLine(failed.context.messages)).not.toBeNull();
+    expect(selectSuggestion(failed)).toBeNull();
+
+    // The next read that works brings the band back for as long as it lacks the agent's message.
+    failing = false;
+    await waitFor(actor, (snapshot) => snapshot.context.transcriptError === null && snapshot.matches({ transcript: { ready: { live: "waiting" } } }));
+    expect(selectSuggestion(actor.getSnapshot())?.scriptId).toBe("chargeAboveThreshold");
+    actor.stop();
+  });
+
+  test("a case that is not mine, or whose transcript does not follow a script, gets none", async () => {
+    const { actor } = start();
+    await ready(actor);
+    expect(selectSuggestion(actor.getSnapshot())).toBeNull();
+    actor.stop();
   });
 });

@@ -10,8 +10,8 @@
 // The regions talk through the context: `detail`/`claim` set `conversationId` and `takeover`, and the
 // transcript region reacts to them with eventless transitions.
 
-import type { AgentTakeoverState, AgentTranscriptResponse, ClaimHandoffResponse, HandoffDetail, Lang, BackofficeHandoffDetail } from "@pattern-blue/contracts";
-import { assign, fromPromise, raise, setup } from "xstate";
+import { suggestAgentLine, type AgentSuggestion, type AgentTakeoverState, type AgentTranscriptResponse, type ClaimHandoffResponse, type HandoffDetail, type Lang, type BackofficeHandoffDetail } from "@pattern-blue/contracts";
+import { assign, fromPromise, raise, setup, type SnapshotFrom } from "xstate";
 import type { Api } from "../api/client";
 import { categorize, type ErrorCategory } from "../api/errors";
 
@@ -323,3 +323,14 @@ export const handoffMachine = setup({
     },
   },
 });
+
+/**
+ * The suggested reply for the case on screen (demo only), or null. It comes from the transcript alone, so it
+ * goes away on its own once the agent has written. Not while the transcript is re-read right after a send (it
+ * does not hold that message yet), and not while the last read failed: the transcript may lack the agent's
+ * message, and suggesting again would have the agent send the same reply twice.
+ */
+export function selectSuggestion(snapshot: SnapshotFrom<typeof handoffMachine>): AgentSuggestion | null {
+  if (snapshot.matches({ transcript: { ready: "fetching" } }) || snapshot.context.transcriptError !== null) return null;
+  return suggestAgentLine(snapshot.context.messages);
+}

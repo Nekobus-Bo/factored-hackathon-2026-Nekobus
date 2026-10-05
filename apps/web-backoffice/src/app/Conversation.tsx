@@ -7,8 +7,8 @@
 // (ADR-0013, amendment 2026-09-29). The transcript does not say which agent wrote a message, so agent
 // messages are labelled by who holds the conversation now.
 
-import { parseBlocks, type MessageBlock } from "@pattern-blue/contracts";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { getScript, parseBlocks, type AgentSuggestion, type MessageBlock } from "@pattern-blue/contracts";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { ErrorCategory } from "../api/errors";
 import type { Outbox, TranscriptMessages } from "../machines/handoff";
 import { shortMask } from "./CaseFacts";
@@ -163,11 +163,61 @@ const SEND_ERROR_KEY = {
   unavailable: "errors.unavailable",
 } as const;
 
+/**
+ * The suggested reply (demo only): a band over the composer that offers the draft agent line of the demo
+ * script the customer just ran. "Usar" only fills the composer: the agent reads it, edits it and sends it.
+ */
+function SuggestedReply({ suggestion, disabled, onUse }: { suggestion: AgentSuggestion; disabled: boolean; onUse: (line: string) => void }) {
+  const { t } = useI18n();
+  const titleId = useId();
+  return (
+    <div className="pb-say" role="group" aria-labelledby={titleId}>
+      <div className="pb-say__head">
+        <p className="pb-say__title" id={titleId}>
+          {t("handoff.say.title")}
+        </p>
+        <span className="pb-tag">{t("handoff.say.demo")}</span>
+      </div>
+      <p className="pb-say__hint">{t("handoff.say.hint")}</p>
+      <ul className="pb-say__list">
+        <li>
+          <button type="button" className="pb-cut pb-say__opt" disabled={disabled} onClick={() => onUse(suggestion.line)}>
+            <span className="pb-say__body">
+              <span className="pb-say__label">{t(`handoff.say.scripts.${suggestion.scriptId}`)}</span>
+              <span className="pb-say__text" lang={getScript(suggestion.scriptId).lang}>
+                {suggestion.line}
+              </span>
+            </span>
+            <span className="pb-say__side">
+              <span className="pb-say__go">
+                {t("handoff.say.use")}
+                <Icon name="arrow" />
+              </span>
+            </span>
+          </button>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * What a key does in the composer's text area. Enter sends, Shift+Enter adds a line, and Enter while an input
+ * method composes a word does neither. A repeated Enter (the key held down) is swallowed and sends nothing:
+ * "Usar" moves the focus into the area within the same click, so with Enter still held its repeats would land
+ * here and send the draft that was just put in.
+ */
+export function composerKeyAction(key: { key: string; shiftKey: boolean; isComposing: boolean; repeat: boolean }): "send" | "swallow" | "ignore" {
+  if (key.key !== "Enter" || key.shiftKey || key.isComposing) return "ignore";
+  return key.repeat ? "swallow" : "send";
+}
+
 export function Composer({
   sending,
   failed,
   outbox,
   error,
+  suggestion = null,
   onSend,
   onRetry,
   onDiscard,
@@ -176,12 +226,21 @@ export function Composer({
   failed: boolean;
   outbox: Outbox | null;
   error: ErrorCategory | null;
+  /** Derived by the caller from the transcript; the draft below stays this component's own state. */
+  suggestion?: AgentSuggestion | null;
   onSend: (text: string) => void;
   onRetry: () => void;
   onDiscard: () => void;
 }) {
   const { t } = useI18n();
   const [text, setText] = useState("");
+  const area = useRef<HTMLTextAreaElement>(null);
+
+  // Replaces the draft and puts the cursor in the text area. It never sends.
+  const fillDraft = (line: string) => {
+    setText(line);
+    area.current?.focus();
+  };
 
   const submit = () => {
     if (sending || text.trim() === "") return;
@@ -194,10 +253,10 @@ export function Composer({
   };
   // Enter sends, Shift+Enter adds a line; Enter while an input method composes a word does neither.
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      submit();
-    }
+    const action = composerKeyAction({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, repeat: event.repeat });
+    if (action === "ignore") return;
+    event.preventDefault();
+    if (action === "send") submit();
   };
 
   const errorText =
@@ -228,10 +287,11 @@ export function Composer({
           </Alert>
         </div>
       )}
+      {suggestion && <SuggestedReply suggestion={suggestion} disabled={sending || failed} onUse={fillDraft} />}
       <form className="pb-chat__composer" onSubmit={onSubmit}>
         <label className="pb-field">
           <span className="pb-sr">{t("handoff.composer.label")}</span>
-          <textarea rows={1} value={text} maxLength={2000} disabled={sending} placeholder={t("handoff.composer.placeholder")} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} />
+          <textarea ref={area} rows={1} value={text} maxLength={2000} disabled={sending} placeholder={t("handoff.composer.placeholder")} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} />
         </label>
         <button type="submit" className="pb-btn pb-btn--primary pb-btn--sm" disabled={sending || text.trim() === ""}>
           {sending ? t("handoff.composer.sending") : t("handoff.composer.send")}

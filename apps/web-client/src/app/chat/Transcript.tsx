@@ -7,7 +7,7 @@ import { dictionaries, type Dictionary } from "../../i18n";
 import { formatClock, isHandoff, isOtpSendReceipt, lastEntryWith, type Entry } from "../../machines/chat-model";
 import { Icon } from "../ui/Icon";
 import { Blocks, MessageText, Sender } from "./Blocks";
-import { TraceStrip } from "./TracePanel";
+import { TraceOpen } from "./TracePanel";
 
 /** The message the API did not accept just now, and what the line under it says and offers. */
 export interface PendingFailure {
@@ -28,12 +28,10 @@ export interface TranscriptProps {
   otpFoot?: ReactNode;
   /** Goes right after the newest handoff block: the feedback line. */
   afterHandoff?: ReactNode;
-  /** Detective mode is on and the viewer's switch too: each reply with a trace gets its strip (ADR-0019). */
+  /** The environment offers detective mode: each reply with a trace gets its control (ADR-0019). */
   detective?: boolean;
-  /** The reply the detective panel shows. */
-  traceSelectedId?: string | null;
-  /** A reply's strip was picked: the panel shows that turn. */
-  onPickTrace?: (entryId: string) => void;
+  /** A reply's control was picked: the detective view shows that turn. */
+  onOpenTrace?: (entryId: string) => void;
 }
 
 export function Transcript({
@@ -44,8 +42,7 @@ export function Transcript({
   otpFoot,
   afterHandoff,
   detective = false,
-  traceSelectedId = null,
-  onPickTrace,
+  onOpenTrace,
 }: TranscriptProps) {
   const dict = dictionaries[lang];
   const otpEntryId = otpFoot ? lastEntryWith(entries, isOtpSendReceipt) : null;
@@ -63,8 +60,7 @@ export function Transcript({
           otpFoot={entry.id === otpEntryId ? otpFoot : undefined}
           afterHandoff={entry.id === handoffEntryId ? afterHandoff : undefined}
           detective={detective}
-          traceSelected={entry.id === traceSelectedId}
-          onPickTrace={onPickTrace}
+          onOpenTrace={onOpenTrace}
         />
       ))}
     </>
@@ -80,8 +76,7 @@ function EntryView({
   otpFoot,
   afterHandoff,
   detective,
-  traceSelected,
-  onPickTrace,
+  onOpenTrace,
 }: {
   entry: Entry;
   lang: Lang;
@@ -91,8 +86,7 @@ function EntryView({
   otpFoot?: ReactNode;
   afterHandoff?: ReactNode;
   detective: boolean;
-  traceSelected: boolean;
-  onPickTrace?: (entryId: string) => void;
+  onOpenTrace?: (entryId: string) => void;
 }) {
   switch (entry.kind) {
     case "customer": {
@@ -116,7 +110,7 @@ function EntryView({
       return (
         <>
           <Blocks blocks={entry.blocks} turnLang={entry.lang} lang={lang} at={entry.at} otpFoot={otpFoot} afterHandoff={afterHandoff} />
-          {detective && entry.trace && <TraceStrip dict={dict} trace={entry.trace} selected={traceSelected} onPick={onPickTrace && (() => onPickTrace(entry.id))} />}
+          {detective && entry.trace && <TraceOpen dict={dict} trace={entry.trace} onOpen={onOpenTrace && (() => onOpenTrace(entry.id))} />}
         </>
       );
     case "agent":

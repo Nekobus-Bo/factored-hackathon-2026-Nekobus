@@ -1,3 +1,4 @@
+import { Wordmark } from "./Wordmark";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
 
@@ -9,7 +10,9 @@ export function Footer() {
     <footer className="pb-footer">
       <div className="pb-footer__inner pb-footer__inner--compact">
         <div className="pb-footer__top">
-          <span className="pb-footer__wordmark">Pattern Blue</span>
+          <span className="pb-footer__wordmark">
+            <Wordmark />
+          </span>
           <p className="pb-footer__tag">{t.tag}</p>
         </div>
         <p className="pb-footer__demo">

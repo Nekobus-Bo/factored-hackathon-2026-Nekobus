@@ -20,7 +20,7 @@ export function Landing() {
 
   return (
     <>
-      <Navbar onOpenChat={() => setChatOpen(true)} />
+      <Navbar />
       <main>
         <Hero onOpenChat={() => setChatOpen(true)} />
         <FeatureGrid />

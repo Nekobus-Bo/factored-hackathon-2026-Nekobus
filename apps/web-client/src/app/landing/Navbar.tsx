@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useI18n } from "../actors";
 import { Icon } from "../ui/Icon";
-import { LangSwitch, MarketSwitch, ThemeToggle } from "./Switches";
+import { LangSwitch, MarketSwitch, ThemeSwitch } from "./Switches";
+import { Wordmark } from "./Wordmark";
 
-export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
+export function Navbar() {
   const { dict } = useI18n();
   const [open, setOpen] = useState(false);
   const t = dict.nav;
@@ -17,7 +18,7 @@ export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
     <header className="pb-nav" data-open={open ? "true" : "false"}>
       <div className="pb-nav__bar">
         <a className="pb-nav__brand" href="#top" aria-label={t.brandLabel}>
-          Pattern Blue
+          <Wordmark />
         </a>
         <button
           className="pb-nav__menu"
@@ -40,20 +41,7 @@ export function Navbar({ onOpenChat }: { onOpenChat: () => void }) {
           <div className="pb-nav__tools">
             <LangSwitch />
             <MarketSwitch />
-            <ThemeToggle />
-            {/* The chat is the one thing in the demo that works: it stays one click away while the page scrolls. */}
-            <button
-              className="pb-btn pb-btn--secondary"
-              type="button"
-              data-open-chat
-              onClick={() => {
-                setOpen(false);
-                onOpenChat();
-              }}
-            >
-              <Icon name="chat" />
-              {t.openChat}
-            </button>
+            <ThemeSwitch />
           </div>
         </div>
       </div>

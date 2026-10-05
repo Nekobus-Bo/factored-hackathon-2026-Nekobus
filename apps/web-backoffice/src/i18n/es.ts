@@ -19,9 +19,10 @@ export const es = {
     logout: "Salir",
     menu: "Menú",
     language: "Idioma",
-    themeToDark: "Cambiar a tema oscuro",
-    themeToLight: "Cambiar a tema claro",
-    signedInAs: "Sesión de {agent}",
+    theme: "Tema",
+    themeLight: "Claro",
+    themeDark: "Oscuro",
+    session: "Sesión",
   },
   common: {
     loading: "Cargando…",
@@ -213,6 +214,16 @@ export const es = {
       discard: "Descartar",
       turnInProgress: "El cliente está en medio de un turno. Reintenta y se reenvía el mismo mensaje.",
       noActiveTakeover: "Ya no tienes esta conversación. Toma el caso de nuevo.",
+    },
+    say: {
+      title: "Respuesta sugerida",
+      demo: "Solo demo",
+      hint: "Al usarla pasa al compositor para que la revises. No se envía sola y queda registrada con tu correo.",
+      use: "Usar",
+      scripts: {
+        chargeBelowThreshold: "Cargo no reconocido, bajo el umbral",
+        chargeAboveThreshold: "Cargo no reconocido, sobre el umbral",
+      },
     },
   },
   decide: {

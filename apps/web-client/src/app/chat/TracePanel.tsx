@@ -1,71 +1,61 @@
-// Detective mode's panel (ADR-0019): one turn as the system ran it, beside the chat, with its own scroll.
-// Two views of the same steps: a list where each step opens in place, and a timeline of bars on the turn's
-// clock with the picked step under it. Below 900px there is no room beside the chat, so the panel covers it
-// and a button goes back. Numbers and the system's own names, few words. Props only, no machine, so it
-// renders on the server in the tests exactly as it does in the page. Every value in a trace is masked as
-// the LLM saw it.
+// Detective mode's view (ADR-0019): one turn as the system ran it, a tab of the demo panel beside the chat (or, on a
+// window too narrow for that panel, in the chat panel's place). Two views of the
+// same steps: a list where each step opens in place, and a timeline of bars on the turn's clock with the picked
+// step under it. A stepper moves between the turns that came with a trace. Numbers and the system's own names,
+// few words. The header (title, the button back to the chat) belongs to the dock. Props only, no machine, so it
+// renders on the server in the tests exactly as it does in the page. Every value in a trace is masked as the
+// LLM saw it.
 
 import type { TraceEvent, TurnTrace } from "@pattern-blue/contracts";
-import { useId, useState, type CSSProperties, type ReactNode, type Ref } from "react";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { format, type Dictionary } from "../../i18n";
 import { Icon } from "../ui/Icon";
-import { conversationTotal, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, type TracedTurn } from "./trace-model";
+import { conversationTotal, defaultStep, formatMs, formatUsd, prettyJson, shortModel, splitPlaceholders, summarize, turnNeighbours, type TracedTurn } from "./trace-model";
 
 export type TraceView = "steps" | "timeline";
-export type DockPane = "chat" | "trace";
 
 const STATUS_TONE: Record<TraceEvent["status"], string> = { ok: "success", refused: "warning", error: "danger", skipped: "neutral" };
 
 export interface TracePanelProps {
   dict: Dictionary;
+  /** The replies that came with a trace, oldest first. */
   turns: readonly TracedTurn[];
+  /** Every reply of the conversation, traced or not: the "de total" of the stepper. */
+  total: number;
   selectedId: string | null;
   view: TraceView;
-  /** Below 900px the panel covers the chat while this is "trace". */
-  pane: DockPane;
   onSelect: (id: string) => void;
   onView: (view: TraceView) => void;
-  onBack: () => void;
-  backRef?: Ref<HTMLButtonElement>;
 }
 
-export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onView, onBack, backRef }: TracePanelProps) {
+export function TracePanel({ dict, turns, total, selectedId, view, onSelect, onView }: TracePanelProps) {
   const t = dict.chat.detective;
   const turn = turns.find((item) => item.id === selectedId) ?? turns[turns.length - 1] ?? null;
+  if (!turn) {
+    return (
+      <div className="pb-trace pb-trace--inpanel">
+        <div className="pb-trace__body">
+          <p className="pb-trace__empty">{t.empty}</p>
+        </div>
+      </div>
+    );
+  }
+  const { prev, next } = turnNeighbours(turns, turn.id);
+  const sum = summarize(turn.trace);
+  const all = conversationTotal(turns);
   return (
-    <aside
-      className="pb-trace pb-dock__trace"
-      id="dock-trace"
-      aria-label={t.toggle}
-      data-pane={pane}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onBack();
-      }}
-    >
-      <header className="pb-trace__head">
-        <div className="pb-trace__bar">
-          <button ref={backRef} className="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm pb-trace__back" type="button" aria-label={t.back} title={t.back} onClick={onBack}>
-            <Icon name="chat" />
-          </button>
-          <Icon name="search" />
-          {turns.length > 0 && (
-            <div className="pb-trace__turns" role="radiogroup" aria-label={t.turns}>
-              {turns.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="pb-trace__turn"
-                  role="radio"
-                  aria-checked={item.id === turn?.id}
-                  aria-label={format(t.turn, { n: item.n })}
-                  data-trace-turn={item.id}
-                  onClick={() => onSelect(item.id)}
-                >
-                  {item.n}
-                </button>
-              ))}
-            </div>
-          )}
+    <div className="pb-trace pb-trace--inpanel">
+      <div className="pb-trace__head">
+        <div className="pb-trace__nav">
+          <span className="pb-trace__stepper" role="group" aria-label={t.turns}>
+            <button className="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label={t.prev} aria-disabled={prev ? undefined : true} data-trace-prev onClick={() => prev && onSelect(prev.id)}>
+              <i className="pb-ico pb-ico--arrow pb-ico--prev" aria-hidden="true" />
+            </button>
+            <b aria-live="polite">{format(t.turnOf, { n: turn.n, total: Math.max(total, turn.n) })}</b>
+            <button className="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label={t.next} aria-disabled={next ? undefined : true} data-trace-next onClick={() => next && onSelect(next.id)}>
+              <Icon name="arrow" />
+            </button>
+          </span>
           <div className="pb-tabs pb-trace__views" role="radiogroup" aria-label={t.views}>
             {(["steps", "timeline"] as const).map((name) => (
               <button key={name} type="button" className="pb-tab" role="radio" aria-checked={view === name} data-trace-view={name} onClick={() => onView(name)}>
@@ -73,84 +63,72 @@ export function TracePanel({ dict, turns, selectedId, view, pane, onSelect, onVi
               </button>
             ))}
           </div>
-          {turns.length > 0 && <ConversationTotal dict={dict} turns={turns} />}
         </div>
-        {turn && <TurnSummary trace={turn.trace} />}
-      </header>
-      {/* A new turn or view starts at the top. */}
-      <div className="pb-trace__body" key={`${turn?.id ?? "none"}:${view}`}>
-        {turn ? (
-          view === "steps" ? (
-            <StepList dict={dict} trace={turn.trace} />
-          ) : (
-            <Timeline dict={dict} trace={turn.trace} />
-          )
-        ) : (
-          <p className="pb-trace__empty">{t.empty}</p>
-        )}
+        <dl className="pb-trace__totals">
+          <dt>{t.turnLabel}</dt>
+          <dd>
+            <span>{formatMs(turn.trace.total_ms)}</span>
+            <span>LLM {formatMs(sum.llmMs)}</span>
+            <span>{sum.tokens} tok</span>
+            <span>{formatUsd(sum.costUsd)}</span>
+          </dd>
+          <dt>{t.conversationLabel}</dt>
+          <dd>
+            <span>{all.tokens} tok</span>
+            <span>{formatUsd(all.costUsd)}</span>
+          </dd>
+        </dl>
+        <Spark trace={turn.trace} />
       </div>
-    </aside>
+      {/* A new turn or view starts at the top. */}
+      <div className="pb-trace__body" key={`${turn.id}:${view}`}>
+        {view === "steps" ? <StepList dict={dict} trace={turn.trace} /> : <Timeline dict={dict} trace={turn.trace} />}
+      </div>
+    </div>
   );
 }
 
-/** The whole conversation so far: tokens and dollars, at the right of the bar. */
-function ConversationTotal({ dict, turns }: { dict: Dictionary; turns: readonly TracedTurn[] }) {
-  const total = conversationTotal(turns);
+/**
+ * Under each reply that came with a trace, while the environment offers the mode: an action of the system with the
+ * icon, "Ver detective" and the turn's time. It opens that turn (beside the chat, or in place of it on a narrow window).
+ */
+export function TraceOpen({ dict, trace, onOpen }: { dict: Dictionary; trace: TurnTrace; onOpen?: () => void }) {
+  const time = formatMs(trace.total_ms);
   return (
-    <table className="pb-trace__total" aria-label={dict.chat.detective.conversationTotal}>
-      <tbody>
-        <tr>
-          <th scope="row" rowSpan={2}>
-            {dict.chat.detective.total}
-          </th>
-          <td>{`${total.tokens} tok`}</td>
-        </tr>
-        <tr>
-          <td>{formatUsd(total.costUsd)}</td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-/** Under each reply while detective mode is on: the turn's time and where it went; it opens the turn in the panel. */
-export function TraceStrip({ dict, trace, selected, onPick }: { dict: Dictionary; trace: TurnTrace; selected: boolean; onPick?: () => void }) {
-  return (
-    <button className="pb-trace-strip" type="button" aria-current={selected ? "true" : undefined} aria-controls="dock-trace" data-detective onClick={onPick}>
-      <Icon name="search" />
-      <b>{formatMs(trace.total_ms)}</b>
-      <span className="pb-sr">{dict.chat.detective.open}</span>
-      <Spark trace={trace} />
+    <button className="pb-action pb-trace-open" type="button" aria-label={format(dict.chat.detective.open, { time })} data-trace-open onClick={onOpen}>
+      <Icon name="detective" />
+      <span>
+        {dict.chat.detective.view} <span className="pb-trace-open__time">· {time}</span>
+      </span>
+      <Icon name="arrow" />
     </button>
   );
 }
 
-/** `5.36 s · LLM 5.25 s · 12047 tok · $0.00016`, then where the time went. */
-function TurnSummary({ trace }: { trace: TurnTrace }) {
-  const s = summarize(trace);
-  return (
-    <>
-      <p className="pb-trace__stats">
-        <b>{formatMs(trace.total_ms)}</b>
-        <span>LLM {formatMs(s.llmMs)}</span>
-        <span>{s.tokens} tok</span>
-        <span>{formatUsd(s.costUsd)}</span>
-      </p>
-      <Spark trace={trace} />
-    </>
-  );
-}
-
-/** Where the time of a turn went, one segment per step, in the step kind's color. */
+/**
+ * Where the time of a turn went, one segment per step, in the step kind's tone. The segments are laid end to end
+ * from the left (`--x` to `--x2`, shares of the turn): the stylesheet puts each boundary on a cell, so they never
+ * add up to more than the bar.
+ */
 function Spark({ trace }: { trace: TurnTrace }) {
   const total = trace.total_ms || 1;
+  let elapsed = 0;
   return (
     <span className="pb-trace-spark" aria-hidden="true">
       {trace.events
         .filter((event) => event.duration_ms)
-        .map((event) => (
-          <span key={event.seq} data-kind={event.kind} style={{ "--w": `${Math.max(0.6, ((event.duration_ms ?? 0) / total) * 100)}%` } as CSSProperties} />
-        ))}
+        .map((event) => {
+          const from = Math.min(100, (elapsed / total) * 100);
+          elapsed += event.duration_ms ?? 0;
+          const to = Math.min(100, (elapsed / total) * 100);
+          return (
+            <span
+              key={event.seq}
+              data-kind={event.kind}
+              style={{ "--x": `${from}%`, "--x2": `${to}%`, "--w": `${to - from}%` } as CSSProperties}
+            />
+          );
+        })}
     </span>
   );
 }
@@ -262,9 +240,9 @@ function stepHint(event: TraceEvent): string {
   return event.note ?? "";
 }
 
-/** Only what went wrong: an ok step says nothing. */
+/** Only a step that went wrong has a chip: an ok step says nothing, and neither does one that was skipped (the engine skips a step when there was nothing to do; its line says so). */
 function StatusChip({ dict, status }: { dict: Dictionary; status: TraceEvent["status"] }) {
-  if (status === "ok") return null;
+  if (status === "ok" || status === "skipped") return null;
   return (
     <span className="pb-chip" data-tone={STATUS_TONE[status]}>
       {dict.chat.detective.status[status]}

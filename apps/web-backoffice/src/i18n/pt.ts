@@ -17,9 +17,10 @@ export const pt: Dictionary = {
     logout: "Sair",
     menu: "Menu",
     language: "Idioma",
-    themeToDark: "Mudar para o tema escuro",
-    themeToLight: "Mudar para o tema claro",
-    signedInAs: "Sessão de {agent}",
+    theme: "Tema",
+    themeLight: "Claro",
+    themeDark: "Escuro",
+    session: "Sessão",
   },
   common: {
     loading: "Carregando…",
@@ -211,6 +212,16 @@ export const pt: Dictionary = {
       discard: "Descartar",
       turnInProgress: "O cliente está no meio de um turno. Tente de novo e a mesma mensagem é reenviada.",
       noActiveTakeover: "Você não está mais com esta conversa. Assuma o caso de novo.",
+    },
+    say: {
+      title: "Resposta sugerida",
+      demo: "Apenas demo",
+      hint: "Ao usá-la, ela vai para o campo de resposta para você revisar. Não é enviada sozinha e fica registrada com o seu e-mail.",
+      use: "Usar",
+      scripts: {
+        chargeBelowThreshold: "Cobrança não reconhecida, abaixo do limite",
+        chargeAboveThreshold: "Cobrança não reconhecida, acima do limite",
+      },
     },
   },
   decide: {
