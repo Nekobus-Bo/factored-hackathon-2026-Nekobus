@@ -1,3 +1,16 @@
+<!-- @dsCard group="Customer app" height=2860 width=752 subtitle="Detective mode inside the chat panel: icon candidates, the reply control, and the Steps and Time views drawn with the system" -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DetectiveMode — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:wdth,wght@62.5..100,100..900&display=swap">
+<style>
+/* ===== 1. Local changes of the repo that the artifact does not have yet (packages/design-tokens/local.css,
+   verbatim, main at 18680d7, 2026-10-04): the lean chat and detective mode as it ships today. ===== */
 /* Local changes to the Pattern Blue design system that are not in the design-system artifact yet.
    src/components.css stays a verbatim copy of the artifact; these rules load after it (index.css).
    They come from the declutter review of the customer chat and the landing (2026-10-02). When the artifact
@@ -5,12 +18,10 @@
    changes they imply are listed in README.md, "Local changes not yet in the artifact".
    Chat rules are scoped to .pb-dock, the customer chat: the back office keeps the artifact's look. */
 
-/* ---------- ChatBubble: a bigger panel (520px), full screen on phones ---------- */
-.pb-dock__panel { bottom: 84px; width: min(520px, calc(100% - 32px)); }
+/* ---------- ChatBubble: a bigger panel, full screen on phones ---------- */
+.pb-dock__panel { bottom: 84px; width: min(420px, calc(100% - 32px)); }
 .pb-dock .pb-chat { max-width: none; height: min(680px, calc(100dvh - 148px)); }
 .pb-chat__body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* Detective mode takes the panel's place and the log and the composer stay mounted, hidden: their `display` would win over the attribute. */
-.pb-chat__body[hidden], .pb-chat__composer[hidden] { display: none; }
 .pb-dock .pb-chat__log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
 @media (max-width: 480px) {
   .pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }
@@ -114,26 +125,6 @@
 .pb-chat__composer textarea { flex: 1; min-width: 0; min-height: 24px; max-height: 120px; margin: 0; padding: 10px 0; border: 0; outline: 0; resize: none; background: transparent; color: inherit; font: 400 16px/24px var(--font-sans); field-sizing: content; }
 .pb-chat__composer textarea::placeholder { color: var(--ink-muted); opacity: 1; }
 
-/* ---------- The composer while a one-time code is pending: six boxes for the six digits ---------- */
-/* The field is drawn as the system's digit cells (`pb-code__d`, in `pb-t-code`, the `mono-code` type), one per digit,
-   under a visible label; one real input lies over them, transparent, and the boxes show its value. The box to type in
-   shows the focus in its edge while the input has the focus, and a field that is off
-   (a message in flight) dims its boxes. "Cancelar" sits beside the boxes; the line under them (a code that was not
-   accepted, or the code that ran out and the button to ask for another) takes the whole row. */
-.pb-code-entry { flex-wrap: wrap; align-items: flex-end; }
-.pb-code-entry__field { display: grid; gap: 6px; flex: 1 1 0; min-width: 0; }
-/* Fit to the six boxes, so the focus ring and the input over them hug exactly the boxes, not the width of the field. */
-.pb-code-entry__cells { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 40px)); justify-content: start; gap: 6px; width: fit-content; max-width: 100%; }
-.pb-code-entry__cell { width: auto; letter-spacing: 0; }
-/* The box to type in shows the focus, and only while the field has it: there is no ring around the group. */
-.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"] { --edge: var(--focus); --bw: 2px; }
-.pb-code-entry__cells[data-disabled] .pb-code-entry__cell { --edge: var(--line); color: var(--ink-muted); }
-.pb-code-entry__input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; color: transparent; caret-color: transparent; font: inherit; cursor: text; }
-.pb-code-entry__input:disabled { cursor: progress; }
-.pb-code-entry__cancel { margin-bottom: 4px; }
-.pb-code-entry__note { flex: 1 1 100%; margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink); }
-.pb-code-entry__error { flex: 1 0 100%; align-self: stretch; justify-content: flex-start; margin: 0; }
-
 /* ---------- Feedback when the conversation ends: one line between hairlines, two equal buttons ---------- */
 .pb-rate { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ink-muted); font: 500 13px/18px var(--font-sans); }
 .pb-rate::before, .pb-rate::after { content: ""; flex: 1 1 8px; height: 1px; background: var(--line-strong); opacity: 0.5; }
@@ -147,105 +138,96 @@
 .pb-rate__done { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; }
 .pb-rate__done .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--violet); }
 
-/* ---------- Detective mode (ADR-0019): the trace view, a tab of the demo panel; an action under each reply ---------- */
-/* The icon: a hexagonal magnifier on the 16px grid (1.5 stroke, square caps, mitered joins). The lens is the system's
-   hexagon (R = 4, centre 6,7.5); the handle leaves the lower-right vertex on the line from the centre through it,
-   at 30 degrees, the third edge of the honeycomb, 5 long. */
-.pb-ico--detective { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M6 3.5 9.46 5.5v4L6 11.5 2.54 9.5v-4z'/%3E%3Cpath d='M9.46 9.5l4.33 2.5'/%3E%3C/svg%3E"); }
+/* ---------- Detective mode (ADR-0019): the trace panel beside the chat, a strip under each reply ---------- */
+.pb-ico--search { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5 14 14'/%3E%3C/svg%3E"); }
 
-/* The view is the detective tab of the demo panel beside the chat (see the demo panel section below) and, on a window
-   too narrow for that panel (under 920px), takes the place of the log and the composer inside the chat's panel. In
-   both the frame is the host's: the view has no border, shadow or ground of its own. The head stays, the body scrolls
-   on its own. */
-.pb-trace { display: grid; grid-template-rows: auto minmax(0, 1fr); color: var(--ink); }
-.pb-trace--inpanel { flex: 1; min-height: 0; }
-.pb-trace__head { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+/* The switch in the chat header: outlined in violet, filled while on, a bigger glyph than the close button. */
+.pb-trace-toggle .pb-ico { width: 20px; height: 20px; }
+
+/* Left of the chat panel and as tall. Below 900px it covers the chat while a turn is open; on a phone, the screen. */
+.pb-dock__trace { position: absolute; bottom: 84px; right: calc(32px + min(420px, 100% - 32px)); width: min(640px, calc(100% - 468px)); height: min(680px, calc(100dvh - 148px)); }
+@media (max-width: 899px) {
+  .pb-dock__trace { right: var(--space-4); width: min(420px, calc(100% - 32px)); }
+  .pb-dock__trace[data-pane="chat"] { display: none; }
+}
+@media (max-width: 480px) { .pb-dock__trace { position: fixed; inset: 0; width: auto; height: auto; } }
+
+/* The panel: the head stays, the body scrolls on its own. */
+.pb-trace { display: grid; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); background: var(--surface-100); color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
+.pb-trace__head { display: grid; gap: var(--space-3); padding: 12px var(--space-4); border-bottom: 1px solid var(--line); }
+.pb-trace__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.pb-trace__back { display: none; }
+@media (max-width: 899px) { .pb-trace__back { display: inline-flex; } }
+.pb-trace__views { border-bottom: 0; }
+.pb-trace__views .pb-tab { min-height: 32px; }
+.pb-trace__turns { display: flex; flex-wrap: wrap; gap: 4px; }
+.pb-trace__turn { min-width: 28px; height: 28px; padding: 0 6px; border: 1px solid var(--line); background: var(--surface-000); color: var(--ink-muted); cursor: pointer; font: 600 12px/26px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace__turn[aria-checked="true"] { border-color: var(--pattern); background: var(--pattern-soft); color: var(--ink); }
+/* The conversation's total at the right of the bar: a two-row table, the label beside its numbers. */
+.pb-trace__total { margin-left: auto; border-collapse: collapse; border: 1px solid var(--line-strong); color: var(--ink); font: 600 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace__total th { padding: 0 8px; border-right: 1px solid var(--line); background: var(--surface-200); color: var(--ink-muted); font: 600 11px/14px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; text-align: left; vertical-align: middle; }
+.pb-trace__total td { padding: 1px 8px; text-align: right; white-space: nowrap; }
+.pb-trace__stats { margin: 0; display: flex; flex-wrap: wrap; gap: 2px var(--space-4); font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.pb-trace__stats b { color: var(--ink); font-weight: 700; }
 .pb-trace__body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .pb-trace__empty { margin: 0; padding: var(--space-4); color: var(--ink-muted); }
+.pb-trace__turn:focus-visible, .pb-trace-step:focus-visible, .pb-trace-wf__row:focus-visible, .pb-trace-strip:focus-visible, .pb-trace-more > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
-/* Turns: one stepper, 44px targets. Tabs for the two views. */
-.pb-trace__nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.pb-trace__stepper { display: inline-flex; align-items: center; gap: var(--space-1); }
-.pb-trace__stepper b { min-width: 104px; text-align: center; font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
-.pb-trace__stepper .pb-ico--prev { transform: rotate(180deg); }
-.pb-trace__views .pb-tab { min-height: 44px; }
-
-/* Totals: label and data from the type scale, no boxed table. Amounts put the currency code first. */
-.pb-trace__totals { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-3); margin: 0; }
-.pb-trace__totals dt { font: 600 12px/20px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
-.pb-trace__totals dd { margin: 0; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
-.pb-trace__totals dd span + span::before { content: " · "; color: var(--ink-muted); }
-
-/* Under a reply: an action of the system (`pb-action`: condensed caps, violet, arrow at the end) with the detective
-   icon in front, "Modo detective" and the turn's time. It sits under the reply, at the left, and is a 44px target.
-   The time is data, not a label: mono and lower case. The leading icon stays put on hover (only the arrow steps). */
-.pb-trace-open { align-self: flex-start; margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-2); }
-.pb-action.pb-trace-open .pb-ico--detective { transform: none; }
-.pb-trace-open__time { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
-.pb-trace-step:focus-visible, .pb-trace-wf__row:focus-visible, .pb-trace-more > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-
-/* A hexagon marks a step; a bar is a row of hexagon cells. Two tones only: pattern blue (information) for the LLM,
-   the muted ink for every other step. Green, orange and red keep their meaning (verified, caution, danger) and are
-   not chart colors. */
-.pb-trace--inpanel { --pb-hexcell: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M5 0 9.33 2.5v5L5 10 .67 7.5v-5z'/%3E%3C/svg%3E"); }
-.pb-trace--inpanel [data-kind] { --pb-trace-k: var(--ink-muted); }
-.pb-trace--inpanel [data-kind="llm_call"] { --pb-trace-k: var(--pattern); }
+/* A step's kind gives its color: the dot, its share of the spark, its bar. */
 .pb-trace-dot { display: inline-block; flex: none; width: 8px; height: 8px; }
 .pb-trace-dot, .pb-trace-spark > span, .pb-trace-wf__bar { background: var(--pb-trace-k, var(--ink-muted)); }
-.pb-trace--inpanel .pb-trace-dot { width: 14px; height: 14px; -webkit-mask: var(--pb-hexcell) center / contain no-repeat; mask: var(--pb-hexcell) center / contain no-repeat; }
-/* Bars as a smooth two-tone bar; the hexagon cells come only where the browser can round a percentage to a cell. */
-.pb-trace-spark, .pb-trace-wf__track { display: block; position: relative; height: 10px; overflow: hidden; background: var(--line); }
-/* Both place their bars from the track's left (`--x`, `--w` as shares of the turn). A bar that starts at the very end
-   keeps its minimum width inside the track instead of sitting on its edge, where the track would clip it to nothing. */
-.pb-trace-spark > span, .pb-trace-wf__bar { --x: 0%; --w: 0%; position: absolute; top: 0; bottom: 0; left: min(var(--x), calc(100% - 3px)); width: var(--w); min-width: 3px; }
-.pb-trace-spark > span { --x2: 100%; }
-@supports (width: round(nearest, 50%, 10px)) {
-  /* A cell is 10px. The track is a whole number of cells wide (its last cell is never cut) and a bar sits on cells.
-     The summary tiles the turn on cell boundaries, so its segments never add up to more than the track, and a step
-     shorter than a cell has none. In the timeline a step shorter than a cell still shows one, wherever it starts. */
-  .pb-trace--inpanel .pb-trace-spark,
-  .pb-trace--inpanel .pb-trace-wf__track { width: round(down, 100%, 10px); -webkit-mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; }
-  .pb-trace--inpanel .pb-trace-spark > span { left: round(down, var(--x), 10px); width: calc(round(down, var(--x2), 10px) - round(down, var(--x), 10px)); min-width: 0; }
-  .pb-trace--inpanel .pb-trace-wf__bar { --l: min(round(down, var(--x), 10px), calc(100% - 10px)); left: var(--l); width: min(round(nearest, var(--w), 10px), calc(100% - var(--l))); min-width: 10px; }
-}
+:where(.pb-trace, .pb-trace-strip) [data-kind="encoder"] { --pb-trace-k: var(--pattern); }
+:where(.pb-trace, .pb-trace-strip) [data-kind="masking"] { --pb-trace-k: var(--violet); }
+:where(.pb-trace, .pb-trace-strip) [data-kind="llm_call"] { --pb-trace-k: var(--sync); }
+:where(.pb-trace, .pb-trace-strip) :is([data-kind="tool_call"], [data-kind="engine_handoff"]) { --pb-trace-k: var(--alert); }
+.pb-trace-spark { display: flex; width: 100%; height: 6px; background: var(--surface-200); overflow: hidden; }
+.pb-trace-spark > span { --w: 0%; flex: none; width: var(--w); height: 100%; }
 
-/* Steps: one row each, the detail opens under it. Names in `small`, every figure in `mono-data`. */
+/* Under a reply: the turn's time and where it went, dashed until the panel shows it. */
+.pb-trace-strip { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: center; width: 100%; margin-top: calc(-1 * var(--space-2)); padding: 5px 10px; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-muted); cursor: pointer; text-align: left; font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-strip b { color: var(--ink); font-weight: 700; }
+.pb-trace-strip[aria-current="true"] { border-style: solid; border-color: var(--pattern); background: var(--pattern-soft); color: var(--ink); }
+
+/* Steps: one row each, the detail opens under it. */
 .pb-trace-steps { margin: 0; padding: 0; list-style: none; }
-.pb-trace-step { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; width: 100%; min-height: 44px; padding: 8px var(--space-4); border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 400 13px/20px var(--font-sans); }
+.pb-trace-step { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; width: 100%; padding: 8px var(--space-4); border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 500 13px/18px var(--font-sans); }
 .pb-trace-step:hover, .pb-trace-step[aria-expanded="true"] { background: var(--surface-200); }
 .pb-trace-step__name { min-width: 0; overflow-wrap: anywhere; }
-.pb-trace-step__name small { display: block; color: var(--ink-muted); }
-.pb-trace-step__name small, .pb-trace-step__ms, .pb-trace-name, .pb-trace-wf__axis { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
-/* A tool goes by its own name, an identifier: its own case. */
-.pb-trace-name { text-transform: none; letter-spacing: 0; }
-.pb-trace-step__ms { letter-spacing: 0; text-transform: none; color: var(--ink-muted); white-space: nowrap; }
+.pb-trace-step__name small { display: block; color: var(--ink-muted); font: 500 11px/14px var(--font-mono); }
+/* A tool goes by its own name, an identifier: mono, its own case. */
+.pb-trace-name { font: 500 12px/18px var(--font-mono); text-transform: none; letter-spacing: 0; }
+.pb-trace-step__ms { font: 500 12px/16px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; color: var(--ink-muted); white-space: nowrap; }
 .pb-trace-step__detail:not([hidden]) { padding: 10px var(--space-4) 14px; border-bottom: 1px solid var(--line); background: var(--surface-000); }
 
 /* Timeline: bars on the turn's clock, the picked step under them. */
 .pb-trace-wf { display: grid; padding: 10px var(--space-4) 4px; }
-.pb-trace-wf__axis, .pb-trace-wf__row { display: grid; grid-template-columns: minmax(104px, 34%) minmax(0, 1fr) 64px; gap: 10px; align-items: center; }
-.pb-trace-wf__axis { padding-bottom: 4px; color: var(--ink-muted); }
+.pb-trace-wf__axis, .pb-trace-wf__row { display: grid; grid-template-columns: minmax(104px, 32%) minmax(0, 1fr) 60px; gap: 10px; align-items: center; }
+.pb-trace-wf__axis { padding-bottom: 4px; font: 500 11px/14px var(--font-mono); color: var(--ink-muted); }
 .pb-trace-wf__axis > span:nth-child(2) { display: flex; justify-content: space-between; }
-.pb-trace-wf__row { width: 100%; min-height: 44px; padding: 5px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 400 13px/20px var(--font-sans); }
+.pb-trace-wf__row { width: 100%; padding: 5px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 500 13px/18px var(--font-sans); }
 .pb-trace-wf__row:hover, .pb-trace-wf__row[aria-pressed="true"] { background: var(--surface-200); }
 .pb-trace-wf__name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.pb-trace-wf__track { position: relative; height: 14px; background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), var(--line) calc(25% - 1px) 25%); }
+.pb-trace-wf__bar { --x: 0%; --w: 0%; position: absolute; top: 2px; bottom: 2px; left: var(--x); width: var(--w); min-width: 3px; }
 .pb-trace-wf__row .pb-trace-step__ms { text-align: right; }
 .pb-trace-wf__detail { display: grid; gap: var(--space-3); margin: 10px var(--space-4) var(--space-4); padding: var(--space-3); border: 1px solid var(--line); background: var(--surface-000); }
-.pb-trace-wf__head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-trace-wf__head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 700 14px/18px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
 
 /* A step's detail: a line or two in mono, the masked text with its placeholders marked, the long parts folded. */
 .pb-trace-detail { display: grid; gap: var(--space-2); min-width: 0; }
-.pb-trace-detail__line { margin: 0; font: 500 13px/20px var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
-.pb-trace-code { margin: 0; max-height: 220px; overflow: auto; padding: 6px 8px; border: 1px solid var(--line); background: var(--surface-100); color: var(--ink); font: 500 13px/20px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pb-trace-detail__line { margin: 0; font: 500 12px/18px var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
+.pb-trace-code { margin: 0; max-height: 220px; overflow: auto; padding: 6px 8px; border: 1px solid var(--line); background: var(--surface-100); color: var(--ink); font: 400 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .pb-trace-ph { padding: 0 2px; background: var(--pattern-soft); color: var(--pattern); font: inherit; }
 .pb-trace-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .pb-trace-tags .pb-tag { text-transform: none; letter-spacing: 0; }
-.pb-trace-more > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-more > summary { cursor: pointer; font: 600 12px/18px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
 .pb-trace-more > * + * { margin-top: 6px; }
 .pb-trace-msg { display: grid; gap: 2px; padding-left: 8px; border-left: 3px solid var(--line-strong); }
 .pb-trace-msg[data-role="user"] { border-color: var(--pattern); }
-.pb-trace-msg__role { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
-.pb-trace-table { width: 100%; border-collapse: collapse; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-msg[data-role="assistant"] { border-color: var(--sync); }
+.pb-trace-msg[data-role="tool"] { border-color: var(--alert); }
+.pb-trace-msg__role { font: 600 11px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-table { width: 100%; border-collapse: collapse; font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; }
 .pb-trace-table td { padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .pb-trace-table td:last-child { padding-right: 0; text-align: right; }
 
@@ -253,6 +235,8 @@
 /* Hero: one fact line instead of a checked list. */
 .pb-hero__fact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: var(--space-1) 0 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
 .pb-hero__fact .pb-ico { vertical-align: 0; color: var(--sync); }
+/* Theme toggle with one button. */
+.pb-theme--single .pb-theme__btn { width: 44px; height: 44px; }
 /* S2PromoCard as a band from 720px: the mark on the left, title and line on the right. */
 .pb-section__band { max-width: 880px; margin: 0 auto; }
 @media (min-width: 720px) {
@@ -285,17 +269,14 @@
 /* ---------- Navigation: a count on a section, the agent's menu ---------- */
 .pb-nav__count { display: inline-grid; place-items: center; min-width: 22px; height: 20px; margin-left: 8px; padding: 0 6px; background: var(--violet); color: var(--on-violet); font: 700 12px/16px var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .pb-menu { position: relative; }
-/* The agent's button is a button of the system (`pb-btn pb-btn--ghost pb-btn--sm`): the user icon, the e-mail in the data
-   type (cut to 180px with an ellipsis; the whole address is its title) and the chevron. */
+.pb-menu__btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); background: var(--surface-100); color: var(--ink); cursor: pointer; font: 500 14px/20px var(--font-sans); }
 .pb-menu__btn .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
 .pb-menu__btn .pb-ico--chev1 { transform: rotate(180deg); }
 .pb-menu__btn[aria-expanded="true"] .pb-ico--chev1 { transform: none; }
-.pb-menu__agent { max-width: 180px; overflow: hidden; text-overflow: ellipsis; font: 500 13px/20px var(--font-mono); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
-.pb-menu__panel { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--line-strong); --face: var(--surface-100); position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 12px; width: 260px; padding: 14px; color: var(--ink); filter: drop-shadow(var(--shadow-float)); }
+.pb-menu__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-menu__panel { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--line-strong); --face: var(--surface-100); position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 10px; width: 240px; padding: 14px; color: var(--ink); filter: drop-shadow(var(--shadow-float)); }
 .pb-menu__panel[hidden] { display: none; }
-.pb-menu__section { display: grid; gap: 4px; }
-.pb-menu__section .pb-lang { justify-self: start; }
-.pb-menu__email { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.pb-menu__panel p { margin: 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); overflow-wrap: anywhere; }
 .pb-menu__panel hr { width: 100%; height: 1px; margin: 0; border: 0; background: var(--line); }
 
 /* ---------- A live view: a dot that says it refreshes ---------- */
@@ -511,195 +492,245 @@
 .pb-share { display: flex; align-items: center; gap: 10px; min-width: 200px; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
 .pb-share .pb-gauge { flex: 1; min-width: 80px; }
 
-/* ---------- Say: the choice of the message to send (ScriptChoice, approved 2026-10-04) ---------- */
-/* A band that offers 1..n messages. Choosing one sends that literal text as the sender's message (customer
-   chat) or puts it in the composer (back office: the suggested reply). It is never part of the log, and the
-   composer under it does not change. An option is the outlined twin of the bubble it becomes: the sender's
-   cut, side, padding and type, with a violet edge and no fill (the rule of pb-qr: never a filled one). From
-   four options on they turn into compact full-width rows with the message on one line. Put pb-cut on each
-   option. The band with a title and a hint and no list is a pointer, not a choice. */
-.pb-say { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); color: var(--ink); }
-.pb-say__head { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; }
-.pb-say__title { margin: 0; font: 600 14px/20px var(--font-sans); }
-.pb-say__hint { margin: 2px 0 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
-.pb-say__hint b { font-weight: 600; color: var(--ink); }
-.pb-say__list { list-style: none; display: grid; gap: 6px; margin: var(--space-2) 0 0; padding: 0; }
-.pb-say__list > li { justify-self: end; min-width: 0; max-width: 88%; }
-.pb-say__opt {
-  --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--violet); --face: var(--surface-100);
-  --say-accent: var(--violet); --say-quiet: var(--ink-muted); --say-mark: var(--pattern);
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center;
-  width: 100%; min-height: 44px; margin: 0; padding: 10px 14px; border: 0; background: none;
-  color: var(--ink); cursor: pointer; text-align: start; font: 400 15px/22px var(--font-sans);
-}
-.pb-say__body { display: grid; min-width: 0; }
-.pb-say__label { font: 600 13px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--say-accent); }
-.pb-say__text { overflow-wrap: anywhere; }
-.pb-say__note { display: flex; align-items: flex-start; gap: 6px; margin-top: 2px; font: 400 13px/18px var(--font-sans); color: var(--say-quiet); }
-.pb-say__note .pb-ico { width: 14px; height: 14px; margin-top: 2px; vertical-align: 0; color: var(--say-mark); }
-.pb-say__note .pb-t-mono { font-size: 12.5px; line-height: 18px; }
-.pb-say__side { display: inline-flex; align-items: center; gap: var(--space-2); }
-.pb-say__go { display: inline-flex; align-items: center; gap: 6px; color: var(--say-accent); white-space: nowrap; font: 600 13px/16px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
-.pb-say__go .pb-ico { vertical-align: 0; }
-/* The arrow points down, at the composer the text goes to. */
-.pb-say__go .pb-ico--arrow { transform: rotate(90deg); }
-/* States. Pressed is the bubble it becomes; disabled is pb-qr's. */
-.pb-say__opt:hover { --face: var(--violet-soft); }
-.pb-say__opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
-.pb-say__opt:active, .pb-say__opt[aria-pressed="true"] { --face: var(--violet); --say-accent: var(--on-violet); --say-quiet: var(--on-violet); --say-mark: var(--on-violet); color: var(--on-violet); }
-.pb-say__opt:disabled { --edge: var(--line); --face: var(--surface-200); --say-accent: var(--ink-muted); --say-quiet: var(--ink-muted); --say-mark: var(--ink-muted); color: var(--ink-muted); cursor: not-allowed; }
-.pb-say__opt[aria-pressed="true"]:disabled { --edge: var(--violet); --face: var(--violet); --say-accent: var(--on-violet); --say-quiet: var(--on-violet); --say-mark: var(--on-violet); color: var(--on-violet); }
-/* Customer chat: the option takes the customer's mirrored cut. */
-.pb-dock .pb-say__opt { --c-tl: 0px; --c-br: 0px; --c-tr: var(--cut-md); --c-bl: var(--cut-md); }
-/* Back office: 32px controls and the agent's bubble metrics. */
-.pb-convo .pb-say__list > li { max-width: 84%; }
-.pb-convo .pb-say__opt { min-height: 32px; padding: 8px 12px; }
-/* Four options or more: compact rows across the band, the message on one line. */
-.pb-say__list:has(> li:nth-child(4)) > li { justify-self: stretch; max-width: none; }
-.pb-say__list:has(> li:nth-child(4)) .pb-say__opt { padding: 6px var(--space-3); font: 400 14px/20px var(--font-sans); }
-.pb-say__list:has(> li:nth-child(4)) .pb-say__text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* ===== 2. App glue the markup needs (apps/web-client app.css) ===== */
+.chat-text { white-space: pre-wrap; }
+.pb-dock .pb-chat__title { white-space: nowrap; }
+.chat-head-chip { margin-left: auto; margin-right: var(--space-2); }
 
-/* ---------- The demo panel (ScriptChoice, approved 2026-10-04; shared with detective mode, ADR-0019) ---------- */
-/* One panel at the left of the chat, as tall as it, opened from one button in the chat header ("Menú demo"), closed by default. It
-   has two tabs: the demo guide and, where the environment offers it, the detective view (`pb-trace`). The chat and its
-   composer stay in sight beside it. Nothing of it is inside the conversation. Below 920px there is no room beside the
-   chat (the panel is 340px wide at 920px and the chat 520px, with the gaps): the panel and the guide are not offered,
-   and the header button opens the detective view in the chat's place instead (see the detective section). The options inside the
-   guide are the `pb-say` ones above. */
-.pb-side { --c-tl: var(--cut-lg); --c-br: var(--cut-lg); --edge: var(--line-strong); --face: var(--surface-100); display: flex; flex-direction: column; min-width: 0; color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
-/* Its display would win over the attribute: the panel is hidden while it is closed or the chat is. */
-.pb-side[hidden] { display: none; }
-/* 340px at a 920px window, 520px from 1100px; its left edge never goes under 12px from the window's. */
-.pb-dock__side { position: absolute; bottom: 84px; right: calc(48px + min(520px, 100% - 32px)); width: min(520px, calc(100% - 580px)); height: min(680px, calc(100dvh - 148px)); }
-@media (max-width: 919px) { .pb-dock__side { display: none; } }
-.pb-side__head { display: flex; align-items: stretch; justify-content: space-between; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--line); }
-.pb-side__head > .pb-chat__title { align-self: center; padding-left: var(--space-2); }
-.pb-side__head > .pb-tag { align-self: center; }
-/* The tabs sit on the head's rule: their own rule and the selected bar replace it. */
-.pb-side__head .pb-tabs { flex-wrap: nowrap; border-bottom: 0; }
-.pb-side__head .pb-tab { min-height: 44px; }
-.pb-side__head .pb-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
-.pb-side__head .pb-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--violet); }
-.pb-side__content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.pb-guide__body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); }
-.pb-guide__title { margin: 0; font: 600 14px/20px var(--font-sans); }
-.pb-guide__title:focus { outline: none; }
-.pb-guide__hint { margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
-/* The script as a track: each step has its two-figure numeral in the stencil face of the system's list numerals, a rail
-   joins them, and the three states differ by more than colour. Done: a check, the label "Enviado", the text dimmed.
-   Now: the label in violet and the option to send, the most prominent thing in the panel. Next: the message in the
-   normal ink in an outlined card, which is not a button (no hover, no pointer). Message text is 14px, labels the
-   `label` style. */
-.pb-guide__progress { display: block; margin-top: 2px; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
-.pb-guide__steps { counter-reset: gstep; list-style: none; display: grid; margin: 0; padding: 0; }
-.pb-guide__step { position: relative; counter-increment: gstep; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-2); padding-bottom: var(--space-4); color: var(--ink); }
-.pb-guide__step::before { content: counter(gstep, decimal-leading-zero); font: 800 20px/24px var(--font-stencil); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; color: var(--ink); }
-.pb-guide__step::after { content: ""; position: absolute; left: 12px; top: 30px; bottom: 6px; width: 1px; background: var(--line-strong); }
-.pb-guide__step:last-child { padding-bottom: 0; }
-.pb-guide__step:last-child::after { display: none; }
-.pb-guide__step[data-state="done"]::before, .pb-guide__step[data-state="done"] { color: var(--ink-muted); }
-.pb-guide__step[data-state="current"]::before { color: var(--violet); }
-.pb-guide__main { display: grid; gap: 4px; min-width: 0; align-content: start; }
-.pb-guide__label { display: flex; align-items: center; gap: 6px; min-height: 24px; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
-.pb-guide__label .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
-.pb-guide__step[data-state="current"] .pb-guide__label { color: var(--violet); }
-.pb-guide__sent { margin: 0; font: 400 14px/20px var(--font-sans); overflow-wrap: anywhere; }
-.pb-guide__card { margin: 0; padding: 10px 12px; border: 1px solid var(--line-strong); color: var(--ink); font: 400 14px/20px var(--font-sans); overflow-wrap: anywhere; }
-.pb-guide__card b { font-weight: 600; }
-.pb-guide__step[data-state="current"] .pb-guide__card { border-color: var(--violet); }
-.pb-guide__foot { padding: 0 var(--space-4) var(--space-2); border-top: 1px solid var(--line); }
-/* In the guide an option takes the panel's width; the market sits over the send glyph. */
-.pb-guide__body .pb-say__list { margin: 0; }
-.pb-guide__body .pb-say__list > li { justify-self: stretch; max-width: none; }
-.pb-guide__body .pb-say__opt { align-items: start; }
-.pb-guide__body .pb-say__side { flex-direction: column; align-items: flex-end; gap: 6px; }
-.pb-guide__body .pb-say__list:has(> li:nth-child(4)) .pb-say__text { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+/* ===== 3. THE PROPOSAL (2026-10-04): detective mode inside the chat panel, drawn with the system ===== */
 
-/* ---------- Two calls for attention, in a loop and bounded (they change one rule of the system, see README) ---------- */
-/* The system's only loop is the typing indicator. These two are the same kind of movement, mechanical and in steps: the
-   face of a control swaps between its rest and its hover (`violet-soft`) every half period, the period being ten system
-   steps (1.6s) and the timing `ease-step`. No glow, no shadow, no gradient. Each runs only while it can be used:
-   - the header's "Menú demo" button until the panel has been open once in the visit (`data-seen`), and never while it is
-     open (`aria-pressed`);
-   - the option of the guide's current step while it is enabled.
-   Both stop, showing the hover face, under the pointer or the keyboard focus, and neither runs with reduced motion. */
-@keyframes pb-nudge {
-  0%, 49.99% { --face: var(--surface-100); }
-  50%, 100% { --face: var(--violet-soft); }
-}
-.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
-.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):hover,
-.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):focus-visible { animation: none; --face: var(--violet-soft); }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):hover,
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):focus-visible,
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):active { animation: none; }
-.pb-guide__step[data-state="current"] .pb-say__opt:not(:disabled):focus-visible { --face: var(--violet-soft); }
-@media (prefers-reduced-motion: reduce) {
-  .pb-demo-toggle, .pb-guide__step[data-state="current"] .pb-say__opt { animation: none; }
-}
+/* 3.1 The icon: a hexagonal magnifier on the system's 16px grid (1.5 stroke, square caps, mitered joins).
+   The lens is the system's hexagon (R = 4, centre 6,7.5). The handle leaves the lower-right vertex on the
+   line from the centre through that vertex, 30 degrees, the third edge of the honeycomb: length 5. */
+.pb-ico--detective { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M6 3.5 9.46 5.5v4L6 11.5 2.54 9.5v-4z'/%3E%3Cpath d='M9.46 9.5l4.33 2.5'/%3E%3C/svg%3E"); }
 
-/* ---------- Focus on the fields: in the edge, not in a ring around them (this changes a rule of the system, see README) ---------- */
-/* The artifact outlines a field that has the focus (`.pb-field:focus-within`). Here the field's own chamfered edge turns to
-   the focus colour, 2px thick, while it has the cursor, and wins over the hover edge; an invalid field keeps its red. The
-   focus is as visible as before, only inside the shape. The code field's boxes do the same (above). A checkbox keeps the
-   system's ring, and only for the keyboard (`:focus-visible`), instead of the browser's own. Buttons, links, tabs and the
-   rest keep the ring they have: it shows only for the keyboard. */
-.pb-field:focus-within { outline: 0; --edge: var(--focus); --bw: 2px; }
-.pb-field[data-invalid]:focus-within { --edge: var(--crimson); }
-.pb-check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+/* 3.2 The view lives inside the chat panel, in place of the log and the composer: no second panel.
+   The chat's chamfered frame is the frame; the trace has no border, shadow or ground of its own. */
+.pb-trace--inpanel { flex: 1; min-height: 0; border: 0; background: transparent; filter: none; }
+.pb-trace--inpanel .pb-trace__head { gap: var(--space-2); padding: var(--space-3) var(--space-4); }
 
-/* ---------- Header tools: a label and its options, in both apps ---------- */
-/* Language, country (market) and theme in the landing's bar, theme and language in the back office's. Each is a group:
-   a visible label in the `label` style of the system, then its options as radios drawn like the language switch
-   (`pb-lang`, `pb-lang__btn`; the theme's carry a sun and a moon). The theme has no visible label (it is named for
-   assistive technology). There are no lines anywhere in the tools: not between groups (only more room than between the
-   options of one group), not between options, not round them. What tells the label from the options is the type, not
-   a box: the label is small muted label type; the options are heavier, in the full ink; the one checked is a block
-   filled with `violet-soft` and its text in violet. Where the bar folds into its menu the groups stack, label at the
-   left, options at the right. The bar folds up to 1140px (the system's own fold is 800px): the wordmark, the links and
-   the groups need about 1085px, with a margin for the real width of the type. */
-.pb-navtool { display: inline-flex; align-items: center; gap: var(--space-1); }
-.pb-navtool__label { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
-.pb-navtool + .pb-navtool, .pb-navtool + .pb-menu { margin-left: var(--space-4); }
-.pb-lang__btn .pb-ico { width: 18px; height: 18px; vertical-align: 0; }
-.pb-lang--fill { display: inline-flex; gap: 2px; }
-.pb-lang--fill .pb-lang__btn { border-left: 0; color: var(--ink); font-weight: 700; font-size: 14px; }
-.pb-lang--fill .pb-lang__btn::after { display: none; }
-.pb-lang--fill .pb-lang__btn:hover { background: var(--surface-200); }
-.pb-lang--fill .pb-lang__btn[aria-checked="true"] { background: var(--violet-soft); color: var(--violet); }
-@media (max-width: 1140px) {
-  .pb-nav__tools { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-2); }
-  .pb-nav__tools > .pb-navtool, .pb-nav__tools > .pb-menu { margin-left: 0; }
-  .pb-nav__tools > .pb-navtool { justify-content: space-between; }
-  .pb-nav__tools > .pb-menu .pb-menu__btn { width: 100%; justify-content: space-between; }
-}
-/* The system's fold (the rules of its own `max-width: 800px` block) from 801px up to 1140px. */
-@media (min-width: 801px) and (max-width: 1140px) {
-  .pb-nav__bar { justify-content: space-between; gap: 12px; }
-  .pb-nav__menu { display: inline-flex; }
-  .pb-nav__collapse { display: none; position: absolute; top: 100%; left: 0; right: 0; flex: none; flex-direction: column; align-items: stretch; gap: 8px; padding: 4px 16px 20px; background: var(--surface-100); border-bottom: 1px solid var(--line-strong); }
-  .pb-nav[data-open="true"] .pb-nav__collapse { display: flex; }
-  .pb-nav__links { flex-direction: column; gap: 0; }
-  .pb-nav__link { min-height: 48px; padding: 0; border-bottom: 1px solid var(--line); }
-  .pb-nav__link::after { left: 0; right: 0; bottom: -1px; }
-  .pb-nav__tools { margin-left: 0; padding-top: 12px; }
-}
+/* 3.3 Turns: one stepper, 44px targets, instead of a row of 28px numbered squares. */
+.pb-trace__nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.pb-trace__stepper { display: inline-flex; align-items: center; gap: var(--space-1); }
+.pb-trace__stepper b { min-width: 104px; text-align: center; font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-trace__stepper .pb-ico--prev { transform: rotate(180deg); }
+.pb-trace--inpanel .pb-trace__views .pb-tab { min-height: 44px; }
 
-/* ---------- The wordmark: capitals, in two colours (this changes a rule of the system, see README) ---------- */
-/* The system sets the name in one colour, `wordmark` or `ink`. In the bar and the footer of both apps it shows in capitals
-   (the text stays "Pattern Blue": only how it is drawn changes) with "Pattern" in the main ink and "Blue" in the brand's
-   blue, in the title type they already use. The drawn card of the hero is not touched. */
-.pb-nav__brand, .pb-footer__wordmark { text-transform: uppercase; }
-.pb-wordmark__ink { color: var(--ink); }
-.pb-wordmark__blue { color: var(--wordmark); }
+/* 3.4 Totals: label and data from the type scale, no boxed table. Amounts put the currency code first. */
+.pb-trace__totals { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-3); margin: 0; }
+.pb-trace__totals dt { font: 600 12px/20px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace__totals dd { margin: 0; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-trace__totals dd span + span::before { content: " · "; color: var(--ink-muted); }
 
-/* ---------- "Si pierdes tu tarjeta": the state chips sit on one line ---------- */
-/* The four steps share a row from 960px up (the system's own breakpoint for the row). The text of a step takes two or
-   three lines, so the chips at the foot of the steps would sit at different heights. Each step becomes a column that
-   takes the height of the row, and the chip is pushed to its foot. Stacked on a narrow screen there is nothing to align. */
-@media (min-width: 960px) {
-  .pb-flow__item { display: flex; flex-direction: column; gap: 8px; }
-  .pb-flow__state { margin-top: auto; padding-top: 4px; align-self: flex-start; }
-}
+/* 3.5 Hexagons. A step's marker is a hexagon; a bar is a row of hexagon cells. Two tones only: pattern
+   blue (information) for the LLM, the muted ink for every other step. Green, orange and red keep their
+   meaning (verified, caution, danger) and are not chart colors. */
+.pb-trace--inpanel, .pb-trace-open { --pb-hexcell: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M5 0 9.33 2.5v5L5 10 .67 7.5v-5z'/%3E%3C/svg%3E"); }
+.pb-trace--inpanel [data-kind] { --pb-trace-k: var(--ink-muted); }
+.pb-trace--inpanel [data-kind="llm_call"] { --pb-trace-k: var(--pattern); }
+.pb-trace--inpanel .pb-trace-dot { width: 14px; height: 14px; background: var(--pb-trace-k); -webkit-mask: var(--pb-hexcell) center / contain no-repeat; mask: var(--pb-hexcell) center / contain no-repeat; }
+.pb-trace--inpanel .pb-trace-spark,
+.pb-trace--inpanel .pb-trace-wf__track { display: flex; position: relative; height: 10px; overflow: hidden; background: var(--line); -webkit-mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; }
+.pb-trace--inpanel .pb-trace-spark > span { flex: none; width: var(--w); height: 100%; background: var(--pb-trace-k); }
+.pb-trace--inpanel .pb-trace-wf__bar { position: absolute; top: 0; bottom: 0; left: var(--x); width: var(--w); min-width: 0; height: auto; background: var(--pb-trace-k); }
 
+/* 3.6 Type from the scale: `small` for names, `mono-data` for every figure. No 11px or 12px mono. */
+.pb-trace--inpanel .pb-trace-step { grid-template-columns: 14px minmax(0, 1fr) auto auto; min-height: 44px; font: 400 13px/20px var(--font-sans); }
+.pb-trace--inpanel .pb-trace-step__name small,
+.pb-trace--inpanel .pb-trace-step__ms,
+.pb-trace--inpanel .pb-trace-name,
+.pb-trace--inpanel .pb-trace-wf__axis { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace--inpanel .pb-trace-wf__row { min-height: 44px; font: 400 13px/20px var(--font-sans); }
+.pb-trace--inpanel .pb-trace-wf__axis, .pb-trace--inpanel .pb-trace-wf__row { grid-template-columns: minmax(104px, 34%) minmax(0, 1fr) 64px; }
+
+/* 3.7 In the chat: one quiet control under a reply, the icon and the turn's time. No bar in the log. */
+.opt .pb-trace-open { margin-top: 0; }
+.pb-trace-open { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 44px; margin-top: calc(-1 * var(--space-2)); padding: 0 var(--space-2); border: 0; background: none; color: var(--ink-muted); cursor: pointer; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-open:hover { color: var(--ink); }
+.pb-trace-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-trace--inpanel .pb-trace-detail__line { font: 500 13px/20px var(--font-mono); }
+.pb-trace--inpanel .pb-trace-code { font: 500 13px/20px var(--font-mono); }
+.pb-trace--inpanel .pb-trace-more > summary { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; min-height: 44px; display: flex; align-items: center; }
+.pb-trace--inpanel .pb-trace-wf__head { font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; }
+
+/* ===== 4. Preview layout only ===== */
+.stage { display: grid; gap: 40px; justify-items: start; padding: 24px; }
+.group { display: grid; gap: 10px; }
+.group--chat { width: 520px; }
+.group--wide { width: 704px; }
+.stage .pb-dock { position: static; height: auto; }
+.stage .pb-dock__panel { position: static; width: 520px; height: 680px; margin: 0; }
+.opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.opt { display: grid; gap: 12px; justify-items: start; align-content: start; padding: 16px; border: 1px solid var(--line); background: var(--surface-100); color: var(--ink); }
+.opt > svg { width: 120px; height: 120px; }
+.opt__sizes { display: inline-flex; align-items: center; gap: 12px; }
+.opt__sizes .pb-ico { vertical-align: 0; }
+.opt__20 { width: 20px; height: 20px; }
+.opt__btns { display: inline-flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="group group--wide">
+    <span class="pb-t-label">Icono · lupa hexagonal: el mango sale del vértice, en línea con el centro</span>
+    <div class="opts">
+      <div class="opt">
+        <span class="pb-t-label">Construcción</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M6 7.5 13.79 12" stroke-width="0.2" stroke-dasharray="0.5 0.5"/><path d="M6 3.5 9.46 5.5v4L6 11.5 2.54 9.5v-4z"/><path d="M9.46 9.5l4.33 2.5"/></svg>
+      </div>
+      <div class="opt">
+        <span class="pb-t-label">16 · 20 · 24 px</span>
+        <span class="opt__sizes"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i><i class="pb-ico pb-ico--detective opt__20" aria-hidden="true"></i><i class="pb-ico pb-ico--lg pb-ico--detective" aria-hidden="true"></i></span>
+      </div>
+      <div class="opt">
+        <span class="pb-t-label">Apagado · encendido</span>
+        <span class="opt__btns">
+          <button class="pb-btn pb-btn--secondary pb-btn--icon pb-btn--sm pb-trace-toggle" type="button" aria-pressed="false" aria-label="Modo detective, apagado"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i></button>
+          <button class="pb-btn pb-btn--primary pb-btn--icon pb-btn--sm pb-trace-toggle" type="button" aria-pressed="true" aria-label="Modo detective, encendido"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i></button>
+        </span>
+      </div>
+      <div class="opt">
+        <span class="pb-t-label">Bajo una respuesta</span>
+        <button class="pb-trace-open" type="button" aria-label="Ver este turno en el modo detective, 5.33 s"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i>5.33 s</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="group group--chat">
+    <span class="pb-t-label">Chat · el modo detective se ofrece: icono en la cabecera y bajo cada respuesta</span>
+    <div class="pb-dock">
+      <section class="pb-chat pb-dock__panel" aria-label="Chat con el asistente">
+        <header class="pb-chat__head">
+          <span class="pb-chat__title"><i class="pb-ico pb-ico--hex" aria-hidden="true"></i> Asistente</span>
+          <span class="chat-head-chip"><span class="pb-chip" data-state="otp-pending"><i class="pb-ico pb-ico--clock" aria-hidden="true"></i>Código pendiente</span></span>
+          <button class="pb-btn pb-btn--secondary pb-btn--icon pb-btn--sm pb-trace-toggle" type="button" aria-pressed="false" aria-label="Modo detective" title="Modo detective"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i></button>
+          <button class="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label="Cerrar chat"><i class="pb-ico pb-ico--x" aria-hidden="true"></i></button>
+        </header>
+        <div class="pb-chat__body">
+          <div class="pb-chat__log" role="log" aria-live="polite" aria-label="Mensajes">
+            <div class="pb-msg pb-msg--assistant"><span class="pb-sr">Asistente: </span><span class="chat-text">Hola, soy el asistente de Pattern Blue. ¿En qué te ayudo?</span></div>
+            <div class="pb-msg pb-msg--customer"><span class="pb-sr">Tú: </span><span class="chat-text">Me salió un cobro en la tarjeta de crédito que no hice.</span><span class="pb-msg__time">10:39</span></div>
+            <div class="pb-msg pb-msg--assistant"><span class="pb-sr">Asistente: </span><span class="chat-text">Para revisar ese cobro necesito identificarte. ¿Me indicas tu tipo y número de documento?</span><span class="pb-msg__time">10:39</span></div>
+            <button class="pb-trace-open" type="button" aria-label="Ver este turno en el modo detective, 1.92 s"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i>1.92 s</button>
+            <div class="pb-msg pb-msg--customer"><span class="pb-sr">Tú: </span><span class="chat-text">Mi cédula es 1020304050.</span><span class="pb-msg__time">10:40</span></div>
+            <div class="pb-msg pb-msg--assistant"><span class="pb-sr">Asistente: </span><span class="chat-text">Gracias. Escribe aquí el código que te envié.</span><span class="pb-msg__time">10:40</span></div>
+            <button class="pb-trace-open" type="button" aria-label="Ver este turno en el modo detective, 5.33 s"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i>5.33 s</button>
+          </div>
+        </div>
+        <form class="pb-chat__composer" onsubmit="return false">
+          <label class="pb-field"><span class="pb-sr">Mensaje</span><textarea rows="1" placeholder="Escribe tu mensaje"></textarea></label>
+          <button class="pb-btn pb-btn--primary pb-btn--icon" type="submit" aria-label="Enviar mensaje" disabled="disabled"><i class="pb-ico pb-ico--send" aria-hidden="true"></i></button>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="group group--chat">
+    <span class="pb-t-label">Modo detective · vista Pasos: ocupa el lugar del chat</span>
+    <div class="pb-dock">
+      <section class="pb-chat pb-dock__panel" aria-label="Modo detective">
+        <header class="pb-chat__head">
+          <span class="pb-chat__title"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i> Modo detective</span>
+          <span class="chat-head-chip"></span>
+          <button class="pb-btn pb-btn--primary pb-btn--icon pb-btn--sm pb-trace-toggle" type="button" aria-pressed="true" aria-label="Volver al chat" title="Volver al chat"><i class="pb-ico pb-ico--chat" aria-hidden="true"></i></button>
+          <button class="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label="Cerrar chat"><i class="pb-ico pb-ico--x" aria-hidden="true"></i></button>
+        </header>
+        <div class="pb-trace pb-trace--inpanel">
+          <div class="pb-trace__head">
+            <div class="pb-trace__nav">
+              <span class="pb-trace__stepper">
+                <button class="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label="Turno anterior"><i class="pb-ico pb-ico--arrow pb-ico--prev" aria-hidden="true"></i></button>
+                <b>Turno 2 de 2</b>
+                <button class="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label="Turno siguiente" disabled="disabled"><i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></button>
+              </span>
+              <div class="pb-tabs pb-trace__views" role="radiogroup" aria-label="Vista">
+                <button type="button" class="pb-tab" role="radio" aria-checked="true">Pasos</button>
+                <button type="button" class="pb-tab" role="radio" aria-checked="false">Tiempo</button>
+              </div>
+            </div>
+            <dl class="pb-trace__totals">
+              <dt>Turno</dt><dd><span>5.33 s</span><span>LLM 5.17 s</span><span>34 615 tok</span><span>USD 0.00047</span></dd>
+              <dt>Conversación</dt><dd><span>45 902 tok</span><span>USD 0.00063</span></dd>
+            </dl>
+            <span class="pb-trace-spark" aria-hidden="true">
+              <span data-kind="encoder" style="--w: 10px"></span><span data-kind="masking" style="--w: 10px"></span><span data-kind="llm_call" style="--w: 200px"></span><span data-kind="tool_call" style="--w: 10px"></span><span data-kind="llm_call" style="--w: 150px"></span><span data-kind="tool_call" style="--w: 10px"></span><span data-kind="llm_call" style="--w: 90px"></span>
+            </span>
+          </div>
+          <div class="pb-trace__body">
+            <ol class="pb-trace-steps">
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="encoder"></span><span class="pb-trace-step__name"><span>Encoder</span><small>provide_identity_data · 98%</small></span><span class="pb-trace-step__ms">41 ms</span></button></li>
+              <li>
+                <button class="pb-trace-step" type="button" aria-expanded="true"><span class="pb-trace-dot" data-kind="masking"></span><span class="pb-trace-step__name"><span>Enmascarado</span><small>[DOC_1]</small></span><span class="pb-trace-step__ms">3 ms</span></button>
+                <div class="pb-trace-step__detail"><div class="pb-trace-detail"><pre class="pb-trace-code">Mi cédula es <mark class="pb-trace-ph">[DOC_1]</mark>.</pre></div></div>
+              </li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="llm_call"></span><span class="pb-trace-step__name"><span>LLM #1</span><small>11 204 tok → customer.match</small></span><span class="pb-trace-step__ms">2.38 s</span></button></li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="tool_call"></span><span class="pb-trace-step__name"><code class="pb-trace-name">customer.match</code><small>ANONYMOUS</small></span><span class="pb-trace-step__ms">52 ms</span></button></li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="llm_call"></span><span class="pb-trace-step__name"><span>LLM #2</span><small>11 569 tok → otp.send</small></span><span class="pb-trace-step__ms">1.74 s</span></button></li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="tool_call"></span><span class="pb-trace-step__name"><code class="pb-trace-name">otp.send</code><small>IDENTIFIED</small></span><span class="pb-trace-step__ms">63 ms</span></button></li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="llm_call"></span><span class="pb-trace-step__name"><span>LLM #3</span><small>11 842 tok → text</small></span><span class="pb-trace-step__ms">1.05 s</span></button></li>
+              <li><button class="pb-trace-step" type="button" aria-expanded="false"><span class="pb-trace-dot" data-kind="blocks"></span><span class="pb-trace-step__name"><span>Respuesta</span><small>text, receipt</small></span><span class="pb-trace-step__ms">—</span></button></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="group group--chat">
+    <span class="pb-t-label">Modo detective · vista Tiempo: barras de celdas hexagonales</span>
+    <div class="pb-dock">
+      <section class="pb-chat pb-dock__panel" aria-label="Modo detective">
+        <header class="pb-chat__head">
+          <span class="pb-chat__title"><i class="pb-ico pb-ico--detective" aria-hidden="true"></i> Modo detective</span>
+          <span class="chat-head-chip"></span>
+          <button class="pb-btn pb-btn--primary pb-btn--icon pb-btn--sm pb-trace-toggle" type="button" aria-pressed="true" aria-label="Volver al chat" title="Volver al chat"><i class="pb-ico pb-ico--chat" aria-hidden="true"></i></button>
+          <button class="pb-btn pb-btn--ghost pb-btn--icon pb-btn--sm" type="button" aria-label="Cerrar chat"><i class="pb-ico pb-ico--x" aria-hidden="true"></i></button>
+        </header>
+        <div class="pb-trace pb-trace--inpanel">
+          <div class="pb-trace__head">
+            <div class="pb-trace__nav">
+              <span class="pb-trace__stepper">
+                <button class="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label="Turno anterior"><i class="pb-ico pb-ico--arrow pb-ico--prev" aria-hidden="true"></i></button>
+                <b>Turno 2 de 2</b>
+                <button class="pb-btn pb-btn--ghost pb-btn--icon" type="button" aria-label="Turno siguiente" disabled="disabled"><i class="pb-ico pb-ico--arrow" aria-hidden="true"></i></button>
+              </span>
+              <div class="pb-tabs pb-trace__views" role="radiogroup" aria-label="Vista">
+                <button type="button" class="pb-tab" role="radio" aria-checked="false">Pasos</button>
+                <button type="button" class="pb-tab" role="radio" aria-checked="true">Tiempo</button>
+              </div>
+            </div>
+            <dl class="pb-trace__totals">
+              <dt>Turno</dt><dd><span>5.33 s</span><span>LLM 5.17 s</span><span>34 615 tok</span><span>USD 0.00047</span></dd>
+              <dt>Conversación</dt><dd><span>45 902 tok</span><span>USD 0.00063</span></dd>
+            </dl>
+          </div>
+          <div class="pb-trace__body">
+            <div class="pb-trace-wf">
+              <div class="pb-trace-wf__axis" aria-hidden="true"><span></span><span><span>0</span><span>2.67 s</span><span>5.33 s</span></span><span></span></div>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="encoder"></span><span>Encoder</span></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="encoder" style="--x: 0px; --w: 10px"></span></span><span class="pb-trace-step__ms">41 ms</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="masking"></span><span>Enmascarado</span></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="masking" style="--x: 0px; --w: 10px"></span></span><span class="pb-trace-step__ms">3 ms</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="true"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="llm_call"></span><span>LLM #1</span></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="llm_call" style="--x: 0px; --w: 110px"></span></span><span class="pb-trace-step__ms">2.38 s</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="tool_call"></span><code class="pb-trace-name">customer.match</code></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="tool_call" style="--x: 110px; --w: 10px"></span></span><span class="pb-trace-step__ms">52 ms</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="llm_call"></span><span>LLM #2</span></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="llm_call" style="--x: 120px; --w: 80px"></span></span><span class="pb-trace-step__ms">1.74 s</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="tool_call"></span><code class="pb-trace-name">otp.send</code></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="tool_call" style="--x: 200px; --w: 10px"></span></span><span class="pb-trace-step__ms">63 ms</span></button>
+              <button class="pb-trace-wf__row" type="button" aria-pressed="false"><span class="pb-trace-wf__name"><span class="pb-trace-dot" data-kind="llm_call"></span><span>LLM #3</span></span><span class="pb-trace-wf__track"><span class="pb-trace-wf__bar" data-kind="llm_call" style="--x: 210px; --w: 50px"></span></span><span class="pb-trace-step__ms">1.05 s</span></button>
+            </div>
+            <section class="pb-trace-wf__detail" aria-label="LLM">
+              <h3 class="pb-trace-wf__head"><span class="pb-trace-dot" data-kind="llm_call"></span><span>LLM #1</span><span class="pb-trace-step__ms">2.38 s</span></h3>
+              <div class="pb-trace-detail">
+                <p class="pb-trace-detail__line">gpt-6-luna · 11 020 → 184 tok · USD 0.00016</p>
+                <pre class="pb-trace-code">customer.match({"document_type": "NATIONAL_ID", "document_number": "<mark class="pb-trace-ph">[DOC_1]</mark>"})</pre>
+                <details class="pb-trace-more"><summary>Prompt (3)</summary></details>
+                <details class="pb-trace-more"><summary>Herramientas (9)</summary></details>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
