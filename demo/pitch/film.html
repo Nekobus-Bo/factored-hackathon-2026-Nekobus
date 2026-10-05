@@ -1,0 +1,392 @@
+<title>Pattern Blue Film</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:ital,wdth,wght@0,62.5..100,100..900;1,62.5..100,400&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<link rel="stylesheet" href="film.css">
+
+<div class="room">
+  <header class="room__head">
+    <h1 class="room__title">Pattern <b>Blue</b> · The Unveiling</h1>
+    <p class="room__sub">Animatic of the 3:00 pitch film. Every scene is built from the product's design system. Captions show the voice-over draft; the corner clock counts the film down.</p>
+  </header>
+
+  <div class="viewport" id="viewport">
+    <div id="stage" class="t-black" aria-label="Pitch film stage">
+
+      <!-- S01 cold open -->
+      <section class="scene t-black" id="S01">
+        <div class="phone" id="s01-phone" style="left:765px; top:150px;">
+          <div class="phone__screen">
+            <div class="phone__notch"></div>
+            <div class="lock" id="s01-lock">
+              <i class="hexbg"></i>
+              <div class="lock__date">viernes, 2 de octubre</div>
+              <div class="lock__time">02:14</div>
+              <div class="notif" id="s01-notif">
+                <div class="notif__app"><span>Pattern Blue</span><span>ahora</span></div>
+                <div class="notif__title">Compra aprobada</div>
+                <div class="notif__text">USD 1.240,00 · Miami<br>Tarjeta •••• 4821</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- S02 why -->
+      <section class="scene t-black" id="S02">
+        <div class="why-line" id="s02-a" style="top:300px;"><p class="tc">In Latin<br>America,</p></div>
+        <div class="why-line" id="s02-b" style="top:170px;">
+          <p class="kicker" style="color:#bdb9e6;">Every 1 lost to fraud costs</p>
+          <p class="tc why-big" id="s02-num">1.00</p>
+          <p class="why-sub">investigation · operations · regulation · customer experience</p>
+          <p class="why-src">LexisNexis Risk Solutions · True Cost of Fraud, Latin America · May 2026</p>
+        </div>
+        <div class="markets" id="s02-markets">
+          <div class="mkt"><span class="mkt__tag">COLOMBIA · es-CO</span><span class="mkt__num">≈ 962,000</span><span class="mkt__txt">complaints over unrecognized transactions in 2024</span><span class="mkt__src">Superintendencia Financiera · 31.3 % of 3.07 M</span></div>
+          <div class="mkt"><span class="mkt__tag">MÉXICO · es-MX</span><span class="mkt__num">1.5 M</span><span class="mkt__txt">fraud complaints in one quarter, Q1 2026</span><span class="mkt__src">CONDUSEF · 3 of every 4 complaints</span></div>
+          <div class="mkt"><span class="mkt__tag">BRASIL · pt-BR</span><span class="mkt__num">R$ 10.1 B</span><span class="mkt__txt">lost to fraud and scams in 2024</span><span class="mkt__src">FEBRABAN · +17 % on 2023</span></div>
+          <div class="mkt"><span class="mkt__tag">ARGENTINA · es-AR</span><span class="mkt__num">+21 %</span><span class="mkt__txt">cybercrime reports in 2024, 34,000+</span><span class="mkt__src">UFECI, Ministerio Público Fiscal</span></div>
+        </div>
+        <div class="why-line" id="s02-c" style="top:250px;"><p class="tc">Automate badly:<br><span style="color:#ff6b87;">the wrong card.</span></p></div>
+        <div class="why-line" id="s02-d" style="top:250px;"><p class="tc">Wait:<br><span style="color:#ff9a2e;">the card stays open.</span></p></div>
+        <div class="why-line" id="s02-e" style="top:280px;">
+          <p class="kicker" style="color:#bdb9e6;">The hard part isn't answering.</p>
+          <p class="tc" style="font-size:250px; margin-top:28px;">It's deciding<br><span style="color:#3dffa0;">safely.</span></p>
+        </div>
+      </section>
+
+      <!-- S03 alarm and reveal -->
+      <section class="scene t-dark" id="S03">
+        <div class="s03-field"><i class="hexbg" id="s03-hex"></i></div>
+        <div class="alarm" id="s03-alarm">
+          <div class="alarm__inner">
+            <p class="tc alarm__word">Pattern<br>Blue</p>
+            <div class="alarm__meta">
+              <span class="alarm__k">Compromised card reported · es-CO</span>
+              <span class="alarm__quote">“me clonaron la tarjeta, yo no hice esa compra”</span>
+              <span class="alarm__tel">local model · CPU · ~20 ms · read before any LLM</span>
+            </div>
+          </div>
+        </div>
+        <div class="reveal" id="s03-reveal">
+          <p class="tc">Pattern<br><b>Blue</b></p>
+          <p class="reveal__sub" id="s03-sub">Act · Ask · Hand off</p>
+        </div>
+      </section>
+
+      <!-- S04 act -->
+      <section class="scene t-light" id="S04">
+        <div class="chapter" id="s04-chapter">
+          <p class="tc">Act.</p>
+          <p class="chapter__line">Blocked in the conversation. Confirmed only after the database re-reads it.</p>
+        </div>
+        <div class="phone" id="s04-phone" style="left:1330px; top:96px;">
+          <div class="phone__screen">
+            <div class="phone__notch"></div>
+            <section class="pb-chat" aria-label="Chat con el asistente">
+              <header class="pb-chat__head">
+                <span class="pb-chat__title"><i class="pb-ico pb-ico--hex" aria-hidden="true"></i> Asistente</span>
+                <span class="pb-chip" data-state="anonymous" id="s04-chip-a"><i class="pb-ico pb-ico--user-dashed" aria-hidden="true"></i>Anónimo</span>
+                <span class="pb-chip" data-state="verified" id="s04-chip-v" style="display:none"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado</span>
+              </header>
+              <div class="pb-chat__log" role="log">
+                <div class="pb-msg pb-msg--customer" id="s04-m1"><span class="pb-msg__meta">Tú · 02:15</span>me clonaron la tarjeta, yo no hice esa compra</div>
+                <div class="pb-msg pb-msg--assistant" id="s04-m2"><span class="pb-msg__meta">Asistente · 02:15</span>Puedo bloquearla ahora. Primero confirmo que eres tú: te envié un código a d***@example.com.</div>
+                <div class="pb-msg pb-msg--customer" id="s04-m3"><span class="pb-msg__meta">Tú · 02:16</span>Código: ••••••</div>
+                <div class="pb-msg pb-msg--assistant" id="s04-m4"><span class="pb-msg__meta">Asistente · 02:16</span>Estoy bloqueando tu tarjeta •••• 4821.</div>
+                <div class="pb-msg pb-msg--assistant" id="s04-m5"><span class="pb-msg__meta">Asistente · 02:16</span>Bloqueé tu tarjeta •••• 4821.
+                  <span class="pb-msg__receipt"><i class="pb-ico pb-ico--db" aria-hidden="true"></i>Comprobante aud_00020481</span></div>
+                <div class="pb-typing" id="s04-typing" role="status"><span class="pb-sr">El asistente está escribiendo</span><i></i><i></i><i></i></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="s04-receipt" id="s04-receipt">
+          <article class="pb-card pb-receipt pb-ticks">
+            <header class="pb-receipt__head">
+              <div>
+                <div class="pb-receipt__kicker">Recibo · card.block</div>
+                <h2 class="pb-receipt__title">Tarjeta bloqueada</h2>
+              </div>
+              <span class="pb-stamp" id="s04-stamp"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado contra la base de datos</span>
+            </header>
+            <dl class="pb-kv">
+              <dt>Acción</dt><dd>card.block</dd>
+              <dt>Objetivo</dt><dd>•••• 4821</dd>
+              <dt>Estado</dt>
+              <dd><span class="pb-transition">
+                <span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span>
+                <i class="pb-ico pb-ico--arrow" aria-label="cambió a"></i>
+                <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloqueada</span>
+              </span></dd>
+              <dt>Audit id</dt><dd>aud_00020481</dd>
+              <dt>Idempotency</dt><dd>7f3a91c2…5a10</dd>
+              <dt>Verificado</dt><dd>2026-10-02 02:16:40 COT</dd>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <!-- S05 ask -->
+      <section class="scene t-light" id="S05">
+        <div class="chapter" id="s05-chapter">
+          <p class="tc">Ask.</p>
+          <p class="chapter__line">Grounded in how Latin America really writes.</p>
+        </div>
+        <div class="phrases" id="s05-phrases">
+          <div class="phrase"><span class="pb-tag">es-CO</span><div class="pb-msg pb-msg--customer">me clonaron la tarjeta, yo no hice esa compra</div></div>
+          <div class="phrase"><span class="pb-tag">es-MX</span><div class="pb-msg pb-msg--customer">me robaron la cartera con la tarjeta adentro</div></div>
+          <div class="phrase"><span class="pb-tag">es-AR</span><div class="pb-msg pb-msg--customer">Hola, che, perdí la tarjeta de débito recién en el colectivo</div></div>
+          <div class="phrase" lang="pt"><span class="pb-tag">pt-BR</span><div class="pb-msg pb-msg--customer">oi, roubaram meu cartão agora há pouco no ônibus, bloqueia pra mim pfv</div></div>
+        </div>
+        <div class="gauges">
+          <div class="pb-card pb-ticks" id="s05-g1">
+            <div class="pb-gauge" data-state="decided" style="--n: 20; --on: 16; --tau: 0.37">
+              <div class="pb-gauge__head"><span class="pb-gauge__name">turn_intent · report_lost_card · es-AR</span><span class="pb-gauge__val">0.82 <small>/ τ 0.37</small></span></div>
+              <div class="pb-gauge__track" role="meter" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.82" aria-valuetext="Confianza 0.82, umbral 0.37: decidido">
+                <div class="pb-gauge__fill" id="s05-fill1"></div>
+                <span class="pb-gauge__tau"><span class="pb-gauge__taulab">τ 0.37</span></span>
+              </div>
+              <div class="pb-gauge__foot"><span class="pb-chip" data-tone="success"><i class="pb-ico pb-ico--check" aria-hidden="true"></i>DECIDED</span><span class="pb-t-small">A proposal. banking-core still authorizes.</span></div>
+            </div>
+          </div>
+          <div class="pb-card pb-ticks" id="s05-g2">
+            <div class="pb-gauge" data-state="abstained" style="--n: 20; --on: 6; --tau: 0.37">
+              <div class="pb-gauge__head"><span class="pb-gauge__name">turn_intent · report_suspicious_activity · es-MX</span><span class="pb-gauge__val">0.31 <small>/ τ 0.37</small></span></div>
+              <div class="pb-gauge__track" role="meter" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.31" aria-valuetext="Confianza 0.31, umbral 0.37: se abstiene">
+                <div class="pb-gauge__fill" id="s05-fill2"></div>
+                <span class="pb-gauge__tau"><span class="pb-gauge__taulab">τ 0.37</span></span>
+              </div>
+              <div class="pb-gauge__foot"><span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--pause" aria-hidden="true"></i>ABSTAINED</span><span class="pb-t-small">Below τ: it asks instead of guessing.</span></div>
+            </div>
+          </div>
+          <div class="clarify" id="s05-clarify">
+            <div class="pb-msg pb-msg--customer" id="s05-c1"><span class="pb-msg__meta">Tú · es-MX</span>oye tengo un pedo con lo de la tarjeta y no sé qué onda</div>
+            <div class="pb-msg pb-msg--assistant" id="s05-c2"><span class="pb-msg__meta">Asistente</span>¿Me cuentas un poco más? Por ejemplo: ¿quieres bloquear tu tarjeta, reportar un cargo que no reconoces o consultar tu saldo?</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- S06 hand off -->
+      <section class="scene t-dark" id="S06">
+        <div class="s06-copy" id="s06-copy">
+          <p class="tc">Hand<br>off.</p>
+          <ul class="checklist" id="s06-list">
+            <li id="s06-k1"><i></i>Verified facts</li>
+            <li id="s06-k2"><i></i>Verification method</li>
+            <li id="s06-k3"><i></i>Actions taken</li>
+            <li id="s06-k4"><i></i>Open questions</li>
+          </ul>
+          <div class="s06-stat" id="s06-stat">
+            <b id="s06-num">0 %</b>
+            <span>of handoffs with complete context</span>
+            <small>13 of 13 · live run 2026-10-02</small>
+          </div>
+        </div>
+        <div class="laptop" id="s06-laptop" style="left:700px; top:150px;">
+          <div class="laptop__lid">
+            <div class="laptop__screen t-dark">
+              <div class="bo">
+                <div class="bo__side">
+                  <span class="bo__brand">Pattern Blue</span>
+                  <div class="bo__q is-on"><span class="pb-tag">DISPUTES · ES</span><span>CASE-0427 · HIGH</span></div>
+                  <div class="bo__q"><span class="pb-tag">FRAUD · PT</span><span>CASE-0426 · NORMAL</span></div>
+                  <div class="bo__q"><span class="pb-tag">SUPPORT · ES</span><span>CASE-0425 · NORMAL</span></div>
+                </div>
+                <article class="pb-card pb-handoff" style="padding-top: var(--space-4)">
+                  <header>
+                    <div class="pb-handoff__head">
+                      <h2 class="head-id" style="margin:0"><span class="pb-caseid">CASE-0427</span></h2>
+                      <span class="pb-chip" data-tone="warning"><i class="pb-ico pb-ico--chev1" aria-hidden="true"></i>HIGH</span>
+                      <span class="pb-chip" data-state="handed-off"><i class="pb-ico pb-ico--handoff" aria-hidden="true"></i>HANDED_OFF</span>
+                    </div>
+                    <div class="pb-handoff__meta">
+                      <span class="pb-tag">DISPUTES</span><span class="pb-tag">ES</span>
+                      <span class="pb-t-small">Cliente D*** M*** · en espera 00:42</span>
+                    </div>
+                  </header>
+                  <section class="pb-handoff__sec" id="s06-facts">
+                    <h3>Hechos verificados</h3>
+                    <dl class="pb-kv">
+                      <dt>Verificación</dt><dd id="s06-method">OTP (email) · 2026-10-02 02:16:12 COT</dd>
+                      <dt>Tarjeta</dt><dd><span class="pb-transition">•••• 4821 <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>BLOCKED</span></span></dd>
+                      <dt>Cargo disputado</dt><dd>Compra en línea · Miami · USD 1.240,00</dd>
+                      <dt>Comprobante</dt><dd>aud_00020481</dd>
+                    </dl>
+                  </section>
+                  <section class="pb-handoff__sec" id="s06-acts">
+                    <h3>Acciones tomadas</h3>
+                    <ul class="pb-steps">
+                      <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>otp.verify<small>Identidad verificada con OTP (email).</small></span></li>
+                      <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>card.block<small>ACTIVE → BLOCKED · comprobante aud_00020481.</small></span></li>
+                      <li><i class="pb-ico pb-ico--check" aria-hidden="true"></i><span>handoff.create<small>HIGH · DISPUTES.</small></span></li>
+                    </ul>
+                  </section>
+                  <section class="pb-handoff__sec" id="s06-open">
+                    <h3>Preguntas abiertas</h3>
+                    <ol class="pb-questions">
+                      <li>¿Reconoce otros cargos de las últimas 48 horas?</li>
+                      <li>¿Solicita reposición de la tarjeta física?</li>
+                    </ol>
+                  </section>
+                  <p class="pb-t-small" style="margin:0">Los hechos vienen de banking-core con comprobante. El asistente no resuelve disputas.</p>
+                </article>
+              </div>
+            </div>
+          </div>
+          <div class="laptop__base"></div>
+        </div>
+      </section>
+
+      <!-- S07 teardown -->
+      <section class="scene t-dark" id="S07">
+        <div class="grid-bp"></div>
+        <div class="td-title" id="s07-title"><p class="kicker">Exploded view · how it decides</p></div>
+        <div class="stack" id="s07-stack">
+          <div class="plate plate--ledger" data-i="5"><div class="plate__face"><span>Ledger</span></div></div>
+          <div class="plate plate--core" data-i="4"><div class="plate__face"><span>Core</span></div></div>
+          <div class="plate plate--voice" data-i="3"><div class="plate__face"><span>Voice</span></div></div>
+          <div class="plate plate--field" data-i="2"><div class="plate__face"><i class="hexbg" style="--hex-ink:#5aa9ff; opacity:.35"></i><span>Field</span></div></div>
+          <div class="plate" data-i="1"><div class="plate__face"><span>Sensor</span></div></div>
+          <div class="plate" data-i="0"><div class="plate__face"><span>Chat</span></div></div>
+        </div>
+        <div class="label-row" data-i="0"><b>CHAT</b><span>the customer's words · es-CO · es-MX · es-AR · pt-BR</span></div>
+        <div class="label-row" data-i="1"><b>SENSOR</b><span>local model · CPU · ~20 ms · reads first</span></div>
+        <div class="label-row label-row--field" data-i="2"><b>FIELD</b><span>PII masked before any LLM · 4111… → [CARD_1]</span></div>
+        <div class="label-row label-row--voice" data-i="3"><b>VOICE</b><span>the LLM writes and proposes · holds no keys</span></div>
+        <div class="label-row label-row--core" data-i="4"><b>CORE</b><span>state · policy · database decide</span></div>
+        <div class="label-row" data-i="5"><b>LEDGER</b><span>hash-chained audit of every decision</span></div>
+      </section>
+
+      <!-- S08 vote and S09 injection share the panels -->
+      <section class="scene t-dark" id="S08">
+        <div class="grid-bp"></div>
+        <div class="stripe" id="s09-stripe-t" style="top:0; opacity:0"></div>
+        <div class="stripe" id="s09-stripe-b" style="bottom:0; opacity:0"></div>
+        <div class="vote" id="s08-vote">
+          <div class="judge cut" id="j1"><span class="judge__name">STATE</span><span class="judge__mark" id="j1m"></span><span class="judge__verdict" id="j1v">Verified</span><span class="judge__why" id="j1w">Identity confirmed with a one-time code.</span></div>
+          <div class="judge cut" id="j2"><span class="judge__name">POLICY</span><span class="judge__mark" id="j2m"></span><span class="judge__verdict" id="j2v">Allowed</span><span class="judge__why" id="j2w">card.block is enabled in this state.</span></div>
+          <div class="judge cut" id="j3"><span class="judge__name">DATABASE</span><span class="judge__mark" id="j3m"></span><span class="judge__verdict" id="j3v">Owner</span><span class="judge__why" id="j3w">The card belongs to the verified customer.</span></div>
+        </div>
+        <div class="resolution" id="s08-res"><span id="s08-tool">card.block</span><span>→</span><b id="s08-word">Approved</b></div>
+        <div class="voice cut" id="s08-voice"><b>VOICE · LLM</b><span id="s08-prop">proposed card.block</span><em>no seat at the table</em></div>
+        <div class="inject cut" id="s09-inject"><small>Prompt injection</small><p id="s09-text"></p></div>
+        <div class="blackout" id="s09-black"></div>
+        <div class="thesis" id="s09-thesis" style="z-index:41">
+          <p class="tc" id="s09-t1">The AI has a voice.</p>
+          <p class="tc" id="s09-t2">Not a vote.</p>
+        </div>
+      </section>
+
+      <!-- S10 proof wall -->
+      <section class="scene t-black" id="S10">
+        <div class="proof-head"><p class="kicker">Measured, not claimed</p></div>
+        <div class="proof">
+          <div class="tile" id="p1">
+            <span class="tile__label">Unsafe actions</span>
+            <span class="tile__value">0</span>
+            <span class="tile__status"><i></i>Pass</span>
+            <span class="tile__meta">across <b id="p1n">0</b> live scenarios</span>
+            <span class="tile__src">reports/eval-live-2026-10-02-gpt-6-luna.md</span>
+          </div>
+          <div class="tile" id="p2">
+            <span class="tile__label">Cost per conversation</span>
+            <span class="tile__value tile__value--sm">USD 0.0005</span>
+            <span class="tile__meta">LLM tokens only · about 1/20 of a cent</span>
+            <span class="tile__src">reports/eval-live-2026-10-02-gpt-6-luna.md</span>
+          </div>
+          <div class="tile" id="p3">
+            <span class="tile__label">Markets</span>
+            <span class="tile__value">4</span>
+            <span class="tile__meta">es-CO · es-MX · es-AR · pt-BR, grounded in 120,000+ real complaints and reviews</span>
+            <span class="tile__src">reports/intent-models-regional-datasets.md</span>
+          </div>
+          <div class="tile" id="p4">
+            <span class="tile__label">Model independence</span>
+            <span class="tile__value tile__value--txt">Swap the model. Keep the safety.</span>
+            <span class="tile__meta">local open model 35 of 58 · hosted 36 of 58 · both 0 unsafe</span>
+            <span class="tile__src">reports/eval-live-2026-10-02-qwen3.6-35b-a3b-think.md</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- S11 one more thing -->
+      <section class="scene t-dark" id="S11">
+        <div class="omt" id="s11-omt">One more thing.</div>
+        <div class="s11-panel" id="s11-panel">
+          <div class="pb-card pb-ticks">
+            <h3>Guardrails · tools by state · VERIFIED</h3>
+            <div class="toolrow"><code>card.block</code><span class="pb-tag">ACT</span><span class="toolrow__state">Activa <span class="sw is-on cut"><i style="left:48px"></i></span></span></div>
+            <div class="toolrow"><code>handoff.create</code><span class="pb-tag">HAND OFF</span><span class="toolrow__state">Activa <span class="sw is-on cut"><i style="left:48px"></i></span></span></div>
+            <div class="toolrow"><code>transaction.list_recent</code><span class="pb-tag">READ</span><span class="toolrow__state">Activa <span class="sw is-on cut"><i style="left:48px"></i></span></span></div>
+            <div class="toolrow"><code>account.get_summary</code><span class="pb-tag">NEW WORKFLOW</span><span class="toolrow__state"><span id="s11-word">Apagada</span> <span class="sw cut" id="s11-sw"><i id="s11-thumb"></i></span></span></div>
+            <div class="s11-version" id="s11-ver">nueva versión · auditada · aplica en la siguiente llamada</div>
+          </div>
+        </div>
+        <div class="s11-copy" id="s11-copy">
+          <p class="tc">A new<br>workflow.</p>
+          <p class="kicker" style="color:#3dffa0">No code. No deploy.</p>
+        </div>
+        <div class="chain" id="s11-chain">
+          <div class="blk cut"><b>#a91f…</b><span>card.block</span></div><span class="link"></span>
+          <div class="blk cut"><b>#77c2…</b><span>handoff.create</span></div><span class="link" id="s11-link"></span>
+          <div class="blk cut is-new" id="s11-new"><b>#0be4…</b><span>policy.update</span></div>
+        </div>
+      </section>
+
+      <!-- S12 next episode -->
+      <section class="scene t-black" id="S12">
+        <div class="ne-head" id="s12-head"><p class="tc">Next<br>episode</p></div>
+        <div class="ne-item" id="s12-i1"><p class="tc">A real<br>OTP channel</p></div>
+        <div class="ne-item" id="s12-i2"><p class="tc">Human-certified<br>thresholds</p></div>
+        <div class="ne-item" id="s12-i3"><p class="tc">Replayable<br>evaluation</p></div>
+        <div class="ne-item" id="s12-i4"><p class="tc">Your next<br>workflow</p></div>
+        <div class="ne-final" id="s12-final"><p class="tc">Pattern Blue,<br><b>in your bank.</b></p></div>
+      </section>
+
+      <!-- S13 end card -->
+      <section class="scene t-black" id="S13">
+        <div class="end">
+          <p class="tc end__mark" id="s13-mark">Pattern Blue</p>
+          <p class="end__tag" id="s13-tag">The AI has a voice. Not a vote.</p>
+          <p class="end__wink" id="s13-wink">Your card is safe. All's right with the world.</p>
+          <div class="end__foot" id="s13-foot">
+            <span>Every number in this film is in our repository.</span>
+            <code>make demo</code>
+            <span class="end__team">Team Nekobus</span>
+          </div>
+        </div>
+        <div class="blackout" id="s13-black"></div>
+      </section>
+
+      <div class="hud" id="hud" aria-hidden="true"><span class="hud__label">Internal power</span><span class="hud__digits" id="hud-digits">03:00.00</span></div>
+      <div class="cap" id="cap" aria-live="off"></div>
+    </div>
+  </div>
+
+  <div class="transport">
+    <button class="primary" type="button" id="play">Play</button>
+    <button type="button" id="restart">Restart</button>
+    <input type="range" id="scrub" min="0" max="180" step="0.01" value="0" aria-label="Film position">
+    <span class="timecode" id="tc">0:00.00 / 3:00</span>
+    <label class="toggle"><input type="checkbox" id="captions" checked> Captions</label>
+  </div>
+  <nav class="chips" id="chips" aria-label="Scenes"></nav>
+
+  <div class="notes">
+    <section class="panel" aria-labelledby="now-h">
+      <h2 id="now-h">Now playing</h2>
+      <p class="now__title" id="now-title">S01 · Cold open</p>
+      <p class="now__vo" id="now-vo"></p>
+      <p class="now__note" id="now-note"></p>
+    </section>
+    <section class="panel" aria-labelledby="script-h">
+      <h2 id="script-h">Voice-over · draft timing</h2>
+      <ol class="script" id="script"></ol>
+    </section>
+  </div>
+  <p class="room__foot">Mockup values (•••• 4821, aud_00020481, the gauge readings, the hashes) are sample data in the product's real formats. Every other number traces to a versioned report or a cited source. No music yet: the team adds voice-over, music and effects in the edit.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="film.js"></script>
