@@ -77,7 +77,7 @@ The orchestrator holds no database credentials ([ADR-0004](adr/0004-trust-bounda
 ### 4.4 Defend: every decision is traceable
 
 - **Hash-chained audit log:** an append-only log in Postgres records every tool call, policy change, claim and decision, with its outcome. `make verify-audit` checks the chain.
-- **Detective mode** ([ADR-0019](adr/0019-detective-mode.md)) shows, beside each chat reply, the masked timeline of that turn: what the encoder decided, what the LLM was sent, which tools it proposed, what banking-core answered, and the token count. It is on locally and opt-in on Cloud Run.
+- **Detective mode** ([ADR-0019](adr/0019-detective-mode.md)) shows, in a panel beside the chat (a header button, or an action under each reply; on a window too narrow for the panel, in place of the conversation), the masked timeline of that turn: what the encoder decided, what the LLM was sent, which tools it proposed, what banking-core answered, and the token count. It is on locally and opt-in on Cloud Run.
 - **Back-office metrics** count from rows that already exist: blocks, OTP outcomes, handoffs by status and priority, case outcomes and the customers' feedback.
 
 ### 4.5 Keep the model out of authority
