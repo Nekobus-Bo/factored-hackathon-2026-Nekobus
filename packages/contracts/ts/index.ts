@@ -10,6 +10,7 @@
 //   banking-admin        the banking-core admin API
 //   bff-client           the web-client BFF routes
 //   bff-backoffice       the web-backoffice BFF routes
+//   demo-scripts         the six demo scripts and their matchers (NOT a network contract: no Python mirror)
 
 export * from "./common";
 export * from "./enums";
@@ -21,3 +22,4 @@ export * from "./orchestrator-agent";
 export * from "./banking-admin";
 export * from "./bff-client";
 export * from "./bff-backoffice";
+export * from "./demo-scripts";

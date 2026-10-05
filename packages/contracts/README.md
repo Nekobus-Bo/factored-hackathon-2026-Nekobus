@@ -41,6 +41,7 @@ const url = routePath(clientBffRoutes.getTranscript, { id: answer.conversation_i
 | `ts/bff-client.ts` | `clientBffRoutes`: the six `/api` routes of `apps/web-client` |
 | `ts/bff-backoffice.ts` | `backofficeBffRoutes`: the `/api` routes of `apps/web-backoffice`; `LoginRequestSchema`, `SessionResponseSchema`, `BackofficeHandoffDetailSchema`, `ClaimHandoffResponseSchema` |
 | `ts/route.ts` | `defineRoute`, `routePath`, `toQueryString`, `queryFromSearchParams`, `patternParams` |
+| `ts/demo-scripts.ts` | **Not a network contract** (see below): `DEMO_SCRIPTS`, `getScript`, `DRAFT_AGENT_LINE`; the customer-side matcher `startScript`, `nextClientState`, `scriptVerified`, `currentStep`, `isCodeShaped`; the back-office matcher `suggestAgentLine`, `matchesMaskedLine` |
 
 Conventions:
 
@@ -48,6 +49,21 @@ Conventions:
 - **Requests are strict, responses strip.** A request schema rejects a key it does not name, so a BFF never forwards an arbitrary body. A response schema drops what it does not name: parse, then send on the parsed value, and an agent identity or a debug field never reaches the browser.
 - **Blocks stay raw on the wire.** `blocks` in an HTTP response is `RawBlock[]`. Pass it through `parseBlocks`: it keeps the blocks it knows, in order, and reports the others in `unknown` (`reason: "unknown_type"` or `"invalid"`, with the index and the raw value). A block type added on the server degrades one message and does not blank the chat.
 - **Ids are opaque.** A conversation id is `conv_` plus 32 hex digits today, not a UUID; the schemas check only that an id is safe to put in a URL path.
+
+### Demo scripts (`ts/demo-scripts.ts`): not a contract
+
+The one thing in this entry that crosses no boundary and has no Python model, so the drift test does not cover it. It is here only because two apps must agree on the same lines to the character, and this package is the one both already import (Docker context, `bun.lock`, `WEB_PACKAGES`, CI). It is a demo aid, never a bank feature.
+
+It holds the team's six walkthrough scripts: a stable `id` (`stolenCard`, `chargeBelowThreshold`, `chargeAboveThreshold`, `fakeAdmin`, `ambiguousSlang`, `mixedLanguages`), the market (`locale`, and its `lang`), the customer's `steps` in order (a `message` with its exact text, or the `code` step where the customer types the one-time code the inbox shows) and, for the two unrecognized-charge scripts only, the agent's line. That line is a **draft** (`DRAFT_AGENT_LINE`, the only place it lives): the team's scripts carry no agent lines yet. Labels and notes are not here: they are text for people and live in each app's dictionaries, keyed by the ids.
+
+Two pure matchers, with no React, no state machine and no clock:
+
+| Side | Reads | Rule |
+|---|---|---|
+| Customer app (`nextClientState`, `scriptVerified`; the guide in `apps/web-client`, which keeps the state in its chat machine) | The raw text the customer sends, and the script's state `{scriptId, step, status}` | The identical line advances once; anything else stops the script for that conversation, for good. At the code step one or more messages of 4 to 8 digits (one space or hyphen allowed inside: `123 456`, `123-456`, the shapes the orchestrator's masker also takes for a code) belong to the script and leave it there until the caller says the chat proved the verification (`scriptVerified`); other text stops it. `{ retry: true }` marks a resend of a message already counted, so a retry never advances twice |
+| Back office (`suggestAgentLine`) | The **masked** transcript (`[DOC_1]`, `[OTP_1]`) | The script is recognised by the customer's first message. Each `[TYPE_n]` stands for any stretch of the line, of any type, and the rest is literal. At the code step one or more messages containing `[OTP_n]` count. It returns the agent line only when the customer sent every line of the script, no more, and no agent has written yet |
+
+The back-office match depends on what the masker really leaves: a code typed with no challenge pending stays in clear (`docs/limitations.md`) and the suggestion does not appear. Tests: `ts/tests/demo-scripts.test.ts`.
 
 ### Drift test
 
