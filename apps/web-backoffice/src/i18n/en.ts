@@ -17,9 +17,10 @@ export const en: Dictionary = {
     logout: "Log out",
     menu: "Menu",
     language: "Language",
-    themeToDark: "Switch to the dark theme",
-    themeToLight: "Switch to the light theme",
-    signedInAs: "Signed in as {agent}",
+    theme: "Theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    session: "Session",
   },
   common: {
     loading: "Loading…",
@@ -211,6 +212,16 @@ export const en: Dictionary = {
       discard: "Discard",
       turnInProgress: "The customer is in the middle of a turn. Retry and the same message is sent again.",
       noActiveTakeover: "You no longer have this conversation. Take the case again.",
+    },
+    say: {
+      title: "Suggested reply",
+      demo: "Demo only",
+      hint: "Using it moves it to the composer so you can review it. It is never sent on its own and it is recorded with your e-mail.",
+      use: "Use",
+      scripts: {
+        chargeBelowThreshold: "Unrecognized charge, below the threshold",
+        chargeAboveThreshold: "Unrecognized charge, above the threshold",
+      },
     },
   },
   decide: {

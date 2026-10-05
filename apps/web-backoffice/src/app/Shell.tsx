@@ -1,12 +1,12 @@
-// The frame of every screen: the wordmark, the sections, one theme button and the agent's menu (the
+// The frame of every screen: the wordmark, the sections, the theme tool and the agent's menu (the
 // declutter review of 2026-10-02). There is no app-shell component in the design system, so this is the
 // Navbar's parts put to work in the back office, plus a count on "Cola" and the menu (local.css).
 
 import { LangSchema, type Lang } from "@pattern-blue/contracts";
 import { useSelector } from "@xstate/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { ThemeChoice } from "../machines/app";
-import { useAppServices, useI18n, useLang } from "./context";
+import { useAppServices, useI18n, useLang, useTheme } from "./context";
 import type { Route } from "./router";
 import { Icon } from "./ui";
 
@@ -47,12 +47,102 @@ function useQueuedCount(enabled: boolean): number | null {
   return count;
 }
 
-function AgentMenu({ agent }: { agent: string }) {
-  const { t } = useI18n();
+/**
+ * The brand's name in two parts, "Pattern" in the main text colour and the last word in the brand's blue. The text is
+ * unchanged ("Pattern Blue"); capitals are the stylesheet's.
+ */
+function BrandName({ name }: { name: string }) {
+  const at = name.lastIndexOf(" ");
+  if (at < 0) return <>{name}</>;
+  return (
+    <>
+      <span className="pb-wordmark__ink">{name.slice(0, at)}</span> <span className="pb-wordmark__blue">{name.slice(at + 1)}</span>
+    </>
+  );
+}
+
+/** A header tool: the visible label (the `label` style), then the radio group it names. */
+function Tool({ label, children }: { label: string; children: (labelId: string) => ReactNode }) {
+  const labelId = useId();
+  return (
+    <div className="pb-navtool">
+      <span className="pb-navtool__label" id={labelId}>
+        {label}
+      </span>
+      {children(labelId)}
+    </div>
+  );
+}
+
+/** The language: ES, PT, EN as radios, the one in force checked. */
+export function LanguageRadios({ labelId }: { labelId: string }) {
   const { actor } = useAppServices();
   const lang = useLang();
+  return (
+    <div className="pb-lang pb-lang--fill" role="radiogroup" aria-labelledby={labelId}>
+      {LangSchema.options.map((code) => (
+        <button
+          key={code}
+          type="button"
+          className="pb-lang__btn"
+          role="radio"
+          aria-checked={lang === code}
+          data-lang={code}
+          lang={code}
+          aria-label={LANGUAGE_NAME[code]}
+          onClick={() => actor.send({ type: "LANG.SET", lang: code })}
+        >
+          {code.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The theme: a sun and a moon as radios, named "Claro" and "Oscuro"; the one checked is the theme in force (the
+ * system's until one is pinned). It has no visible label: the group is named "Tema" for assistive technology, and the
+ * rule between groups stays.
+ */
+export function ThemeTool() {
+  const { t } = useI18n();
+  const { actor } = useAppServices();
+  const shown = effectiveTheme(useTheme());
+  const options = [
+    { id: "light", icon: "sun", name: t("nav.themeLight") },
+    { id: "dark", icon: "moon", name: t("nav.themeDark") },
+  ] as const;
+  return (
+    <div className="pb-navtool">
+      <div className="pb-lang pb-lang--fill" role="radiogroup" aria-label={t("nav.theme")}>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className="pb-lang__btn"
+            role="radio"
+            aria-checked={shown === option.id}
+            aria-label={option.name}
+            title={option.name}
+            data-theme-set={option.id}
+            onClick={() => actor.send({ type: "THEME.SET", theme: option.id })}
+          >
+            <Icon name={option.icon} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The agent's menu: a button of the system with the e-mail, and a panel in sections: Sesión, Idioma, and Salir. */
+export function AgentMenu({ agent }: { agent: string }) {
+  const { t } = useI18n();
+  const { actor } = useAppServices();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const sessionId = useId();
+  const languageId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -72,30 +162,26 @@ function AgentMenu({ agent }: { agent: string }) {
 
   return (
     <div className="pb-menu" ref={root}>
-      <button type="button" className="pb-menu__btn" aria-expanded={open} aria-controls="bo-agent-menu" onClick={() => setOpen(!open)}>
+      <button type="button" className="pb-btn pb-btn--ghost pb-btn--sm pb-menu__btn" aria-expanded={open} aria-controls="bo-agent-menu" onClick={() => setOpen(!open)}>
         <Icon name="user" />
-        {agent}
+        <span className="pb-menu__agent" title={agent}>
+          {agent}
+        </span>
         <Icon name="chev1" />
       </button>
       <div className="pb-cut pb-menu__panel" id="bo-agent-menu" hidden={!open}>
-        <p>{t("nav.signedInAs", { agent })}</p>
-        <div className="pb-lang" role="radiogroup" aria-label={t("nav.language")}>
-          {LangSchema.options.map((code) => (
-            <button
-              key={code}
-              type="button"
-              className="pb-lang__btn"
-              role="radio"
-              aria-checked={lang === code}
-              data-lang={code}
-              lang={code}
-              aria-label={LANGUAGE_NAME[code]}
-              onClick={() => actor.send({ type: "LANG.SET", lang: code })}
-            >
-              {code.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <section className="pb-menu__section" aria-labelledby={sessionId}>
+          <span className="pb-t-label" id={sessionId}>
+            {t("nav.session")}
+          </span>
+          <p className="pb-menu__email pb-t-mono">{agent}</p>
+        </section>
+        <section className="pb-menu__section" aria-labelledby={languageId}>
+          <span className="pb-t-label" id={languageId}>
+            {t("nav.language")}
+          </span>
+          <LanguageRadios labelId={languageId} />
+        </section>
         <hr />
         <button type="button" className="pb-btn pb-btn--secondary pb-btn--sm" onClick={() => actor.send({ type: "LOGOUT" })}>
           {t("nav.logout")}
@@ -108,11 +194,8 @@ function AgentMenu({ agent }: { agent: string }) {
 export function Shell({ route, authenticated, children }: { route: Route; authenticated: boolean; children: ReactNode }) {
   const { t } = useI18n();
   const { actor } = useAppServices();
-  const lang = useLang();
-  const theme = useSelector(actor, (snapshot) => snapshot.context.theme);
   const agent = useSelector(actor, (snapshot) => snapshot.context.agent);
   const [open, setOpen] = useState(false);
-  const shownTheme = effectiveTheme(theme);
   const queued = useQueuedCount(authenticated);
 
   const link = (href: string, label: string, current: boolean, extra?: ReactNode) => (
@@ -127,7 +210,7 @@ export function Shell({ route, authenticated, children }: { route: Route; authen
       <header className="pb-nav" data-open={open ? "true" : "false"}>
         <div className="pb-nav__bar">
           <a className="pb-nav__brand" href="#/" aria-label={`${t("app.name")}, ${t("app.section")}`}>
-            {t("app.name")}
+            <BrandName name={t("app.name")} />
           </a>
           <span className="pb-t-label bo-section-tag">{t("app.section")}</span>
           <button type="button" className="pb-nav__menu" aria-expanded={open} aria-controls="bo-menu" onClick={() => setOpen(!open)}>
@@ -153,36 +236,11 @@ export function Shell({ route, authenticated, children }: { route: Route; authen
               </nav>
             )}
             <div className="pb-nav__tools">
-              <div className="pb-theme pb-theme--single">
-                <button
-                  type="button"
-                  className="pb-theme__btn"
-                  aria-label={shownTheme === "dark" ? t("nav.themeToLight") : t("nav.themeToDark")}
-                  onClick={() => actor.send({ type: "THEME.SET", theme: shownTheme === "dark" ? "light" : "dark" })}
-                >
-                  <Icon name={shownTheme === "dark" ? "sun" : "moon"} />
-                </button>
-              </div>
+              <ThemeTool />
               {authenticated && agent ? (
                 <AgentMenu agent={agent} />
               ) : (
-                <div className="pb-lang" role="radiogroup" aria-label={t("nav.language")}>
-                  {LangSchema.options.map((code) => (
-                    <button
-                      key={code}
-                      type="button"
-                      className="pb-lang__btn"
-                      role="radio"
-                      aria-checked={lang === code}
-                      data-lang={code}
-                      lang={code}
-                      aria-label={LANGUAGE_NAME[code]}
-                      onClick={() => actor.send({ type: "LANG.SET", lang: code })}
-                    >
-                      {code.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
+                <Tool label={t("nav.language")}>{(labelId) => <LanguageRadios labelId={labelId} />}</Tool>
               )}
             </div>
           </div>

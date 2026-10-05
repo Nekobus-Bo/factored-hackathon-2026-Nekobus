@@ -8,7 +8,7 @@ import { useMachine, useSelector } from "@xstate/react";
 import { useCallback, useState, type ReactNode } from "react";
 import type { ActorRefFrom, SnapshotFrom } from "xstate";
 import type { DecisionResult } from "../machines/decision";
-import { canClaim, handoffMachine, heldByAnother, heldByMe } from "../machines/handoff";
+import { canClaim, handoffMachine, heldByAnother, heldByMe, selectSuggestion } from "../machines/handoff";
 import { Composer, ComposerLocked, TranscriptLog } from "./Conversation";
 import { useAppServices, useI18n, useLang, useNow, useVisibility } from "./context";
 import { useDecisions } from "./Decisions";
@@ -236,6 +236,7 @@ function CasePage({ detail, snapshot, send, me, now, back }: { detail: HandoffDe
                   failed={snapshot.matches({ composer: "failed" })}
                   outbox={context.outbox}
                   error={context.sendError}
+                  suggestion={selectSuggestion(snapshot)}
                   onSend={(text) => send({ type: "SEND", text })}
                   onRetry={() => send({ type: "SEND.RETRY" })}
                   onDiscard={() => send({ type: "SEND.DISCARD" })}
