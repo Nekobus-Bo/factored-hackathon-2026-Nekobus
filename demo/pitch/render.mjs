@@ -19,8 +19,18 @@ const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 
+// S04 shows the product's real customer page. capture-ui.tsx renders it from the app's own components
+// into ui-chat.html; it is inlined here rather than kept in film.html so the generated markup stays out of
+// the film's diffs. Without it the lid is empty and the render says so.
 const body = readFileSync(join(here, "film.html"), "utf8");
-const local = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
+let ui = "";
+try {
+  ui = readFileSync(join(here, "ui-chat.html"), "utf8");
+} catch {
+  console.warn("no ui-chat.html: S04's screen will be empty. Run ./capture-ui.sh first.");
+}
+if (ui && !body.includes("<!--ui-chat-->")) throw new Error("film.html has no <!--ui-chat--> marker: S04 cannot take the real page");
+const local = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n</head>\n<body>\n${body.replace("<!--ui-chat-->", () => ui)}\n</body>\n</html>\n`;
 writeFileSync(join(here, "film.local.html"), local);
 if (flag("wrap-only")) { console.log("wrote film.local.html"); process.exit(0); }
 

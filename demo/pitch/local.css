@@ -1,0 +1,780 @@
+/* Local changes to the Pattern Blue design system that are not in the design-system artifact yet.
+   src/components.css stays a verbatim copy of the artifact; these rules load after it (index.css).
+   They come from the declutter review of the customer chat and the landing (2026-10-02). When the artifact
+   takes them, move them into its components/bundle.css, sync src/ again and delete them here. The rule
+   changes they imply are listed in README.md, "Local changes not yet in the artifact".
+   Chat rules are scoped to .pb-dock, the customer chat: the back office keeps the artifact's look. */
+
+/* ---------- ChatBubble: a bigger panel (520px), the whole screen when there is no room for the demo panel beside it ---------- */
+.pb-dock__panel { bottom: 84px; width: min(520px, calc(100% - 32px)); }
+.pb-dock .pb-chat { max-width: none; height: min(680px, calc(100dvh - 148px)); }
+.pb-chat__body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The demo panel takes the chat's place (no room for it beside) and the log and the composer stay mounted, hidden: their `display` would win over the attribute. */
+.pb-chat__body[hidden], .pb-chat__composer[hidden] { display: none; }
+.pb-dock .pb-chat__log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+/* The log is a scrollable region and a tab stop (the keyboard scrolls it), and the dock focuses it after a pick or a send in place of the chat: it shows the system's ring, inside its edge (outside it the panel's clip would cut it). */
+.pb-chat__log:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+/* No room: under 920px wide or under 500px tall (a phone, upright or on its side, or a small window). It is the complement of
+   SIDE_PANEL_QUERY in apps/web-client/src/app/hooks.ts, `(min-width: 920px) and (min-height: 500px)`: change them together, or
+   there is a size where the script thinks the panel fits and the stylesheet hides it. The bounds are 919.98px and 499.98px, not
+   919px and 499px, so a fractional size (919.5px, a zoomed or scaled window) falls on one side or the other (only a size between
+   919.98px and 920px would match neither, which no device reports); range syntax (`width < 920px`) would do it exactly, but older
+   iOS drops the whole query. The page has no `viewport-fit=cover`, so the safe-area insets are probably 0 today; they are here
+   for when it has. */
+@media (max-width: 919.98px), (max-height: 499.98px) {
+  .pb-dock__panel { position: fixed; inset: 0; bottom: 0; width: auto; }
+  .pb-dock .pb-chat { --c-tl: 0px; --c-br: 0px; height: 100%; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  /* The panel covers the screen: the header's close button closes it, and the launcher would cover the composer. */
+  .pb-dock__panel:not([hidden]) ~ .pb-dock__launcher { display: none; }
+}
+
+/* Launcher with a word. */
+.pb-launcher--label { display: inline-flex; width: auto; height: 52px; padding: 0 20px 0 16px; gap: 10px; font: 700 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-launcher--label .pb-ico { width: 22px; height: 22px; }
+
+/* ---------- ChatMessage: bubbles ---------- */
+/* No sender label on screen (it is in a pb-sr span); the time sits after the last word and takes a line of its
+   own only when the last line is full. Bubbles in a row from the same side sit 4px apart. */
+.pb-dock .pb-msg { display: flow-root; }
+.pb-msg__time { float: right; margin: 3px 0 -2px 12px; font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.pb-msg--customer .pb-msg__time { color: var(--on-violet); opacity: 0.82; }
+.pb-msg--customer[data-status="failed"] .pb-msg__time { color: var(--ink-muted); opacity: 1; }
+.pb-dock .pb-msg--assistant + .pb-msg--assistant,
+.pb-dock .pb-msg--customer + .pb-msg--customer { margin-top: -8px; }
+.pb-dock .pb-msg--agent .pb-msg__meta { font: 600 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
+
+/* Money in assistant text: an amount never breaks from its currency; a list of amounts is a ledger, the date,
+   the label (cut with an ellipsis) and the amount in columns that line up. The figures are the model's text. */
+.pb-amount { font: 600 0.9em/1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-dock .pb-msg:has(.pb-ledger) { align-self: stretch; }
+.pb-ledger { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; margin: 6px 0 2px; padding: 0; list-style: none; }
+.pb-ledger__row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 5px 0; }
+.pb-ledger__row + .pb-ledger__row { border-top: 1px solid var(--line); }
+.pb-ledger__date { font: 500 12px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); white-space: nowrap; }
+.pb-ledger__label { grid-column: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; font: 400 14px/20px var(--font-sans); }
+.pb-ledger__label:first-child { grid-column: 1 / 3; }
+.pb-ledger__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-ledger__note { flex: none; font: 400 12px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; }
+.pb-ledger__amount { grid-column: 3; font: 600 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* System lines: sentence case at 13px, with an optional receipt reference. */
+.pb-dock .pb-sys { font: 500 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
+.pb-sys__ref { font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+
+/* ---------- Proof: an engine-built result in two lines, details on demand ---------- */
+/* Put it on a pb-cut element. Receipts (sync edge) and the handoff (violet edge). */
+.pb-proof { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--sync); --face: var(--surface-100); align-self: stretch; display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; align-items: start; margin: 0; padding: 10px 14px 10px 10px; color: var(--ink); }
+.pb-proof > * { grid-column: 2; min-width: 0; }
+.pb-proof > .pb-proof__icon { grid-column: 1; grid-row: 1 / span 2; }
+.pb-proof > .pb-proof__foot, .pb-proof > .pb-proof__note { grid-column: 1 / -1; }
+.pb-proof[data-tone="handoff"] { --edge: var(--violet); }
+.pb-proof__icon { --icon-fg: var(--sync); --icon-bg: var(--sync-soft); display: grid; place-items: center; width: 32px; height: 32px; background: var(--icon-bg); color: var(--icon-fg); clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.pb-proof__icon .pb-ico { vertical-align: 0; }
+.pb-proof__icon[data-tone="blocked"] { --icon-fg: var(--crimson); --icon-bg: var(--crimson-soft); }
+.pb-proof__icon[data-tone="violet"] { --icon-fg: var(--violet); --icon-bg: var(--violet-soft); }
+.pb-proof__title { margin: 0; font: 600 15px/20px var(--font-sans); }
+.pb-proof__sub { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__data { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-proof__ref { position: relative; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink-muted); cursor: pointer; font: 400 13px/20px var(--font-sans); text-align: left; }
+.pb-proof__ref::before { content: ""; position: absolute; inset: -12px -8px; }
+.pb-proof__ref > .pb-ico { width: 14px; height: 14px; vertical-align: 0; flex: none; }
+.pb-proof__ref > .pb-ico--shield-check { color: var(--sync); }
+.pb-proof__ref .pb-proof__data { font-size: 12.5px; }
+.pb-proof__ref .pb-ico--chev1 { transform: rotate(180deg); transition: transform var(--motion-step, 160ms) var(--ease-step, steps(4, end)); }
+.pb-proof__ref[aria-expanded="true"] .pb-ico--chev1 { transform: none; }
+.pb-proof__ref:hover { color: var(--ink); }
+.pb-proof__ref:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-proof__more { display: grid; gap: 8px; justify-items: start; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__more[hidden] { display: none; }
+.pb-proof__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-proof__foot b { font: 700 15px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-proof__foot .pb-action { font-size: 13px; }
+.pb-proof__note { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+
+/* ---------- Degraded states ---------- */
+/* A message the API did not accept: one line under the bubble, with the retry beside it. */
+.pb-unsent { align-self: flex-end; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 14px; margin: -6px 0 0; font: 400 13px/20px var(--font-sans); color: var(--ink); }
+.pb-unsent > span { display: inline-flex; align-items: center; gap: 6px; }
+.pb-unsent .pb-ico--warning { width: 14px; height: 14px; vertical-align: 0; color: var(--alert); }
+.pb-unsent .pb-action { font-size: 13px; }
+/* One sentence on a soft tint, with its action on the same line when it fits. Put it on a pb-cut element. */
+.pb-strip { --tone: var(--alert); --tone-bg: var(--alert-soft); --c-tl: var(--cut-sm); --c-br: var(--cut-sm); --edge: var(--tone); --face: var(--tone-bg); align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; padding: 9px 12px; color: var(--ink); font: 400 14px/20px var(--font-sans); }
+.pb-strip[data-tone="info"] { --tone: var(--pattern); --tone-bg: var(--pattern-soft); }
+.pb-strip > .pb-ico { flex: none; vertical-align: 0; color: var(--tone); }
+.pb-strip > span { flex: 1 1 200px; min-width: 0; }
+.pb-strip .pb-action { margin-left: auto; font-size: 13px; }
+
+/* ---------- OtpInboxNotice: the simulated inbox as a sheet over the messages ---------- */
+.pb-chat__scrim { position: absolute; inset: 0; z-index: 1; background: var(--scrim); opacity: 0.55; }
+.pb-sheet { --c-tl: var(--cut-lg); --c-br: 0px; --edge: var(--violet); --face: var(--surface-100); position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: grid; gap: 12px; max-height: 100%; overflow: auto; padding: 12px 16px 16px; color: var(--ink); }
+.pb-sheet__bar { display: flex; align-items: center; gap: 10px; }
+.pb-sheet__bar .pb-chat__title { margin: 0; font-size: 15px; }
+.pb-sheet__bar .pb-btn { margin-left: auto; }
+.pb-sheet__from { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__from b { font-weight: 600; color: var(--ink); }
+.pb-sheet__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.pb-sheet__exp { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__exp b { font: 700 16px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-sheet__note { display: flex; gap: 8px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-sheet__note .pb-ico { margin-top: 2px; color: var(--pattern); }
+
+/* ---------- Composer: a text area that grows to four lines ---------- */
+.pb-chat__composer { align-items: flex-end; }
+.pb-chat__composer textarea { flex: 1; min-width: 0; min-height: 24px; max-height: 120px; margin: 0; padding: 10px 0; border: 0; outline: 0; resize: none; background: transparent; color: inherit; font: 400 16px/24px var(--font-sans); field-sizing: content; }
+.pb-chat__composer textarea::placeholder { color: var(--ink-muted); opacity: 1; }
+
+/* ---------- The composer while a one-time code is pending: six boxes for the six digits ---------- */
+/* The field is drawn as the system's digit cells (`pb-code__d`, in `pb-t-code`, the `mono-code` type), one per digit,
+   under a visible label; one real input lies over them, transparent, and the boxes show its value. The box to type in
+   shows the focus in its edge while the input has the focus, and a field that is off
+   (a message in flight) dims its boxes. "Cancelar" sits beside the boxes; the line under them (a code that was not
+   accepted, or the code that ran out and the button to ask for another) takes the whole row. */
+.pb-code-entry { flex-wrap: wrap; align-items: flex-end; }
+.pb-code-entry__field { display: grid; gap: 6px; flex: 1 1 0; min-width: 0; }
+/* Fit to the six boxes, so the focus ring and the input over them hug exactly the boxes, not the width of the field. */
+.pb-code-entry__cells { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 40px)); justify-content: start; gap: 6px; width: fit-content; max-width: 100%; }
+.pb-code-entry__cell { width: auto; letter-spacing: 0; }
+/* The box to type in shows the focus, and only while the field has it: there is no ring around the group. */
+.pb-code-entry__cells:focus-within .pb-code-entry__cell[data-active="true"] { --edge: var(--focus); --bw: 2px; outline: 2px solid transparent; }
+.pb-code-entry__cells[data-disabled] .pb-code-entry__cell { --edge: var(--line); color: var(--ink-muted); }
+.pb-code-entry__input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; outline: 2px solid transparent; background: transparent; color: transparent; caret-color: transparent; font: inherit; cursor: text; }
+.pb-code-entry__input:disabled { cursor: progress; }
+.pb-code-entry__field + .pb-code-entry__cancel { margin-bottom: 4px; }
+.pb-code-entry__note { flex: 1 1 100%; margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink); }
+.pb-code-entry__error { flex: 1 0 100%; align-self: stretch; justify-content: flex-start; margin: 0; }
+
+/* ---------- Feedback when the conversation ends: one line between hairlines, two equal buttons ---------- */
+.pb-rate { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ink-muted); font: 500 13px/18px var(--font-sans); }
+.pb-rate::before, .pb-rate::after { content: ""; flex: 1 1 8px; height: 1px; background: var(--line-strong); opacity: 0.5; }
+.pb-rate__ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 10px; text-align: center; }
+.pb-rate__btns { display: inline-flex; gap: 2px; }
+.pb-rate__btn { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; }
+.pb-rate__face { --c-tl: var(--cut-sm); --c-br: var(--cut-sm); --edge: var(--line-strong); --face: var(--surface-100); display: inline-flex; align-items: center; min-height: 30px; padding: 0 14px; font: 600 13px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; }
+.pb-rate__btn:hover .pb-rate__face { --edge: var(--violet); --face: var(--violet-soft); color: var(--violet); }
+.pb-rate__btn:disabled { cursor: progress; }
+.pb-rate__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+.pb-rate__done { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 0; }
+.pb-rate__done .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--violet); }
+
+/* ---------- Detective mode (ADR-0019): the trace view, a tab of the demo panel; an action under each reply ---------- */
+/* The icon: a hexagonal magnifier on the 16px grid (1.5 stroke, square caps, mitered joins). The lens is the system's
+   hexagon (R = 4, centre 6,7.5); the handle leaves the lower-right vertex on the line from the centre through it,
+   at 30 degrees, the third edge of the honeycomb, 5 long. */
+.pb-ico--detective { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M6 3.5 9.46 5.5v4L6 11.5 2.54 9.5v-4z'/%3E%3Cpath d='M9.46 9.5l4.33 2.5'/%3E%3C/svg%3E"); }
+
+/* The view is the detective tab of the demo panel, which sits beside the chat or, with no room (under 920px wide or
+   under 500px tall), takes the place of the log and the composer inside the chat's panel (see the demo panel section
+   below). In both the frame is the host's: the view has no border, shadow or ground of its own. The head stays, the
+   body scrolls on its own. */
+.pb-trace { display: grid; grid-template-rows: auto minmax(0, 1fr); color: var(--ink); }
+.pb-trace--inpanel { flex: 1; min-height: 0; }
+.pb-trace__head { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+.pb-trace__body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.pb-trace__empty { margin: 0; padding: var(--space-4); color: var(--ink-muted); }
+
+/* Turns: one stepper, 44px targets. Tabs for the two views. */
+.pb-trace__nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.pb-trace__stepper { display: inline-flex; align-items: center; gap: var(--space-1); }
+.pb-trace__stepper b { min-width: 104px; text-align: center; font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-trace__stepper .pb-ico--prev { transform: rotate(180deg); }
+.pb-trace__views .pb-tab { min-height: 44px; }
+
+/* Totals: label and data from the type scale, no boxed table. Amounts put the currency code first. */
+.pb-trace__totals { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-3); margin: 0; }
+.pb-trace__totals dt { font: 600 12px/20px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace__totals dd { margin: 0; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-trace__totals dd span + span::before { content: " · "; color: var(--ink-muted); }
+
+/* Under a reply: an action of the system (`pb-action`: condensed caps, violet, arrow at the end) with the detective
+   icon in front, "Modo detective" and the turn's time. It sits under the reply, at the left, and is a 44px target.
+   The time is data, not a label: mono and lower case. The leading icon stays put on hover (only the arrow steps). */
+.pb-trace-open { align-self: flex-start; margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-2); }
+.pb-action.pb-trace-open .pb-ico--detective { transform: none; }
+.pb-trace-open__time { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+.pb-trace-step:focus-visible, .pb-trace-wf__row:focus-visible, .pb-trace-more > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* A hexagon marks a step; a bar is a row of hexagon cells. Two tones only: pattern blue (information) for the LLM,
+   the muted ink for every other step. Green, orange and red keep their meaning (verified, caution, danger) and are
+   not chart colors. */
+.pb-trace--inpanel { --pb-hexcell: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M5 0 9.33 2.5v5L5 10 .67 7.5v-5z'/%3E%3C/svg%3E"); }
+.pb-trace--inpanel [data-kind] { --pb-trace-k: var(--ink-muted); }
+.pb-trace--inpanel [data-kind="llm_call"] { --pb-trace-k: var(--pattern); }
+.pb-trace-dot { display: inline-block; flex: none; width: 8px; height: 8px; }
+.pb-trace-dot, .pb-trace-spark > span, .pb-trace-wf__bar { background: var(--pb-trace-k, var(--ink-muted)); }
+.pb-trace--inpanel .pb-trace-dot { width: 14px; height: 14px; -webkit-mask: var(--pb-hexcell) center / contain no-repeat; mask: var(--pb-hexcell) center / contain no-repeat; }
+/* Bars as a smooth two-tone bar; the hexagon cells come only where the browser can round a percentage to a cell. */
+.pb-trace-spark, .pb-trace-wf__track { display: block; position: relative; height: 10px; overflow: hidden; background: var(--line); }
+/* Both place their bars from the track's left (`--x`, `--w` as shares of the turn). A bar that starts at the very end
+   keeps its minimum width inside the track instead of sitting on its edge, where the track would clip it to nothing. */
+.pb-trace-spark > span, .pb-trace-wf__bar { --x: 0%; --w: 0%; position: absolute; top: 0; bottom: 0; left: min(var(--x), calc(100% - 3px)); width: var(--w); min-width: 3px; }
+.pb-trace-spark > span { --x2: 100%; }
+@supports (width: round(nearest, 50%, 10px)) {
+  /* A cell is 10px. The track is a whole number of cells wide (its last cell is never cut) and a bar sits on cells.
+     The summary tiles the turn on cell boundaries, so its segments never add up to more than the track, and a step
+     shorter than a cell has none. In the timeline a step shorter than a cell still shows one, wherever it starts. */
+  .pb-trace--inpanel .pb-trace-spark,
+  .pb-trace--inpanel .pb-trace-wf__track { width: round(down, 100%, 10px); -webkit-mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; mask: var(--pb-hexcell) 0 50% / 10px 10px repeat-x; }
+  .pb-trace--inpanel .pb-trace-spark > span { left: round(down, var(--x), 10px); width: calc(round(down, var(--x2), 10px) - round(down, var(--x), 10px)); min-width: 0; }
+  .pb-trace--inpanel .pb-trace-wf__bar { --l: min(round(down, var(--x), 10px), calc(100% - 10px)); left: var(--l); width: min(round(nearest, var(--w), 10px), calc(100% - var(--l))); min-width: 10px; }
+}
+
+/* Steps: one row each, the detail opens under it. Names in `small`, every figure in `mono-data`. */
+.pb-trace-steps { margin: 0; padding: 0; list-style: none; }
+.pb-trace-step { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; width: 100%; min-height: 44px; padding: 8px var(--space-4); border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 400 13px/20px var(--font-sans); }
+.pb-trace-step:hover, .pb-trace-step[aria-expanded="true"] { background: var(--surface-200); }
+.pb-trace-step__name { min-width: 0; overflow-wrap: anywhere; }
+.pb-trace-step__name small { display: block; color: var(--ink-muted); }
+.pb-trace-step__name small, .pb-trace-step__ms, .pb-trace-name, .pb-trace-wf__axis { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+/* A tool goes by its own name, an identifier: its own case. */
+.pb-trace-name { text-transform: none; letter-spacing: 0; }
+.pb-trace-step__ms { letter-spacing: 0; text-transform: none; color: var(--ink-muted); white-space: nowrap; }
+.pb-trace-step__detail:not([hidden]) { padding: 10px var(--space-4) 14px; border-bottom: 1px solid var(--line); background: var(--surface-000); }
+
+/* Timeline: bars on the turn's clock, the picked step under them. */
+.pb-trace-wf { display: grid; padding: 10px var(--space-4) 4px; }
+.pb-trace-wf__axis, .pb-trace-wf__row { display: grid; grid-template-columns: minmax(104px, 34%) minmax(0, 1fr) 64px; gap: 10px; align-items: center; }
+.pb-trace-wf__axis { padding-bottom: 4px; color: var(--ink-muted); }
+.pb-trace-wf__axis > span:nth-child(2) { display: flex; justify-content: space-between; }
+.pb-trace-wf__row { width: 100%; min-height: 44px; padding: 5px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; font: 400 13px/20px var(--font-sans); }
+.pb-trace-wf__row:hover, .pb-trace-wf__row[aria-pressed="true"] { background: var(--surface-200); }
+.pb-trace-wf__name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.pb-trace-wf__row .pb-trace-step__ms { text-align: right; }
+.pb-trace-wf__detail { display: grid; gap: var(--space-3); margin: 10px var(--space-4) var(--space-4); padding: var(--space-3); border: 1px solid var(--line); background: var(--surface-000); }
+.pb-trace-wf__head { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font: 600 15px/20px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* A step's detail: a line or two in mono, the masked text with its placeholders marked, the long parts folded. */
+.pb-trace-detail { display: grid; gap: var(--space-2); min-width: 0; }
+.pb-trace-detail__line { margin: 0; font: 500 13px/20px var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
+.pb-trace-code { margin: 0; max-height: 220px; overflow: auto; padding: 6px 8px; border: 1px solid var(--line); background: var(--surface-100); color: var(--ink); font: 500 13px/20px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pb-trace-ph { padding: 0 2px; background: var(--pattern-soft); color: var(--pattern); font: inherit; }
+.pb-trace-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.pb-trace-tags .pb-tag { text-transform: none; letter-spacing: 0; }
+.pb-trace-more > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-more > * + * { margin-top: 6px; }
+.pb-trace-msg { display: grid; gap: 2px; padding-left: 8px; border-left: 3px solid var(--line-strong); }
+.pb-trace-msg[data-role="user"] { border-color: var(--pattern); }
+.pb-trace-msg__role { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-trace-table { width: 100%; border-collapse: collapse; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-trace-table td { padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.pb-trace-table td:last-child { padding-right: 0; text-align: right; }
+
+/* ---------- Landing ---------- */
+/* Hero: one fact line instead of a checked list. */
+.pb-hero__fact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: var(--space-1) 0 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-hero__fact .pb-ico { vertical-align: 0; color: var(--sync); }
+/* S2PromoCard as a band from 720px: the mark on the left, title and line on the right. */
+.pb-section__band { max-width: 880px; margin: 0 auto; }
+@media (min-width: 720px) {
+  .pb-s2--band { grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-8); row-gap: var(--space-3); align-items: end; }
+  .pb-s2--band .pb-s2__top, .pb-s2--band .pb-gauge, .pb-s2--band .pb-s2__legal { grid-column: 1 / -1; }
+  .pb-s2--band .pb-s2__mark { grid-column: 1; grid-row: 2 / span 2; align-self: center; }
+  .pb-s2--band .pb-s2__title { grid-column: 2; grid-row: 2; }
+  .pb-s2--band .pb-s2__sub { grid-column: 2; grid-row: 3; }
+}
+/* Footer with the wordmark, the demo note and the small print only. */
+.pb-footer__inner--compact { gap: var(--space-4); padding-top: var(--space-8); }
+@media (min-width: 900px) { .pb-footer__inner--compact { grid-template-columns: minmax(0, 1fr); } }
+.pb-footer__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
+
+/* =====================================================================================================
+   Back office (the declutter review of 2026-10-02, ADR-0018). Words instead of raw enums, ids in mono,
+   the queue's summary with decisions, the case page, a glance-first metrics page. Rows: README.md.
+   ===================================================================================================== */
+
+/* ---------- Case id: mono, lowercase, in groups of four; copying gives the plain id ---------- */
+.pb-caseref { display: inline-flex; align-items: baseline; font: 500 13px/20px var(--font-mono); letter-spacing: 0.02em; color: var(--ink-muted); white-space: nowrap; text-decoration: none; }
+.pb-caseref > span + span { margin-left: 0.4em; }
+.pb-caseref > span:first-child { opacity: 0.75; }
+.pb-caseref--lg { font-size: 15px; line-height: 22px; color: var(--ink); }
+
+/* ---------- Navigation: a count on a section, the agent's menu ---------- */
+.pb-nav__count { display: inline-grid; place-items: center; min-width: 22px; height: 20px; margin-left: 8px; padding: 0 6px; background: var(--violet); color: var(--on-violet); font: 700 12px/16px var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.pb-menu { position: relative; }
+/* The agent's button is a button of the system (`pb-btn pb-btn--ghost pb-btn--sm`): the user icon, the e-mail in the data
+   type (cut to 180px with an ellipsis; the whole address is its title) and the chevron. */
+.pb-menu__btn .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
+.pb-menu__btn .pb-ico--chev1 { transform: rotate(180deg); }
+.pb-menu__btn[aria-expanded="true"] .pb-ico--chev1 { transform: none; }
+.pb-menu__agent { max-width: 180px; overflow: hidden; text-overflow: ellipsis; font: 500 13px/20px var(--font-mono); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+.pb-menu__panel { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--line-strong); --face: var(--surface-100); position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 12px; width: 260px; padding: 14px; color: var(--ink); filter: drop-shadow(var(--shadow-float)); }
+.pb-menu__panel[hidden] { display: none; }
+.pb-menu__section { display: grid; gap: 4px; }
+.pb-menu__section .pb-lang { justify-self: start; }
+.pb-menu__email { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.pb-menu__panel hr { width: 100%; height: 1px; margin: 0; border: 0; background: var(--line); }
+
+/* ---------- A live view: a dot that says it refreshes ---------- */
+.pb-live { display: inline-flex; align-items: center; gap: 8px; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-live::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: var(--radius-dot); background: var(--sync); box-shadow: 0 0 0 3px var(--sync-soft); }
+.pb-live[data-paused]::before { background: var(--ink-muted); box-shadow: none; }
+
+/* ---------- Tabs with a count ---------- */
+.pb-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; border: 0; border-bottom: 1px solid var(--line); }
+.pb-tab { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 0; background: none; color: var(--ink-muted); cursor: pointer; font: 500 14px/20px var(--font-sans); }
+.pb-tab b { padding: 0 6px; background: var(--surface-200); color: var(--ink); font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-tab:hover { color: var(--ink); }
+.pb-tab[aria-checked="true"] { color: var(--ink); font-weight: 600; }
+.pb-tab[aria-checked="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--violet); }
+.pb-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ---------- The queue: priority, case, who, wait, summary ---------- */
+.pb-cases { position: relative; border: 1px solid var(--line-strong); background: var(--surface-100); color: var(--ink); }
+.pb-cases__head, .pb-crow { display: grid; grid-template-columns: 112px minmax(0, 1fr) minmax(150px, 230px) 76px 44px; gap: 0 var(--space-4); align-items: center; padding: 0 var(--space-2) 0 var(--space-4); }
+.pb-cases__head { min-height: 36px; background: var(--surface-200); border-bottom: 1px solid var(--line-strong); font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-cases__head [data-col="wait"], .pb-crow [data-col="wait"] { text-align: right; }
+.pb-crow { position: relative; min-height: 60px; border-bottom: 1px solid var(--line); transition: background-color var(--motion-tick, 80ms) var(--ease-step, steps(4, end)); }
+.pb-crow:last-child { border-bottom: 0; }
+.pb-crow:hover, .pb-crow[data-open] { background: var(--surface-200); }
+.pb-crow[data-open] { box-shadow: inset 3px 0 0 var(--violet); }
+.pb-crow[data-closed] > :not(.pb-peek) { opacity: 0.55; }
+.pb-crow__case { display: grid; gap: 1px; min-width: 0; padding-block: 9px; }
+.pb-crow__title { justify-self: start; color: var(--ink); text-decoration: none; font: 600 15px/20px var(--font-sans); }
+/* The title is the row's link: the whole row opens the case. */
+.pb-crow__title::after { content: ""; position: absolute; inset: 0; }
+.pb-crow__title:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
+.pb-crow__title:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-crow__sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-crow__amount { font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); overflow-wrap: anywhere; }
+.pb-who .pb-ico { width: 14px; height: 14px; vertical-align: 0; flex: none; }
+.pb-who[data-me] { color: var(--violet); font-weight: 600; }
+.pb-who[data-other] { color: var(--ink); }
+.pb-wait { font: 500 14px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-peekbtn { position: relative; z-index: 2; display: grid; place-items: center; width: 36px; height: 36px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink-muted); cursor: pointer; }
+.pb-peekbtn .pb-ico { transform: rotate(180deg); transition: transform var(--motion-step, 160ms) var(--ease-step, steps(4, end)); }
+.pb-peekbtn[aria-expanded="true"] { color: var(--violet); }
+.pb-peekbtn[aria-expanded="true"] .pb-ico { transform: none; }
+.pb-peekbtn:hover { color: var(--ink); background: var(--surface-300); }
+.pb-peekbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (max-width: 720px) {
+  .pb-cases__head { display: none; }
+  .pb-crow { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "case case peek" "pri who wait"; gap: 6px var(--space-3); padding: 10px var(--space-2) 12px var(--space-4); }
+  .pb-crow > [data-col="pri"] { grid-area: pri; } .pb-crow > [data-col="case"] { grid-area: case; } .pb-crow > [data-col="who"] { grid-area: who; }
+  .pb-crow > [data-col="wait"] { grid-area: wait; } .pb-crow > [data-col="peek"] { grid-area: peek; }
+}
+
+/* ---------- The case summary card that opens under its row ---------- */
+/* It stops short of the chevron column, so every row's chevron stays reachable while a card is open. */
+.pb-peek { --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--line-strong); --face: var(--surface-100); position: absolute; z-index: 10; top: calc(100% - 4px); right: 52px; width: min(470px, calc(100% - 60px)); display: grid; gap: 12px; padding: 16px; color: var(--ink); cursor: auto; filter: drop-shadow(var(--shadow-float)); }
+.pb-peek[data-up] { top: auto; bottom: calc(100% - 4px); }
+.pb-peek__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pb-peek__title { margin: 0; font: 600 16px/22px var(--font-sans); }
+.pb-peek__title small { display: block; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-txn { display: grid; gap: 1px; }
+.pb-txn__amount { font: 700 20px/26px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-txn__who { font: 500 15px/22px var(--font-sans); }
+.pb-txn__meta { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-txn__meta .pb-t-mono { font-size: 12.5px; color: var(--ink); }
+/* Facts as sentences: the bank's checks carry an icon in the state's color; the customer's word does not. */
+.pb-facts { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+.pb-facts li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font: 400 14px/20px var(--font-sans); }
+.pb-facts li > .pb-ico { width: 14px; height: 14px; margin-top: 3px; vertical-align: 0; color: var(--sync); }
+.pb-facts li[data-tone="blocked"] > .pb-ico { color: var(--crimson); }
+.pb-facts li[data-tone="warn"] > .pb-ico { color: var(--alert); }
+.pb-facts li[data-tone="muted"], .pb-facts li[data-tone="muted"] > .pb-ico { color: var(--ink-muted); }
+.pb-facts li b { font-weight: 600; color: var(--ink); }
+.pb-facts .pb-t-mono { font-size: 12.5px; color: var(--ink-muted); }
+/* What the assistant wrote about the customer: unverified, so a dashed edge and a label. */
+.pb-said { margin: 0; padding: 8px 12px; border-left: 2px dashed var(--line-strong); background: var(--surface-200); font: 400 14px/21px var(--font-sans); }
+.pb-said small { display: block; margin-top: 4px; font: 400 12.5px/18px var(--font-sans); color: var(--ink-muted); }
+
+/* ---------- Decisions on a case: two equal buttons and Escalar, one confirmation, the result ---------- */
+.pb-decide { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pb-decide > .pb-action { margin-left: auto; font-size: 13px; }
+.pb-decide__note { flex: 1 1 100%; display: flex; align-items: center; gap: 6px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-decide__note .pb-ico { width: 14px; height: 14px; vertical-align: 0; flex: none; }
+.pb-confirm { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-strong); background: var(--surface-200); }
+.pb-confirm__q { margin: 0; font: 600 14px/20px var(--font-sans); }
+.pb-confirm__msg { margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-confirm__msg q { color: var(--ink); }
+.pb-confirm__row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pb-confirm__error { display: flex; align-items: center; gap: 6px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink); }
+.pb-confirm__error .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--alert); }
+.pb-choices { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; }
+.pb-choices .pb-btn { text-transform: none; letter-spacing: 0; font: 500 13px/16px var(--font-sans); }
+.pb-check { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/20px var(--font-sans); }
+.pb-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--violet); }
+.pb-done { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; padding: 10px 12px; border: 1px solid var(--sync); background: var(--sync-soft); color: var(--ink); font: 400 14px/20px var(--font-sans); }
+.pb-done .pb-ico { width: 14px; height: 14px; vertical-align: 0; color: var(--sync); }
+.pb-done small { flex-basis: 100%; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+
+/* ---------- The case page header: the case as the title, its status on one line, the decisions ---------- */
+.pb-casehead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 24px; align-items: end; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
+.pb-casehead > h1 { margin: 0; }
+.pb-casehead > .pb-confirm, .pb-casehead > .pb-done, .pb-casehead > .pb-casehead__meta { grid-column: 1 / -1; }
+.pb-casehead__bar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pb-casehead__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-casehead__meta > .pb-casehead__sep::before { content: "·"; margin-right: 10px; color: var(--line-strong); }
+.pb-casehead__meta [data-me] { color: var(--violet); font-weight: 600; }
+@media (max-width: 720px) { .pb-casehead { grid-template-columns: minmax(0, 1fr); } .pb-casehead__bar { justify-content: flex-start; } }
+
+/* ---------- HandoffCard as a summary: sections in sentence case ---------- */
+.pb-sum { display: grid; padding-block: var(--space-2); }
+.pb-sum__sec { display: grid; gap: 10px; padding-block: 14px; border-top: 1px solid var(--line); }
+.pb-sum__sec:first-child { border-top: 0; }
+.pb-sum__h { margin: 0; font: 600 13px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-sum__foot { margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-more { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; background: none; color: var(--ink-muted); cursor: pointer; font: 400 13px/20px var(--font-sans); }
+.pb-more .pb-ico { width: 14px; height: 14px; vertical-align: 0; transform: rotate(180deg); transition: transform var(--motion-step, 160ms) var(--ease-step, steps(4, end)); }
+.pb-more[aria-expanded="true"] .pb-ico { transform: none; }
+.pb-more:hover { color: var(--ink); }
+.pb-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-audit { width: 100%; border-collapse: collapse; font: 500 12.5px/18px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-audit td { padding: 5px 10px 5px 0; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.pb-audit td:nth-child(2) { font-family: var(--font-sans); font-weight: 400; color: var(--ink-muted); }
+.pb-audit tr[data-refused] td:nth-child(2) { color: var(--alert); }
+.pb-audit td:last-child { color: var(--ink-muted); text-align: right; padding-right: 0; }
+
+/* ---------- The conversation from the agent's side: the customer left, the bank right ---------- */
+.pb-convo { --c-tl: var(--cut-lg); --c-br: var(--cut-lg); --edge: var(--line-strong); --face: var(--surface-100); display: flex; flex-direction: column; min-width: 0; color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
+.pb-convo__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 14px var(--space-4) 12px var(--space-5); border-bottom: 1px solid var(--line); }
+.pb-convo__head .pb-chat__title { margin: 0; }
+.pb-convo__log { display: flex; flex-direction: column; gap: 12px; min-height: 200px; max-height: 60vh; overflow: auto; padding: var(--space-4); background: var(--surface-200); }
+.pb-convo__grp { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.pb-convo__grp--bank { align-items: flex-end; }
+.pb-convo__who { display: flex; align-items: center; gap: 6px; font: 600 13px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-convo__who .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
+.pb-convo__who[data-me] { color: var(--violet); }
+.pb-convo .pb-msg { display: flow-root; max-width: 84%; padding: 8px 12px; white-space: pre-line; }
+.pb-convo .pb-msg--customer { align-self: auto; --c-tl: 0px; --c-br: 0px; --c-tr: var(--cut-md); --c-bl: var(--cut-md); --face: var(--surface-100); --edge: var(--line-strong); color: var(--ink); }
+.pb-convo .pb-msg--customer .pb-msg__time { color: var(--ink-muted); opacity: 1; }
+.pb-convo .pb-msg--assistant { align-self: auto; --face: var(--surface-300); --edge: var(--line); }
+.pb-convo .pb-msg--agent { align-self: auto; --face: var(--violet); --edge: var(--violet); color: var(--on-violet); }
+.pb-convo .pb-msg--agent .pb-msg__time { color: var(--on-violet); opacity: 0.82; }
+.pb-convo .pb-msg--agent[data-status="failed"] { --face: var(--surface-100); color: var(--ink); }
+.pb-convo .pb-sys { font: 500 13px/18px var(--font-sans); letter-spacing: 0; text-transform: none; }
+.pb-convo__locked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: var(--space-4); border-top: 1px solid var(--line); font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-convo__note { margin: 0; padding: 0 var(--space-4) var(--space-3); font: 400 12.5px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-empty { display: grid; gap: 4px; padding: var(--space-8) var(--space-5); text-align: center; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-empty b { font-weight: 600; color: var(--ink); }
+
+/* ---------- PolicyControl: tools by state as one matrix ---------- */
+.pb-mx { overflow-x: auto; border: 1px solid var(--line-strong); background: var(--surface-100); }
+.pb-mx table { width: 100%; min-width: 960px; border-collapse: collapse; color: var(--ink); }
+.pb-mx th { padding: 10px 8px; background: var(--surface-200); border-bottom: 1px solid var(--line-strong); text-align: center; vertical-align: bottom; font-weight: 400; }
+.pb-mx th:first-child, .pb-mx th:last-child { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-mx th:first-child { padding-left: 16px; text-align: left; }
+.pb-mx td { padding: 8px; border-top: 1px solid var(--line); text-align: center; vertical-align: middle; }
+.pb-mx td:first-child { padding-left: 16px; text-align: left; }
+.pb-mx tbody tr:hover td { background: var(--surface-200); }
+.pb-mx__tool { display: grid; min-width: 220px; }
+.pb-mx__tool b { font: 700 13px/20px var(--font-mono); }
+.pb-mx__tool span { font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-mx__cell { display: inline-grid; place-items: center; width: 32px; height: 32px; margin: 0; padding: 0; border: 1px solid var(--violet); background: transparent; color: var(--violet); cursor: pointer; }
+.pb-mx__cell[aria-checked="true"] { background: var(--violet); color: var(--on-violet); }
+.pb-mx__cell .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
+.pb-mx__cell[aria-checked="false"] .pb-ico { visibility: hidden; }
+.pb-mx__cell:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pb-mx__off { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--line-strong); font: 700 16px/1 var(--font-mono); }
+.pb-mx__ctl { display: inline-flex; align-items: center; gap: 8px; }
+.pb-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-legend > span { display: inline-flex; align-items: center; gap: 8px; }
+.pb-legend .pb-mx__cell, .pb-legend .pb-mx__off { width: 20px; height: 20px; cursor: default; }
+
+/* ---------- Metrics: four numbers, the lists that need a look, the tables on demand ---------- */
+.pb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--space-4); }
+@media (min-width: 960px) { .pb-kpis { grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 1fr)); } }
+.pb-kpi { display: grid; gap: 6px; align-content: start; }
+.pb-kpi--lead { --edge: var(--violet); }
+.pb-kpi__label { margin: 0; font: 600 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-kpi__value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; font: 700 40px/44px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--ink); }
+.pb-kpi__value small { font: 500 15px/20px var(--font-sans); letter-spacing: 0; color: var(--ink-muted); }
+.pb-kpi__sub { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-kpi__sub b { font-weight: 600; color: var(--ink); }
+.pb-kpi__foot { margin: 4px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font: 400 12.5px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-delta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.pb-delta .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
+.pb-delta span { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-delta[data-dir="up"] { color: var(--sync); }
+.pb-delta[data-dir="down"] { color: var(--crimson); }
+.pb-delta[data-dir="down"] .pb-ico { transform: rotate(180deg); }
+/* A change with no better direction (more cards blocked, more cases): the glyph shows the way, not the colour. */
+.pb-delta[data-neutral] { color: var(--ink-muted); }
+.pb-list__h { margin: 0 0 10px; font: 600 16px/22px var(--font-sans); }
+.pb-list { list-style: none; display: grid; margin: 0; padding: 0; }
+.pb-list li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); font: 400 14px/20px var(--font-sans); }
+.pb-list li:first-child { border-top: 0; padding-top: 0; }
+.pb-list li > .pb-ico { width: 14px; height: 14px; vertical-align: -2px; color: var(--ink-muted); }
+.pb-list li[data-tone="no"] > .pb-ico, .pb-list li[data-tone="critical"] > .pb-ico { color: var(--crimson); }
+.pb-list li[data-tone="policy"] > .pb-ico { color: var(--alert); }
+.pb-list li small { display: block; font-size: 13px; color: var(--ink-muted); }
+.pb-list .pb-action { font-size: 13px; white-space: nowrap; }
+.pb-details { display: grid; border-top: 1px solid var(--line); }
+.pb-details > div { display: grid; gap: var(--space-3); border-bottom: 1px solid var(--line); }
+.pb-details .pb-more { min-height: 48px; color: var(--ink); font: 500 15px/20px var(--font-sans); }
+.pb-details .pb-more span { color: var(--ink-muted); font-size: 14px; }
+.pb-details .pb-more + * { margin-bottom: var(--space-4); }
+.pb-mtable { width: 100%; border-collapse: collapse; border: 1px solid var(--line-strong); background: var(--surface-100); color: var(--ink); }
+.pb-mtable th { padding: 10px 16px; background: var(--surface-200); border-bottom: 1px solid var(--line-strong); text-align: left; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-mtable td { padding: 8px 16px; border-top: 1px solid var(--line); vertical-align: middle; font: 400 14px/20px var(--font-sans); }
+.pb-mtable tbody + tbody tr:first-child td { border-top: 1px solid var(--line-strong); }
+.pb-mtable [data-col="name"] { font: 500 13px/20px var(--font-mono); }
+.pb-mtable th[data-col="count"] { text-align: right; }
+.pb-mtable td[data-col="count"] { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-mtable .pb-chip { white-space: nowrap; }
+.pb-reason { margin-left: 8px; font: 400 14px/20px var(--font-sans); color: var(--ink-muted); }
+.pb-share { display: flex; align-items: center; gap: 10px; min-width: 200px; font: 500 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.pb-share .pb-gauge { flex: 1; min-width: 80px; }
+
+/* ---------- Say: the choice of the message to send (ScriptChoice, approved 2026-10-04) ---------- */
+/* A band that offers 1..n messages. Choosing one sends that literal text as the sender's message (customer
+   chat) or puts it in the composer (back office: the suggested reply). It is never part of the log, and the
+   composer under it does not change. An option is the outlined twin of the bubble it becomes: the sender's
+   cut, side, padding and type, with a violet edge and no fill (the rule of pb-qr: never a filled one). From
+   four options on they turn into compact full-width rows with the message on one line. Put pb-cut on each
+   option. The band with a title and a hint and no list is a pointer, not a choice. */
+.pb-say { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); color: var(--ink); }
+.pb-say__head { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.pb-say__title { margin: 0; font: 600 14px/20px var(--font-sans); }
+.pb-say__hint { margin: 2px 0 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+.pb-say__hint b { font-weight: 600; color: var(--ink); }
+.pb-say__list { list-style: none; display: grid; gap: 6px; margin: var(--space-2) 0 0; padding: 0; }
+.pb-say__list > li { justify-self: end; min-width: 0; max-width: 88%; }
+.pb-say__opt {
+  --c-tl: var(--cut-md); --c-br: var(--cut-md); --edge: var(--violet); --face: var(--surface-100);
+  --say-accent: var(--violet); --say-quiet: var(--ink-muted); --say-mark: var(--pattern);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center;
+  width: 100%; min-height: 44px; margin: 0; padding: 10px 14px; border: 0; background: none;
+  color: var(--ink); cursor: pointer; text-align: start; font: 400 15px/22px var(--font-sans);
+}
+.pb-say__body { display: grid; min-width: 0; }
+.pb-say__label { font: 600 13px/16px var(--font-condensed); letter-spacing: 0.12em; text-transform: uppercase; color: var(--say-accent); }
+.pb-say__text { overflow-wrap: anywhere; }
+.pb-say__note { display: flex; align-items: flex-start; gap: 6px; margin-top: 2px; font: 400 13px/18px var(--font-sans); color: var(--say-quiet); }
+.pb-say__note .pb-ico { width: 14px; height: 14px; margin-top: 2px; vertical-align: 0; color: var(--say-mark); }
+.pb-say__note .pb-t-mono { font-size: 12.5px; line-height: 18px; }
+.pb-say__side { display: inline-flex; align-items: center; gap: var(--space-2); }
+.pb-say__go { display: inline-flex; align-items: center; gap: 6px; color: var(--say-accent); white-space: nowrap; font: 600 13px/16px var(--font-condensed); letter-spacing: 0.1em; text-transform: uppercase; }
+.pb-say__go .pb-ico { vertical-align: 0; }
+/* The arrow points down, at the composer the text goes to. */
+.pb-say__go .pb-ico--arrow { transform: rotate(90deg); }
+/* States. Pressed is the bubble it becomes; disabled is pb-qr's. */
+.pb-say__opt:hover { --face: var(--violet-soft); }
+.pb-say__opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-say__opt:active, .pb-say__opt[aria-pressed="true"] { --face: var(--violet); --say-accent: var(--on-violet); --say-quiet: var(--on-violet); --say-mark: var(--on-violet); color: var(--on-violet); }
+.pb-say__opt:disabled { --edge: var(--line); --face: var(--surface-200); --say-accent: var(--ink-muted); --say-quiet: var(--ink-muted); --say-mark: var(--ink-muted); color: var(--ink-muted); cursor: not-allowed; }
+.pb-say__opt[aria-pressed="true"]:disabled { --edge: var(--violet); --face: var(--violet); --say-accent: var(--on-violet); --say-quiet: var(--on-violet); --say-mark: var(--on-violet); color: var(--on-violet); }
+/* Customer chat: the option takes the customer's mirrored cut. */
+.pb-dock .pb-say__opt { --c-tl: 0px; --c-br: 0px; --c-tr: var(--cut-md); --c-bl: var(--cut-md); }
+/* Back office: 32px controls and the agent's bubble metrics. */
+.pb-convo .pb-say__list > li { max-width: 84%; }
+.pb-convo .pb-say__opt { min-height: 32px; padding: 8px 12px; }
+/* Four options or more: compact rows across the band, the message on one line. */
+.pb-say__list:has(> li:nth-child(4)) > li { justify-self: stretch; max-width: none; }
+.pb-say__list:has(> li:nth-child(4)) .pb-say__opt { padding: 6px var(--space-3); font: 400 14px/20px var(--font-sans); }
+.pb-say__list:has(> li:nth-child(4)) .pb-say__text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---------- The demo panel (ScriptChoice, approved 2026-10-04; shared with detective mode, ADR-0019) ---------- */
+/* One panel at the left of the chat, as tall as it, opened from one button in the chat header ("Menú demo"), closed by default. It
+   has two tabs: the demo guide and, where the environment offers it, the detective view (`pb-trace`). The chat and its
+   composer stay in sight beside it. None of it is a message of the conversation. With no room beside the chat (under 920px
+   wide, where the panel is 340px and the chat 520px with the gaps, or under 500px tall) the aside is hidden, the chat
+   takes the screen (see the top of this file) and the same panel is drawn inside the chat's panel, in place of the log
+   and the composer (`pb-side--inplace`). The options inside the guide are the `pb-say` ones above. */
+.pb-side { --c-tl: var(--cut-lg); --c-br: var(--cut-lg); --edge: var(--line-strong); --face: var(--surface-100); display: flex; flex-direction: column; min-width: 0; color: var(--ink); filter: drop-shadow(var(--shadow-card)); }
+/* Its display would win over the attribute: the panel is hidden while it is closed or the chat is. */
+.pb-side[hidden] { display: none; }
+/* 340px at a 920px window, 520px from 1100px; its left edge never goes under 12px from the window's. */
+.pb-dock__side { position: absolute; bottom: 84px; right: calc(48px + min(520px, 100% - 32px)); width: min(520px, calc(100% - 580px)); height: min(680px, calc(100dvh - 148px)); }
+@media (max-width: 919.98px), (max-height: 499.98px) { .pb-dock__side { display: none; } }
+/* With no room the same panel is drawn inside the chat's panel, under its header, in place of the log and the composer: the chat's frame is its frame (no card, no shadow, no position of its own). */
+.pb-side--inplace { flex: 1; min-height: 0; filter: none; }
+.pb-side__head { display: flex; align-items: stretch; justify-content: space-between; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4) 0 var(--space-3); border-bottom: 1px solid var(--line); }
+.pb-side__head > .pb-chat__title { align-self: center; padding-left: var(--space-2); }
+.pb-side__head > .pb-tag { align-self: center; }
+/* The tabs sit on the head's rule: their own rule and the selected bar replace it. */
+.pb-side__head .pb-tabs { flex-wrap: nowrap; border-bottom: 0; }
+.pb-side__head .pb-tab { min-height: 44px; }
+.pb-side__head .pb-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.pb-side__head .pb-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--violet); }
+.pb-side__content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pb-guide__body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); }
+.pb-guide__title { margin: 0; font: 600 14px/20px var(--font-sans); }
+.pb-guide__title:focus { outline: none; }
+.pb-guide__hint { margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
+/* The script as a track: each step has its two-figure numeral in the stencil face of the system's list numerals, a rail
+   joins them, and the three states differ by more than colour. Done: a check, the label "Enviado", the text dimmed.
+   Now: the label in violet and the option to send, the most prominent thing in the panel. Next: the message in the
+   normal ink in an outlined card, which is not a button (no hover, no pointer). Message text is 14px, labels the
+   `label` style. */
+.pb-guide__progress { display: block; margin-top: 2px; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-guide__steps { counter-reset: gstep; list-style: none; display: grid; margin: 0; padding: 0; }
+.pb-guide__step { position: relative; counter-increment: gstep; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-2); padding-bottom: var(--space-4); color: var(--ink); }
+.pb-guide__step::before { content: counter(gstep, decimal-leading-zero); font: 800 20px/24px var(--font-stencil); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.pb-guide__step::after { content: ""; position: absolute; left: 12px; top: 30px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.pb-guide__step:last-child { padding-bottom: 0; }
+.pb-guide__step:last-child::after { display: none; }
+.pb-guide__step[data-state="done"]::before, .pb-guide__step[data-state="done"] { color: var(--ink-muted); }
+.pb-guide__step[data-state="current"]::before { color: var(--violet); }
+.pb-guide__main { display: grid; gap: 4px; min-width: 0; align-content: start; }
+.pb-guide__label { display: flex; align-items: center; gap: 6px; min-height: 24px; font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-guide__label .pb-ico { width: 14px; height: 14px; vertical-align: 0; }
+.pb-guide__step[data-state="current"] .pb-guide__label { color: var(--violet); }
+.pb-guide__sent { margin: 0; font: 400 14px/20px var(--font-sans); overflow-wrap: anywhere; }
+.pb-guide__card { margin: 0; padding: 10px 12px; border: 1px solid var(--line-strong); color: var(--ink); font: 400 14px/20px var(--font-sans); overflow-wrap: anywhere; }
+.pb-guide__card b { font-weight: 600; }
+.pb-guide__step[data-state="current"] .pb-guide__card { border-color: var(--violet); }
+/* The next line: its card (the line, not a button) and, beside it, two icon buttons of the same kind (send, then copy; 44px each).
+   The card may shrink to nothing and its words wrap anywhere, so the row never overflows its column; the buttons keep their size
+   and, when the card would be under 200px (the 340px panel has a 264px column), wrap together under the card, send first. */
+.pb-guide__line { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.pb-guide__line > .pb-say__card { flex: 1 1 200px; min-width: 0; }
+.pb-guide__actions { display: flex; gap: var(--space-2); flex: none; }
+.pb-guide__send, .pb-guide__copy { flex: none; }
+.pb-guide__send .pb-ico, .pb-guide__copy .pb-ico { vertical-align: 0; }
+/* The card: the outlined twin of the customer's bubble (the sender's cut, a violet edge, never filled), as a block of text. */
+.pb-say__card { --c-tl: 0px; --c-br: 0px; --c-tr: var(--cut-md); --c-bl: var(--cut-md); --edge: var(--violet); --face: var(--surface-100); display: flex; align-items: center; min-height: 44px; margin: 0; padding: 10px 14px; color: var(--ink); font: 400 15px/22px var(--font-sans); overflow-wrap: anywhere; }
+.pb-say__card--compact { padding: 6px 12px; font: 400 14px/20px var(--font-sans); }
+/* The copy glyph, drawn like `pb-ico--detective` on the 16px grid (1.5 stroke, square caps, mitered joins): the front square with
+   its top-left corner cut at 45 degrees (the system's chamfer), and the one behind it as an L going up and left from that corner. */
+.pb-ico--copy { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M8.5 5.5H14V14H5.5V8.5z'/%3E%3Cpath d='M2 10V2h8'/%3E%3C/svg%3E"); }
+/* ---------- The suggested next line over the composer (outside the log; `NextBand`) ---------- */
+/* The `pb-say` band of the system's family, as small as it can be: the label and one row, no head, no hint. The card is the same
+   outlined twin of the customer's bubble (never filled); only its padding is less, and its line is clamped to three lines (the full
+   text is in `title`). The row never wraps: the card takes what the two 44px buttons leave (and may shrink, with its words breaking
+   anywhere), so even on a 320px phone nothing goes past the screen's edge. Not part of the log, so it is not announced. */
+.pb-say--next { flex: none; min-width: 0; max-width: 100%; padding: var(--space-2) var(--space-3); }
+.pb-say--next .pb-guide__line { align-items: center; flex-wrap: nowrap; }
+.pb-say--next .pb-say__title { margin: 0 0 var(--space-1); font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-say--next .pb-guide__line > .pb-say__card { flex: 1 1 0; min-width: 0; }
+.pb-say--next .pb-say__text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.pb-guide__foot { padding: 0 var(--space-4) var(--space-2); border-top: 1px solid var(--line); }
+/* In the guide an option takes the panel's width; the market sits over the send glyph. */
+.pb-guide__body .pb-say__list { margin: 0; }
+.pb-guide__body .pb-say__list > li { justify-self: stretch; max-width: none; }
+.pb-guide__body .pb-say__opt { align-items: start; }
+.pb-guide__body .pb-say__side { flex-direction: column; align-items: flex-end; gap: 6px; }
+.pb-guide__body .pb-say__list:has(> li:nth-child(4)) .pb-say__text { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+/* ---------- Two calls for attention, in a loop and bounded (they change one rule of the system, see README) ---------- */
+/* The system's only loop is the typing indicator. These two are the same kind of movement, mechanical and in steps: the
+   face of a control swaps between its rest and its hover (`violet-soft`) every half period, the period being ten system
+   steps (1.6s) and the timing `ease-step`. No glow, no shadow, no gradient. Each runs only while it can be used:
+   - the header's "Menú demo" button until the panel has been open once in the visit (`data-seen`), and never while it is
+     open (`aria-pressed`);
+   - the send button of the guide's current step while it is enabled (the line's card is text now, the two actions sit beside it).
+   Both stop, showing the hover face, under the pointer or the keyboard focus, and neither runs with reduced motion. */
+@keyframes pb-nudge {
+  0%, 49.99% { --face: var(--surface-100); }
+  50%, 100% { --face: var(--violet-soft); }
+}
+.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
+.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):hover,
+.pb-demo-toggle:not([data-seen]):not([aria-pressed="true"]):focus-visible { animation: none; --face: var(--violet-soft); }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled) { animation: pb-nudge calc(var(--motion-step) * 10) var(--ease-step) infinite; }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):hover,
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):focus-visible,
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):active { animation: none; }
+.pb-guide__step[data-state="current"] .pb-guide__send:not(:disabled):focus-visible { --face: var(--violet-soft); }
+@media (prefers-reduced-motion: reduce) {
+  .pb-demo-toggle, .pb-guide__step[data-state="current"] .pb-guide__send { animation: none; }
+}
+
+/* ---------- The waiting clock: a send button that is off because the assistant is answering (a third loop, see README) ---------- */
+/* While a message is in flight or a rate limit runs, the send buttons (the composer's and the next line's) swap the arrow for the
+   system's clock (`pb-ico--clock`) and mark themselves `data-waiting`. The clock holds, turns half a turn about its centre in four
+   system steps (`--motion-step` each, `--ease-step`), holds again and turns on to the full turn, so each half turn flips it, like an
+   hourglass. A cycle of two half turns is twenty system steps (3.2s: 0.96s of rest, 0.64s of turn, twice). It exists only while the
+   state does (the attribute leaves with the request) and not under reduced motion, where the clock is a still glyph. */
+@keyframes pb-hourglass {
+  0%, 30% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(180deg); }
+  100% { transform: rotate(360deg); }
+}
+[data-waiting] > .pb-ico--clock { animation: pb-hourglass calc(var(--motion-step) * 20) var(--ease-step) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  [data-waiting] > .pb-ico--clock { animation: none; }
+}
+/* The glyph is a mask over `currentColor`: in forced colours it keeps the button's text colour instead of the system's background. */
+@media (forced-colors: active) {
+  [data-waiting] > .pb-ico--clock { forced-color-adjust: none; }
+}
+
+/* ---------- Focus on the fields: in the edge, not in a ring around them (this changes a rule of the system, see README) ---------- */
+/* The artifact outlines a field that has the focus (`.pb-field:focus-within`). Here the field's own chamfered edge turns to
+   the focus colour, 2px thick, while it has the cursor, and wins over the hover edge; an invalid field keeps its red. The
+   focus is as visible as before, only inside the shape. The code field's boxes do the same (above). A checkbox keeps the
+   system's ring, and only for the keyboard (`:focus-visible`), instead of the browser's own. Buttons, links, tabs and the
+   rest keep the ring they have: it shows only for the keyboard. */
+.pb-field:focus-within { outline: 2px solid transparent; --edge: var(--focus); --bw: 2px; }
+/* The outline is transparent, not none: in forced-colours mode the chamfered edge is not drawn, and a transparent outline is. */
+/* An invalid field keeps its red edge, which would hide the focus: it gets the system's ring back. */
+.pb-field[data-invalid]:focus-within { --edge: var(--crimson); outline: 2px solid var(--focus); outline-offset: 3px; }
+.pb-check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* ---------- Header tools: a label and its options, in both apps ---------- */
+/* Language, country (market) and theme in the landing's bar, theme and language in the back office's. Each is a group:
+   a visible label in the `label` style of the system, then its options as radios drawn like the language switch
+   (`pb-lang`, `pb-lang__btn`; the theme's carry a sun and a moon). The theme has no visible label (it is named for
+   assistive technology). There are no lines anywhere in the tools: not between groups (only more room than between the
+   options of one group), not between options, not round them. What tells the label from the options is the type, not
+   a box: the label is small muted label type; the options are heavier, in the full ink; the one checked is a block
+   filled with `violet-soft` and its text in violet. Where the bar folds into its menu the groups stack, label at the
+   left, options at the right. The bar folds up to 1140px (the system's own fold is 800px): the wordmark, the links and
+   the groups need about 1085px, with a margin for the real width of the type. */
+.pb-navtool { display: inline-flex; align-items: center; gap: var(--space-1); }
+.pb-navtool__label { font: 600 12px/16px var(--font-condensed); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.pb-navtool + .pb-navtool, .pb-navtool + .pb-menu { margin-left: var(--space-4); }
+.pb-lang__btn .pb-ico { width: 18px; height: 18px; vertical-align: 0; }
+.pb-lang--fill { display: inline-flex; gap: 2px; }
+.pb-lang--fill .pb-lang__btn { border-left: 0; color: var(--ink); font-weight: 700; font-size: 14px; }
+.pb-lang--fill .pb-lang__btn::after { display: none; }
+.pb-lang--fill .pb-lang__btn:hover { background: var(--surface-200); }
+.pb-lang--fill .pb-lang__btn[aria-checked="true"] { background: var(--violet-soft); color: var(--violet); }
+@media (max-width: 1140px) {
+  .pb-nav__tools { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-2); }
+  .pb-nav__tools > .pb-navtool, .pb-nav__tools > .pb-menu { margin-left: 0; }
+  /* The options go to the right, whether the group has a label to their left or none (the theme). The agent's button
+     fills the row with its content at the start and the chevron at the end. */
+  .pb-nav__tools > .pb-navtool > .pb-lang { margin-left: auto; }
+  .pb-nav__tools > .pb-menu .pb-menu__btn { width: 100%; justify-content: flex-start; }
+  .pb-nav__tools > .pb-menu .pb-menu__btn .pb-ico--chev1 { margin-left: auto; }
+}
+/* The system's fold (the rules of its own `max-width: 800px` block) from 801px up to 1140px. */
+@media (min-width: 801px) and (max-width: 1140px) {
+  .pb-nav__bar { justify-content: space-between; gap: 12px; }
+  .pb-nav__menu { display: inline-flex; }
+  .pb-nav__collapse { display: none; position: absolute; top: 100%; left: 0; right: 0; flex: none; flex-direction: column; align-items: stretch; gap: 8px; padding: 4px 16px 20px; background: var(--surface-100); border-bottom: 1px solid var(--line-strong); }
+  .pb-nav[data-open="true"] .pb-nav__collapse { display: flex; }
+  .pb-nav__links { flex-direction: column; gap: 0; }
+  .pb-nav__link { min-height: 48px; padding: 0; border-bottom: 1px solid var(--line); }
+  .pb-nav__link::after { left: 0; right: 0; bottom: -1px; }
+  .pb-nav__tools { margin-left: 0; padding-top: 12px; }
+}
+
+/* ---------- The wordmark: capitals, in two colours (this changes a rule of the system, see README) ---------- */
+/* The system sets the name in one colour, `wordmark` or `ink`. In the bar and the footer of both apps it shows in capitals
+   (the text stays "Pattern Blue": only how it is drawn changes) with "Pattern" in the main ink and "Blue" in the brand's
+   blue, in the title type they already use. The drawn card of the hero is not touched. */
+.pb-nav__brand, .pb-footer__wordmark { text-transform: uppercase; }
+.pb-wordmark__ink { color: var(--ink); }
+.pb-wordmark__blue { color: var(--wordmark); }
+
+/* ---------- "Si pierdes tu tarjeta": the state chips sit on one line ---------- */
+/* The four steps share a row from 960px up (the system's own breakpoint for the row). The text of a step takes two or
+   three lines, so the chips at the foot of the steps would sit at different heights. Each step becomes a column that
+   takes the height of the row, and the chip is pushed to its foot. Stacked on a narrow screen there is nothing to align. */
+@media (min-width: 960px) {
+  .pb-flow__item { display: flex; flex-direction: column; gap: 8px; }
+  .pb-flow__state { margin-top: auto; padding-top: 4px; align-self: flex-start; }
+}
+
+
+/* ---------- HowItWorks as a vertical list: the flows of the back office ---------- */
+/* `pb-flow` goes to four columns from 960px, which suits the landing's four steps. The back office lists three to five
+   steps of a flow, each with a tool, and reads them down: `pb-flow--col` keeps the phone layout of the system (the numeral
+   at the left, the hairline running down) at every width. The numerals stay the system's CSS counter in stencil and violet.
+   The step's title takes the type of an `h3` in this case: a title card's serif, at the size of the card's own `h2` above,
+   would flatten the hierarchy of the screen. */
+.pb-flow--col { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.pb-flow--col > .pb-flow__item { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: var(--space-4); row-gap: 6px; align-content: start; padding-bottom: var(--space-6); }
+.pb-flow--col > .pb-flow__item:last-child { padding-bottom: 0; }
+.pb-flow--col > .pb-flow__item::before { grid-row: 1 / span 4; margin-bottom: 0; font-size: 48px; line-height: 48px; }
+.pb-flow--col > .pb-flow__item::after { left: 30px; right: auto; top: 60px; bottom: 12px; width: 1px; height: auto; }
+.pb-flow--col .pb-flow__title { font: 600 18px/26px var(--font-sans); }
+.pb-flow--col .pb-flow__state { margin-top: 4px; padding-top: 0; align-self: auto; }
+.pb-flow--col > .pb-flow__item > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- A back arrow: the system's `arrow` glyph, turned ---------- */
+/* The icon set has no arrow that points left. "Volver a la cola" is a ghost button with the `arrow` glyph flipped. */
+.pb-ico--flip { transform: scaleX(-1); }
