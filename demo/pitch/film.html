@@ -2,6 +2,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Big+Shoulders+Stencil+Display:wght@700;800;900&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+Display:ital,wdth,wght@0,62.5..100,100..900;1,62.5..100,400&display=swap">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="components.css">
+<link rel="stylesheet" href="local.css">
+<link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="film.css">
 
 <div class="room">
@@ -43,12 +45,10 @@
         </div>
         <div class="markets" id="s02-markets">
           <div class="mkt"><span class="mkt__tag">COLOMBIA · es-CO</span><span class="mkt__num">≈ 962,000</span><span class="mkt__txt">complaints over unrecognized transactions in 2024</span><span class="mkt__src">Superintendencia Financiera · 31.3 % of 3.07 M</span></div>
-          <div class="mkt"><span class="mkt__tag">MÉXICO · es-MX</span><span class="mkt__num">1.5 M</span><span class="mkt__txt">fraud complaints in one quarter, Q1 2026</span><span class="mkt__src">CONDUSEF · 3 of every 4 complaints</span></div>
           <div class="mkt"><span class="mkt__tag">BRASIL · pt-BR</span><span class="mkt__num">R$ 10.1 B</span><span class="mkt__txt">lost to fraud and scams in 2024</span><span class="mkt__src">FEBRABAN · +17 % on 2023</span></div>
-          <div class="mkt"><span class="mkt__tag">ARGENTINA · es-AR</span><span class="mkt__num">+21 %</span><span class="mkt__txt">cybercrime reports in 2024, 34,000+</span><span class="mkt__src">UFECI, Ministerio Público Fiscal</span></div>
         </div>
-        <div class="why-line" id="s02-c" style="top:250px;"><p class="tc">Automate badly:<br><span style="color:#ff6b87;">the wrong card.</span></p></div>
-        <div class="why-line" id="s02-d" style="top:250px;"><p class="tc">Wait:<br><span style="color:#ff9a2e;">the card stays open.</span></p></div>
+        <div class="why-line why-line--split" id="s02-c" style="top:250px;"><p class="tc"><span style="color:#ff6b87;">Poor automation</span><br>blocks the wrong card.</p></div>
+        <div class="why-line why-line--split" id="s02-d" style="top:250px;"><p class="tc"><span style="color:#ff9a2e;">Wait</span><br>the card stays open.</p></div>
         <div class="why-line" id="s02-e" style="top:280px;">
           <p class="kicker" style="color:#bdb9e6;">The hard part isn't answering.</p>
           <p class="tc" style="font-size:250px; margin-top:28px;">It's deciding<br><span style="color:#3dffa0;">safely.</span></p>
@@ -62,7 +62,7 @@
           <div class="alarm__inner">
             <p class="tc alarm__word">Pattern<br>Blue</p>
             <div class="alarm__meta">
-              <span class="alarm__k">Compromised card reported · es-CO</span>
+              <span class="alarm__k">Compromised card reported · ESPAÑOL-COLOMBIA</span>
               <span class="alarm__quote">“me clonaron la tarjeta, yo no hice esa compra”</span>
               <span class="alarm__tel">local model · CPU · ~20 ms · read before any LLM</span>
             </div>
@@ -78,52 +78,17 @@
       <section class="scene t-light" id="S04">
         <div class="chapter" id="s04-chapter">
           <p class="tc">Act.</p>
-          <p class="chapter__line">Blocked in the conversation. Confirmed only after the database re-reads it.</p>
+          <p class="chapter__line">Blocked in the conversation. Confirmed with Database.</p>
         </div>
-        <div class="phone" id="s04-phone" style="left:1330px; top:96px;">
-          <div class="phone__screen">
-            <div class="phone__notch"></div>
-            <section class="pb-chat" aria-label="Chat con el asistente">
-              <header class="pb-chat__head">
-                <span class="pb-chat__title"><i class="pb-ico pb-ico--hex" aria-hidden="true"></i> Asistente</span>
-                <span class="pb-chip" data-state="anonymous" id="s04-chip-a"><i class="pb-ico pb-ico--user-dashed" aria-hidden="true"></i>Anónimo</span>
-                <span class="pb-chip" data-state="verified" id="s04-chip-v" style="display:none"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado</span>
-              </header>
-              <div class="pb-chat__log" role="log">
-                <div class="pb-msg pb-msg--customer" id="s04-m1"><span class="pb-msg__meta">Tú · 02:15</span>me clonaron la tarjeta, yo no hice esa compra</div>
-                <div class="pb-msg pb-msg--assistant" id="s04-m2"><span class="pb-msg__meta">Asistente · 02:15</span>Puedo bloquearla ahora. Primero confirmo que eres tú: te envié un código a d***@example.com.</div>
-                <div class="pb-msg pb-msg--customer" id="s04-m3"><span class="pb-msg__meta">Tú · 02:16</span>Código: ••••••</div>
-                <div class="pb-msg pb-msg--assistant" id="s04-m4"><span class="pb-msg__meta">Asistente · 02:16</span>Estoy bloqueando tu tarjeta •••• 4821.</div>
-                <div class="pb-msg pb-msg--assistant" id="s04-m5"><span class="pb-msg__meta">Asistente · 02:16</span>Bloqueé tu tarjeta •••• 4821.
-                  <span class="pb-msg__receipt"><i class="pb-ico pb-ico--db" aria-hidden="true"></i>Comprobante aud_00020481</span></div>
-                <div class="pb-typing" id="s04-typing" role="status"><span class="pb-sr">El asistente está escribiendo</span><i></i><i></i><i></i></div>
-              </div>
-            </section>
+        <div class="laptop laptop--s04" id="s04-mac">
+          <div class="laptop__lid">
+            <div class="laptop__screen t-light">
+              <!-- The product's real customer page, rendered by capture-ui.tsx and inlined by render.mjs.
+                   film.html on its own shows an empty screen: start from `node render.mjs --wrap-only`. -->
+              <div class="s04-ui" id="s04-ui"><!--ui-chat--></div>
+            </div>
           </div>
-        </div>
-        <div class="s04-receipt" id="s04-receipt">
-          <article class="pb-card pb-receipt pb-ticks">
-            <header class="pb-receipt__head">
-              <div>
-                <div class="pb-receipt__kicker">Recibo · card.block</div>
-                <h2 class="pb-receipt__title">Tarjeta bloqueada</h2>
-              </div>
-              <span class="pb-stamp" id="s04-stamp"><i class="pb-ico pb-ico--shield-check" aria-hidden="true"></i>Verificado contra la base de datos</span>
-            </header>
-            <dl class="pb-kv">
-              <dt>Acción</dt><dd>card.block</dd>
-              <dt>Objetivo</dt><dd>•••• 4821</dd>
-              <dt>Estado</dt>
-              <dd><span class="pb-transition">
-                <span class="pb-chip" data-state="active"><i class="pb-ico pb-ico--card" aria-hidden="true"></i>Activa</span>
-                <i class="pb-ico pb-ico--arrow" aria-label="cambió a"></i>
-                <span class="pb-chip" data-state="blocked"><i class="pb-ico pb-ico--card-blocked" aria-hidden="true"></i>Bloqueada</span>
-              </span></dd>
-              <dt>Audit id</dt><dd>aud_00020481</dd>
-              <dt>Idempotency</dt><dd>7f3a91c2…5a10</dd>
-              <dt>Verificado</dt><dd>2026-10-02 02:16:40 COT</dd>
-            </dl>
-          </article>
+          <div class="laptop__base"></div>
         </div>
       </section>
 
@@ -250,12 +215,12 @@
           <div class="plate" data-i="1"><div class="plate__face"><span>Sensor</span></div></div>
           <div class="plate" data-i="0"><div class="plate__face"><span>Chat</span></div></div>
         </div>
-        <div class="label-row" data-i="0"><b>CHAT</b><span>the customer's words · es-CO · es-MX · es-AR · pt-BR</span></div>
-        <div class="label-row" data-i="1"><b>SENSOR</b><span>local model · CPU · ~20 ms · reads first</span></div>
-        <div class="label-row label-row--field" data-i="2"><b>FIELD</b><span>PII masked before any LLM · 4111… → [CARD_1]</span></div>
-        <div class="label-row label-row--voice" data-i="3"><b>VOICE</b><span>the LLM writes and proposes · holds no keys</span></div>
-        <div class="label-row label-row--core" data-i="4"><b>CORE</b><span>state · policy · database decide</span></div>
-        <div class="label-row" data-i="5"><b>LEDGER</b><span>hash-chained audit of every decision</span></div>
+        <div class="label-row" data-i="0"><b>CHAT</b><span>the customer's words<i class="lr__detail">es-CO · es-MX · es-AR · pt-BR</i></span></div>
+        <div class="label-row" data-i="1"><b>SENSOR</b><span>local model · CPU · ~20 ms<i class="lr__detail">reads before any LLM</i></span></div>
+        <div class="label-row label-row--field" data-i="2"><b>FIELD</b><span>PII masked before any LLM<i class="lr__detail">4111… → [CARD_1]</i></span></div>
+        <div class="label-row label-row--voice" data-i="3"><b>VOICE</b><span>the LLM writes and proposes<i class="lr__detail">it holds no keys</i></span></div>
+        <div class="label-row label-row--core" data-i="4"><b>CORE</b><span>state · policy · database<i class="lr__detail">decide every action</i></span></div>
+        <div class="label-row" data-i="5"><b>LEDGER</b><span>hash-chained audit<i class="lr__detail">of every decision</i></span></div>
       </section>
 
       <!-- S08 vote and S09 injection share the panels -->
@@ -287,25 +252,22 @@
             <span class="tile__value">0</span>
             <span class="tile__status"><i></i>Pass</span>
             <span class="tile__meta">across <b id="p1n">0</b> live scenarios</span>
-            <span class="tile__src">reports/eval-live-2026-10-02-gpt-6-luna.md</span>
           </div>
           <div class="tile" id="p2">
             <span class="tile__label">Cost per conversation</span>
             <span class="tile__value tile__value--sm">USD 0.0005</span>
-            <span class="tile__meta">LLM tokens only · about 1/20 of a cent</span>
-            <span class="tile__src">reports/eval-live-2026-10-02-gpt-6-luna.md</span>
+            <span class="tile__meta">LLM tokens only · about 1/20 of a cent · average over the same 58 conversations</span>
           </div>
           <div class="tile" id="p3">
             <span class="tile__label">Markets</span>
             <span class="tile__value">4</span>
             <span class="tile__meta">es-CO · es-MX · es-AR · pt-BR, grounded in 120,000+ real complaints and reviews</span>
-            <span class="tile__src">reports/intent-models-regional-datasets.md</span>
+            <span class="tile__meta">one pooled multilingual DistilBERT, thresholds per locale, ~20 ms on CPU</span>
           </div>
           <div class="tile" id="p4">
             <span class="tile__label">Model independence</span>
             <span class="tile__value tile__value--txt">Swap the model. Keep the safety.</span>
-            <span class="tile__meta">local open model 35 of 58 · hosted 36 of 58 · both 0 unsafe</span>
-            <span class="tile__src">reports/eval-live-2026-10-02-qwen3.6-35b-a3b-think.md</span>
+            <span class="tile__meta">hosted GPT-6 Luna 36 of 58 · local open Qwen3.6-35B-A3B 35 of 58 · both 0 unsafe</span>
           </div>
         </div>
       </section>
@@ -355,6 +317,11 @@
             <code>make demo</code>
             <span class="end__team">Team Nekobus</span>
           </div>
+          <div class="end__crew" id="s13-crew">
+            <i class="end__rule" id="s13-rule"></i>
+            <p class="end__member" id="s13-m1"><b class="end__name">Marcelo Mendez</b><span class="end__mail">marcelomendezlaruta@icloud.com</span></p>
+            <p class="end__member" id="s13-m2"><b class="end__name">Daniela Chambilla</b><span class="end__mail">pao.dan.cha.con@gmail.com</span></p>
+          </div>
         </div>
         <div class="blackout" id="s13-black"></div>
       </section>
@@ -385,7 +352,7 @@
       <ol class="script" id="script"></ol>
     </section>
   </div>
-  <p class="room__foot">Mockup values (•••• 4821, aud_00020481, the gauge readings, the hashes) are sample data in the product's real formats. Every other number traces to a versioned report or a cited source. No music yet: the team adds voice-over, music and effects in the edit.</p>
+  <p class="room__foot">Mockup values (•••• 4821, aud_00020481, the gauge readings, the hashes) are sample data in the product's real formats. Every other number traces to a versioned report or a cited source. S04 runs the product's real customer page, rendered from the app's own components. Music and narration are mixed in by mix.sh.</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>

@@ -10,15 +10,15 @@
 
   var SCENES = [
     { id: "S01", start: 0,   end: 10,  title: "Cold open", note: "Lock screen in Spanish (es-CO formatting). The battery clock fades in at 0:07." },
-    { id: "S02", start: 10,  end: 28,  title: "Why", note: "Rebuild-trailer cadence: one line per music hit. LexisNexis 3.68x, then one flash per market, all sourced on screen." },
+    { id: "S02", start: 10,  end: 28,  title: "Why", note: "Rebuild-trailer cadence: one line per music hit. LexisNexis 3.68x, then two markets, both sourced on screen." },
     { id: "S03", start: 28,  end: 40,  title: "Pattern Blue alarm, reveal", note: "The alarm reads 'reported', never 'detected'. Collapses into the title card." },
-    { id: "S04", start: 40,  end: 58,  title: "Act", note: "Progressive wording first ('Estoy bloqueando'), the receipt line only after the database re-read. Receipt card with the stamp." },
+    { id: "S04", start: 40,  end: 58,  title: "Act", note: "The product's real page on a computer (capture-ui.tsx), pushed in on the chat. The card.block receipt opens on its own detail: ACTIVA to BLOQUEADA, verified against the database." },
     { id: "S05", start: 58,  end: 74,  title: "Ask", note: "Real phrases from the eval scenarios. The es-MX vague opening abstains and gets the product's canned clarifying question." },
     { id: "S06", start: 74,  end: 90,  title: "Hand off", note: "The back office brief assembles: verified facts, verification method, actions taken, open questions. 13 of 13 complete." },
     { id: "S07", start: 90,  end: 104, title: "Teardown", note: "Exploded view drawn as a blueprint: six layers, each with what it does." },
     { id: "S08", start: 104, end: 114, title: "The three-check vote", note: "State, policy and database decide. The LLM proposed and has no seat." },
     { id: "S09", start: 114, end: 124, title: "Injection, thesis", note: "The only hazard stripe in the film. The model is talked into proposing a read; state and policy refuse it. Silence, then the thesis." },
-    { id: "S10", start: 124, end: 140, title: "Proof wall", note: "Measured numbers with their report file under each one." },
+    { id: "S10", start: 124, end: 140, title: "Proof wall", note: "Measured numbers. The models are named; the report files are in script.md, not on screen." },
     { id: "S11", start: 140, end: 154, title: "One more thing", note: "A tool switched on in the Guardrails matrix: a new workflow, audited, applies on the next call." },
     { id: "S12", start: 154, end: 166, title: "Next episode", note: "The roadmap as a next-episode preview, hard cuts." },
     { id: "S13", start: 166, end: 180, title: "End card", note: "The clock reaches 00:00.00 on the last frame." }
@@ -27,7 +27,8 @@
   var CAPTIONS = [
     [3.0, 8.4, "It's two in the morning. And that charge wasn't you."],
     [10.9, 16.4, "In Latin America, fraud costs financial firms over three and a half times what was stolen."],
-    [20.9, 24.6, "Automate badly, and you block the wrong card. Wait, and the card stays open."],
+    [20.9, 23.5, "Poor automation, and you block the wrong card."],
+    [23.5, 24.6, "Wait, and the card stays open."],
     [24.8, 27.9, "The hard part isn't answering. It's deciding safely."],
     [34.0, 39.6, "Introducing Pattern Blue. Customer service for banks that knows when to act, when to ask, and when to hand off."],
     [40.8, 48.6, "It acts. The card is blocked in the conversation, and it only says so after the bank's own database confirms it."],
@@ -38,7 +39,7 @@
     [91.0, 98.4, "Here's the difference. The language model writes the words and proposes the action. But it holds no keys."],
     [104.8, 111.2, "Three deterministic checks decide: the state of the conversation, the bank's policy, and the database."],
     [114.4, 117.6, "Even when someone tries to talk it out of the rules."],
-    [121.0, 123.8, "The AI has a voice. Not a vote."],
+    [121.3, 124.0, "The AI has a voice. Not a vote."],
     [124.8, 129.4, "Zero unsafe actions across fifty-eight live scenarios."],
     [129.8, 132.8, "About a twentieth of a cent per conversation."],
     [133.2, 138.6, "And because safety lives in the core: swap the model, keep the safety."],
@@ -65,7 +66,7 @@
     ".scene", "#hud", "#s01-lock", "#s01-notif",
     "#s02-a", "#s02-b", "#s02-markets", "#s02-c", "#s02-d", "#s02-e", "#s02-e .tc",
     "#s03-alarm", "#s03-reveal", "#s03-sub",
-    "#s04-chapter", "#s04-phone", "#s04-m1", "#s04-m2", "#s04-m3", "#s04-m4", "#s04-m5", "#s04-receipt", "#s04-stamp",
+    "#s04-chapter", "#s04-mac",
     "#s05-chapter", "#s05-g1", "#s05-g2", "#s05-c1", "#s05-c2",
     "#s06-copy", "#s06-laptop", "#s06-facts", "#s06-acts", "#s06-open", "#s06-k1", "#s06-k2", "#s06-k3", "#s06-k4", "#s06-stat",
     "#s07-title", ".label-row",
@@ -73,7 +74,7 @@
     ".proof-head", "#p1", "#p2", "#p3", "#p4",
     "#s11-omt", "#s11-panel", "#s11-ver", "#s11-chain", "#s11-new", "#s11-link", "#s11-copy",
     "#s12-head", "#s12-i1", "#s12-i2", "#s12-i3", "#s12-i4", "#s12-final",
-    "#s13-mark", "#s13-tag", "#s13-wink", "#s13-foot", "#s13-black"
+    "#s13-mark", "#s13-tag", "#s13-wink", "#s13-foot", "#s13-m1", "#s13-m2", "#s13-black"
   ];
   tl.set(hidden.join(","), { autoAlpha: 0 }, 0);
   $$("#s05-phrases .phrase").forEach(function (el) { tl.set(el, { autoAlpha: 0, x: -30 }, 0); });
@@ -96,8 +97,8 @@
   cutIn(16.6, "#s02-markets");
   $$("#s02-markets .mkt").forEach(function (el, i) { show(16.8 + i * 0.7, el, { duration: 0.32, ease: steps(4) }); });
   cutOut(20.9, "#s02-markets");
-  cutIn(20.9, "#s02-c"); cutOut(22.8, "#s02-c");
-  cutIn(22.8, "#s02-d"); cutOut(24.7, "#s02-d");
+  cutIn(20.9, "#s02-c"); cutOut(23.5, "#s02-c");
+  cutIn(23.5, "#s02-d"); cutOut(24.8, "#s02-d");
   cutIn(24.8, "#s02-e"); cutIn(26.0, "#s02-e .tc");
   cutOut(28, "#S02");
 
@@ -114,17 +115,17 @@
   show(35.6, "#s03-sub", { duration: 0.5, ease: steps(4) });
   hide(39.7, "#S03");
 
-  /* ---------- S04 act 40-58 ---------- */
+  /* ---------- S04 act 40-58 ----------
+     The computer runs the product's real page (capture-ui.tsx). It arrives whole, so the page under the
+     chat reads, then the camera pushes in once on the dock: the transform origin is the dock's own centre
+     inside the lid, which turns a scale into a push instead of a slide. The conversation itself is drawn
+     by render(t) below, like every other time-driven part of the film. */
   show(40, "#S04", { duration: 0.4 });
   tl.set("#s04-chapter", { x: -40 }, 0); show(40.3, "#s04-chapter", { duration: 0.7 });
-  tl.set("#s04-phone", { y: 90, scale: 1.2, transformOrigin: "0% 0%" }, 0); show(40.6, "#s04-phone", { duration: 1.0 });
-  ["#s04-m1", "#s04-m2", "#s04-m3", "#s04-m4", "#s04-m5"].forEach(function (id, i) {
-    tl.set(id, { y: 16 }, 0);
-    show([41.6, 43.2, 45.4, 47.0, 49.2][i], id, { duration: 0.35 });
-  });
-  hide(49.9, "#s04-chapter .chapter__line", 0.3);
-  tl.set("#s04-receipt", { x: 60, scale: 1.25, transformOrigin: "0% 0%" }, 0); show(50.2, "#s04-receipt", { duration: 0.7 });
-  tl.set("#s04-stamp", { scale: 1.8 }, 0); show(51.2, "#s04-stamp", { scale: 1, duration: 0.28, ease: "back.out(2.2)" });
+  tl.set("#s04-mac", { y: 70, transformOrigin: "866px 398px" }, 0);
+  show(40.6, "#s04-mac", { duration: 1.0 });
+  hide(42.6, "#s04-chapter", 0.4);
+  tl.to("#s04-mac", { scale: 1.38, x: -95, y: 71, duration: 1.4, ease: "power2.inOut" }, 42.8);
   hide(57.7, "#S04");
 
   /* ---------- S05 ask 58-74 ---------- */
@@ -176,13 +177,13 @@
   show(114.0, "#s09-stripe-b", { duration: 0.24, ease: steps(3) });
   tl.to("#s08-vote", { y: 190, duration: 0.5, ease: "power2.inOut" }, 114.0);
   tl.set("#s09-inject", { y: -20 }, 0); show(114.2, "#s09-inject", { duration: 0.35 });
-  hide(118.8, "#s09-inject", 0.2);
-  tl.set("#s08-res", { y: -450 }, 118.9);
-  show(119.0, "#s08-res", { y: -450, duration: 0.3, ease: steps(4) });
-  show(120.4, "#s09-black", { duration: 0.25 });
-  cutIn(120.4, "#s09-thesis");
-  show(121.0, "#s09-t1", { duration: 0.2, ease: steps(2) });
-  show(122.4, "#s09-t2", { duration: 0.2, ease: steps(2) });
+  hide(117.9, "#s09-inject", 0.2);
+  tl.set("#s08-res", { y: -450 }, 118.0);
+  show(118.1, "#s08-res", { y: -450, duration: 0.3, ease: steps(4) });
+  show(120.9, "#s09-black", { duration: 0.25 });
+  cutIn(120.9, "#s09-thesis");
+  show(121.3, "#s09-t1", { duration: 0.2, ease: steps(2) });
+  show(122.7, "#s09-t2", { duration: 0.2, ease: steps(2) });
   cutOut(124, "#S08");
 
   /* ---------- S10 proof wall 124-140 ---------- */
@@ -223,6 +224,9 @@
   show(167.3, "#s13-tag", { duration: 0.6 });
   show(171.4, "#s13-wink", { duration: 0.8, ease: "power2.out" });
   show(174.0, "#s13-foot", { duration: 0.6 });
+  tl.set("#s13-rule", { scaleX: 0 }, 0);
+  tl.to("#s13-rule", { scaleX: 1, duration: 0.4, ease: "power2.out" }, 175.0);
+  [["#s13-m1", 175.4], ["#s13-m2", 175.7]].forEach(function (p) { tl.set(p[0], { y: 16 }, 0); show(p[1], p[0], { duration: 0.5 }); });
   show(179.0, "#s13-black", { duration: 1.0, ease: "none" });
 
   tl.set({}, {}, DURATION); /* pin the length to exactly 180 s */
@@ -230,7 +234,7 @@
   /* ---------- time-driven content ---------- */
   var el = {
     digits: $("#hud-digits"), cap: $("#cap"), s02num: $("#s02-num"), s06num: $("#s06-num"), p1n: $("#p1n"),
-    chipA: $("#s04-chip-a"), chipV: $("#s04-chip-v"), typing: $("#s04-typing"), inj: $("#s09-text"),
+    s04log: $("#s04-log"), s04typing: $("#s04-typing"), inj: $("#s09-text"),
     sw: $("#s11-sw"), thumb: $("#s11-thumb"), swWord: $("#s11-word"),
     res: $("#s08-res"), tool: $("#s08-tool"), word: $("#s08-word"), voice: $("#s08-voice"), prop: $("#s08-prop"),
     tc: $("#tc"), scrub: $("#scrub"),
@@ -242,6 +246,43 @@
     { id: "j3", ok: ["Owner", "The card belongs to the verified customer."], no: ["Not reached", "Nothing is read from the database."] }
   ];
   JUDGES.forEach(function (j) { j.box = $("#" + j.id); j.mark = $("#" + j.id + "m"); j.verdict = $("#" + j.id + "v"); j.why = $("#" + j.id + "w"); });
+
+  /* S04: the real page's chat, played back. One time per entry of the log after the greeting, which is
+     there from the start; the typing dots run while a turn is in flight; the header chip only ever says
+     what a receipt has proved; the newest card.block receipt opens on "every action, a receipt". */
+  var S04_ENTRY_IN = [43.4, 44.4, 45.2, 46.6, 47.6, 48.4, 49.2];
+  var S04_TYPING = [[43.8, 44.4], [46.9, 47.6]];
+  var S04_CHIP_IN = [45.2, 47.6, 49.2];
+  var S04_RECEIPT_OPEN = 50.2;
+  var s04 = (function () {
+    var log = $("#s04-log");
+    if (!log) return function () {};
+    var typing = $("#s04-typing");
+    var entries = $$("#s04-log > *").filter(function (node) { return node !== typing; });
+    var chips = ["#s04-chip-1", "#s04-chip-2", "#s04-chip-3"].map($);
+    var more = $$("#s04-log .pb-proof__more").pop();
+    var ref = more && more.parentNode.querySelector(".pb-proof__ref");
+    return function (t) {
+      for (var i = 0; i < entries.length; i++) {
+        var at = i === 0 ? 0 : S04_ENTRY_IN[i - 1];
+        var on = at !== undefined && t >= at;
+        entries[i].style.display = on ? "" : "none";
+        entries[i].style.opacity = on ? String(clamp01((t - at) / 0.3)) : "0";
+      }
+      var dots = S04_TYPING.some(function (w) { return t >= w[0] && t < w[1]; });
+      if (typing) typing.style.display = dots ? "" : "none";
+      var shown = -1;
+      for (var c = 0; c < S04_CHIP_IN.length; c++) if (t >= S04_CHIP_IN[c]) shown = c;
+      chips.forEach(function (node, i) { if (node) node.style.display = i === shown ? "" : "none"; });
+      if (more) {
+        var open = t >= S04_RECEIPT_OPEN;
+        more.hidden = !open;
+        if (ref) ref.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      /* The log follows the newest entry, as the browser's does. */
+      log.scrollTop = log.scrollHeight;
+    };
+  })();
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
   function ramp(t, a, b) { var p = clamp01((t - a) / (b - a)); return 1 - Math.pow(1 - p, 3); }
@@ -263,7 +304,7 @@
   function judgeState(i, t) {
     if (t < 105.6 + i * 0.6) return t < 104 ? "idle" : "idle";
     if (t < 114) return "ok";
-    if (t < 118.0 + i * 0.4) return "pending";
+    if (t < 116.8 + i * 0.4) return "pending";
     return "no";
   }
 
@@ -278,13 +319,10 @@
     setText(el.s06num, Math.round(100 * ramp(t, 82.6, 84.4)) + " %");
     setText(el.p1n, String(Math.round(58 * ramp(t, 125.0, 126.8))));
 
-    var verified = t >= 46.3;
-    el.chipA.style.display = verified ? "none" : "";
-    el.chipV.style.display = verified ? "" : "none";
-    el.typing.style.display = (t >= 42.3 && t < 43.2) || (t >= 46.4 && t < 47.0) ? "" : "none";
+    s04(t);
 
-    var n = Math.round(INJECTION.length * clamp01((t - 114.4) / 2.8));
-    setText(el.inj, t < 114.4 ? "" : INJECTION.slice(0, n));
+    var n = Math.round(INJECTION.length * clamp01((t - 114.3) / 2.0));
+    setText(el.inj, t < 114.3 ? "" : INJECTION.slice(0, n));
 
     var on = t >= 146.6;
     el.sw.classList.toggle("is-on", on);
@@ -301,8 +339,8 @@
       setText(j.why, st === "idle" || st === "pending" ? (s09 ? "Checking…" : "Waiting for a proposal…") : words[1]);
       setText(j.mark, st === "ok" ? "✓" : st === "no" ? (idx < 2 ? "✗" : "—") : "");
     });
-    el.voice.classList.toggle("is-bad", t >= 117.3);
-    setText(el.prop, t >= 117.3 ? "proposes transaction.list_recent" : "proposed card.block");
+    el.voice.classList.toggle("is-bad", t >= 116.4);
+    setText(el.prop, t >= 116.4 ? "proposes transaction.list_recent" : "proposed card.block");
     el.res.classList.toggle("is-no", s09);
     setText(el.tool, s09 ? "transaction.list_recent" : "card.block");
     setText(el.word, s09 ? "Refused" : "Approved");
